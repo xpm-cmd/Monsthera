@@ -113,6 +113,22 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
       insight.info("Added .agora/ to .gitignore");
     }
   }
+
+  // Generate MCP client configs
+  const mcpConfig = JSON.stringify({
+    mcpServers: {
+      agora: {
+        command: "npx",
+        args: ["-y", "agora-mcp@latest", "serve", "--repo-path", repoRoot],
+      },
+    },
+  }, null, 2) + "\n";
+
+  const mcpConfigPath = join(agoraDir, "mcp-config.json");
+  if (!existsSync(mcpConfigPath)) {
+    writeFileSync(mcpConfigPath, mcpConfig);
+    insight.info(`Created ${mcpConfigPath} — copy into your MCP client config`);
+  }
 }
 
 async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: InsightStream) {

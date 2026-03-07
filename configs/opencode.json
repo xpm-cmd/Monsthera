@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agora": {
+      "command": "npx",
+      "args": ["-y", "agora-mcp@latest", "serve"],
+      "env": {}
+    }
+  }
+}
