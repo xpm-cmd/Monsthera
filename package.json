@@ -17,12 +17,19 @@
     "db:migrate": "drizzle-kit migrate",
     "benchmark": "vitest run tests/benchmark/"
   },
-  "keywords": ["mcp", "multi-agent", "co-coding", "shared-context"],
+  "keywords": [
+    "mcp",
+    "multi-agent",
+    "co-coding",
+    "shared-context"
+  ],
   "author": "",
   "license": "MIT",
   "packageManager": "pnpm@10.30.3",
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   },
   "engines": {
     "node": ">=22"
@@ -31,6 +38,8 @@
     "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^12.6.2",
     "drizzle-orm": "^0.45.1",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "0.20.8",
     "zod": "^4.3.6"
   },
   "devDependencies": {

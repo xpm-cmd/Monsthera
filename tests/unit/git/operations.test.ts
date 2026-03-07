@@ -1,0 +1,102 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
+import {
+  getHead,
+  getChangedFiles,
+  getAllTrackedFiles,
+  getFileContent,
+  isGitRepo,
+  getRecentCommits,
+} from "../../../src/git/operations.js";
+
+function git(args: string[], cwd: string) {
+  return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
+}
+
+describe("git operations", () => {
+  let repoDir: string;
+
+  beforeEach(() => {
+    repoDir = mkdtempSync(join(tmpdir(), "agora-test-"));
+    git(["init", "-b", "main"], repoDir);
+    git(["config", "user.email", "test@test.com"], repoDir);
+    git(["config", "user.name", "Test"], repoDir);
+
+    writeFileSync(join(repoDir, "hello.ts"), 'export const hello = "world";');
+    git(["add", "."], repoDir);
+    git(["commit", "-m", "init"], repoDir);
+  });
+
+  afterEach(() => {
+    rmSync(repoDir, { recursive: true, force: true });
+  });
+
+  it("getHead returns current HEAD SHA", async () => {
+    const head = await getHead({ cwd: repoDir });
+    expect(head).toMatch(/^[a-f0-9]{40}$/);
+  });
+
+  it("isGitRepo returns true for git repos", async () => {
+    expect(await isGitRepo({ cwd: repoDir })).toBe(true);
+  });
+
+  it("isGitRepo returns false for non-git dirs", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "agora-no-git-"));
+    expect(await isGitRepo({ cwd: tmpDir })).toBe(false);
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("getAllTrackedFiles lists all files at a commit", async () => {
+    const head = await getHead({ cwd: repoDir });
+    const files = await getAllTrackedFiles(head, { cwd: repoDir });
+    expect(files).toContain("hello.ts");
+  });
+
+  it("getChangedFiles detects added files", async () => {
+    const beforeHead = await getHead({ cwd: repoDir });
+
+    writeFileSync(join(repoDir, "new.ts"), "export const x = 1;");
+    git(["add", "."], repoDir);
+    git(["commit", "-m", "add new"], repoDir);
+
+    const afterHead = await getHead({ cwd: repoDir });
+    const changes = await getChangedFiles(beforeHead, afterHead, { cwd: repoDir });
+    expect(changes.length).toBe(1);
+    expect(changes[0]!.status).toBe("A");
+    expect(changes[0]!.path).toBe("new.ts");
+  });
+
+  it("getChangedFiles detects modified files", async () => {
+    const beforeHead = await getHead({ cwd: repoDir });
+
+    writeFileSync(join(repoDir, "hello.ts"), 'export const hello = "updated";');
+    git(["add", "."], repoDir);
+    git(["commit", "-m", "modify"], repoDir);
+
+    const afterHead = await getHead({ cwd: repoDir });
+    const changes = await getChangedFiles(beforeHead, afterHead, { cwd: repoDir });
+    expect(changes.some((c) => c.status === "M" && c.path === "hello.ts")).toBe(true);
+  });
+
+  it("getFileContent reads file at specific commit", async () => {
+    const head = await getHead({ cwd: repoDir });
+    const content = await getFileContent("hello.ts", head, { cwd: repoDir });
+    expect(content).toBe('export const hello = "world";');
+  });
+
+  it("getFileContent returns null for nonexistent file", async () => {
+    const head = await getHead({ cwd: repoDir });
+    const content = await getFileContent("nope.ts", head, { cwd: repoDir });
+    expect(content).toBeNull();
+  });
+
+  it("getRecentCommits returns commit history", async () => {
+    const commits = await getRecentCommits(5, { cwd: repoDir });
+    expect(commits.length).toBe(1);
+    expect(commits[0]!.message).toBe("init");
+    expect(commits[0]!.sha).toMatch(/^[a-f0-9]{40}$/);
+  });
+});
