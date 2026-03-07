@@ -17,6 +17,8 @@ async function main() {
   const repoPath = getArg(args, "--repo-path") ?? process.cwd();
   const verbosity = (getArg(args, "--verbosity") ?? "normal") as "quiet" | "normal" | "verbose";
   const debugLogging = args.includes("--debug-logging");
+  const transport = (getArg(args, "--transport") ?? "stdio") as "stdio" | "http";
+  const httpPort = parseInt(getArg(args, "--http-port") ?? "3000", 10);
 
   if (args.includes("--version") || args.includes("-v")) {
     console.error(`agora v${VERSION}`);
@@ -28,7 +30,7 @@ async function main() {
     process.exit(0);
   }
 
-  const config = resolveConfig({ repoPath, verbosity, debugLogging });
+  const config = resolveConfig({ repoPath, verbosity, debugLogging, transport, httpPort });
   const insight = new InsightStream(config.verbosity);
 
   switch (command) {
@@ -74,9 +76,89 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
     insight.warn(`Dashboard failed to start: ${err}`);
   }
 
-  const server = createAgoraServer(config);
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  if (config.transport === "http") {
+    await cmdServeHttp(config, insight);
+  } else {
+    const server = createAgoraServer(config);
+    const stdioTransport = new StdioServerTransport();
+    await server.connect(stdioTransport);
+  }
+}
+
+async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: InsightStream) {
+  const { createServer } = await import("node:http");
+  const { StreamableHTTPServerTransport } = await import(
+    "@modelcontextprotocol/sdk/server/streamableHttp.js"
+  );
+  const { randomUUID } = await import("node:crypto");
+
+  // Map of sessionId → { server, transport }
+  const sessions = new Map<string, { server: ReturnType<typeof createAgoraServer>; transport: InstanceType<typeof StreamableHTTPServerTransport> }>();
+
+  const httpServer = createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", `http://localhost:${config.httpPort}`);
+
+    // Only handle /mcp endpoint
+    if (url.pathname !== "/mcp") {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Not found. Use /mcp endpoint." }));
+      return;
+    }
+
+    // Extract session ID from header
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+    if (sessionId && sessions.has(sessionId)) {
+      // Existing session — route to its transport
+      const session = sessions.get(sessionId)!;
+      await session.transport.handleRequest(req, res);
+      return;
+    }
+
+    if (sessionId && !sessions.has(sessionId)) {
+      // Unknown session ID → 404
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Session not found. Send an initialization request without a session ID." }));
+      return;
+    }
+
+    // No session ID → new session (initialization request)
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (sid: string) => {
+        sessions.set(sid, { server, transport });
+        insight.info(`HTTP session initialized: ${sid.slice(0, 8)}...`);
+      },
+    });
+
+    transport.onclose = () => {
+      const sid = transport.sessionId;
+      if (sid) {
+        sessions.delete(sid);
+        insight.detail(`HTTP session closed: ${sid.slice(0, 8)}...`);
+      }
+    };
+
+    const server = createAgoraServer(config);
+    await server.connect(transport);
+    await transport.handleRequest(req, res);
+  });
+
+  httpServer.listen(config.httpPort, () => {
+    insight.info(`HTTP transport listening on http://localhost:${config.httpPort}/mcp`);
+  });
+
+  // Graceful shutdown
+  const shutdown = async () => {
+    insight.info("Shutting down HTTP server...");
+    for (const [, session] of sessions) {
+      await session.transport.close();
+    }
+    httpServer.close();
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
 async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: InsightStream) {
@@ -191,11 +273,13 @@ function printHelp() {
   console.error("  status         Show index status");
   console.error("");
   console.error("Options:");
-  console.error("  --repo-path    Repository path (default: cwd)");
-  console.error("  --verbosity    quiet | normal | verbose");
+  console.error("  --repo-path      Repository path (default: cwd)");
+  console.error("  --transport      stdio | http (default: stdio)");
+  console.error("  --http-port      HTTP transport port (default: 3000)");
+  console.error("  --verbosity      quiet | normal | verbose");
   console.error("  --debug-logging  Enable raw payload capture");
-  console.error("  --version, -v  Show version");
-  console.error("  --help, -h     Show help");
+  console.error("  --version, -v    Show version");
+  console.error("  --help, -h       Show help");
 }
 
 function getArg(args: string[], flag: string): string | undefined {

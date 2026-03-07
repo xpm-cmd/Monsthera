@@ -128,7 +128,20 @@ async function refresh(){
     notes.map(n=>[n.key,b(n.type,'a'),n.contentPreview.slice(0,80),n.agentId||'-',n.commitSha.slice(0,7),new Date(n.updatedAt).toLocaleString()])));
 }
 
+// SSE: auto-refresh on server events
+function connectSSE(){
+  const es=new EventSource('/api/events');
+  es.addEventListener('agent_registered',()=>refresh());
+  es.addEventListener('session_changed',()=>refresh());
+  es.addEventListener('patch_proposed',()=>refresh());
+  es.addEventListener('note_added',()=>refresh());
+  es.addEventListener('event_logged',()=>refresh());
+  es.addEventListener('index_updated',()=>refresh());
+  es.onerror=()=>{es.close();setTimeout(connectSSE,5000);};
+}
+
 init();
+connectSSE();
 </script>
 </body>
 </html>`;

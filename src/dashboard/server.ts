@@ -1,4 +1,4 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import type { InsightStream } from "../core/insight-stream.js";
 import { renderDashboard } from "./html.js";
 import {
@@ -6,11 +6,44 @@ import {
   getPatchesList, getNotesList, type DashboardDeps,
 } from "./api.js";
 
+export interface DashboardEvent {
+  type: "agent_registered" | "session_changed" | "patch_proposed" | "note_added" | "event_logged" | "index_updated";
+  data: Record<string, unknown>;
+}
+
+export class DashboardSSE {
+  private clients = new Set<ServerResponse>();
+
+  addClient(res: ServerResponse): void {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    });
+    res.write(":\n\n"); // SSE comment as keepalive
+    this.clients.add(res);
+    res.on("close", () => this.clients.delete(res));
+  }
+
+  broadcast(event: DashboardEvent): void {
+    const payload = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+    for (const client of this.clients) {
+      client.write(payload);
+    }
+  }
+
+  get connectionCount(): number {
+    return this.clients.size;
+  }
+}
+
 export function startDashboard(
   deps: DashboardDeps,
   port: number,
   insight: InsightStream,
-): Server {
+): Server & { sse: DashboardSSE } {
+  const sse = new DashboardSSE();
+
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${port}`);
     const path = url.pathname;
@@ -19,6 +52,12 @@ export function startDashboard(
       if (path === "/" || path === "/index.html") {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(renderDashboard());
+        return;
+      }
+
+      // SSE endpoint for real-time events
+      if (path === "/api/events") {
+        sse.addClient(res);
         return;
       }
 
@@ -53,7 +92,10 @@ export function startDashboard(
     insight.info(`Dashboard: http://localhost:${port}`);
   });
 
-  return server;
+  // Attach SSE broadcaster to the server for external access
+  const enhanced = server as Server & { sse: DashboardSSE };
+  enhanced.sse = sse;
+  return enhanced;
 }
 
 function routeApi(route: string, deps: DashboardDeps): unknown {

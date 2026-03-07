@@ -13,6 +13,8 @@ export const AgoraConfigSchema = z.object({
     .array(z.string())
     .default([".env", ".env.*", "*.key", "*.pem", "credentials.*", "secrets.*"]),
   zoektEnabled: z.boolean().default(true),
+  transport: z.enum(["stdio", "http"]).default("stdio"),
+  httpPort: z.number().int().min(1024).max(65535).default(3000),
 });
 
 export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;

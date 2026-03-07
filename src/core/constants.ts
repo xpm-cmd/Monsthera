@@ -22,6 +22,6 @@ export const REDACTED_SUMMARY_MAX_LENGTH = 200;
 // Indexing
 export const LARGE_FILE_THRESHOLD_LINES = 10_000;
 
-// Supported languages for symbol extraction (MVP)
-export const SUPPORTED_LANGUAGES = ["typescript", "javascript", "python"] as const;
+// Supported languages for symbol extraction
+export const SUPPORTED_LANGUAGES = ["typescript", "javascript", "python", "go", "rust"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];

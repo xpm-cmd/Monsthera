@@ -12,6 +12,8 @@ const EXTENSION_MAP: Record<string, SupportedLanguage> = {
   ".cjs": "javascript",
   ".py": "python",
   ".pyw": "python",
+  ".go": "go",
+  ".rs": "rust",
 };
 
 export function detectLanguage(filePath: string): SupportedLanguage | null {

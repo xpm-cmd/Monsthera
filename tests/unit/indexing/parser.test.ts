@@ -140,3 +140,155 @@ from pathlib import Path
     expect(result.imports.some((i) => i.source === "os" && i.kind === "import")).toBe(true);
   });
 });
+
+describe("parseFile - Go", () => {
+  it("extracts function declarations", async () => {
+    const content = `package main
+
+func main() {
+	fmt.Println("hello")
+}
+
+func add(a, b int) int {
+	return a + b
+}
+`;
+    const result = await parseFile(content, "go");
+    const fns = result.symbols.filter((s) => s.kind === "function");
+    expect(fns.map((f) => f.name)).toContain("main");
+    expect(fns.map((f) => f.name)).toContain("add");
+  });
+
+  it("extracts struct and interface types", async () => {
+    const content = `package main
+
+type Server struct {
+	Host string
+	Port int
+}
+
+type Handler interface {
+	Handle() error
+}
+`;
+    const result = await parseFile(content, "go");
+    expect(result.symbols.some((s) => s.kind === "class" && s.name === "Server")).toBe(true);
+    expect(result.symbols.some((s) => s.kind === "class" && s.name === "Handler")).toBe(true);
+  });
+
+  it("extracts method declarations", async () => {
+    const content = `package main
+
+func (s *Server) Start() error {
+	return nil
+}
+`;
+    const result = await parseFile(content, "go");
+    expect(result.symbols.some((s) => s.kind === "method" && s.name === "Start")).toBe(true);
+  });
+
+  it("extracts imports", async () => {
+    const content = `package main
+
+import (
+	"fmt"
+	"net/http"
+)
+`;
+    const result = await parseFile(content, "go");
+    expect(result.imports.some((i) => i.source === "fmt")).toBe(true);
+    expect(result.imports.some((i) => i.source === "net/http")).toBe(true);
+  });
+
+  it("extracts const and var declarations", async () => {
+    const content = `package main
+
+const MaxSize = 100
+var counter int
+`;
+    const result = await parseFile(content, "go");
+    expect(result.symbols.some((s) => s.kind === "variable" && s.name === "MaxSize")).toBe(true);
+    expect(result.symbols.some((s) => s.kind === "variable" && s.name === "counter")).toBe(true);
+  });
+});
+
+describe("parseFile - Rust", () => {
+  it("extracts function declarations", async () => {
+    const content = `fn main() {
+    println!("hello");
+}
+
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+`;
+    const result = await parseFile(content, "rust");
+    const fns = result.symbols.filter((s) => s.kind === "function");
+    expect(fns.map((f) => f.name)).toContain("main");
+    expect(fns.map((f) => f.name)).toContain("add");
+  });
+
+  it("extracts struct and enum declarations", async () => {
+    const content = `struct Server {
+    host: String,
+    port: u16,
+}
+
+enum Status {
+    Active,
+    Inactive,
+}
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.symbols.some((s) => s.kind === "class" && s.name === "Server")).toBe(true);
+    expect(result.symbols.some((s) => s.kind === "type" && s.name === "Status")).toBe(true);
+  });
+
+  it("extracts trait and type alias", async () => {
+    const content = `trait Handler {
+    fn handle(&self) -> Result<(), Error>;
+}
+
+type UserId = u64;
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.symbols.some((s) => s.kind === "type" && s.name === "Handler")).toBe(true);
+    expect(result.symbols.some((s) => s.kind === "type" && s.name === "UserId")).toBe(true);
+  });
+
+  it("extracts impl methods", async () => {
+    const content = `struct Server {}
+
+impl Server {
+    fn new() -> Self {
+        Server {}
+    }
+
+    fn start(&self) {}
+}
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.symbols.some((s) => s.kind === "class" && s.name === "Server")).toBe(true);
+    expect(result.symbols.some((s) => s.kind === "method" && s.name === "new")).toBe(true);
+    expect(result.symbols.some((s) => s.kind === "method" && s.name === "start")).toBe(true);
+  });
+
+  it("extracts use declarations", async () => {
+    const content = `use std::collections::HashMap;
+use std::io;
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.imports.length).toBeGreaterThanOrEqual(2);
+    expect(result.imports.some((i) => i.source.includes("HashMap"))).toBe(true);
+    expect(result.imports.some((i) => i.source.includes("io"))).toBe(true);
+  });
+
+  it("extracts const and static declarations", async () => {
+    const content = `const MAX_SIZE: usize = 100;
+static COUNTER: i32 = 0;
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.symbols.some((s) => s.kind === "variable" && s.name === "MAX_SIZE")).toBe(true);
+    expect(result.symbols.some((s) => s.kind === "variable" && s.name === "COUNTER")).toBe(true);
+  });
+});

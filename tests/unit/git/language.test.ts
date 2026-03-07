@@ -21,6 +21,14 @@ describe("detectLanguage", () => {
     expect(detectLanguage("gui.pyw")).toBe("python");
   });
 
+  it("detects Go files", () => {
+    expect(detectLanguage("main.go")).toBe("go");
+  });
+
+  it("detects Rust files", () => {
+    expect(detectLanguage("lib.rs")).toBe("rust");
+  });
+
   it("returns null for unsupported files", () => {
     expect(detectLanguage("README.md")).toBeNull();
     expect(detectLanguage("Makefile")).toBeNull();
@@ -47,8 +55,13 @@ describe("isSupportedLanguage", () => {
     expect(isSupportedLanguage("python")).toBe(true);
   });
 
+  it("returns true for Go and Rust", () => {
+    expect(isSupportedLanguage("go")).toBe(true);
+    expect(isSupportedLanguage("rust")).toBe(true);
+  });
+
   it("returns false for unsupported language strings", () => {
-    expect(isSupportedLanguage("rust")).toBe(false);
-    expect(isSupportedLanguage("go")).toBe(false);
+    expect(isSupportedLanguage("java")).toBe(false);
+    expect(isSupportedLanguage("c++")).toBe(false);
   });
 });

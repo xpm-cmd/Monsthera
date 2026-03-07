@@ -30,6 +30,8 @@ async function getParser(language: SupportedLanguage): Promise<Parser> {
     typescript: "typescript",
     javascript: "javascript",
     python: "python",
+    go: "go",
+    rust: "rust",
   };
 
   const wasmPath = getWasmPath(grammarMap[language]);
@@ -68,6 +70,12 @@ export async function parseFile(content: string, language: SupportedLanguage): P
   if (language === "typescript" || language === "javascript") {
     symbols = extractTSSymbols(root);
     imports = extractTSImports(root);
+  } else if (language === "go") {
+    symbols = extractGoSymbols(root);
+    imports = extractGoImports(root);
+  } else if (language === "rust") {
+    symbols = extractRustSymbols(root);
+    imports = extractRustImports(root);
   } else {
     symbols = extractPythonSymbols(root);
     imports = extractPythonImports(root);
@@ -238,6 +246,166 @@ function extractPythonImports(root: Parser.SyntaxNode): ExtractedImport[] {
       if (moduleNode) {
         imports.push({ source: moduleNode.text, kind: "from" });
       }
+    }
+  }
+
+  return imports;
+}
+
+// --- Go extraction ---
+
+function extractGoSymbols(root: Parser.SyntaxNode): ExtractedSymbol[] {
+  const symbols: ExtractedSymbol[] = [];
+
+  for (const node of root.children) {
+    switch (node.type) {
+      case "function_declaration": {
+        const name = node.childForFieldName("name");
+        if (name) symbols.push({ name: name.text, kind: "function", line: node.startPosition.row });
+        break;
+      }
+      case "method_declaration": {
+        const name = node.childForFieldName("name");
+        if (name) symbols.push({ name: name.text, kind: "method", line: node.startPosition.row });
+        break;
+      }
+      case "type_declaration": {
+        for (const spec of node.children) {
+          if (spec.type === "type_spec") {
+            const name = spec.childForFieldName("name");
+            if (name) {
+              const typeNode = spec.childForFieldName("type");
+              const kind = typeNode?.type === "struct_type" || typeNode?.type === "interface_type" ? "class" : "type";
+              symbols.push({ name: name.text, kind, line: spec.startPosition.row });
+            }
+          }
+        }
+        break;
+      }
+      case "var_declaration":
+      case "const_declaration": {
+        for (const spec of node.children) {
+          if (spec.type === "var_spec" || spec.type === "const_spec") {
+            const name = spec.childForFieldName("name");
+            if (name) symbols.push({ name: name.text, kind: "variable", line: spec.startPosition.row });
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  return symbols;
+}
+
+function extractGoImports(root: Parser.SyntaxNode): ExtractedImport[] {
+  const imports: ExtractedImport[] = [];
+
+  for (const node of root.children) {
+    if (node.type === "import_declaration") {
+      for (const spec of node.children) {
+        if (spec.type === "import_spec") {
+          const path = spec.childForFieldName("path");
+          if (path) imports.push({ source: stripQuotes(path.text), kind: "import" });
+        } else if (spec.type === "import_spec_list") {
+          for (const child of spec.children) {
+            if (child.type === "import_spec") {
+              const path = child.childForFieldName("path");
+              if (path) imports.push({ source: stripQuotes(path.text), kind: "import" });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return imports;
+}
+
+// --- Rust extraction ---
+
+function extractRustSymbols(root: Parser.SyntaxNode): ExtractedSymbol[] {
+  const symbols: ExtractedSymbol[] = [];
+
+  function walk(node: Parser.SyntaxNode, depth: number): void {
+    switch (node.type) {
+      case "function_item": {
+        const name = node.childForFieldName("name");
+        if (name) {
+          symbols.push({ name: name.text, kind: depth <= 1 ? "function" : "method", line: node.startPosition.row });
+        }
+        return;
+      }
+      case "struct_item": {
+        const name = node.childForFieldName("name");
+        if (name) symbols.push({ name: name.text, kind: "class", line: node.startPosition.row });
+        return;
+      }
+      case "enum_item": {
+        const name = node.childForFieldName("name");
+        if (name) symbols.push({ name: name.text, kind: "type", line: node.startPosition.row });
+        return;
+      }
+      case "trait_item": {
+        const name = node.childForFieldName("name");
+        if (name) symbols.push({ name: name.text, kind: "type", line: node.startPosition.row });
+        return;
+      }
+      case "type_item": {
+        const name = node.childForFieldName("name");
+        if (name) symbols.push({ name: name.text, kind: "type", line: node.startPosition.row });
+        return;
+      }
+      case "impl_item": {
+        const body = node.childForFieldName("body");
+        if (body) {
+          for (const child of body.children) {
+            walk(child, depth + 1);
+          }
+        }
+        return;
+      }
+      case "const_item":
+      case "static_item": {
+        const name = node.childForFieldName("name");
+        if (name) symbols.push({ name: name.text, kind: "variable", line: node.startPosition.row });
+        return;
+      }
+      case "let_declaration": {
+        if (depth <= 1) {
+          const pattern = node.childForFieldName("pattern");
+          if (pattern && pattern.type === "identifier") {
+            symbols.push({ name: pattern.text, kind: "variable", line: node.startPosition.row });
+          }
+        }
+        break;
+      }
+    }
+
+    if (depth < 2) {
+      for (const child of node.children) {
+        walk(child, depth + 1);
+      }
+    }
+  }
+
+  walk(root, 0);
+  return symbols;
+}
+
+function extractRustImports(root: Parser.SyntaxNode): ExtractedImport[] {
+  const imports: ExtractedImport[] = [];
+
+  for (const node of root.children) {
+    if (node.type === "use_declaration") {
+      const arg = node.childForFieldName("argument");
+      if (arg) {
+        // Extract the base path (e.g., "std::collections" from "use std::collections::HashMap")
+        imports.push({ source: arg.text, kind: "import" });
+      }
+    } else if (node.type === "extern_crate_declaration") {
+      const name = node.childForFieldName("name");
+      if (name) imports.push({ source: name.text, kind: "import" });
     }
   }
 
