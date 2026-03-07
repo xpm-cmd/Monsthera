@@ -7,10 +7,14 @@ import * as queries from "./db/queries.js";
 import { SearchRouter } from "./search/router.js";
 import { InsightStream } from "./core/insight-stream.js";
 import { isGitRepo, getRepoRoot } from "./git/operations.js";
+import { CoordinationBus } from "./coordination/bus.js";
 import { basename } from "node:path";
 import { registerReadTools } from "./tools/read-tools.js";
 import { registerIndexTools } from "./tools/index-tools.js";
 import { registerAgentTools } from "./tools/agent-tools.js";
+import { registerPatchTools } from "./tools/patch-tools.js";
+import { registerNoteTools } from "./tools/note-tools.js";
+import { registerCoordinationTools } from "./tools/coordination-tools.js";
 
 export function createAgoraServer(config: AgoraConfig) {
   const server = new McpServer({
@@ -49,7 +53,9 @@ export function createAgoraServer(config: AgoraConfig) {
     });
     await searchRouter.initialize();
 
-    ctx = { config, db, sqlite, repoId, repoPath: repoRoot, searchRouter, insight };
+    const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke");
+
+    ctx = { config, db, sqlite, repoId, repoPath: repoRoot, searchRouter, insight, bus };
     insight.info(`Initialized for ${repoRoot} (search: ${searchRouter.getActiveBackendName()})`);
     return ctx;
   }
@@ -58,6 +64,9 @@ export function createAgoraServer(config: AgoraConfig) {
   registerReadTools(server, getContext);
   registerIndexTools(server, getContext);
   registerAgentTools(server, getContext);
+  registerPatchTools(server, getContext);
+  registerNoteTools(server, getContext);
+  registerCoordinationTools(server, getContext);
 
   return server;
 }

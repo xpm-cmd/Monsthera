@@ -4,6 +4,7 @@ import type * as schema from "../db/schema.js";
 import type { AgoraConfig } from "./config.js";
 import type { SearchRouter } from "../search/router.js";
 import type { InsightStream } from "./insight-stream.js";
+import type { CoordinationBus } from "../coordination/bus.js";
 
 /**
  * Shared runtime context available to all MCP tool handlers.
@@ -17,4 +18,5 @@ export interface AgoraContext {
   repoPath: string;
   searchRouter: SearchRouter;
   insight: InsightStream;
+  bus: CoordinationBus;
 }
