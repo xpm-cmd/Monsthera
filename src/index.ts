@@ -58,6 +58,22 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
     insight.warn("Debug logging active — raw payloads captured (24h TTL)");
   }
 
+  // Start dashboard if repo is valid
+  try {
+    if (await isGitRepo({ cwd: config.repoPath })) {
+      const repoRoot = await getRepoRoot({ cwd: config.repoPath });
+      const repoName = basename(repoRoot);
+      const { db } = initDatabase({ repoPath: repoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+      const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
+      const { CoordinationBus } = await import("./coordination/bus.js");
+      const { startDashboard } = await import("./dashboard/server.js");
+      const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke");
+      startDashboard({ db, repoId, repoPath: repoRoot, bus }, config.dashboardPort, insight);
+    }
+  } catch (err) {
+    insight.warn(`Dashboard failed to start: ${err}`);
+  }
+
   const server = createAgoraServer(config);
   const transport = new StdioServerTransport();
   await server.connect(transport);

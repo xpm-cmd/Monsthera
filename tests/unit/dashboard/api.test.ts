@@ -1,0 +1,82 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import * as schema from "../../../src/db/schema.js";
+import { CoordinationBus } from "../../../src/coordination/bus.js";
+import { getOverview, getAgentsList, type DashboardDeps } from "../../../src/dashboard/api.js";
+
+function createTestDb() {
+  const sqlite = new Database(":memory:");
+  sqlite.pragma("journal_mode = WAL");
+  sqlite.pragma("foreign_keys = ON");
+  for (const stmt of [
+    `CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    `CREATE TABLE index_state (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, db_indexed_commit TEXT, zoekt_indexed_commit TEXT, indexed_at TEXT, last_success TEXT, last_error TEXT)`,
+    `CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, path TEXT NOT NULL, language TEXT, content_hash TEXT, summary TEXT, symbols_json TEXT, has_secrets INTEGER DEFAULT 0, secret_line_ranges TEXT, indexed_at TEXT, commit_sha TEXT)`,
+    `CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL)`,
+    `CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT)`,
+    `CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+    `CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, type TEXT NOT NULL, key TEXT NOT NULL UNIQUE, content TEXT NOT NULL, metadata_json TEXT, linked_paths_json TEXT, agent_id TEXT, session_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+    `CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, denial_reason TEXT)`,
+  ]) {
+    sqlite.prepare(stmt).run();
+  }
+  const db = drizzle(sqlite, { schema });
+  // Insert a repo
+  sqlite.prepare(`INSERT INTO repos (path, name, created_at) VALUES (?, ?, ?)`).run("/test", "test", new Date().toISOString());
+  return { db, sqlite };
+}
+
+describe("Dashboard API", () => {
+  let deps: DashboardDeps;
+  let sqlite: InstanceType<typeof Database>;
+
+  beforeEach(() => {
+    const result = createTestDb();
+    sqlite = result.sqlite;
+    deps = {
+      db: result.db,
+      repoId: 1,
+      repoPath: "/test",
+      bus: new CoordinationBus("hub-spoke"),
+    };
+  });
+  afterEach(() => sqlite.close());
+
+  it("returns overview with correct counts", () => {
+    // Add an agent
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-1", "Dev", "test", "developer", "A", new Date().toISOString());
+    sqlite.prepare(`INSERT INTO sessions (id, agent_id, state, connected_at, last_activity) VALUES (?, ?, ?, ?, ?)`)
+      .run("s-1", "agent-1", "active", new Date().toISOString(), new Date().toISOString());
+
+    const overview = getOverview(deps);
+
+    expect(overview.totalAgents).toBe(1);
+    expect(overview.activeSessions).toBe(1);
+    expect(overview.fileCount).toBe(0);
+    expect(overview.coordinationTopology).toBe("hub-spoke");
+  });
+
+  it("returns agents list with session counts", () => {
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-1", "Dev", "claude-code", "developer", "A", new Date().toISOString());
+    sqlite.prepare(`INSERT INTO sessions (id, agent_id, state, connected_at, last_activity) VALUES (?, ?, ?, ?, ?)`)
+      .run("s-1", "agent-1", "active", new Date().toISOString(), new Date().toISOString());
+    sqlite.prepare(`INSERT INTO sessions (id, agent_id, state, connected_at, last_activity) VALUES (?, ?, ?, ?, ?)`)
+      .run("s-2", "agent-1", "disconnected", new Date().toISOString(), new Date().toISOString());
+
+    const agents = getAgentsList(deps);
+
+    expect(agents).toHaveLength(1);
+    expect(agents[0]!.name).toBe("Dev");
+    expect(agents[0]!.activeSessions).toBe(1); // only active, not disconnected
+  });
+
+  it("returns empty overview for clean repo", () => {
+    const overview = getOverview(deps);
+    expect(overview.totalAgents).toBe(0);
+    expect(overview.totalPatches).toBe(0);
+    expect(overview.fileCount).toBe(0);
+  });
+});
