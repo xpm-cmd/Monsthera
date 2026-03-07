@@ -1,18 +1,16 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod/v4";
-import { VERSION, SUPPORTED_LANGUAGES } from "./core/constants.js";
+import { VERSION } from "./core/constants.js";
 import type { AgoraConfig } from "./core/config.js";
 import type { AgoraContext } from "./core/context.js";
 import { initDatabase } from "./db/init.js";
 import * as queries from "./db/queries.js";
 import { SearchRouter } from "./search/router.js";
 import { InsightStream } from "./core/insight-stream.js";
-import { fullIndex, incrementalIndex, getIndexedCommit } from "./indexing/indexer.js";
-import { buildEvidenceBundle } from "./retrieval/evidence-bundle.js";
-import { getHead, getChangedFiles, getRecentCommits, isGitRepo, getRepoRoot } from "./git/operations.js";
+import { isGitRepo, getRepoRoot } from "./git/operations.js";
 import { basename } from "node:path";
 import { registerReadTools } from "./tools/read-tools.js";
 import { registerIndexTools } from "./tools/index-tools.js";
+import { registerAgentTools } from "./tools/agent-tools.js";
 
 export function createAgoraServer(config: AgoraConfig) {
   const server = new McpServer({
@@ -59,6 +57,7 @@ export function createAgoraServer(config: AgoraConfig) {
   // Register tool groups
   registerReadTools(server, getContext);
   registerIndexTools(server, getContext);
+  registerAgentTools(server, getContext);
 
   return server;
 }
