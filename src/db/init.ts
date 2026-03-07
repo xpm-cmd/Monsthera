@@ -1,0 +1,155 @@
+import Database, { type Database as DatabaseType } from "better-sqlite3";
+import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { join } from "node:path";
+import { mkdirSync } from "node:fs";
+import * as schema from "./schema.js";
+
+export interface DbInitOptions {
+  repoPath: string;
+  agoraDir: string;
+  dbName: string;
+}
+
+export interface DbInitResult {
+  db: BetterSQLite3Database<typeof schema>;
+  sqlite: DatabaseType;
+}
+
+export function initDatabase(opts: DbInitOptions): DbInitResult {
+  const dirPath = join(opts.repoPath, opts.agoraDir);
+  mkdirSync(dirPath, { recursive: true });
+
+  const dbPath = join(dirPath, opts.dbName);
+  const sqlite = new Database(dbPath);
+
+  sqlite.pragma("journal_mode = WAL");
+  sqlite.pragma("foreign_keys = ON");
+
+  createTables(sqlite);
+
+  const db = drizzle(sqlite, { schema });
+  return { db, sqlite };
+}
+
+function createTables(sqlite: Database.Database): void {
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS repos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      path TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS index_state (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_id INTEGER NOT NULL REFERENCES repos(id),
+      db_indexed_commit TEXT,
+      zoekt_indexed_commit TEXT,
+      indexed_at TEXT,
+      last_success TEXT,
+      last_error TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_id INTEGER NOT NULL REFERENCES repos(id),
+      path TEXT NOT NULL,
+      language TEXT,
+      content_hash TEXT,
+      summary TEXT,
+      symbols_json TEXT,
+      has_secrets INTEGER DEFAULT 0,
+      secret_line_ranges TEXT,
+      indexed_at TEXT,
+      commit_sha TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS imports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_file_id INTEGER NOT NULL REFERENCES files(id),
+      target_path TEXT NOT NULL,
+      kind TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS roles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      permissions_json TEXT NOT NULL,
+      is_built_in INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS agents (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'unknown',
+      role_id TEXT NOT NULL DEFAULT 'observer',
+      trust_tier TEXT NOT NULL DEFAULT 'B',
+      registered_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL REFERENCES agents(id),
+      state TEXT NOT NULL DEFAULT 'active',
+      connected_at TEXT NOT NULL,
+      last_activity TEXT NOT NULL,
+      claimed_files_json TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_id INTEGER NOT NULL REFERENCES repos(id),
+      type TEXT NOT NULL,
+      key TEXT NOT NULL UNIQUE,
+      content TEXT NOT NULL,
+      metadata_json TEXT,
+      linked_paths_json TEXT,
+      agent_id TEXT,
+      session_id TEXT,
+      commit_sha TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS patches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_id INTEGER NOT NULL REFERENCES repos(id),
+      proposal_id TEXT NOT NULL UNIQUE,
+      base_commit TEXT NOT NULL,
+      bundle_id TEXT,
+      state TEXT NOT NULL,
+      diff TEXT NOT NULL,
+      message TEXT NOT NULL,
+      touched_paths_json TEXT,
+      dry_run_result_json TEXT,
+      agent_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      committed_sha TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS event_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL UNIQUE,
+      agent_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      tool TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      duration_ms REAL NOT NULL,
+      status TEXT NOT NULL,
+      repo_id TEXT NOT NULL,
+      commit_scope TEXT NOT NULL,
+      payload_size_in INTEGER NOT NULL,
+      payload_size_out INTEGER NOT NULL,
+      input_hash TEXT NOT NULL,
+      output_hash TEXT NOT NULL,
+      redacted_summary TEXT NOT NULL,
+      denial_reason TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS debug_payloads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL REFERENCES event_logs(event_id),
+      raw_input TEXT,
+      raw_output TEXT,
+      expires_at TEXT NOT NULL
+    )`,
+  ];
+
+  for (const stmt of statements) {
+    sqlite.prepare(stmt).run();
+  }
+}

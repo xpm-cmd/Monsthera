@@ -1,6 +1,18 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod/v4";
 import { VERSION, SUPPORTED_LANGUAGES } from "./core/constants.js";
 import type { AgoraConfig } from "./core/config.js";
+import type { AgoraContext } from "./core/context.js";
+import { initDatabase } from "./db/init.js";
+import * as queries from "./db/queries.js";
+import { SearchRouter } from "./search/router.js";
+import { InsightStream } from "./core/insight-stream.js";
+import { fullIndex, incrementalIndex, getIndexedCommit } from "./indexing/indexer.js";
+import { buildEvidenceBundle } from "./retrieval/evidence-bundle.js";
+import { getHead, getChangedFiles, getRecentCommits, isGitRepo, getRepoRoot } from "./git/operations.js";
+import { basename } from "node:path";
+import { registerReadTools } from "./tools/read-tools.js";
+import { registerIndexTools } from "./tools/index-tools.js";
 
 export function createAgoraServer(config: AgoraConfig) {
   const server = new McpServer({
@@ -8,56 +20,45 @@ export function createAgoraServer(config: AgoraConfig) {
     version: VERSION,
   });
 
-  server.tool("status", "Get Agora index status and connected agents", {}, async () => {
-    const result = {
-      version: VERSION,
-      repoPath: config.repoPath,
-      coordinationTopology: config.coordinationTopology,
-      indexedCommit: null as string | null,
-      indexStale: false,
-      connectedAgents: 0,
-      searchBackend: config.zoektEnabled ? "zoekt" : "fts5",
-      debugLogging: config.debugLogging,
-    };
+  const insight = new InsightStream(config.verbosity);
+  let ctx: AgoraContext | null = null;
 
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-    };
-  });
+  async function getContext(): Promise<AgoraContext> {
+    if (ctx) return ctx;
 
-  server.tool("capabilities", "List Agora capabilities, tools, and supported features", {}, async () => {
-    const result = {
-      version: VERSION,
-      tools: [
-        "status",
-        "capabilities",
-        "schema",
-        "get_code_pack",
-        "get_change_pack",
-        "get_issue_pack",
-        "propose_patch",
-        "propose_note",
-        "register_agent",
-        "agent_status",
-        "broadcast",
-        "claim_files",
-        "request_reindex",
-      ],
-      languages: [...SUPPORTED_LANGUAGES],
-      trustTiers: ["A", "B"],
-      roles: ["developer", "reviewer", "observer", "admin"],
-      coordinationTopologies: ["hub-spoke", "hybrid", "mesh"],
-      outputFormats: ["json", "ndjson"],
-      evidenceBundleStages: ["A", "B"],
-      maxCandidates: 5,
-      maxExpanded: 3,
-      maxCodeSpanLines: 200,
-    };
+    if (!(await isGitRepo({ cwd: config.repoPath }))) {
+      throw new Error(`Not a git repository: ${config.repoPath}`);
+    }
 
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-    };
-  });
+    const repoRoot = await getRepoRoot({ cwd: config.repoPath });
+    const repoName = basename(repoRoot);
+
+    const { db, sqlite } = initDatabase({
+      repoPath: repoRoot,
+      agoraDir: config.agoraDir,
+      dbName: config.dbName,
+    });
+
+    const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
+
+    const searchRouter = new SearchRouter({
+      sqlite,
+      db,
+      repoPath: repoRoot,
+      zoektEnabled: config.zoektEnabled,
+      indexDir: `${repoRoot}/${config.agoraDir}`,
+      onFallback: (reason) => insight.warn(reason),
+    });
+    await searchRouter.initialize();
+
+    ctx = { config, db, sqlite, repoId, repoPath: repoRoot, searchRouter, insight };
+    insight.info(`Initialized for ${repoRoot} (search: ${searchRouter.getActiveBackendName()})`);
+    return ctx;
+  }
+
+  // Register tool groups
+  registerReadTools(server, getContext);
+  registerIndexTools(server, getContext);
 
   return server;
 }
