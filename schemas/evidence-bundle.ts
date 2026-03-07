@@ -6,7 +6,7 @@ export type TrustTier = z.infer<typeof TrustTier>;
 export const RedactionPolicy = z.enum(["none", "code_stripped"]);
 export type RedactionPolicy = z.infer<typeof RedactionPolicy>;
 
-export const SearchBackend = z.enum(["zoekt", "fts5"]);
+export const SearchBackend = z.enum(["zoekt", "fts5", "fts5+semantic", "zoekt+semantic"]);
 export type SearchBackend = z.infer<typeof SearchBackend>;
 
 export const Provenance = z.enum(["search_hit", "import_trace", "symbol_ref", "change_ref", "manual"]);

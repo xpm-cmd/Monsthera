@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
-import type { SearchResult } from "../search/interface.js";
+import type { SearchBackendName, SearchResult } from "../search/interface.js";
 import { getFileContent } from "../git/operations.js";
 import { scanForSecrets } from "../trust/secret-patterns.js";
 import { STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MAX_CODE_SPAN_LINES } from "../core/constants.js";
@@ -14,7 +14,7 @@ export interface BundleBuildOptions {
   repoPath: string;
   commit: string;
   trustTier: TrustTier;
-  searchBackend: "fts5" | "zoekt";
+  searchBackend: SearchBackendName;
   searchResults: SearchResult[];
   db: BetterSQLite3Database<typeof schema>;
   expand: boolean;
@@ -45,7 +45,7 @@ export interface EvidenceBundleResult {
   timestamp: string;
   trustTier: TrustTier;
   redactionPolicy: "none" | "code_stripped";
-  searchBackend: "fts5" | "zoekt";
+  searchBackend: SearchBackendName;
   latencyMs: number;
   candidates: BundleCandidate[];
   expanded: ExpandedBundleCandidate[];
@@ -77,7 +77,11 @@ export async function buildEvidenceBundle(opts: BundleBuildOptions): Promise<Evi
     latencyMs: Date.now() - start,
     candidates,
     expanded,
-    rankingMetadata: { scoringWeights: { relevance: 1.0 } },
+    rankingMetadata: {
+      scoringWeights: opts.searchBackend.includes("+semantic")
+        ? { relevance: 0.4, semantic: 0.6 }
+        : { relevance: 1.0 },
+    },
   };
 }
 

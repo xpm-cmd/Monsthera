@@ -9,6 +9,8 @@ import { parseFile, isParserAvailable } from "./parser.js";
 import { generateSummary, generateRawSummary } from "./summary.js";
 import { scanForSecrets, isSensitiveFile } from "../trust/secret-patterns.js";
 import { IndexError } from "../core/errors.js";
+import type { SemanticReranker } from "../search/semantic.js";
+import { buildEmbeddingText, type EmbeddingTextOptions } from "../search/semantic.js";
 
 export interface IndexOptions {
   repoPath: string;
@@ -16,6 +18,7 @@ export interface IndexOptions {
   db: BetterSQLite3Database<typeof schema>;
   sensitiveFilePatterns?: string[];
   onProgress?: (msg: string) => void;
+  semanticReranker?: SemanticReranker | null;
 }
 
 export interface IndexResult {
@@ -221,6 +224,16 @@ async function indexSingleFile(
           .run();
       }
 
+      // Generate semantic embedding if available
+      await maybeEmbed(opts, fileRecord.id, {
+        path: filePath,
+        language,
+        summary,
+        symbolsJson,
+        imports: parseResult.imports.map((i) => i.source),
+        leadingComment: parseResult.leadingComment,
+      });
+
       return "indexed";
     } catch {
       // Tree-sitter parse failed — fall through to raw indexing
@@ -230,7 +243,8 @@ async function indexSingleFile(
     summary = generateRawSummary(filePath, content);
   }
 
-  db.insert(tables.files)
+  // Raw fallback path — needs .returning().get() for embedding
+  const fileRecord = db.insert(tables.files)
     .values({
       repoId,
       path: filePath,
@@ -243,9 +257,35 @@ async function indexSingleFile(
       indexedAt: new Date().toISOString(),
       commitSha: commit,
     })
-    .run();
+    .returning()
+    .get();
+
+  await maybeEmbed(opts, fileRecord.id, {
+    path: filePath,
+    language,
+    summary,
+    symbolsJson,
+    // No imports or leading comment for raw fallback path
+  });
 
   return "indexed";
+}
+
+async function maybeEmbed(
+  opts: IndexOptions,
+  fileId: number,
+  embeddingOpts: EmbeddingTextOptions,
+): Promise<void> {
+  if (!opts.semanticReranker?.isAvailable()) return;
+  try {
+    const text = buildEmbeddingText(embeddingOpts);
+    const embedding = await opts.semanticReranker.embed(text);
+    if (embedding) {
+      opts.semanticReranker.storeEmbedding(fileId, embedding);
+    }
+  } catch {
+    // Non-fatal: file is indexed but without embedding
+  }
 }
 
 export function getIndexedCommit(

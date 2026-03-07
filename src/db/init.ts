@@ -26,6 +26,7 @@ export function initDatabase(opts: DbInitOptions): DbInitResult {
   sqlite.pragma("foreign_keys = ON");
 
   createTables(sqlite);
+  runMigrations(sqlite);
 
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
@@ -59,7 +60,8 @@ function createTables(sqlite: Database.Database): void {
       has_secrets INTEGER DEFAULT 0,
       secret_line_ranges TEXT,
       indexed_at TEXT,
-      commit_sha TEXT
+      commit_sha TEXT,
+      embedding BLOB
     )`,
     `CREATE TABLE IF NOT EXISTS imports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,5 +153,14 @@ function createTables(sqlite: Database.Database): void {
 
   for (const stmt of statements) {
     sqlite.prepare(stmt).run();
+  }
+}
+
+function runMigrations(sqlite: Database.Database): void {
+  // Migration 1: Add embedding column to files table (semantic search)
+  try {
+    sqlite.prepare("SELECT embedding FROM files LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE files ADD COLUMN embedding BLOB").run();
   }
 }

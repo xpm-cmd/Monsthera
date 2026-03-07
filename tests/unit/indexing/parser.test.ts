@@ -292,3 +292,92 @@ static COUNTER: i32 = 0;
     expect(result.symbols.some((s) => s.kind === "variable" && s.name === "COUNTER")).toBe(true);
   });
 });
+
+// --- Leading comment extraction (Nivel 2) ---
+
+describe("parseFile — leadingComment extraction", () => {
+  it("extracts TS/JS block comment at file start", async () => {
+    const content = `/**
+ * This module handles authentication and session management.
+ * It provides JWT-based auth with refresh tokens.
+ */
+import { sign } from "jsonwebtoken";
+
+export function authenticate() {}
+`;
+    const result = await parseFile(content, "typescript");
+    expect(result.leadingComment).toContain("This module handles authentication and session management");
+    expect(result.leadingComment).toContain("JWT-based auth");
+  });
+
+  it("extracts TS/JS single-line comments at file start", async () => {
+    const content = `// Search router — routes queries to FTS5 or Zoekt
+// Falls back gracefully if primary backend is unavailable
+
+import { FTS5Backend } from "./fts5.js";
+`;
+    const result = await parseFile(content, "typescript");
+    expect(result.leadingComment).toContain("Search router");
+    expect(result.leadingComment).toContain("Falls back gracefully");
+  });
+
+  it("returns empty string when no leading comment exists", async () => {
+    const content = `import { readFile } from "node:fs";
+export function main() {}
+`;
+    const result = await parseFile(content, "typescript");
+    expect(result.leadingComment).toBe("");
+  });
+
+  it("extracts Python module docstring", async () => {
+    const content = `"""
+Trust enforcement module.
+Validates agent permissions against role-based access control.
+"""
+
+import os
+from pathlib import Path
+
+def check_trust(agent_id):
+    pass
+`;
+    const result = await parseFile(content, "python");
+    expect(result.leadingComment).toContain("Trust enforcement module");
+    expect(result.leadingComment).toContain("role-based access control");
+  });
+
+  it("handles Python file without docstring", async () => {
+    const content = `import os
+
+def main():
+    pass
+`;
+    const result = await parseFile(content, "python");
+    expect(result.leadingComment).toBe("");
+  });
+
+  it("extracts Go leading comment", async () => {
+    const content = `// Package server implements the HTTP and MCP server.
+// It provides endpoints for search, indexing, and coordination.
+package main
+
+import "fmt"
+`;
+    const result = await parseFile(content, "go");
+    expect(result.leadingComment).toContain("Package server");
+    expect(result.leadingComment).toContain("search, indexing, and coordination");
+  });
+
+  it("extracts Rust doc comments", async () => {
+    const content = `//! Evidence bundle builder.
+//! Creates deterministic, cacheable search result bundles.
+
+use std::collections::HashMap;
+
+fn build() {}
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.leadingComment).toContain("Evidence bundle builder");
+    expect(result.leadingComment).toContain("deterministic");
+  });
+});

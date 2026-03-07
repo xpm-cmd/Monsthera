@@ -13,6 +13,7 @@ describe("generateSummary", () => {
       ],
       imports: [{ source: "node:fs", kind: "import" }],
       lineCount: 20,
+      leadingComment: "",
     };
 
     const summary = generateSummary("src/index.ts", result);
@@ -31,13 +32,13 @@ describe("generateSummary", () => {
       line: i,
     }));
 
-    const result: ParseResult = { symbols, imports: [], lineCount: 50 };
+    const result: ParseResult = { symbols, imports: [], lineCount: 50, leadingComment: "" };
     const summary = generateSummary("vars.ts", result);
     expect(summary).toContain("(+5 more)");
   });
 
   it("handles empty parse result", () => {
-    const result: ParseResult = { symbols: [], imports: [], lineCount: 1 };
+    const result: ParseResult = { symbols: [], imports: [], lineCount: 1, leadingComment: "" };
     const summary = generateSummary("empty.ts", result);
     expect(summary).toBe("1 lines");
   });

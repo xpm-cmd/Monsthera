@@ -56,6 +56,8 @@ export interface ParseResult {
   symbols: ExtractedSymbol[];
   imports: ExtractedImport[];
   lineCount: number;
+  /** File-level leading comment/docstring extracted from AST (Nivel 2 enrichment). */
+  leadingComment: string;
 }
 
 export async function parseFile(content: string, language: SupportedLanguage): Promise<ParseResult> {
@@ -81,10 +83,13 @@ export async function parseFile(content: string, language: SupportedLanguage): P
     imports = extractPythonImports(root);
   }
 
+  const leadingComment = extractLeadingComment(root, language);
+
   return {
     symbols,
     imports,
     lineCount: content.split("\n").length,
+    leadingComment,
   };
 }
 
@@ -410,6 +415,94 @@ function extractRustImports(root: Parser.SyntaxNode): ExtractedImport[] {
   }
 
   return imports;
+}
+
+// --- Leading comment extraction (Nivel 2 enrichment) ---
+
+/**
+ * Extract the file-level leading comment from the AST root.
+ * Collects comment nodes that appear before the first non-comment
+ * code node, which typically serve as file-level documentation.
+ */
+function extractLeadingComment(root: Parser.SyntaxNode, language: SupportedLanguage): string {
+  if (language === "python") {
+    return extractPythonLeadingComment(root);
+  }
+
+  // TS/JS, Go, Rust: collect consecutive comment nodes at start
+  const commentParts: string[] = [];
+  for (const child of root.children) {
+    if (child.type === "comment" || child.type === "line_comment" || child.type === "block_comment") {
+      commentParts.push(cleanComment(child.text, language));
+    } else {
+      // First non-comment node — stop collecting
+      break;
+    }
+  }
+  return commentParts.join(" ").trim();
+}
+
+/**
+ * Python module docstrings: the first statement in a module that is
+ * a bare string expression (expression_statement → string).
+ */
+function extractPythonLeadingComment(root: Parser.SyntaxNode): string {
+  for (const child of root.children) {
+    // Skip any leading comments (# ...) — collect those too
+    if (child.type === "comment") continue;
+
+    // Module docstring: expression_statement whose first child is a string
+    if (child.type === "expression_statement") {
+      const firstChild = child.children[0];
+      if (firstChild && firstChild.type === "string") {
+        return cleanPythonDocstring(firstChild.text);
+      }
+    }
+    // First non-comment, non-docstring node — stop
+    break;
+  }
+  return "";
+}
+
+/**
+ * Strip comment delimiters and normalize whitespace.
+ * Handles line comments (// /// //! #) and block comments.
+ */
+function cleanComment(text: string, language: SupportedLanguage): string {
+  let cleaned = text;
+
+  // Block comments: /* ... */ or /** ... */
+  if (cleaned.startsWith("/*")) {
+    cleaned = cleaned
+      .replace(/^\/\*\*?/, "")
+      .replace(/\*\/$/, "")
+      .replace(/^\s*\*\s?/gm, " "); // strip leading * on each line
+  }
+  // Line comments: // or /// or //!
+  else if (cleaned.startsWith("//")) {
+    cleaned = cleaned.replace(/^\/\/[!/]?\s?/, "");
+  }
+  // Python/shell comments: #
+  else if (cleaned.startsWith("#")) {
+    cleaned = cleaned.replace(/^#\s?/, "");
+  }
+
+  return cleaned.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Strip triple-quote delimiters from a Python docstring.
+ */
+function cleanPythonDocstring(text: string): string {
+  let cleaned = text;
+  // Strip triple quotes (""" or ''')
+  if (cleaned.startsWith('"""') || cleaned.startsWith("'''")) {
+    cleaned = cleaned.slice(3);
+    if (cleaned.endsWith('"""') || cleaned.endsWith("'''")) {
+      cleaned = cleaned.slice(0, -3);
+    }
+  }
+  return cleaned.replace(/\s+/g, " ").trim();
 }
 
 function stripQuotes(s: string): string {

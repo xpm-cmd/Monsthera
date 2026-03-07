@@ -38,6 +38,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
 
   // ─── capabilities ─────────────────────────────────────────
   server.tool("capabilities", "List Agora capabilities and supported features", {}, async () => {
+    const c = await getContext();
     return {
       content: [{
         type: "text" as const,
@@ -57,6 +58,11 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           maxCandidates: 5,
           maxExpanded: 3,
           maxCodeSpanLines: 200,
+          semanticSearch: {
+            available: c.searchRouter.getSemanticReranker()?.isAvailable() ?? false,
+            model: "all-MiniLM-L6-v2",
+            embeddingDim: 384,
+          },
         }, null, 2),
       }],
     };

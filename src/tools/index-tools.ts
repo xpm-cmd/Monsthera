@@ -26,6 +26,7 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
           db: c.db,
           sensitiveFilePatterns: c.config.sensitiveFilePatterns,
           onProgress: (msg) => c.insight.detail(msg),
+          semanticReranker: c.searchRouter.getSemanticReranker(),
         });
       } else {
         result = await incrementalIndex(indexedCommit, {
@@ -34,6 +35,7 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
           db: c.db,
           sensitiveFilePatterns: c.config.sensitiveFilePatterns,
           onProgress: (msg) => c.insight.detail(msg),
+          semanticReranker: c.searchRouter.getSemanticReranker(),
         });
       }
 

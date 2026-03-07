@@ -48,6 +48,7 @@ export function createAgoraServer(config: AgoraConfig) {
       db,
       repoPath: repoRoot,
       zoektEnabled: config.zoektEnabled,
+      semanticEnabled: config.semanticEnabled,
       indexDir: `${repoRoot}/${config.agoraDir}`,
       onFallback: (reason) => insight.warn(reason),
     });

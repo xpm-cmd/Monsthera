@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, blob } from "drizzle-orm/sqlite-core";
 
 // --- Repository ---
 
@@ -35,6 +35,7 @@ export const files = sqliteTable("files", {
   secretLineRanges: text("secret_line_ranges"), // JSON blob
   indexedAt: text("indexed_at"),
   commitSha: text("commit_sha"),
+  embedding: blob("embedding"),  // 384-dim float32 for semantic search, nullable
 });
 
 // --- Imports ---
