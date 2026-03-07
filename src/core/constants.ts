@@ -1,0 +1,27 @@
+export const VERSION = "0.1.0";
+export const DEFAULT_DASHBOARD_PORT = 3141;
+export const DEFAULT_AGORA_DIR = ".agora";
+export const DEFAULT_DB_NAME = "agora.db";
+
+// Evidence Bundle limits
+export const STAGE_A_MAX_CANDIDATES = 5;
+export const STAGE_B_MAX_EXPANDED = 3;
+export const MAX_CODE_SPAN_LINES = 200;
+
+// Trust
+export const DEFAULT_TRUST_TIER = "B" as const;
+
+// Sessions
+export const HEARTBEAT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+export const CLAIM_RELEASE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+// Logging
+export const DEBUG_PAYLOAD_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const REDACTED_SUMMARY_MAX_LENGTH = 200;
+
+// Indexing
+export const LARGE_FILE_THRESHOLD_LINES = 10_000;
+
+// Supported languages for symbol extraction (MVP)
+export const SUPPORTED_LANGUAGES = ["typescript", "javascript", "python"] as const;
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
