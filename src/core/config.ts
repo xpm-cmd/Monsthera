@@ -15,6 +15,7 @@ export const AgoraConfigSchema = z.object({
   zoektEnabled: z.boolean().default(true),
   transport: z.enum(["stdio", "http"]).default("stdio"),
   httpPort: z.number().int().min(1024).max(65535).default(3000),
+  noDashboard: z.boolean().default(false),
 });
 
 export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;

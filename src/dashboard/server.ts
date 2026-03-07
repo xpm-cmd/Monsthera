@@ -88,6 +88,14 @@ export function startDashboard(
     }
   });
 
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      insight.warn(`Dashboard port ${port} already in use — dashboard disabled`);
+    } else {
+      insight.error(`Dashboard error: ${err.message}`);
+    }
+  });
+
   server.listen(port, () => {
     insight.info(`Dashboard: http://localhost:${port}`);
   });

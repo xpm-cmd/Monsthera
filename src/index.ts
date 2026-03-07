@@ -19,6 +19,7 @@ async function main() {
   const debugLogging = args.includes("--debug-logging");
   const transport = (getArg(args, "--transport") ?? "stdio") as "stdio" | "http";
   const httpPort = parseInt(getArg(args, "--http-port") ?? "3000", 10);
+  const noDashboard = args.includes("--no-dashboard");
 
   if (args.includes("--version") || args.includes("-v")) {
     console.error(`agora v${VERSION}`);
@@ -30,7 +31,7 @@ async function main() {
     process.exit(0);
   }
 
-  const config = resolveConfig({ repoPath, verbosity, debugLogging, transport, httpPort });
+  const config = resolveConfig({ repoPath, verbosity, debugLogging, transport, httpPort, noDashboard });
   const insight = new InsightStream(config.verbosity);
 
   switch (command) {
@@ -60,9 +61,9 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
     insight.warn("Debug logging active — raw payloads captured (24h TTL)");
   }
 
-  // Start dashboard if repo is valid
+  // Start dashboard if repo is valid and not disabled
   try {
-    if (await isGitRepo({ cwd: config.repoPath })) {
+    if (!config.noDashboard && await isGitRepo({ cwd: config.repoPath })) {
       const repoRoot = await getRepoRoot({ cwd: config.repoPath });
       const repoName = basename(repoRoot);
       const { db } = initDatabase({ repoPath: repoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
@@ -277,6 +278,7 @@ function printHelp() {
   console.error("  --transport      stdio | http (default: stdio)");
   console.error("  --http-port      HTTP transport port (default: 3000)");
   console.error("  --verbosity      quiet | normal | verbose");
+  console.error("  --no-dashboard   Disable the admin dashboard");
   console.error("  --debug-logging  Enable raw payload capture");
   console.error("  --version, -v    Show version");
   console.error("  --help, -h       Show help");
