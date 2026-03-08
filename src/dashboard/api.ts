@@ -12,6 +12,7 @@ export interface DashboardDeps {
   repoId: number;
   repoPath: string;
   bus: CoordinationBus;
+  globalDb: DB | null;
 }
 
 export function getOverview(deps: DashboardDeps) {
@@ -82,4 +83,31 @@ export function getNotesList(deps: DashboardDeps) {
     commitSha: n.commitSha,
     updatedAt: n.updatedAt,
   }));
+}
+
+export function getKnowledgeList(deps: DashboardDeps) {
+  const repoEntries = queries.queryKnowledge(deps.db, {}).map((e) => ({
+    ...e, scope: "repo" as string,
+  }));
+
+  let globalEntries: typeof repoEntries = [];
+  if (deps.globalDb) {
+    globalEntries = queries.queryKnowledge(deps.globalDb, {}).map((e) => ({
+      ...e, scope: "global" as string,
+    }));
+  }
+
+  return [...repoEntries, ...globalEntries]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .map((k) => ({
+      key: k.key,
+      type: k.type,
+      scope: k.scope,
+      title: k.title,
+      contentPreview: k.content.slice(0, 200),
+      tags: k.tagsJson ? JSON.parse(k.tagsJson) : [],
+      status: k.status,
+      agentId: k.agentId,
+      updatedAt: k.updatedAt,
+    }));
 }

@@ -39,6 +39,7 @@ describe("Dashboard API", () => {
       repoId: 1,
       repoPath: "/test",
       bus: new CoordinationBus("hub-spoke"),
+      globalDb: null,
     };
   });
   afterEach(() => sqlite.close());

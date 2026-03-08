@@ -1,4 +1,4 @@
-export const VERSION = "0.1.0";
+export const VERSION = "1.0.0";
 export const DEFAULT_DASHBOARD_PORT = 3141;
 export const DEFAULT_AGORA_DIR = ".agora";
 export const DEFAULT_DB_NAME = "agora.db";

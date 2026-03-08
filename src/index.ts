@@ -2,7 +2,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { createAgoraServer } from "./server.js";
 import { resolveConfig } from "./core/config.js";
 import { VERSION } from "./core/constants.js";
-import { initDatabase } from "./db/init.js";
+import { initDatabase, initGlobalDatabase } from "./db/init.js";
 import { InsightStream } from "./core/insight-stream.js";
 import { fullIndex, getIndexedCommit } from "./indexing/indexer.js";
 import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
@@ -45,6 +45,9 @@ async function main() {
     case "status":
       await cmdStatus(config, insight);
       break;
+    case "export":
+      await cmdExport(config, insight, args);
+      break;
     case "serve":
     case undefined:
       await cmdServe(config, insight);
@@ -73,7 +76,9 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
       const { CoordinationBus } = await import("./coordination/bus.js");
       const { startDashboard } = await import("./dashboard/server.js");
       const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke");
-      startDashboard({ db, repoId, repoPath: repoRoot, bus }, config.dashboardPort, insight);
+      let globalDb = null;
+      try { globalDb = initGlobalDatabase().globalDb; } catch { /* non-fatal */ }
+      startDashboard({ db, repoId, repoPath: repoRoot, bus, globalDb }, config.dashboardPort, insight);
     }
   } catch (err) {
     insight.warn(`Dashboard failed to start: ${err}`);
@@ -270,6 +275,31 @@ async function cmdStatus(config: ReturnType<typeof resolveConfig>, insight: Insi
   console.error(`  Active sessions: ${activeSessions.length}`);
 }
 
+async function cmdExport(config: ReturnType<typeof resolveConfig>, insight: InsightStream, args: string[]) {
+  if (!args.includes("--obsidian")) {
+    insight.error("Specify export format: --obsidian");
+    process.exit(1);
+  }
+
+  if (!(await isGitRepo({ cwd: config.repoPath }))) {
+    insight.error("Not a git repository");
+    process.exit(1);
+  }
+
+  const repoRoot = await getRepoRoot({ cwd: config.repoPath });
+  const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
+  const { db } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+
+  let globalDb = null;
+  try { globalDb = initGlobalDatabase().globalDb; } catch { /* non-fatal */ }
+
+  const vaultPath = getArg(args, "--vault") ?? repoRoot;
+
+  const { exportToObsidian } = await import("./export/obsidian.js");
+  const result = exportToObsidian({ vaultPath, repoDb: db, globalDb });
+  insight.info(`Exported ${result.exported} knowledge entries to ${result.path}`);
+}
+
 function printHelp() {
   console.error(`agora v${VERSION} — Multi-agent shared context server`);
   console.error("");
@@ -278,6 +308,7 @@ function printHelp() {
   console.error("  init           Initialize .agora directory");
   console.error("  index          Run full index");
   console.error("  status         Show index status");
+  console.error("  export         Export knowledge to external tools");
   console.error("");
   console.error("Options:");
   console.error("  --repo-path      Repository path (default: cwd)");
@@ -287,6 +318,8 @@ function printHelp() {
   console.error("  --no-dashboard   Disable the admin dashboard");
   console.error("  --no-semantic    Disable semantic/hybrid search (enabled by default)");
   console.error("  --debug-logging  Enable raw payload capture");
+  console.error("  --obsidian       Export as Obsidian markdown vault");
+  console.error("  --vault          Obsidian vault path (default: repo root)");
   console.error("  --version, -v    Show version");
   console.error("  --help, -h       Show help");
 }

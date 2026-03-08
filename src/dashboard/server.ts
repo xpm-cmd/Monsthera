@@ -3,11 +3,11 @@ import type { InsightStream } from "../core/insight-stream.js";
 import { renderDashboard } from "./html.js";
 import {
   getOverview, getAgentsList, getEventLogsList,
-  getPatchesList, getNotesList, type DashboardDeps,
+  getPatchesList, getNotesList, getKnowledgeList, type DashboardDeps,
 } from "./api.js";
 
 export interface DashboardEvent {
-  type: "agent_registered" | "session_changed" | "patch_proposed" | "note_added" | "event_logged" | "index_updated";
+  type: "agent_registered" | "session_changed" | "patch_proposed" | "note_added" | "event_logged" | "index_updated" | "knowledge_stored";
   data: Record<string, unknown>;
 }
 
@@ -113,6 +113,7 @@ function routeApi(route: string, deps: DashboardDeps): unknown {
     case "logs": return getEventLogsList(deps);
     case "patches": return getPatchesList(deps);
     case "notes": return getNotesList(deps);
+    case "knowledge": return getKnowledgeList(deps);
     default: return null;
   }
 }
