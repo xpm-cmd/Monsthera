@@ -122,6 +122,49 @@ export class SemanticReranker {
     return new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
   }
 
+  // --- Knowledge embedding helpers ---
+
+  /**
+   * Store a knowledge entry embedding (raw SQL for BLOB handling).
+   * Takes sqlite as param to operate on either repo or global DB.
+   */
+  storeKnowledgeEmbedding(sqlite: DatabaseType, knowledgeId: number, embedding: Float32Array): void {
+    const buf = Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength);
+    sqlite.prepare("UPDATE knowledge SET embedding = ? WHERE id = ?").run(buf, knowledgeId);
+  }
+
+  /**
+   * Vector search across knowledge entries in a given DB.
+   * Returns scored results sorted by cosine similarity.
+   */
+  searchKnowledgeByVector(
+    sqlite: DatabaseType,
+    queryEmbedding: Float32Array,
+    limit = 10,
+    statusFilter = "active",
+  ): Array<{ id: number; key: string; title: string; content: string; type: string; tagsJson: string | null; score: number }> {
+    const rows = sqlite
+      .prepare("SELECT id, key, title, content, type, tags_json, embedding FROM knowledge WHERE embedding IS NOT NULL AND status = ?")
+      .all(statusFilter) as Array<{ id: number; key: string; title: string; content: string; type: string; tags_json: string | null; embedding: Buffer }>;
+
+    const scored = rows.map((row) => {
+      const emb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
+      const similarity = cosineSimilarity(queryEmbedding, emb);
+      return {
+        id: row.id,
+        key: row.key,
+        title: row.title,
+        content: row.content,
+        type: row.type,
+        tagsJson: row.tags_json,
+        score: (similarity + 1) / 2, // map [-1,1] to [0,1]
+      };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit);
+  }
+
   /**
    * Vector search: embed the query and scan ALL file embeddings by cosine similarity.
    * Unlike rerank(), this is not gated by FTS5 — it can discover files with zero token overlap.

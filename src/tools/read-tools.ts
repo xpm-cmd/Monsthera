@@ -50,6 +50,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             "propose_patch", "propose_note",
             "register_agent", "agent_status", "broadcast",
             "claim_files", "request_reindex",
+            "store_knowledge", "search_knowledge", "query_knowledge", "archive_knowledge", "delete_knowledge",
           ],
           languages: [...SUPPORTED_LANGUAGES],
           trustTiers: ["A", "B"],

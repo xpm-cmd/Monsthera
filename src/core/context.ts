@@ -19,4 +19,6 @@ export interface AgoraContext {
   searchRouter: SearchRouter;
   insight: InsightStream;
   bus: CoordinationBus;
+  globalDb: BetterSQLite3Database<typeof schema> | null;
+  globalSqlite: DatabaseType | null;
 }

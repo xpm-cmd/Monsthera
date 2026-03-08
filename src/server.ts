@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { VERSION } from "./core/constants.js";
 import type { AgoraConfig } from "./core/config.js";
 import type { AgoraContext } from "./core/context.js";
-import { initDatabase } from "./db/init.js";
+import { initDatabase, initGlobalDatabase } from "./db/init.js";
 import * as queries from "./db/queries.js";
 import { SearchRouter } from "./search/router.js";
 import { InsightStream } from "./core/insight-stream.js";
@@ -15,6 +15,7 @@ import { registerAgentTools } from "./tools/agent-tools.js";
 import { registerPatchTools } from "./tools/patch-tools.js";
 import { registerNoteTools } from "./tools/note-tools.js";
 import { registerCoordinationTools } from "./tools/coordination-tools.js";
+import { registerKnowledgeTools } from "./tools/knowledge-tools.js";
 
 export function createAgoraServer(config: AgoraConfig) {
   const server = new McpServer({
@@ -57,7 +58,18 @@ export function createAgoraServer(config: AgoraConfig) {
 
     const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke");
 
-    ctx = { config, db, sqlite, repoId, repoPath: repoRoot, searchRouter, insight, bus };
+    // Global knowledge DB (~/.agora/knowledge.db)
+    let globalDb: AgoraContext["globalDb"] = null;
+    let globalSqlite: AgoraContext["globalSqlite"] = null;
+    try {
+      const globalResult = initGlobalDatabase();
+      globalDb = globalResult.globalDb;
+      globalSqlite = globalResult.globalSqlite;
+    } catch (err) {
+      insight.warn(`Global knowledge DB init failed: ${err}`);
+    }
+
+    ctx = { config, db, sqlite, repoId, repoPath: repoRoot, searchRouter, insight, bus, globalDb, globalSqlite };
     insight.info(`Initialized for ${repoRoot} (search: ${searchRouter.getActiveBackendName()})`);
     return ctx;
   }
@@ -69,6 +81,7 @@ export function createAgoraServer(config: AgoraConfig) {
   registerPatchTools(server, getContext);
   registerNoteTools(server, getContext);
   registerCoordinationTools(server, getContext);
+  registerKnowledgeTools(server, getContext);
 
   return server;
 }

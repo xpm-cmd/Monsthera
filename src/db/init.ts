@@ -2,6 +2,7 @@ import Database, { type Database as DatabaseType } from "better-sqlite3";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import * as schema from "./schema.js";
 
 export interface DbInitOptions {
@@ -142,6 +143,21 @@ function createTables(sqlite: Database.Database): void {
       redacted_summary TEXT NOT NULL,
       denial_reason TEXT
     )`,
+    `CREATE TABLE IF NOT EXISTS knowledge (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      tags_json TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      agent_id TEXT,
+      session_id TEXT,
+      embedding BLOB,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS debug_payloads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       event_id TEXT NOT NULL REFERENCES event_logs(event_id),
@@ -154,6 +170,40 @@ function createTables(sqlite: Database.Database): void {
   for (const stmt of statements) {
     sqlite.prepare(stmt).run();
   }
+}
+
+export interface GlobalDbResult {
+  globalDb: BetterSQLite3Database<typeof schema>;
+  globalSqlite: DatabaseType;
+}
+
+export function initGlobalDatabase(): GlobalDbResult {
+  const globalDir = join(homedir(), ".agora");
+  mkdirSync(globalDir, { recursive: true });
+
+  const dbPath = join(globalDir, "knowledge.db");
+  const globalSqlite = new Database(dbPath);
+
+  globalSqlite.pragma("journal_mode = WAL");
+
+  globalSqlite.prepare(`CREATE TABLE IF NOT EXISTS knowledge (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'global',
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    tags_json TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    agent_id TEXT,
+    session_id TEXT,
+    embedding BLOB,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`).run();
+
+  const globalDb = drizzle(globalSqlite, { schema });
+  return { globalDb, globalSqlite };
 }
 
 function runMigrations(sqlite: Database.Database): void {

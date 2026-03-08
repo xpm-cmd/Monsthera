@@ -138,6 +138,24 @@ export const eventLogs = sqliteTable("event_logs", {
   denialReason: text("denial_reason"),
 });
 
+// --- Knowledge ---
+
+export const knowledge = sqliteTable("knowledge", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  key: text("key").notNull().unique(),
+  type: text("type").notNull(),
+  scope: text("scope").notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  tagsJson: text("tags_json"),
+  status: text("status").notNull().default("active"),
+  agentId: text("agent_id"),
+  sessionId: text("session_id"),
+  embedding: blob("embedding"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // --- Debug Payloads (only when --debug-logging is enabled, 24h TTL) ---
 
 export const debugPayloads = sqliteTable("debug_payloads", {
