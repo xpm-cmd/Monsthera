@@ -202,6 +202,10 @@ export function getActiveSessions(db: DB) {
   return db.select().from(tables.sessions).where(eq(tables.sessions.state, "active")).all();
 }
 
+export function getAllSessions(db: DB) {
+  return db.select().from(tables.sessions).all();
+}
+
 export function updateSessionActivity(db: DB, sessionId: string) {
   return db
     .update(tables.sessions)

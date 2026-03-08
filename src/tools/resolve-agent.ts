@@ -1,5 +1,6 @@
 import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
+import { touchSession } from "../agents/registry.js";
 import type { RoleId } from "../../schemas/agent.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
 
@@ -22,6 +23,9 @@ export function resolveAgent(
 
   const session = queries.getSession(ctx.db, sessionId);
   if (!session || session.agentId !== agentId || session.state !== "active") return null;
+
+  // Update lastActivity — enables live presence tracking in the dashboard
+  touchSession(ctx.db, session.id);
 
   return {
     agentId: agent.id,

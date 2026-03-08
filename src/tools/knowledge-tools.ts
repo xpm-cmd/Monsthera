@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import { createHash } from "node:crypto";
 import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
+import { touchSession } from "../agents/registry.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -36,6 +37,9 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
           isError: true,
         };
       }
+
+      // Touch session for live presence tracking
+      if (sessionId) touchSession(c.db, sessionId);
 
       const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 12);
       const key = `${type}:${contentHash}`;

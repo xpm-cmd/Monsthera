@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
-import { registerAgent, getAgentStatus, disconnectSession } from "../agents/registry.js";
+import { registerAgent, getAgentStatus, disconnectSession, touchSession } from "../agents/registry.js";
 import * as queries from "../db/queries.js";
 
 type GetContext = () => Promise<AgoraContext>;
@@ -134,6 +134,8 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
           isError: true,
         };
       }
+
+      touchSession(c.db, sessionId);
 
       // Check for existing claims
       const activeSessions = queries.getActiveSessions(c.db);

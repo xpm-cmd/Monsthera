@@ -85,6 +85,52 @@ export function getNotesList(deps: DashboardDeps) {
   }));
 }
 
+export function getPresence(deps: DashboardDeps) {
+  const agents = queries.getAllAgents(deps.db);
+  const allSessions = queries.getAllSessions(deps.db);
+  const now = Date.now();
+
+  const TWO_MINUTES = 2 * 60 * 1000;
+  const TEN_MINUTES = 10 * 60 * 1000;
+
+  function computeStatus(lastActivity: string, state: string): "online" | "idle" | "offline" {
+    if (state !== "active") return "offline";
+    const age = now - new Date(lastActivity).getTime();
+    if (age < TWO_MINUTES) return "online";
+    if (age < TEN_MINUTES) return "idle";
+    return "offline";
+  }
+
+  return agents.map((a) => {
+    const sessions = allSessions
+      .filter((s) => s.agentId === a.id)
+      .map((s) => ({
+        id: s.id,
+        state: s.state,
+        connectedAt: s.connectedAt,
+        lastActivity: s.lastActivity,
+        status: computeStatus(s.lastActivity, s.state),
+        claimedFiles: s.claimedFilesJson ? JSON.parse(s.claimedFilesJson) as string[] : [],
+      }));
+
+    const bestStatus = sessions.some((s) => s.status === "online")
+      ? "online"
+      : sessions.some((s) => s.status === "idle")
+        ? "idle"
+        : "offline";
+
+    return {
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      role: a.roleId,
+      trustTier: a.trustTier,
+      status: bestStatus,
+      sessions,
+    };
+  });
+}
+
 export function getKnowledgeList(deps: DashboardDeps) {
   const repoEntries = queries.queryKnowledge(deps.db, {}).map((e) => ({
     ...e, scope: "repo" as string,

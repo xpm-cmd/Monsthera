@@ -107,6 +107,23 @@ td.mono{font-family:monospace;font-size:.75rem;color:var(--text3)}
 .btn-export{background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.25);color:var(--purple)}
 .btn-export:hover{border-color:var(--purple);background:rgba(168,85,247,.15);color:var(--text)}
 
+/* ── Presence panel ────────────────────────── */
+.presence-title{font-size:.75rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-weight:500;margin-bottom:.6rem;display:flex;align-items:center;gap:.5rem}
+.presence-title .dot{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block}
+.presence{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:1.25rem}
+.agent-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;min-width:220px;flex:1 1 220px;max-width:320px;transition:all .2s;display:flex;align-items:flex-start;gap:.65rem}
+.agent-card:hover{border-color:rgba(59,130,246,.3);background:var(--surface-hover);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px;box-shadow:0 0 6px currentColor}
+.status-dot.online{background:var(--green);color:var(--green)}
+.status-dot.idle{background:var(--orange);color:var(--orange)}
+.status-dot.offline{background:var(--text3);color:var(--text3);box-shadow:none}
+.agent-info{flex:1;min-width:0}
+.agent-name{font-size:.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agent-meta{font-size:.7rem;color:var(--text2);margin-top:2px;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.agent-meta .badge{font-size:.6rem;padding:1px 6px}
+.agent-time{font-size:.65rem;color:var(--text3);margin-top:4px;font-family:monospace}
+.agent-files{font-size:.65rem;color:var(--text3);margin-top:2px}
+
 /* ── Footer ─────────────────────────────────── */
 footer{text-align:center;font-size:.7rem;color:var(--text3);padding:1.5rem;border-top:1px solid var(--border);margin-top:1rem}
 footer a{color:var(--blue);text-decoration:none}
@@ -129,6 +146,8 @@ footer a{color:var(--blue);text-decoration:none}
 
 <div class="main">
   <div class="stats" id="overview"></div>
+  <div class="presence-title"><span class="dot"></span> Live Agents</div>
+  <div class="presence" id="presence"><div class="empty" style="width:100%">No agents registered yet</div></div>
   <div class="charts" id="charts"></div>
   <div class="tab-bar" id="tab-bar"></div>
   <div id="agents" class="section active"></div>
@@ -319,13 +338,62 @@ function bucketByHour(timestamps){
   return buckets;
 }
 
+/* ── Time ago helper ─────────────────────────── */
+function timeAgo(iso){
+  if(!iso) return 'never';
+  var s=Math.floor((Date.now()-new Date(iso).getTime())/1000);
+  if(s<5) return 'just now';
+  if(s<60) return s+'s ago';
+  var m=Math.floor(s/60);
+  if(m<60) return m+'m ago';
+  var h=Math.floor(m/60);
+  if(h<24) return h+'h ago';
+  return Math.floor(h/24)+'d ago';
+}
+
+/* ── Presence rendering ─────────────────────── */
+var STATUS_ORDER={online:0,idle:1,offline:2};
+
+function renderPresence(agents){
+  var container=document.getElementById('presence');
+  if(!agents||!agents.length){
+    container.innerHTML='<div class="empty" style="width:100%">No agents registered yet</div>';
+    return;
+  }
+  agents.sort(function(a,b){return (STATUS_ORDER[a.status]||9)-(STATUS_ORDER[b.status]||9)});
+  container.innerHTML='';
+  agents.forEach(function(a){
+    var card=document.createElement('div');
+    card.className='agent-card';
+    var lastActivity=null;
+    var claimedFiles=[];
+    if(a.sessions&&a.sessions.length){
+      var active=a.sessions.filter(function(s){return s.status==='online'||s.status==='idle'});
+      var best=active.length?active[0]:a.sessions[0];
+      lastActivity=best.lastActivity;
+      a.sessions.forEach(function(s){if(s.claimedFiles)claimedFiles=claimedFiles.concat(s.claimedFiles)});
+    }
+    var filesHtml=claimedFiles.length?'<div class="agent-files">&#128196; '+esc(claimedFiles.slice(0,3).join(', '))+(claimedFiles.length>3?' +'+String(claimedFiles.length-3)+' more':'')+'</div>':'';
+    var sessionCount=a.sessions?a.sessions.length:0;
+    card.innerHTML='<div class="status-dot '+esc(a.status)+'"></div><div class="agent-info"><div class="agent-name">'+esc(a.name)+'</div><div class="agent-meta"><span class="badge badge-'+esc(a.role)+'">'+esc(a.role)+'</span><span class="badge badge-'+(a.trustTier==='A'?'blue':'orange')+'">Tier '+esc(a.trustTier)+'</span><span>'+esc(a.type)+'</span><span>'+sessionCount+' sess</span></div><div class="agent-time">'+timeAgo(lastActivity)+'</div>'+filesHtml+'</div>';
+    container.appendChild(card);
+  });
+}
+
+async function refreshPresence(){
+  try{
+    var agents=await api('presence');
+    renderPresence(agents);
+  }catch(e){console.error('Presence refresh failed:',e)}
+}
+
 /* ── Main refresh ────────────────────────────── */
 async function refresh(){
   try{
     var results=await Promise.all([
-      api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge')
+      api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence')
     ]);
-    var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5];
+    var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5],presence=results[6];
 
     /* Overview cards */
     var ov=document.getElementById('overview');
@@ -336,6 +404,9 @@ async function refresh(){
       makeCard('&#128230;','Patches',o.totalPatches),
       makeCard('&#127793;','Indexed Commit',o.indexedCommit?o.indexedCommit.slice(0,7):'none'),
       makeCard('&#128279;','Topology',o.coordinationTopology));
+
+    /* Presence */
+    renderPresence(presence);
 
     /* Charts */
     renderCharts(logs,patches,knowledge,agents);
@@ -422,6 +493,7 @@ document.getElementById('export-btn').addEventListener('click',async function(){
 
 init();
 connectSSE();
+setInterval(refreshPresence,10000);
 </script>
 </body>
 </html>`;

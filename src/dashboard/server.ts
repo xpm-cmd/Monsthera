@@ -3,7 +3,7 @@ import type { InsightStream } from "../core/insight-stream.js";
 import { renderDashboard } from "./html.js";
 import {
   getOverview, getAgentsList, getEventLogsList,
-  getPatchesList, getNotesList, getKnowledgeList, type DashboardDeps,
+  getPatchesList, getNotesList, getKnowledgeList, getPresence, type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
 
@@ -133,6 +133,7 @@ function routeApi(route: string, deps: DashboardDeps): unknown {
     case "patches": return getPatchesList(deps);
     case "notes": return getNotesList(deps);
     case "knowledge": return getKnowledgeList(deps);
+    case "presence": return getPresence(deps);
     default: return null;
   }
 }
