@@ -5,7 +5,7 @@ import { VERSION } from "./core/constants.js";
 import { initDatabase } from "./db/init.js";
 import { InsightStream } from "./core/insight-stream.js";
 import { fullIndex, getIndexedCommit } from "./indexing/indexer.js";
-import { isGitRepo, getRepoRoot } from "./git/operations.js";
+import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
 import * as queries from "./db/queries.js";
 import { basename, join } from "node:path";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
@@ -66,8 +66,9 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
   try {
     if (!config.noDashboard && await isGitRepo({ cwd: config.repoPath })) {
       const repoRoot = await getRepoRoot({ cwd: config.repoPath });
+      const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
       const repoName = basename(repoRoot);
-      const { db } = initDatabase({ repoPath: repoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+      const { db } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
       const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
       const { CoordinationBus } = await import("./coordination/bus.js");
       const { startDashboard } = await import("./dashboard/server.js");
@@ -170,7 +171,8 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
   }
 
   const repoRoot = await getRepoRoot({ cwd: config.repoPath });
-  const agoraDir = join(repoRoot, config.agoraDir);
+  const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
+  const agoraDir = join(mainRepoRoot, config.agoraDir);
 
   mkdirSync(agoraDir, { recursive: true });
 
@@ -186,11 +188,11 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
   }
 
   // Initialize database
-  initDatabase({ repoPath: repoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
   insight.info(`Initialized Agora in ${agoraDir}`);
 
   // Add .agora to .gitignore if not already there
-  const gitignorePath = join(repoRoot, ".gitignore");
+  const gitignorePath = join(mainRepoRoot, ".gitignore");
   if (existsSync(gitignorePath)) {
     const content = await import("node:fs").then((fs) => fs.readFileSync(gitignorePath, "utf-8"));
     if (!content.includes(".agora")) {
@@ -204,7 +206,7 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
     mcpServers: {
       agora: {
         command: "npx",
-        args: ["-y", "agora-mcp@latest", "serve", "--repo-path", repoRoot],
+        args: ["-y", "agora-mcp@latest", "serve", "--repo-path", mainRepoRoot],
       },
     },
   }, null, 2) + "\n";
@@ -223,8 +225,9 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
   }
 
   const repoRoot = await getRepoRoot({ cwd: config.repoPath });
+  const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
   const repoName = basename(repoRoot);
-  const { db } = initDatabase({ repoPath: repoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  const { db } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
 
   insight.info("Starting full index...");
@@ -249,8 +252,9 @@ async function cmdStatus(config: ReturnType<typeof resolveConfig>, insight: Insi
   }
 
   const repoRoot = await getRepoRoot({ cwd: config.repoPath });
+  const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
   const repoName = basename(repoRoot);
-  const { db } = initDatabase({ repoPath: repoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  const { db } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
 
   const indexedCommit = getIndexedCommit(db, repoId);

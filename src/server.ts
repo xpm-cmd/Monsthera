@@ -6,7 +6,7 @@ import { initDatabase } from "./db/init.js";
 import * as queries from "./db/queries.js";
 import { SearchRouter } from "./search/router.js";
 import { InsightStream } from "./core/insight-stream.js";
-import { isGitRepo, getRepoRoot } from "./git/operations.js";
+import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
 import { CoordinationBus } from "./coordination/bus.js";
 import { basename } from "node:path";
 import { registerReadTools } from "./tools/read-tools.js";
@@ -33,10 +33,11 @@ export function createAgoraServer(config: AgoraConfig) {
     }
 
     const repoRoot = await getRepoRoot({ cwd: config.repoPath });
+    const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
     const repoName = basename(repoRoot);
 
     const { db, sqlite } = initDatabase({
-      repoPath: repoRoot,
+      repoPath: mainRepoRoot,
       agoraDir: config.agoraDir,
       dbName: config.dbName,
     });
@@ -49,7 +50,7 @@ export function createAgoraServer(config: AgoraConfig) {
       repoPath: repoRoot,
       zoektEnabled: config.zoektEnabled,
       semanticEnabled: config.semanticEnabled,
-      indexDir: `${repoRoot}/${config.agoraDir}`,
+      indexDir: `${mainRepoRoot}/${config.agoraDir}`,
       onFallback: (reason) => insight.warn(reason),
     });
     await searchRouter.initialize();

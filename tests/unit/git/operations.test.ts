@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -10,6 +10,8 @@ import {
   getFileContent,
   isGitRepo,
   getRecentCommits,
+  getRepoRoot,
+  getMainRepoRoot,
 } from "../../../src/git/operations.js";
 
 function git(args: string[], cwd: string) {
@@ -20,7 +22,7 @@ describe("git operations", () => {
   let repoDir: string;
 
   beforeEach(() => {
-    repoDir = mkdtempSync(join(tmpdir(), "agora-test-"));
+    repoDir = realpathSync(mkdtempSync(join(tmpdir(), "agora-test-")));
     git(["init", "-b", "main"], repoDir);
     git(["config", "user.email", "test@test.com"], repoDir);
     git(["config", "user.name", "Test"], repoDir);
@@ -98,5 +100,31 @@ describe("git operations", () => {
     expect(commits.length).toBe(1);
     expect(commits[0]!.message).toBe("init");
     expect(commits[0]!.sha).toMatch(/^[a-f0-9]{40}$/);
+  });
+
+  describe("getMainRepoRoot", () => {
+    it("returns same as getRepoRoot in a normal repo", async () => {
+      const repoRoot = await getRepoRoot({ cwd: repoDir });
+      const mainRoot = await getMainRepoRoot({ cwd: repoDir });
+      expect(mainRoot).toBe(repoRoot);
+    });
+
+    it("returns main repo root from a worktree", async () => {
+      const mainRoot = await getRepoRoot({ cwd: repoDir });
+      const worktreeDir = join(repoDir, ".worktrees", "test-wt");
+      mkdirSync(join(repoDir, ".worktrees"), { recursive: true });
+      git(["worktree", "add", "-b", "test-wt-branch", worktreeDir], repoDir);
+
+      const wtRepoRoot = await getRepoRoot({ cwd: worktreeDir });
+      const wtMainRoot = await getMainRepoRoot({ cwd: worktreeDir });
+
+      // Worktree root differs from main repo root
+      expect(wtRepoRoot).toBe(worktreeDir);
+      // But getMainRepoRoot always returns the main repo
+      expect(wtMainRoot).toBe(mainRoot);
+
+      // Cleanup
+      git(["worktree", "remove", worktreeDir], repoDir);
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { dirname } from "node:path";
 
 const execFileAsync = promisify(execFile);
 
@@ -94,4 +95,17 @@ export async function isGitRepo(opts: GitExecOptions): Promise<boolean> {
 
 export async function getRepoRoot(opts: GitExecOptions): Promise<string> {
   return git(["rev-parse", "--show-toplevel"], opts);
+}
+
+/**
+ * Returns the main repository root, even when called from a git worktree.
+ * Uses --git-common-dir which always points to the main repo's .git directory.
+ * Safe for non-worktree usage — returns the same root as getRepoRoot().
+ */
+export async function getMainRepoRoot(opts: GitExecOptions): Promise<string> {
+  const gitCommonDir = await git(
+    ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    opts,
+  );
+  return dirname(gitCommonDir);
 }
