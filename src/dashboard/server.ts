@@ -5,6 +5,7 @@ import {
   getOverview, getAgentsList, getEventLogsList,
   getPatchesList, getNotesList, getKnowledgeList, type DashboardDeps,
 } from "./api.js";
+import { exportToObsidian } from "../export/obsidian.js";
 
 export interface DashboardEvent {
   type: "agent_registered" | "session_changed" | "patch_proposed" | "note_added" | "event_logged" | "index_updated" | "knowledge_stored";
@@ -58,6 +59,24 @@ export function startDashboard(
       // SSE endpoint for real-time events
       if (path === "/api/events") {
         sse.addClient(res);
+        return;
+      }
+
+      // POST /api/export/obsidian — write knowledge to Obsidian vault
+      if (path === "/api/export/obsidian" && req.method === "POST") {
+        try {
+          const vaultParam = url.searchParams.get("vault") ?? deps.repoPath;
+          const result = exportToObsidian({
+            vaultPath: vaultParam,
+            repoDb: deps.db,
+            globalDb: deps.globalDb,
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
         return;
       }
 

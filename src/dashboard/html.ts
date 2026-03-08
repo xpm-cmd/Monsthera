@@ -97,6 +97,16 @@ td.mono{font-family:monospace;font-size:.75rem;color:var(--text3)}
 /* ── Empty state ────────────────────────────── */
 .empty{color:var(--text3);font-size:.82rem;padding:2rem;text-align:center;font-style:italic}
 
+/* ── Toast notifications ───────────────────── */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.75rem 1.25rem;border-radius:8px;font-size:.82rem;color:var(--text);z-index:100;opacity:0;transform:translateY(10px);transition:all .3s ease;pointer-events:none;max-width:380px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.toast.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.toast.success{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3)}
+.toast.error{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3)}
+
+/* ── Export button ─────────────────────────── */
+.btn-export{background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.25);color:var(--purple)}
+.btn-export:hover{border-color:var(--purple);background:rgba(168,85,247,.15);color:var(--text)}
+
 /* ── Footer ─────────────────────────────────── */
 footer{text-align:center;font-size:.7rem;color:var(--text3);padding:1.5rem;border-top:1px solid var(--border);margin-top:1rem}
 footer a{color:var(--blue);text-decoration:none}
@@ -112,6 +122,7 @@ footer a{color:var(--blue);text-decoration:none}
   </div>
   <div class="header-right">
     <span style="font-size:.75rem;color:var(--text3)" id="last-updated"></span>
+    <button class="btn btn-export" id="export-btn" title="Export knowledge to Obsidian markdown vault">&#128214; Export Obsidian</button>
     <button class="btn" id="refresh-btn">&#8635; Refresh</button>
   </div>
 </div>
@@ -128,6 +139,7 @@ footer a{color:var(--blue);text-decoration:none}
 </div>
 
 <footer>Agora &mdash; Multi-agent shared context &amp; coordination server</footer>
+<div class="toast" id="toast"></div>
 
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -380,6 +392,33 @@ function connectSSE(){
     es.close();setTimeout(connectSSE,5000);
   };
 }
+
+/* ── Toast ───────────────────────────────────── */
+function showToast(msg,type){
+  var t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className='toast '+type+' show';
+  setTimeout(function(){t.classList.remove('show')},4000);
+}
+
+/* ── Obsidian Export ─────────────────────────── */
+document.getElementById('export-btn').addEventListener('click',async function(){
+  var btn=document.getElementById('export-btn');
+  btn.disabled=true;btn.textContent='Exporting...';
+  try{
+    var res=await fetch('/api/export/obsidian',{method:'POST'});
+    var data=await res.json();
+    if(res.ok){
+      showToast('Exported '+data.exported+' entries → '+data.path,'success');
+    }else{
+      showToast('Export failed: '+(data.error||'Unknown error'),'error');
+    }
+  }catch(e){
+    showToast('Export failed: '+e.message,'error');
+  }finally{
+    btn.disabled=false;btn.innerHTML='&#128214; Export Obsidian';
+  }
+});
 
 init();
 connectSSE();
