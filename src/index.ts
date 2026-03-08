@@ -20,6 +20,7 @@ async function main() {
   const transport = (getArg(args, "--transport") ?? "stdio") as "stdio" | "http";
   const httpPort = parseInt(getArg(args, "--http-port") ?? "3000", 10);
   const noDashboard = args.includes("--no-dashboard");
+  const dashboardPort = parseInt(getArg(args, "--dashboard-port") ?? "3141", 10);
   const semanticEnabled = !args.includes("--no-semantic");
 
   if (args.includes("--version") || args.includes("-v")) {
@@ -32,7 +33,7 @@ async function main() {
     process.exit(0);
   }
 
-  const config = resolveConfig({ repoPath, verbosity, debugLogging, transport, httpPort, noDashboard, semanticEnabled });
+  const config = resolveConfig({ repoPath, verbosity, debugLogging, transport, httpPort, noDashboard, dashboardPort, semanticEnabled });
   const insight = new InsightStream(config.verbosity);
 
   switch (command) {
@@ -314,6 +315,7 @@ function printHelp() {
   console.error("  --repo-path      Repository path (default: cwd)");
   console.error("  --transport      stdio | http (default: stdio)");
   console.error("  --http-port      HTTP transport port (default: 3000)");
+  console.error("  --dashboard-port Dashboard UI port (default: 3141)");
   console.error("  --verbosity      quiet | normal | verbose");
   console.error("  --no-dashboard   Disable the admin dashboard");
   console.error("  --no-semantic    Disable semantic/hybrid search (enabled by default)");
