@@ -20,7 +20,7 @@ async function main() {
   const transport = (getArg(args, "--transport") ?? "stdio") as "stdio" | "http";
   const httpPort = parseInt(getArg(args, "--http-port") ?? "3000", 10);
   const noDashboard = args.includes("--no-dashboard");
-  const semanticEnabled = args.includes("--semantic");
+  const semanticEnabled = !args.includes("--no-semantic");
 
   if (args.includes("--version") || args.includes("-v")) {
     console.error(`agora v${VERSION}`);
@@ -178,7 +178,7 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
   if (!existsSync(configPath)) {
     writeFileSync(configPath, JSON.stringify({
       zoektEnabled: true,
-      semanticEnabled: false,
+      semanticEnabled: true,
       coordinationTopology: "hub-spoke",
       sensitiveFilePatterns: [".env", ".env.*", "*.key", "*.pem", "credentials.*", "secrets.*"],
     }, null, 2) + "\n");
@@ -281,7 +281,7 @@ function printHelp() {
   console.error("  --http-port      HTTP transport port (default: 3000)");
   console.error("  --verbosity      quiet | normal | verbose");
   console.error("  --no-dashboard   Disable the admin dashboard");
-  console.error("  --semantic       Enable semantic search re-ranking");
+  console.error("  --no-semantic    Disable semantic/hybrid search (enabled by default)");
   console.error("  --debug-logging  Enable raw payload capture");
   console.error("  --version, -v    Show version");
   console.error("  --help, -h       Show help");
