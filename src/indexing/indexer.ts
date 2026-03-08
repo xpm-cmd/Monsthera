@@ -43,9 +43,9 @@ export async function fullIndex(opts: IndexOptions): Promise<IndexResult> {
   let filesIndexed = 0;
   let filesSkipped = 0;
 
-  // Clear existing file records for this repo
+  // Clear existing records — imports first (FK → files.id)
+  db.delete(tables.imports).run();
   db.delete(tables.files).where(eq(tables.files.repoId, repoId)).run();
-  db.delete(tables.imports).run(); // imports reference files, so clear them too
 
   for (const filePath of trackedFiles) {
     try {
@@ -104,20 +104,26 @@ export async function incrementalIndex(lastCommit: string, opts: IndexOptions): 
   let filesSkipped = 0;
 
   for (const change of changedFiles) {
-    if (change.status === "D") {
-      // File deleted — remove from index
-      db.delete(tables.files)
+    // Helper: delete a file and its imports (imports FK → files.id)
+    const deleteFileByPath = () => {
+      const existing = db.select({ id: tables.files.id }).from(tables.files)
         .where(and(eq(tables.files.repoId, repoId), eq(tables.files.path, change.path)))
-        .run();
+        .get();
+      if (existing) {
+        db.delete(tables.imports).where(eq(tables.imports.sourceFileId, existing.id)).run();
+        db.delete(tables.files).where(eq(tables.files.id, existing.id)).run();
+      }
+    };
+
+    if (change.status === "D") {
+      deleteFileByPath();
       filesIndexed++;
       continue;
     }
 
     try {
       // Delete old record and re-index
-      db.delete(tables.files)
-        .where(and(eq(tables.files.repoId, repoId), eq(tables.files.path, change.path)))
-        .run();
+      deleteFileByPath();
 
       const result = await indexSingleFile(change.path, currentHead, opts);
       if (result === "skipped") {
