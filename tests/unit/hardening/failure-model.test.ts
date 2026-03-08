@@ -80,8 +80,8 @@ describe("Failure Model Tests", () => {
     expect(bus.getMessages("agent-3")).toHaveLength(0);
     // Agent 2 (target) sees it
     expect(bus.getMessages("agent-2")).toHaveLength(1);
-    // Agent 1 (sender) sees it
-    expect(bus.getMessages("agent-1")).toHaveLength(1);
+    // Agent 1 (sender) does NOT see own direct messages
+    expect(bus.getMessages("agent-1")).toHaveLength(0);
   });
 
   // Bundle reproducibility (Class 5)

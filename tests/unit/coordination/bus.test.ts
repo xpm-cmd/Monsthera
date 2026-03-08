@@ -17,11 +17,11 @@ describe("CoordinationBus", () => {
     expect(msgs[0]!.payload).toEqual({ msg: "hello" });
   });
 
-  it("sends direct messages visible only to sender and target", () => {
+  it("sends direct messages visible only to target, not sender", () => {
     bus.send({ from: "agent-1", to: "agent-2", type: "task_claim", payload: { file: "a.ts" } });
 
     expect(bus.getMessages("agent-2")).toHaveLength(1);
-    expect(bus.getMessages("agent-1")).toHaveLength(1); // sender sees own
+    expect(bus.getMessages("agent-1")).toHaveLength(0); // sender doesn't see own directs
     expect(bus.getMessages("agent-3")).toHaveLength(0); // third party doesn't
   });
 

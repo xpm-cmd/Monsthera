@@ -84,6 +84,19 @@ export async function getAllTrackedFiles(commit: string, opts: GitExecOptions): 
   return output.split("\n");
 }
 
+/**
+ * Validate that a string refers to a valid git commit.
+ * Returns true if the object exists and is a commit, false otherwise.
+ */
+export async function isValidCommit(sha: string, opts: GitExecOptions): Promise<boolean> {
+  try {
+    const type = await git(["cat-file", "-t", sha], opts);
+    return type === "commit";
+  } catch {
+    return false;
+  }
+}
+
 export async function isGitRepo(opts: GitExecOptions): Promise<boolean> {
   try {
     await git(["rev-parse", "--git-dir"], opts);

@@ -12,6 +12,19 @@ export const AgoraConfigSchema = z.object({
   sensitiveFilePatterns: z
     .array(z.string())
     .default([".env", ".env.*", "*.key", "*.pem", "credentials.*", "secrets.*"]),
+  excludePatterns: z
+    .array(z.string())
+    .default([
+      "*.png", "*.jpg", "*.jpeg", "*.gif", "*.svg", "*.ico", "*.webp", "*.bmp", "*.tiff", "*.icns",
+      "*.woff", "*.woff2", "*.ttf", "*.eot", "*.otf",
+      "*.mp3", "*.mp4", "*.wav", "*.avi", "*.mov", "*.webm",
+      "*.zip", "*.tar", "*.gz", "*.bz2", "*.7z", "*.rar",
+      "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx",
+      "*.exe", "*.dll", "*.so", "*.dylib", "*.o", "*.a",
+      "*.pyc", "*.pyo", "*.class", "*.jar", "*.wasm",
+      "*.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+      "*.min.js", "*.min.css", "*.map",
+    ]),
   zoektEnabled: z.boolean().default(true),
   transport: z.enum(["stdio", "http"]).default("stdio"),
   httpPort: z.number().int().min(1024).max(65535).default(3000),

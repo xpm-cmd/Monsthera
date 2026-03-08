@@ -72,24 +72,36 @@ export class FTS5Backend implements SearchBackend {
     if (!sanitized) return [];
 
     try {
+      // bm25() column weights: path=3.0, summary=1.0, symbols=2.0
+      // UNINDEXED columns (file_id, repo_id, language) are skipped automatically
       const stmt = this.sqlite.prepare(`
-        SELECT file_id, path, rank
+        SELECT file_id, path, bm25(${FTS_TABLE}, 3.0, 1.0, 2.0) AS rank
         FROM ${FTS_TABLE}
         WHERE ${FTS_TABLE} MATCH ? AND repo_id = ?
         ORDER BY rank
         LIMIT ?
       `);
 
-      const rows = stmt.all(sanitized, repoId, limit) as Array<{
+      // Fetch extra candidates to compensate for test file penalty
+      const rows = stmt.all(sanitized, repoId, limit * 2) as Array<{
         file_id: number;
         path: string;
         rank: number;
       }>;
 
-      return rows.map((row) => ({
-        path: row.path,
-        score: Math.abs(row.rank),
-      }));
+      const queryLower = query.toLowerCase();
+      const queryMentionsTest = queryLower.includes("test") || queryLower.includes("spec");
+
+      return rows.map((row) => {
+        let score = Math.abs(row.rank);
+        // Penalize test files when query doesn't mention testing
+        if (!queryMentionsTest && isTestFile(row.path)) {
+          score *= 0.7;
+        }
+        return { path: row.path, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
     } catch {
       return this.fallbackSearch(query, repoId, limit);
     }
@@ -128,4 +140,11 @@ function sanitizeFts5Query(query: string): string {
 
   if (terms.length === 0) return "";
   return terms.join(" OR ");
+}
+
+const TEST_PATH_PATTERN = /\/(tests?|__tests__|spec|__spec__)\//i;
+const TEST_FILE_PATTERN = /\.(test|spec)\.[^.]+$/i;
+
+function isTestFile(path: string): boolean {
+  return TEST_PATH_PATTERN.test(path) || TEST_FILE_PATTERN.test(path);
 }

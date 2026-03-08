@@ -41,14 +41,12 @@ export class CoordinationBus {
   /** Get messages visible to a given agent. */
   getMessages(agentId: string, since?: string, limit = 50): BusMessage[] {
     let filtered = this.messages.filter((m) => {
-      // Agent always sees own messages
-      if (m.from === agentId) return true;
-      // Broadcasts visible to all
+      // Broadcasts visible to all (including own broadcasts)
       if (m.to === null) return true;
-      // Direct messages to this agent
+      // Direct messages TO this agent
       if (m.to === agentId) return true;
-      // In mesh topology, all messages visible
-      if (this.topology === "mesh") return true;
+      // In mesh topology, all messages visible except own outbound directs
+      if (this.topology === "mesh" && m.from !== agentId) return true;
       return false;
     });
 

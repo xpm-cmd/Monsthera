@@ -41,8 +41,10 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       // Touch session for live presence tracking
       if (sessionId) touchSession(c.db, sessionId);
 
-      const contentHash = createHash("sha256").update(content).digest("hex").slice(0, 12);
-      const key = `${type}:${contentHash}`;
+      // Key based on title+type+scope so same-titled entries upsert instead of duplicating
+      const keySource = `${type}:${scope}:${title}`;
+      const keyHash = createHash("sha256").update(keySource).digest("hex").slice(0, 12);
+      const key = `${type}:${keyHash}`;
       const now = new Date().toISOString();
 
       const entry = queries.upsertKnowledge(targetDb, {

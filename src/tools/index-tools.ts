@@ -25,6 +25,7 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
           repoId: c.repoId,
           db: c.db,
           sensitiveFilePatterns: c.config.sensitiveFilePatterns,
+          excludePatterns: c.config.excludePatterns,
           onProgress: (msg) => c.insight.detail(msg),
           semanticReranker: c.searchRouter.getSemanticReranker(),
         });
@@ -34,6 +35,7 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
           repoId: c.repoId,
           db: c.db,
           sensitiveFilePatterns: c.config.sensitiveFilePatterns,
+          excludePatterns: c.config.excludePatterns,
           onProgress: (msg) => c.insight.detail(msg),
           semanticReranker: c.searchRouter.getSemanticReranker(),
         });

@@ -4,7 +4,7 @@ import { VERSION, SUPPORTED_LANGUAGES } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
-import { getHead, getChangedFiles, getRecentCommits } from "../git/operations.js";
+import { getHead, getChangedFiles, getRecentCommits, isValidCommit } from "../git/operations.js";
 import { getIndexedCommit } from "../indexing/indexer.js";
 
 type GetContext = () => Promise<AgoraContext>;
@@ -173,7 +173,21 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       const head = await getHead({ cwd: c.repoPath });
 
       let base = sinceCommit;
-      if (!base) {
+      if (base) {
+        const valid = await isValidCommit(base, { cwd: c.repoPath });
+        if (!valid) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({
+                error: `Invalid commit hash: ${base}`,
+                hint: "Provide a valid commit SHA or omit sinceCommit to use recent history",
+              }, null, 2),
+            }],
+            isError: true,
+          };
+        }
+      } else {
         const recent = await getRecentCommits(6, { cwd: c.repoPath });
         base = recent.at(-1)?.sha ?? head;
       }
@@ -221,11 +235,36 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
 
       const allNotes = queries.getNotesByRepo(c.db, c.repoId);
       const q = query.toLowerCase();
-      const matched = allNotes.filter((n) =>
+      const matchedNotes = allNotes.filter((n) =>
         n.content.toLowerCase().includes(q) ||
         n.key.toLowerCase().includes(q) ||
         n.type.toLowerCase().includes(q),
       );
+
+      // Also search knowledge entries (where store_knowledge writes)
+      const searchKnowledgeDb = (db: typeof c.db, scopeLabel: string) => {
+        const entries = queries.queryKnowledge(db, { status: "active" });
+        return entries
+          .filter((k) =>
+            k.title.toLowerCase().includes(q) ||
+            k.content.toLowerCase().includes(q) ||
+            k.type.toLowerCase().includes(q),
+          )
+          .map((k) => ({
+            key: k.key,
+            type: k.type,
+            scope: scopeLabel,
+            title: k.title,
+            content: k.content.slice(0, 500) + (k.content.length > 500 ? "..." : ""),
+            tags: k.tagsJson ? JSON.parse(k.tagsJson) : [],
+            updatedAt: k.updatedAt,
+          }));
+      };
+
+      const matchedKnowledge = [
+        ...searchKnowledgeDb(c.db, "repo"),
+        ...(c.globalDb ? searchKnowledgeDb(c.globalDb, "global") : []),
+      ];
 
       return {
         content: [{
@@ -233,7 +272,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           text: JSON.stringify({
             currentHead: head,
             query,
-            matchedNotes: matched.map((n) => ({
+            matchedNotes: matchedNotes.map((n) => ({
               key: n.key,
               type: n.type,
               content: n.content,
@@ -242,6 +281,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
               commitSha: n.commitSha,
               updatedAt: n.updatedAt,
             })),
+            matchedKnowledge,
           }, null, 2),
         }],
       };

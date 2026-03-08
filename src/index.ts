@@ -8,7 +8,7 @@ import { fullIndex, getIndexedCommit } from "./indexing/indexer.js";
 import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
 import * as queries from "./db/queries.js";
 import { basename, join } from "node:path";
-import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -21,7 +21,21 @@ async function main() {
   const httpPort = parseInt(getArg(args, "--http-port") ?? "3000", 10);
   const noDashboard = args.includes("--no-dashboard");
   const dashboardPort = parseInt(getArg(args, "--dashboard-port") ?? "3141", 10);
-  const semanticEnabled = !args.includes("--no-semantic");
+  // Semantic search: CLI flags take precedence, then config file, then Zod default (false)
+  let fileConfigSemantic: boolean | undefined;
+  try {
+    const cfgPath = join(repoPath, ".agora", "config.json");
+    if (existsSync(cfgPath)) {
+      const parsed = JSON.parse(readFileSync(cfgPath, "utf-8"));
+      if (typeof parsed.semanticEnabled === "boolean") {
+        fileConfigSemantic = parsed.semanticEnabled;
+      }
+    }
+  } catch { /* non-fatal: config file may not exist or be invalid */ }
+
+  const semanticEnabled = args.includes("--no-semantic") ? false
+    : args.includes("--semantic") ? true
+    : fileConfigSemantic;
 
   if (args.includes("--version") || args.includes("-v")) {
     console.error(`agora v${VERSION}`);
@@ -242,6 +256,7 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
     repoId,
     db,
     sensitiveFilePatterns: config.sensitiveFilePatterns,
+    excludePatterns: config.excludePatterns,
     onProgress: (msg) => insight.detail(msg),
   });
 
@@ -318,7 +333,8 @@ function printHelp() {
   console.error("  --dashboard-port Dashboard UI port (default: 3141)");
   console.error("  --verbosity      quiet | normal | verbose");
   console.error("  --no-dashboard   Disable the admin dashboard");
-  console.error("  --no-semantic    Disable semantic/hybrid search (enabled by default)");
+  console.error("  --semantic       Enable semantic/hybrid search");
+  console.error("  --no-semantic    Disable semantic/hybrid search");
   console.error("  --debug-logging  Enable raw payload capture");
   console.error("  --obsidian       Export as Obsidian markdown vault");
   console.error("  --vault          Obsidian vault path (default: repo root)");

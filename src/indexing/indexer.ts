@@ -17,8 +17,22 @@ export interface IndexOptions {
   repoId: number;
   db: BetterSQLite3Database<typeof schema>;
   sensitiveFilePatterns?: string[];
+  excludePatterns?: string[];
   onProgress?: (msg: string) => void;
   semanticReranker?: SemanticReranker | null;
+}
+
+/** Check if a file should be excluded from indexing (binary assets, lock files, etc.) */
+function isExcludedFile(filePath: string, patterns: string[] = []): boolean {
+  const fileName = filePath.split("/").pop() ?? "";
+  return patterns.some((pattern) => {
+    if (pattern.startsWith("*.")) {
+      // Extension match: "*.png" → endsWith ".png"
+      return fileName.endsWith(pattern.slice(1));
+    }
+    // Exact filename match: "package-lock.json"
+    return fileName === pattern;
+  });
 }
 
 export interface IndexResult {
@@ -158,7 +172,12 @@ async function indexSingleFile(
   commit: string,
   opts: IndexOptions,
 ): Promise<"indexed" | "skipped"> {
-  const { repoPath, repoId, db, sensitiveFilePatterns } = opts;
+  const { repoPath, repoId, db, sensitiveFilePatterns, excludePatterns } = opts;
+
+  // Skip excluded files (binary assets, lock files, etc.) — don't index at all
+  if (isExcludedFile(filePath, excludePatterns)) {
+    return "skipped";
+  }
 
   // Check if sensitive file — index path only, no content
   if (isSensitiveFile(filePath, sensitiveFilePatterns)) {
