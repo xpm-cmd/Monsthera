@@ -33,11 +33,13 @@ export class ZoektBackend implements SearchBackend {
     );
   }
 
-  async search(query: string, _repoId: number, limit = 20): Promise<SearchResult[]> {
+  async search(query: string, _repoId: number, limit = 20, scope?: string): Promise<SearchResult[]> {
     try {
+      // If scope provided, append Zoekt path filter to query
+      const effectiveQuery = scope ? `${query} f:^${scope}` : query;
       const { stdout } = await execFileAsync(
         "zoekt",
-        ["-index_dir", this.indexDir, "-json", `-num`, String(limit), query],
+        ["-index_dir", this.indexDir, "-json", `-num`, String(limit), effectiveQuery],
         { timeout: 10_000 },
       );
 

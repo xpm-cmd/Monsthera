@@ -76,9 +76,13 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     { toolName: z.string().describe("Tool name") },
     async ({ toolName }) => {
       const schemas: Record<string, object> = {
+        // ── read tools ──
+        status: {},
+        capabilities: {},
+        schema: { toolName: "string (required)" },
         get_code_pack: {
           query: "string (1-1000 chars, required)",
-          scope: "string (optional path scope)",
+          scope: "string (optional path prefix filter)",
           expand: "boolean (default false)",
         },
         get_change_pack: {
@@ -86,6 +90,86 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         get_issue_pack: {
           query: "string (1-1000 chars, required)",
+        },
+        // ── knowledge tools ──
+        store_knowledge: {
+          type: "enum: decision|gotcha|pattern|context|plan|solution|preference",
+          scope: "enum: repo|global (default repo)",
+          title: "string (1-200 chars)",
+          content: "string (1-10000 chars)",
+          tags: "string[] (optional)",
+          agentId: "string (optional)",
+          sessionId: "string (optional)",
+        },
+        search_knowledge: {
+          query: "string (1-1000 chars)",
+          scope: "enum: repo|global|all (default all)",
+          type: "enum (optional, same as store_knowledge.type)",
+          limit: "number 1-50 (default 10)",
+        },
+        query_knowledge: {
+          scope: "enum: repo|global|all (default all)",
+          type: "enum (optional)",
+          tags: "string[] (optional, AND logic)",
+          status: "enum: active|archived (default active)",
+          limit: "number 1-100 (default 20)",
+        },
+        archive_knowledge: { key: "string", scope: "enum: repo|global" },
+        delete_knowledge: { key: "string", scope: "enum: repo|global" },
+        // ── coordination tools ──
+        send_coordination: {
+          type: "enum: task_claim|task_release|patch_intent|conflict_alert|status_update|broadcast",
+          payload: "object (arbitrary key-value)",
+          to: "string|null (default null = broadcast)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        poll_coordination: {
+          agentId: "string (required)",
+          since: "string ISO timestamp (optional)",
+          limit: "number 1-100 (default 20)",
+        },
+        // ── agent tools ──
+        register_agent: {
+          name: "string (1-100 chars)",
+          type: "string (default unknown)",
+          desiredRole: "enum: developer|reviewer|observer|admin (default observer)",
+        },
+        agent_status: { agentId: "string (optional, omit for all)" },
+        broadcast: {
+          message: "string (1-500 chars)",
+          agentId: "string (optional)",
+        },
+        claim_files: {
+          sessionId: "string (required)",
+          paths: "string[] (1-50 paths, advisory lock)",
+        },
+        // ── index tools ──
+        request_reindex: { full: "boolean (default false)" },
+        // ── patch tools ──
+        propose_patch: {
+          diff: "string (unified diff, required)",
+          message: "string (1-1000 chars)",
+          baseCommit: "string (min 7 chars SHA)",
+          bundleId: "string (optional)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+          dryRun: "boolean (default false)",
+        },
+        list_patches: {
+          state: "enum: proposed|validated|applied|committed|stale|failed (optional)",
+        },
+        // ── note tools ──
+        propose_note: {
+          type: "enum: issue|decision|change_note|rationale",
+          content: "string (1-10000 chars)",
+          linkedPaths: "string[] (optional)",
+          metadata: "object (optional)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        list_notes: {
+          type: "enum: issue|decision|change_note|rationale (optional)",
         },
       };
 
@@ -114,7 +198,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       scope: z.string().optional().describe("Path scope filter"),
       expand: z.boolean().default(false).describe("Include code spans"),
     },
-    async ({ query, expand }) => {
+    async ({ query, scope, expand }) => {
       const c = await getContext();
       const head = await getHead({ cwd: c.repoPath });
       const indexedCommit = getIndexedCommit(c.db, c.repoId);
@@ -133,7 +217,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         };
       }
 
-      const searchResults = await c.searchRouter.search(query, c.repoId, 10);
+      const searchResults = await c.searchRouter.search(query, c.repoId, 10, scope);
       c.insight.debug(`get_code_pack: "${query}" → ${searchResults.length} hits`);
 
       const bundle = await buildEvidenceBundle({

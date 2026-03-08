@@ -57,18 +57,18 @@ export class SearchRouter {
     }
   }
 
-  async search(query: string, repoId: number, limit?: number): Promise<SearchResult[]> {
+  async search(query: string, repoId: number, limit?: number, scope?: string): Promise<SearchResult[]> {
     const backend = this.activeBackend ?? this.fts5;
     const effectiveLimit = limit ?? 10;
 
-    // FTS5/Zoekt keyword search
+    // FTS5/Zoekt keyword search (scope filtering handled at SQL level)
     let fts5Results: SearchResult[];
     try {
-      fts5Results = await backend.search(query, repoId, effectiveLimit);
+      fts5Results = await backend.search(query, repoId, effectiveLimit, scope);
     } catch {
       if (backend !== this.fts5) {
         this.opts.onFallback?.(`${backend.name} search failed, falling back to FTS5`);
-        fts5Results = await this.fts5.search(query, repoId, effectiveLimit);
+        fts5Results = await this.fts5.search(query, repoId, effectiveLimit, scope);
       } else {
         return [];
       }
@@ -77,7 +77,11 @@ export class SearchRouter {
     // Hybrid: run vector search in parallel and merge with FTS5 results
     if (this.semantic?.isAvailable()) {
       try {
-        const vectorResults = await this.semantic.vectorSearch(query, repoId, effectiveLimit);
+        let vectorResults = await this.semantic.vectorSearch(query, repoId, effectiveLimit);
+        // Apply scope filter to vector results (vectorSearch scans all embeddings)
+        if (scope) {
+          vectorResults = vectorResults.filter((r) => r.path.startsWith(scope));
+        }
         return mergeResults(fts5Results, vectorResults, effectiveLimit);
       } catch {
         this.opts.onFallback?.("Semantic vector search failed, using FTS5 results");

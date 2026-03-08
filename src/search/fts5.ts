@@ -67,23 +67,33 @@ export class FTS5Backend implements SearchBackend {
     batch();
   }
 
-  async search(query: string, repoId: number, limit = 20): Promise<SearchResult[]> {
+  async search(query: string, repoId: number, limit = 20, scope?: string): Promise<SearchResult[]> {
     const sanitized = sanitizeFts5Query(query);
     if (!sanitized) return [];
 
     try {
       // bm25() column weights: path=3.0, summary=1.0, symbols=2.0
       // UNINDEXED columns (file_id, repo_id, language) are skipped automatically
-      const stmt = this.sqlite.prepare(`
+      let sql = `
         SELECT file_id, path, bm25(${FTS_TABLE}, 3.0, 1.0, 2.0) AS rank
         FROM ${FTS_TABLE}
-        WHERE ${FTS_TABLE} MATCH ? AND repo_id = ?
+        WHERE ${FTS_TABLE} MATCH ? AND repo_id = ?`;
+      const params: unknown[] = [sanitized, repoId];
+
+      if (scope) {
+        sql += ` AND path LIKE ?`;
+        params.push(scope.replace(/%/g, "\\%") + "%");
+      }
+
+      sql += `
         ORDER BY rank
-        LIMIT ?
-      `);
+        LIMIT ?`;
+      params.push(limit * 2);
+
+      const stmt = this.sqlite.prepare(sql);
 
       // Fetch extra candidates to compensate for test file penalty
-      const rows = stmt.all(sanitized, repoId, limit * 2) as Array<{
+      const rows = stmt.all(...params) as Array<{
         file_id: number;
         path: string;
         rank: number;
@@ -103,11 +113,11 @@ export class FTS5Backend implements SearchBackend {
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
     } catch {
-      return this.fallbackSearch(query, repoId, limit);
+      return this.fallbackSearch(query, repoId, limit, scope);
     }
   }
 
-  private fallbackSearch(query: string, repoId: number, limit: number): SearchResult[] {
+  private fallbackSearch(query: string, repoId: number, limit: number, scope?: string): SearchResult[] {
     const files = this.db
       .select()
       .from(tables.files)
@@ -116,6 +126,7 @@ export class FTS5Backend implements SearchBackend {
 
     return files
       .filter((f) => {
+        if (scope && !f.path.startsWith(scope)) return false;
         const q = query.toLowerCase();
         return (
           f.path.toLowerCase().includes(q) ||

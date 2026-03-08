@@ -9,6 +9,6 @@ export type SearchBackendName = "fts5" | "zoekt" | "fts5+semantic" | "zoekt+sema
 
 export interface SearchBackend {
   readonly name: "fts5" | "zoekt";
-  search(query: string, repoId: number, limit?: number): Promise<SearchResult[]>;
+  search(query: string, repoId: number, limit?: number, scope?: string): Promise<SearchResult[]>;
   isAvailable(): Promise<boolean>;
 }
