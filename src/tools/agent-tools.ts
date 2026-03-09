@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
 import { registerAgent, getAgentStatus, disconnectSession, touchSession } from "../agents/registry.js";
 import * as queries from "../db/queries.js";
+import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -68,6 +69,16 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
       }
 
       const agents = queries.getAllAgents(c.db);
+
+      // Expire stale sessions (no activity within heartbeat timeout)
+      const now = Date.now();
+      const allActive = queries.getActiveSessions(c.db);
+      for (const s of allActive) {
+        const lastMs = new Date(s.lastActivity).getTime();
+        if (now - lastMs > HEARTBEAT_TIMEOUT_MS) {
+          disconnectSession(c.db, s.id);
+        }
+      }
       const activeSessions = queries.getActiveSessions(c.db);
 
       return {

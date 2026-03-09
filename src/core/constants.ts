@@ -7,6 +7,7 @@ export const DEFAULT_DB_NAME = "agora.db";
 export const STAGE_A_MAX_CANDIDATES = 10;
 export const STAGE_B_MAX_EXPANDED = 5;
 export const MAX_CODE_SPAN_LINES = 200;
+export const MIN_RELEVANCE_SCORE = 0.35; // Filter low-confidence results (nonsense guard)
 
 // Trust
 export const DEFAULT_TRUST_TIER = "B" as const;

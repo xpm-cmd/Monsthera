@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED } from "../core/constants.js";
+import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MIN_RELEVANCE_SCORE } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
@@ -217,8 +217,10 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         };
       }
 
-      const searchResults = await c.searchRouter.search(query, c.repoId, 10, scope);
-      c.insight.debug(`get_code_pack: "${query}" → ${searchResults.length} hits`);
+      const rawResults = await c.searchRouter.search(query, c.repoId, 10, scope);
+      // Nonsense guard: filter out low-confidence results (e.g., "pizza recipes" → all scores < 0.35)
+      const searchResults = rawResults.filter((r) => r.score >= MIN_RELEVANCE_SCORE);
+      c.insight.debug(`get_code_pack: "${query}" → ${rawResults.length} raw, ${searchResults.length} above threshold`);
 
       const bundle = await buildEvidenceBundle({
         query,
