@@ -233,6 +233,13 @@ export class FTS5Backend implements SearchBackend {
   }
 }
 
+// Common English stop words that inflate FTS5 results without adding relevance signal
+const STOP_WORDS = new Set([
+  "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
+  "of", "with", "by", "from", "is", "it", "as", "be", "was", "are",
+  "this", "that", "not", "no", "if", "so", "do", "my", "we", "up",
+]);
+
 function sanitizeFts5Query(query: string): string {
   // Split on whitespace AND colons/hyphens to tokenize key prefixes like "map:fe-hooks-stores"
   const terms = query
@@ -240,16 +247,19 @@ function sanitizeFts5Query(query: string): string {
     .filter(Boolean)
     .map((term) => {
       const clean = term.replace(/[*"(){}[\]^~]/g, "");
-      return clean && clean.length >= 2 ? `"${clean}"` : "";
+      if (!clean || clean.length < 2) return "";
+      if (STOP_WORDS.has(clean.toLowerCase())) return "";
+      return `"${clean}"`;
     })
     .filter(Boolean);
 
   if (terms.length === 0) return "";
 
-  // Short queries (1-3 terms): AND for precision — prevents false positives
-  // Longer queries (4+): OR — BM25 ranks multi-match documents higher,
-  // config/test penalties handle noise. AND with many terms is too restrictive.
-  if (terms.length <= 3) {
+  // 1-2 terms: AND for precision — single-concept queries need all tokens present
+  // 3+ terms: OR — BM25 ranks multi-match documents higher naturally.
+  // Previous threshold (<=3) was too restrictive for scoped searches:
+  // "campaign execution flow" with AND + scope often yields 0 results.
+  if (terms.length <= 2) {
     return terms.join(" AND ");
   }
   return terms.join(" OR ");

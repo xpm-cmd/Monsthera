@@ -236,8 +236,10 @@ export function mergeResults(
     vectorMap.set(r.path, r.score); // already [0,1] from vectorSearch
   }
 
-  // When scope is active and FTS5 found nothing, vector-only results are suspect:
-  // no keyword match in the scoped area = strong signal of tangential semantic match
+  // When scope is active and FTS5 found nothing, vector-only results may be tangential —
+  // but the penalty must be gentle: FTS5 emptiness can be due to AND semantics or sparse
+  // indexed content, not necessarily irrelevant files. A harsh penalty (e.g., 0.5x)
+  // compounds with alpha to yield 0.25x which drops valid results below threshold.
   const demoteVectorOnly = scopeActive && fts5Results.length === 0;
 
   // Union all paths
@@ -257,8 +259,9 @@ export function mergeResults(
       // FTS5 only — penalized (no semantic signal)
       score = normalizedFts5 * (1 - alpha);
     } else {
-      // Vector only — demote when scoped FTS5 found nothing
-      score = vectorScore! * alpha * (demoteVectorOnly ? 0.5 : 1.0);
+      // Vector only — gentle demote when scoped FTS5 found nothing (0.7x not 0.5x)
+      // With alpha=0.5: effective score = vec * 0.5 * 0.7 = vec * 0.35 — still above threshold
+      score = vectorScore! * alpha * (demoteVectorOnly ? 0.7 : 1.0);
     }
 
     merged.push({

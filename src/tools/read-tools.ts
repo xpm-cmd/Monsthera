@@ -192,7 +192,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
   // ─── get_code_pack ────────────────────────────────────────
   server.tool(
     "get_code_pack",
-    "Search for relevant code and return an Evidence Bundle. Auto-reindexes incrementally when stale.",
+    "Search for relevant code files and return an Evidence Bundle. Auto-reindexes incrementally when stale. For convention, architecture, or historical questions, use get_issue_pack instead.",
     {
       query: z.string().min(1).max(1000).describe("Search query"),
       scope: z.string().optional().describe("Path scope filter"),

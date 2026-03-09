@@ -269,8 +269,8 @@ describe("knowledge lifecycle integration", () => {
     expect(results.length).toBe(1);
     expect(results[0]!.title).toBe("Use HTTP transport");
 
-    // Old content not findable
-    const oldResults = fts5.searchKnowledge(sqlite, "stdio simpler CLI");
+    // Old content not findable (use terms only in old content, not in updated)
+    const oldResults = fts5.searchKnowledge(sqlite, "simpler usage");
     expect(oldResults.length).toBe(0);
   });
 });
