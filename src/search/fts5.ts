@@ -234,19 +234,25 @@ export class FTS5Backend implements SearchBackend {
 }
 
 function sanitizeFts5Query(query: string): string {
+  // Split on whitespace AND colons/hyphens to tokenize key prefixes like "map:fe-hooks-stores"
   const terms = query
-    .split(/\s+/)
+    .split(/[\s:]+/)
     .filter(Boolean)
     .map((term) => {
-      const clean = term.replace(/[*"(){}[\]^~:]/g, "");
-      return clean ? `"${clean}"` : "";
+      const clean = term.replace(/[*"(){}[\]^~]/g, "");
+      return clean && clean.length >= 2 ? `"${clean}"` : "";
     })
     .filter(Boolean);
 
   if (terms.length === 0) return "";
-  // AND semantics: all terms must appear (in any combination of path/summary/symbols)
-  // This prevents single common words like "node" from polluting results
-  return terms.join(" AND ");
+
+  // Short queries (1-3 terms): AND for precision — prevents false positives
+  // Longer queries (4+): OR — BM25 ranks multi-match documents higher,
+  // config/test penalties handle noise. AND with many terms is too restrictive.
+  if (terms.length <= 3) {
+    return terms.join(" AND ");
+  }
+  return terms.join(" OR ");
 }
 
 const TEST_PATH_PATTERN = /\/(tests?|__tests__|spec|__spec__)\//i;
