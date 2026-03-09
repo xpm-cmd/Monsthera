@@ -1,0 +1,784 @@
+{
+  "generatedAt": "2026-03-09T23:24:56.244968+00:00",
+  "repoRoot": ".",
+  "repoStatus": {
+    "head": "89346d8d5d5ff5212b501041a989c4b2af4612b1",
+    "dirty": true
+  },
+  "themes": [
+    {
+      "slug": "workflow-execution",
+      "title": "Workflow execution backend",
+      "withoutAgora": {
+        "totalWallMs": 28.283,
+        "tasks": [
+          {
+            "slug": "dispatch",
+            "title": "Node dispatch handlers",
+            "query": "which file dispatches workflow nodes and handles solver script study nodes",
+            "expectedPath": "backend/app/services/workflow_runner.py",
+            "wallMs": 10.931,
+            "topPaths": [
+              "backend/app/services/workflow_runner.py",
+              "backend/app/services/workflow_service.py",
+              "backend/app/models/schemas.py",
+              "backend/app/routers/workflows.py",
+              "backend/app/services/solver_runner.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "endpoints",
+            "title": "Workflow run endpoints",
+            "query": "where are workflow run pause resume stop endpoints",
+            "expectedPath": "backend/app/routers/workflows.py",
+            "wallMs": 8.749,
+            "topPaths": [
+              "backend/app/services/workflow_runner.py",
+              "backend/app/services/workflow_run_service.py",
+              "backend/app/routers/workflows.py",
+              "backend/app/routers/campaigns.py",
+              "backend/app/models/schemas.py"
+            ],
+            "success": true,
+            "matchRank": 3
+          },
+          {
+            "slug": "persistence",
+            "title": "Workflow run persistence",
+            "query": "where are workflow run statuses and node run records persisted",
+            "expectedPath": "backend/app/services/workflow_run_service.py",
+            "wallMs": 8.603,
+            "topPaths": [
+              "backend/app/services/workflow_run_service.py",
+              "backend/app/services/workflow_runner.py",
+              "backend/app/services/solver_runner.py",
+              "backend/app/routers/workflows.py",
+              "backend/app/services/workflow_data_context.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          }
+        ]
+      },
+      "agoraNoHub": {
+        "totalWallMs": 42.304,
+        "totalBackendMs": 3.0,
+        "tasks": [
+          {
+            "slug": "dispatch",
+            "title": "Node dispatch handlers",
+            "query": "which file dispatches workflow nodes and handles solver script study nodes",
+            "expectedPath": "backend/app/services/workflow_runner.py",
+            "source": "agora_scoped",
+            "wallMs": 17.35,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/services/workflow_runner.py",
+              "backend/app/routers/execution.py",
+              "backend/app/services/graph_validator.py",
+              "backend/app/services/solver_runner.py",
+              "backend/app/services/workflow_service.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "endpoints",
+            "title": "Workflow run endpoints",
+            "query": "where are workflow run pause resume stop endpoints",
+            "expectedPath": "backend/app/routers/workflows.py",
+            "source": "agora_scoped",
+            "wallMs": 12.105,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/routers/workflows.py",
+              "backend/app/services/workflow_runner.py",
+              "backend/app/workers/orchestrator.py",
+              "backend/app/routers/campaigns.py",
+              "backend/app/services/workflow_run_service.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "persistence",
+            "title": "Workflow run persistence",
+            "query": "where are workflow run statuses and node run records persisted",
+            "expectedPath": "backend/app/services/workflow_run_service.py",
+            "source": "agora_scoped",
+            "wallMs": 12.849,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/services/workflow_run_service.py",
+              "backend/app/routers/workflows.py",
+              "backend/app/services/workflow_runner.py",
+              "backend/app/services/workflow_data_context.py",
+              "backend/app/services/workflow_service.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          }
+        ]
+      },
+      "agoraHub": {
+        "seedQuery": "workflow runner dispatch node handlers pause resume",
+        "seedScope": "backend/app/",
+        "source": "agora_scoped",
+        "seedWallMs": 13.34,
+        "seedBackendMs": 1.0,
+        "sendWallMs": 1.082,
+        "totalPollWallMs": 0.709,
+        "topPaths": [
+          "backend/app/services/workflow_runner.py",
+          "backend/app/routers/workflows.py",
+          "backend/app/workers/orchestrator.py",
+          "backend/app/services/workflow_run_service.py",
+          "backend/app/routers/campaigns.py"
+        ],
+        "tasks": [
+          {
+            "slug": "dispatch",
+            "title": "Node dispatch handlers",
+            "query": "which file dispatches workflow nodes and handles solver script study nodes",
+            "expectedPath": "backend/app/services/workflow_runner.py",
+            "workerId": "agent-28fb391b",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.348,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/services/workflow_runner.py",
+              "backend/app/routers/workflows.py",
+              "backend/app/workers/orchestrator.py",
+              "backend/app/services/workflow_run_service.py",
+              "backend/app/routers/campaigns.py"
+            ]
+          },
+          {
+            "slug": "endpoints",
+            "title": "Workflow run endpoints",
+            "query": "where are workflow run pause resume stop endpoints",
+            "expectedPath": "backend/app/routers/workflows.py",
+            "workerId": "agent-a4df156c",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.197,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/services/workflow_runner.py",
+              "backend/app/routers/workflows.py",
+              "backend/app/workers/orchestrator.py",
+              "backend/app/services/workflow_run_service.py",
+              "backend/app/routers/campaigns.py"
+            ]
+          },
+          {
+            "slug": "persistence",
+            "title": "Workflow run persistence",
+            "query": "where are workflow run statuses and node run records persisted",
+            "expectedPath": "backend/app/services/workflow_run_service.py",
+            "workerId": "agent-eaab5d5d",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.164,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/services/workflow_runner.py",
+              "backend/app/routers/workflows.py",
+              "backend/app/workers/orchestrator.py",
+              "backend/app/services/workflow_run_service.py",
+              "backend/app/routers/campaigns.py"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slug": "project-portability",
+      "title": "Project portability",
+      "withoutAgora": {
+        "totalWallMs": 26.961,
+        "tasks": [
+          {
+            "slug": "import-service",
+            "title": "OMK import service",
+            "query": "where is omk import service implemented",
+            "expectedPath": "backend/app/services/import_project_service.py",
+            "wallMs": 8.52,
+            "topPaths": [
+              "backend/app/services/import_project_service.py",
+              "backend/app/services/demo_project_service.py",
+              "backend/app/services/real_options_policy_service.py",
+              "backend/app/services/template_service.py",
+              "backend/app/services/compare_service.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "archive-helpers",
+            "title": "OMK archive helpers",
+            "query": "where are save_omk and load_omk archive helpers",
+            "expectedPath": "backend/app/services/project_file.py",
+            "wallMs": 9.269,
+            "topPaths": [
+              "backend/app/routers/projects.py",
+              "backend/app/services/project_file.py",
+              "backend/app/services/report_generator.py",
+              "backend/app/services/import_project_service.py",
+              "backend/app/workers/orchestrator.py"
+            ],
+            "success": true,
+            "matchRank": 2
+          },
+          {
+            "slug": "router",
+            "title": "Project import/export router",
+            "query": "which router exposes project import export endpoints",
+            "expectedPath": "backend/app/routers/projects.py",
+            "wallMs": 9.171,
+            "topPaths": [
+              "backend/app/routers/projects.py",
+              "backend/app/services/import_project_service.py",
+              "backend/app/services/project_file.py",
+              "backend/app/services/demo_project_service.py",
+              "backend/app/services/project_service.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          }
+        ]
+      },
+      "agoraNoHub": {
+        "totalWallMs": 37.505,
+        "totalBackendMs": 3.0,
+        "tasks": [
+          {
+            "slug": "import-service",
+            "title": "OMK import service",
+            "query": "where is omk import service implemented",
+            "expectedPath": "backend/app/services/import_project_service.py",
+            "source": "agora_scoped",
+            "wallMs": 12.821,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/services/import_project_service.py",
+              "backend/app/services/project_file.py",
+              "backend/app/services/template_service.py",
+              "backend/app/services/output_mapping_service.py",
+              "backend/app/services/input_file_service.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "archive-helpers",
+            "title": "OMK archive helpers",
+            "query": "where are save_omk and load_omk archive helpers",
+            "expectedPath": "backend/app/services/project_file.py",
+            "source": "agora_scoped",
+            "wallMs": 12.157,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/services/project_file.py",
+              "backend/app/services/import_project_service.py",
+              "backend/app/services/execution_config_service.py",
+              "backend/app/services/checkpoint_service.py",
+              "backend/app/services/project_service.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "router",
+            "title": "Project import/export router",
+            "query": "which router exposes project import export endpoints",
+            "expectedPath": "backend/app/routers/projects.py",
+            "source": "agora_scoped",
+            "wallMs": 12.527,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/routers/projects.py",
+              "backend/app/services/import_project_service.py",
+              "backend/app/routers/validation.py",
+              "backend/app/routers/macro_scenarios.py",
+              "backend/app/routers/reports.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          }
+        ]
+      },
+      "agoraHub": {
+        "seedQuery": "project portability omk import export package migration",
+        "seedScope": "backend/app/",
+        "source": "agora_scoped",
+        "seedWallMs": 12.317,
+        "seedBackendMs": 1.0,
+        "sendWallMs": 0.502,
+        "totalPollWallMs": 0.407,
+        "topPaths": [
+          "backend/app/services/import_project_service.py",
+          "backend/app/routers/projects.py",
+          "backend/app/services/project_file.py",
+          "backend/app/services/project_service.py",
+          "backend/app/services/demo_project_service.py"
+        ],
+        "tasks": [
+          {
+            "slug": "import-service",
+            "title": "OMK import service",
+            "query": "where is omk import service implemented",
+            "expectedPath": "backend/app/services/import_project_service.py",
+            "workerId": "agent-28fb391b",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.178,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/services/import_project_service.py",
+              "backend/app/routers/projects.py",
+              "backend/app/services/project_file.py",
+              "backend/app/services/project_service.py",
+              "backend/app/services/demo_project_service.py"
+            ]
+          },
+          {
+            "slug": "archive-helpers",
+            "title": "OMK archive helpers",
+            "query": "where are save_omk and load_omk archive helpers",
+            "expectedPath": "backend/app/services/project_file.py",
+            "workerId": "agent-a4df156c",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.125,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/services/import_project_service.py",
+              "backend/app/routers/projects.py",
+              "backend/app/services/project_file.py",
+              "backend/app/services/project_service.py",
+              "backend/app/services/demo_project_service.py"
+            ]
+          },
+          {
+            "slug": "router",
+            "title": "Project import/export router",
+            "query": "which router exposes project import export endpoints",
+            "expectedPath": "backend/app/routers/projects.py",
+            "workerId": "agent-eaab5d5d",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.104,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/services/import_project_service.py",
+              "backend/app/routers/projects.py",
+              "backend/app/services/project_file.py",
+              "backend/app/services/project_service.py",
+              "backend/app/services/demo_project_service.py"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slug": "campaign-lifecycle",
+      "title": "Campaign lifecycle",
+      "withoutAgora": {
+        "totalWallMs": 27.841,
+        "tasks": [
+          {
+            "slug": "router",
+            "title": "Campaign router",
+            "query": "which router exposes rerun failed scenarios and duplicate campaign config",
+            "expectedPath": "backend/app/routers/campaigns.py",
+            "wallMs": 9.896,
+            "topPaths": [
+              "backend/app/routers/campaigns.py",
+              "backend/app/services/campaign_service.py",
+              "backend/app/routers/macro_scenarios.py",
+              "backend/app/routers/stress.py",
+              "backend/app/routers/srdi.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "service",
+            "title": "Campaign progress service",
+            "query": "where are campaign progress counters and failed scenario inputs persisted",
+            "expectedPath": "backend/app/services/campaign_service.py",
+            "wallMs": 9.229,
+            "topPaths": [
+              "backend/app/routers/campaigns.py",
+              "backend/app/services/campaign_service.py",
+              "backend/app/models/schemas.py",
+              "backend/app/services/optimization_engine.py",
+              "backend/app/routers/macro_scenarios.py"
+            ],
+            "success": true,
+            "matchRank": 2
+          },
+          {
+            "slug": "ws",
+            "title": "Campaign websocket manager",
+            "query": "where is websocket broadcast manager used for campaign updates",
+            "expectedPath": "backend/app/workers/ws_manager.py",
+            "wallMs": 8.716,
+            "topPaths": [
+              "backend/app/routers/campaigns.py",
+              "backend/app/workers/ws_manager.py",
+              "backend/app/workers/work_dir_manager.py",
+              "backend/app/routers/workflows.py",
+              "backend/app/workers/orchestrator.py"
+            ],
+            "success": true,
+            "matchRank": 2
+          }
+        ]
+      },
+      "agoraNoHub": {
+        "totalWallMs": 37.838,
+        "totalBackendMs": 3.0,
+        "tasks": [
+          {
+            "slug": "router",
+            "title": "Campaign router",
+            "query": "which router exposes rerun failed scenarios and duplicate campaign config",
+            "expectedPath": "backend/app/routers/campaigns.py",
+            "source": "agora_scoped",
+            "wallMs": 13.632,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/routers/campaigns.py",
+              "backend/app/routers/macro_scenarios.py",
+              "backend/app/services/campaign_service.py",
+              "backend/app/routers/inverse_stress.py",
+              "backend/app/routers/models.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "service",
+            "title": "Campaign progress service",
+            "query": "where are campaign progress counters and failed scenario inputs persisted",
+            "expectedPath": "backend/app/services/campaign_service.py",
+            "source": "agora_scoped",
+            "wallMs": 11.815,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/services/campaign_service.py",
+              "backend/app/routers/campaigns.py",
+              "backend/app/workers/work_dir_manager.py",
+              "backend/app/routers/macro_scenarios.py",
+              "backend/app/services/scenario_analysis.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "ws",
+            "title": "Campaign websocket manager",
+            "query": "where is websocket broadcast manager used for campaign updates",
+            "expectedPath": "backend/app/workers/ws_manager.py",
+            "source": "agora_scoped",
+            "wallMs": 12.391,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/workers/ws_manager.py",
+              "backend/app/workers/work_dir_manager.py",
+              "backend/app/routers/campaigns.py",
+              "backend/app/services/campaign_service.py",
+              "backend/app/services/analytics_data.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          }
+        ]
+      },
+      "agoraHub": {
+        "seedQuery": "campaign websocket duplicate rerun failed scenarios progress",
+        "seedScope": "backend/app/",
+        "source": "agora_scoped",
+        "seedWallMs": 11.734,
+        "seedBackendMs": 1.0,
+        "sendWallMs": 0.458,
+        "totalPollWallMs": 0.481,
+        "topPaths": [
+          "backend/app/routers/campaigns.py",
+          "backend/app/services/campaign_service.py",
+          "backend/app/workers/work_dir_manager.py",
+          "backend/app/services/analytics_data.py",
+          "backend/app/workers/ws_manager.py"
+        ],
+        "tasks": [
+          {
+            "slug": "router",
+            "title": "Campaign router",
+            "query": "which router exposes rerun failed scenarios and duplicate campaign config",
+            "expectedPath": "backend/app/routers/campaigns.py",
+            "workerId": "agent-28fb391b",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.165,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/routers/campaigns.py",
+              "backend/app/services/campaign_service.py",
+              "backend/app/workers/work_dir_manager.py",
+              "backend/app/services/analytics_data.py",
+              "backend/app/workers/ws_manager.py"
+            ]
+          },
+          {
+            "slug": "service",
+            "title": "Campaign progress service",
+            "query": "where are campaign progress counters and failed scenario inputs persisted",
+            "expectedPath": "backend/app/services/campaign_service.py",
+            "workerId": "agent-a4df156c",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.14,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/routers/campaigns.py",
+              "backend/app/services/campaign_service.py",
+              "backend/app/workers/work_dir_manager.py",
+              "backend/app/services/analytics_data.py",
+              "backend/app/workers/ws_manager.py"
+            ]
+          },
+          {
+            "slug": "ws",
+            "title": "Campaign websocket manager",
+            "query": "where is websocket broadcast manager used for campaign updates",
+            "expectedPath": "backend/app/workers/ws_manager.py",
+            "workerId": "agent-eaab5d5d",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.176,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/routers/campaigns.py",
+              "backend/app/services/campaign_service.py",
+              "backend/app/workers/work_dir_manager.py",
+              "backend/app/services/analytics_data.py",
+              "backend/app/workers/ws_manager.py"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slug": "stress-reporting",
+      "title": "Stress reporting",
+      "withoutAgora": {
+        "totalWallMs": 25.648,
+        "tasks": [
+          {
+            "slug": "compile",
+            "title": "Stress report compiler",
+            "query": "where is compile_stress_report implemented",
+            "expectedPath": "backend/app/services/stress_report.py",
+            "wallMs": 8.553,
+            "topPaths": [
+              "backend/app/services/stress_report.py",
+              "backend/app/routers/stress.py",
+              "backend/app/services/report_generator.py",
+              "backend/app/services/inverse_stress.py",
+              "backend/app/routers/inverse_stress.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "analysis",
+            "title": "Stress summary analysis",
+            "query": "where are stress severity summaries and failure boundary points computed",
+            "expectedPath": "backend/app/services/stress_analysis.py",
+            "wallMs": 8.242,
+            "topPaths": [
+              "backend/app/routers/stress.py",
+              "backend/app/services/stress_analysis.py",
+              "backend/app/services/stress_report.py",
+              "backend/app/models/schemas.py",
+              "backend/app/routers/inverse_stress.py"
+            ],
+            "success": true,
+            "matchRank": 2
+          },
+          {
+            "slug": "router",
+            "title": "Stress analytics router",
+            "query": "which router exposes get_stress_report and get_failure_boundary endpoints",
+            "expectedPath": "backend/app/routers/stress.py",
+            "wallMs": 8.853,
+            "topPaths": [
+              "backend/app/routers/stress.py",
+              "backend/app/services/stress_report.py",
+              "backend/app/routers/inverse_stress.py",
+              "backend/app/routers/reports.py",
+              "backend/app/services/stress_analysis.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          }
+        ]
+      },
+      "agoraNoHub": {
+        "totalWallMs": 35.533,
+        "totalBackendMs": 3.0,
+        "tasks": [
+          {
+            "slug": "compile",
+            "title": "Stress report compiler",
+            "query": "where is compile_stress_report implemented",
+            "expectedPath": "backend/app/services/stress_report.py",
+            "source": "agora_scoped",
+            "wallMs": 12.424,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/services/stress_report.py",
+              "backend/app/services/stress_analysis.py",
+              "backend/app/services/stress_generator.py",
+              "backend/app/routers/stress.py",
+              "backend/app/services/report_generator.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "analysis",
+            "title": "Stress summary analysis",
+            "query": "where are stress severity summaries and failure boundary points computed",
+            "expectedPath": "backend/app/services/stress_analysis.py",
+            "source": "agora_scoped",
+            "wallMs": 11.948,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/services/stress_analysis.py",
+              "backend/app/routers/stress.py",
+              "backend/app/services/stress_report.py",
+              "backend/app/services/inverse_stress.py",
+              "backend/app/services/stress_generator.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          },
+          {
+            "slug": "router",
+            "title": "Stress analytics router",
+            "query": "which router exposes get_stress_report and get_failure_boundary endpoints",
+            "expectedPath": "backend/app/routers/stress.py",
+            "source": "agora_scoped",
+            "wallMs": 11.162,
+            "backendMs": 1.0,
+            "topPaths": [
+              "backend/app/routers/stress.py",
+              "backend/app/routers/inverse_stress.py",
+              "backend/app/routers/validation.py",
+              "backend/app/routers/macro_scenarios.py",
+              "backend/app/routers/parameters.py"
+            ],
+            "success": true,
+            "matchRank": 1
+          }
+        ]
+      },
+      "agoraHub": {
+        "seedQuery": "stress report compile failure modes summary warnings",
+        "seedScope": "backend/app/",
+        "source": "agora_scoped",
+        "seedWallMs": 10.629,
+        "seedBackendMs": 1.0,
+        "sendWallMs": 0.408,
+        "totalPollWallMs": 0.432,
+        "topPaths": [
+          "backend/app/services/stress_report.py",
+          "backend/app/services/stress_analysis.py",
+          "backend/app/routers/stress.py",
+          "backend/app/services/inverse_stress.py",
+          "backend/app/services/report_generator.py"
+        ],
+        "tasks": [
+          {
+            "slug": "compile",
+            "title": "Stress report compiler",
+            "query": "where is compile_stress_report implemented",
+            "expectedPath": "backend/app/services/stress_report.py",
+            "workerId": "agent-28fb391b",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.148,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/services/stress_report.py",
+              "backend/app/services/stress_analysis.py",
+              "backend/app/routers/stress.py",
+              "backend/app/services/inverse_stress.py",
+              "backend/app/services/report_generator.py"
+            ]
+          },
+          {
+            "slug": "analysis",
+            "title": "Stress summary analysis",
+            "query": "where are stress severity summaries and failure boundary points computed",
+            "expectedPath": "backend/app/services/stress_analysis.py",
+            "workerId": "agent-a4df156c",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.113,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/services/stress_report.py",
+              "backend/app/services/stress_analysis.py",
+              "backend/app/routers/stress.py",
+              "backend/app/services/inverse_stress.py",
+              "backend/app/services/report_generator.py"
+            ]
+          },
+          {
+            "slug": "router",
+            "title": "Stress analytics router",
+            "query": "which router exposes get_stress_report and get_failure_boundary endpoints",
+            "expectedPath": "backend/app/routers/stress.py",
+            "workerId": "agent-eaab5d5d",
+            "coordinationAttempts": 1,
+            "pollWallMs": 0.171,
+            "success": true,
+            "receivedPaths": [
+              "backend/app/services/stress_report.py",
+              "backend/app/services/stress_analysis.py",
+              "backend/app/routers/stress.py",
+              "backend/app/services/inverse_stress.py",
+              "backend/app/services/report_generator.py"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "aggregate": {
+    "taskCount": 12,
+    "themeCount": 4,
+    "laneTotalsMs": {
+      "withoutAgora": 108.733,
+      "agoraNoHub": 153.18,
+      "agoraHub": 52.499,
+      "agoraHubCodeSearchOnly": 48.02
+    },
+    "laneSuccesses": {
+      "withoutAgora": 12,
+      "agoraNoHub": 12,
+      "agoraHub": 12
+    },
+    "codeSearchCalls": {
+      "withoutAgora": 12,
+      "agoraNoHub": 12,
+      "agoraHub": 4
+    },
+    "coordinationCalls": {
+      "withoutAgora": 0,
+      "agoraNoHub": 0,
+      "agoraHub": 16
+    },
+    "derived": {
+      "hubVsNoHubCodeSearchReduction": 66.7,
+      "hubVsWithoutAgoraTimeRatio": 0.483,
+      "hubVsAgoraNoHubTimeRatio": 0.343
+    }
+  }
+}

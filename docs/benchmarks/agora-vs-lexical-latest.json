@@ -1,0 +1,1092 @@
+{
+  "generatedAt": "2026-03-09T23:24:50.860315+00:00",
+  "repoRoot": ".",
+  "repoStatus": {
+    "head": "89346d8d5d5ff5212b501041a989c4b2af4612b1",
+    "dirty": true
+  },
+  "iterations": 7,
+  "topK": 5,
+  "transportsUsed": [
+    "agora_stdio",
+    "agora_http"
+  ],
+  "profiles": {
+    "lexical": {
+      "scenarioCount": 7,
+      "agora_stdio": {
+        "wallMs": 12.977,
+        "top1": 7,
+        "top5": 7,
+        "count": 7,
+        "backendMs": 0.959
+      },
+      "agora_http": {
+        "wallMs": 14.19,
+        "top1": 7,
+        "top5": 7,
+        "count": 7,
+        "backendMs": 1.02
+      },
+      "lexical": {
+        "wallMs": 9.738,
+        "top1": 7,
+        "top5": 7,
+        "count": 7
+      }
+    },
+    "semantic": {
+      "scenarioCount": 5,
+      "agora_stdio": {
+        "wallMs": 12.753,
+        "top1": 3,
+        "top5": 5,
+        "count": 5,
+        "backendMs": 0.829
+      },
+      "agora_http": {
+        "wallMs": 12.794,
+        "top1": 3,
+        "top5": 5,
+        "count": 5,
+        "backendMs": 0.857
+      },
+      "lexical": {
+        "wallMs": 8.246,
+        "top1": 0,
+        "top5": 1,
+        "count": 5
+      }
+    }
+  },
+  "overall": {
+    "scenarioCount": 12,
+    "agora_stdio": {
+      "wallMs": 12.883,
+      "top1": 10,
+      "top5": 12,
+      "count": 12,
+      "backendMs": 0.905
+    },
+    "agora_http": {
+      "wallMs": 13.608,
+      "top1": 10,
+      "top5": 12,
+      "count": 12,
+      "backendMs": 0.952
+    },
+    "lexical": {
+      "wallMs": 9.116,
+      "top1": 7,
+      "top5": 8,
+      "count": 12
+    }
+  },
+  "scenarios": [
+    {
+      "slug": "workflow-runner",
+      "title": "Workflow runner dispatch",
+      "query": "workflow runner dispatch node handlers pause resume",
+      "scope": "backend/app/",
+      "notes": "Backend execution engine lookup with multiple handler methods.",
+      "profile": "lexical",
+      "expectedPaths": [
+        "backend/app/services/workflow_runner.py"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 11.831,
+          "p50": 12.425,
+          "mean": 12.584,
+          "p95": 13.471,
+          "max": 13.471
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.0,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/workflow_runner.py",
+          "backend/app/routers/workflows.py",
+          "backend/app/workers/orchestrator.py",
+          "backend/app/services/workflow_run_service.py",
+          "backend/app/routers/campaigns.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.7,
+          "p50": 13.687,
+          "mean": 13.719,
+          "p95": 15.749,
+          "max": 15.749
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 1.0,
+          "mean": 1.0,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "topPaths": [
+          "backend/app/services/workflow_runner.py",
+          "backend/app/routers/workflows.py",
+          "backend/app/workers/orchestrator.py",
+          "backend/app/services/workflow_run_service.py",
+          "backend/app/routers/campaigns.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 8.072,
+          "p50": 9.231,
+          "mean": 9.051,
+          "p95": 9.703,
+          "max": 9.703
+        },
+        "topPaths": [
+          "backend/app/services/workflow_runner.py",
+          "backend/app/routers/workflows.py",
+          "backend/app/services/workflow_data_context.py",
+          "backend/app/services/workflow_run_service.py",
+          "backend/app/services/workflow_service.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      }
+    },
+    {
+      "slug": "project-portability",
+      "title": "Project portability and OMK import/export",
+      "query": "project portability omk import export package migration",
+      "scope": "backend/app/",
+      "notes": "Import/export and packaging flow for portable project files.",
+      "profile": "lexical",
+      "expectedPaths": [
+        "backend/app/services/import_project_service.py",
+        "backend/app/services/project_file.py"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 11.214,
+          "p50": 11.827,
+          "mean": 12.115,
+          "p95": 13.851,
+          "max": 13.851
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 1.0,
+          "mean": 0.714,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/import_project_service.py",
+          "backend/app/routers/projects.py",
+          "backend/app/services/project_file.py",
+          "backend/app/services/project_service.py",
+          "backend/app/services/demo_project_service.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.449,
+          "p50": 13.596,
+          "mean": 13.781,
+          "p95": 15.617,
+          "max": 15.617
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 1.0,
+          "mean": 1.0,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "topPaths": [
+          "backend/app/services/import_project_service.py",
+          "backend/app/routers/projects.py",
+          "backend/app/services/project_file.py",
+          "backend/app/services/project_service.py",
+          "backend/app/services/demo_project_service.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 8.184,
+          "p50": 8.7,
+          "mean": 8.913,
+          "p95": 9.828,
+          "max": 9.828
+        },
+        "topPaths": [
+          "backend/app/services/import_project_service.py",
+          "backend/app/services/project_file.py",
+          "backend/app/routers/projects.py",
+          "backend/app/services/demo_project_service.py",
+          "backend/app/services/project_service.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      }
+    },
+    {
+      "slug": "ranking-service",
+      "title": "Ranking and feasibility",
+      "query": "ranking topsis vikor feasible scenarios analytics",
+      "scope": "backend/app/",
+      "notes": "Multi-criteria decision logic for TOPSIS/VIKOR ranking.",
+      "profile": "lexical",
+      "expectedPaths": [
+        "backend/app/services/ranking.py"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.378,
+          "p50": 13.478,
+          "mean": 13.996,
+          "p95": 17.031,
+          "max": 17.031
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 1.0,
+          "mean": 0.571,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/ranking.py",
+          "backend/app/services/filter_service.py",
+          "backend/app/services/real_options.py",
+          "backend/app/services/scenario_sampler.py",
+          "backend/app/services/voi.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 13.518,
+          "p50": 15.016,
+          "mean": 15.998,
+          "p95": 20.507,
+          "max": 20.507
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 1.0,
+          "mean": 0.714,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/ranking.py",
+          "backend/app/services/filter_service.py",
+          "backend/app/services/real_options.py",
+          "backend/app/services/scenario_sampler.py",
+          "backend/app/services/voi.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 7.98,
+          "p50": 8.512,
+          "mean": 8.726,
+          "p95": 9.618,
+          "max": 9.618
+        },
+        "topPaths": [
+          "backend/app/services/ranking.py",
+          "backend/app/routers/analytics.py",
+          "backend/app/models/schemas.py",
+          "backend/app/routers/macro_scenarios.py",
+          "backend/app/services/analytics_data.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      }
+    },
+    {
+      "slug": "campaign-router",
+      "title": "Campaign lifecycle websocket and reruns",
+      "query": "campaign websocket duplicate rerun failed scenarios progress",
+      "scope": "backend/app/",
+      "notes": "Router layer for campaign status, reruns, duplication, and websocket updates.",
+      "profile": "lexical",
+      "expectedPaths": [
+        "backend/app/routers/campaigns.py"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.637,
+          "p50": 12.865,
+          "mean": 13.348,
+          "p95": 15.257,
+          "max": 15.257
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.143,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "topPaths": [
+          "backend/app/routers/campaigns.py",
+          "backend/app/services/campaign_service.py",
+          "backend/app/workers/work_dir_manager.py",
+          "backend/app/services/analytics_data.py",
+          "backend/app/workers/ws_manager.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.21,
+          "p50": 13.412,
+          "mean": 13.575,
+          "p95": 14.905,
+          "max": 14.905
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 1.0,
+          "mean": 0.857,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "topPaths": [
+          "backend/app/routers/campaigns.py",
+          "backend/app/services/campaign_service.py",
+          "backend/app/workers/work_dir_manager.py",
+          "backend/app/services/analytics_data.py",
+          "backend/app/workers/ws_manager.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 8.749,
+          "p50": 8.895,
+          "mean": 9.141,
+          "p95": 10.841,
+          "max": 10.841
+        },
+        "topPaths": [
+          "backend/app/routers/campaigns.py",
+          "backend/app/services/campaign_service.py",
+          "backend/app/routers/macro_scenarios.py",
+          "backend/app/workers/orchestrator.py",
+          "backend/app/models/schemas.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      }
+    },
+    {
+      "slug": "stress-report",
+      "title": "Stress report compilation",
+      "query": "stress report compile failure modes summary warnings",
+      "scope": "backend/app/",
+      "notes": "Stress reporting logic rather than generic stress analytics.",
+      "profile": "lexical",
+      "expectedPaths": [
+        "backend/app/services/stress_report.py"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 10.919,
+          "p50": 11.653,
+          "mean": 12.07,
+          "p95": 13.958,
+          "max": 13.958
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 1.0,
+          "mean": 0.857,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/stress_report.py",
+          "backend/app/services/stress_analysis.py",
+          "backend/app/routers/stress.py",
+          "backend/app/services/inverse_stress.py",
+          "backend/app/services/report_generator.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.25,
+          "p50": 13.119,
+          "mean": 13.39,
+          "p95": 16.084,
+          "max": 16.084
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.143,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "topPaths": [
+          "backend/app/services/stress_report.py",
+          "backend/app/services/stress_analysis.py",
+          "backend/app/routers/stress.py",
+          "backend/app/services/inverse_stress.py",
+          "backend/app/services/report_generator.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 7.997,
+          "p50": 8.36,
+          "mean": 8.812,
+          "p95": 9.719,
+          "max": 9.719
+        },
+        "topPaths": [
+          "backend/app/services/stress_report.py",
+          "backend/app/routers/stress.py",
+          "backend/app/services/stress_analysis.py",
+          "backend/app/services/inverse_stress.py",
+          "backend/app/models/schemas.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      }
+    },
+    {
+      "slug": "workflow-canvas",
+      "title": "Workflow canvas UI",
+      "query": "workflow canvas reactflow drag drop edges node palette",
+      "scope": "frontend/src/renderer/src/",
+      "notes": "Renderer-side graph editor and interaction surface.",
+      "profile": "lexical",
+      "expectedPaths": [
+        "frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.327,
+          "p50": 12.879,
+          "mean": 13.627,
+          "p95": 15.167,
+          "max": 15.167
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.143,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "topPaths": [
+          "frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx",
+          "frontend/src/renderer/src/components/workflow/nodeConstants.ts",
+          "frontend/src/renderer/src/components/workflow/NodePalette.tsx",
+          "frontend/src/renderer/src/components/workflow/CanvasContextMenu.tsx",
+          "frontend/src/renderer/src/components/workflow/nodes/StudyFrameNode.tsx"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.756,
+          "p50": 13.266,
+          "mean": 13.681,
+          "p95": 15.388,
+          "max": 15.388
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.429,
+          "p95": 3.0,
+          "max": 3.0
+        },
+        "topPaths": [
+          "frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx",
+          "frontend/src/renderer/src/components/workflow/nodeConstants.ts",
+          "frontend/src/renderer/src/components/workflow/NodePalette.tsx",
+          "frontend/src/renderer/src/components/workflow/CanvasContextMenu.tsx",
+          "frontend/src/renderer/src/components/workflow/nodes/StudyFrameNode.tsx"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 10.686,
+          "p50": 11.661,
+          "mean": 11.892,
+          "p95": 13.158,
+          "max": 13.158
+        },
+        "topPaths": [
+          "frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx",
+          "frontend/src/renderer/src/components/workflow/NodePalette.tsx",
+          "frontend/src/renderer/src/components/workflow/WorkflowPanel.tsx",
+          "frontend/src/renderer/src/components/workflow/CanvasContextMenu.tsx",
+          "frontend/src/renderer/src/components/analytics/WorkflowCanvas.tsx"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      }
+    },
+    {
+      "slug": "campaign-manager-ui",
+      "title": "Campaign manager UI",
+      "query": "campaign manager compare rerun duplicate tags load analytics",
+      "scope": "frontend/src/renderer/src/",
+      "notes": "Analytics-side campaign control surface in the renderer.",
+      "profile": "lexical",
+      "expectedPaths": [
+        "frontend/src/renderer/src/components/analytics/CampaignManager.tsx"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.161,
+          "p50": 12.797,
+          "mean": 13.098,
+          "p95": 14.322,
+          "max": 14.322
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.286,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "topPaths": [
+          "frontend/src/renderer/src/components/analytics/CampaignManager.tsx",
+          "frontend/src/renderer/src/components/analytics/CampaignComparison.tsx",
+          "frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx",
+          "frontend/src/renderer/src/components/analytics/inverse-stress/InverseStressSection.tsx",
+          "frontend/src/renderer/src/lib/campaignQueries.ts"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 13.161,
+          "p50": 15.104,
+          "mean": 15.186,
+          "p95": 20.166,
+          "max": 20.166
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.0,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "frontend/src/renderer/src/components/analytics/CampaignManager.tsx",
+          "frontend/src/renderer/src/components/analytics/CampaignComparison.tsx",
+          "frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx",
+          "frontend/src/renderer/src/components/analytics/inverse-stress/InverseStressSection.tsx",
+          "frontend/src/renderer/src/lib/campaignQueries.ts"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 10.152,
+          "p50": 11.617,
+          "mean": 11.629,
+          "p95": 14.041,
+          "max": 14.041
+        },
+        "topPaths": [
+          "frontend/src/renderer/src/components/analytics/CampaignManager.tsx",
+          "frontend/src/renderer/src/components/analytics/CampaignComparison.tsx",
+          "frontend/src/renderer/src/components/analytics/CampaignSelector.tsx",
+          "frontend/src/renderer/src/lib/analyticsQueries.ts",
+          "frontend/src/renderer/src/components/analytics/AnalyticsPanel.tsx"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      }
+    },
+    {
+      "slug": "snapshot-resumption",
+      "title": "Snapshot for resumption",
+      "query": "snapshot halfway computation to allow resumption",
+      "scope": "backend/app/",
+      "notes": "Semantic: 'snapshot'~'checkpoint', 'resumption'~'resume'. No term overlap.",
+      "profile": "semantic",
+      "expectedPaths": [
+        "backend/app/services/checkpoint_service.py"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 11.891,
+          "p50": 12.873,
+          "mean": 14.116,
+          "p95": 20.54,
+          "max": 20.54
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.0,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/checkpoint_service.py",
+          "backend/app/services/pareto.py",
+          "backend/app/services/workflow_runner.py",
+          "backend/app/services/voi.py",
+          "backend/app/services/srdi.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.455,
+          "p50": 13.338,
+          "mean": 14.081,
+          "p95": 18.855,
+          "max": 18.855
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.0,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/checkpoint_service.py",
+          "backend/app/services/pareto.py",
+          "backend/app/services/workflow_runner.py",
+          "backend/app/services/voi.py",
+          "backend/app/services/srdi.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 7.219,
+          "p50": 7.579,
+          "mean": 7.649,
+          "p95": 8.59,
+          "max": 8.59
+        },
+        "topPaths": [
+          "backend/app/routers/campaigns.py",
+          "backend/app/services/workflow_runner.py",
+          "backend/app/services/demo_project_service.py",
+          "backend/app/services/voi.py",
+          "backend/app/main.py"
+        ],
+        "top1Correct": false,
+        "top5Correct": false,
+        "matchRank": null
+      }
+    },
+    {
+      "slug": "skyline-compromise",
+      "title": "Skyline compromise outcomes",
+      "query": "skyline query for best compromise outcomes",
+      "scope": "backend/app/",
+      "notes": "Semantic: 'skyline'~'pareto front', 'compromise'~'trade-off'. Zero rg match.",
+      "profile": "semantic",
+      "expectedPaths": [
+        "backend/app/services/pareto.py"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 10.333,
+          "p50": 10.635,
+          "mean": 11.902,
+          "p95": 16.714,
+          "max": 16.714
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 0.0,
+          "mean": 0.286,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/pareto.py",
+          "backend/app/services/compare_service.py",
+          "backend/app/services/filter_service.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 10.888,
+          "p50": 11.346,
+          "mean": 11.561,
+          "p95": 12.719,
+          "max": 12.719
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 0.0,
+          "mean": 0.143,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/pareto.py",
+          "backend/app/services/compare_service.py",
+          "backend/app/services/filter_service.py"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 6.982,
+          "p50": 7.217,
+          "mean": 7.687,
+          "p95": 8.535,
+          "max": 8.535
+        },
+        "topPaths": [
+          "backend/app/services/ranking.py",
+          "backend/app/routers/campaigns.py",
+          "backend/app/services/optimization_engine.py",
+          "backend/app/services/stress_report.py",
+          "backend/app/services/db_helper.py"
+        ],
+        "top1Correct": false,
+        "top5Correct": false,
+        "matchRank": null
+      }
+    },
+    {
+      "slug": "variable-matrix-viz",
+      "title": "Variable relationship matrix",
+      "query": "matrix visualization of variable relationships",
+      "scope": "frontend/src/renderer/src/",
+      "notes": "Semantic: 'matrix'~'heatmap', 'relationships'~'correlation'. rg rank ~8.",
+      "profile": "semantic",
+      "expectedPaths": [
+        "frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 11.72,
+          "p50": 12.479,
+          "mean": 12.5,
+          "p95": 14.025,
+          "max": 14.025
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.143,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "topPaths": [
+          "frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx",
+          "frontend/src/renderer/src/components/analytics/voi/InvestmentMatrix.tsx",
+          "frontend/src/renderer/src/components/analytics/srdi/ScenarioOverlay.tsx",
+          "frontend/src/renderer/src/components/analytics/srdi/TailRiskPanel.tsx",
+          "frontend/src/renderer/src/components/analytics/srdi/ScenarioWaterfall.tsx"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 12.07,
+          "p50": 12.801,
+          "mean": 12.872,
+          "p95": 14.488,
+          "max": 14.488
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.143,
+          "p95": 2.0,
+          "max": 2.0
+        },
+        "topPaths": [
+          "frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx",
+          "frontend/src/renderer/src/components/analytics/voi/InvestmentMatrix.tsx",
+          "frontend/src/renderer/src/components/analytics/srdi/ScenarioOverlay.tsx",
+          "frontend/src/renderer/src/components/analytics/srdi/TailRiskPanel.tsx",
+          "frontend/src/renderer/src/components/analytics/srdi/ScenarioWaterfall.tsx"
+        ],
+        "top1Correct": true,
+        "top5Correct": true,
+        "matchRank": 1
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 8.665,
+          "p50": 8.989,
+          "mean": 9.442,
+          "p95": 10.393,
+          "max": 10.393
+        },
+        "topPaths": [
+          "frontend/src/renderer/src/__tests__/scatterMatrix.test.tsx",
+          "frontend/src/renderer/src/lib/guidanceContent.ts",
+          "frontend/src/renderer/src/components/analytics/ScatterMatrix.tsx",
+          "frontend/src/renderer/src/components/analytics/voi/InvestmentMatrix.tsx",
+          "frontend/src/renderer/src/components/analytics/som/SOMSection.tsx"
+        ],
+        "top1Correct": false,
+        "top5Correct": false,
+        "matchRank": null
+      }
+    },
+    {
+      "slug": "worst-case-reverse",
+      "title": "Reverse-engineer worst case",
+      "query": "reverse engineer worst case parameter combinations",
+      "scope": "backend/app/",
+      "notes": "Semantic: 'reverse engineer'~'inverse', 'worst case'~'stress'. rg rank ~23.",
+      "profile": "semantic",
+      "expectedPaths": [
+        "backend/app/services/inverse_stress.py"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 10.868,
+          "p50": 12.759,
+          "mean": 12.313,
+          "p95": 13.516,
+          "max": 13.516
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 1.0,
+          "mean": 0.857,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/parameter_service.py",
+          "backend/app/services/voi.py",
+          "backend/app/services/scenario_sampler.py",
+          "backend/app/routers/parameters.py",
+          "backend/app/services/inverse_stress.py"
+        ],
+        "top1Correct": false,
+        "top5Correct": true,
+        "matchRank": 5
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 11.984,
+          "p50": 12.123,
+          "mean": 12.144,
+          "p95": 12.35,
+          "max": 12.35
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.0,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/parameter_service.py",
+          "backend/app/services/voi.py",
+          "backend/app/services/scenario_sampler.py",
+          "backend/app/routers/parameters.py",
+          "backend/app/services/inverse_stress.py"
+        ],
+        "top1Correct": false,
+        "top5Correct": true,
+        "matchRank": 5
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 7.714,
+          "p50": 8.553,
+          "mean": 8.476,
+          "p95": 9.112,
+          "max": 9.112
+        },
+        "topPaths": [
+          "backend/app/routers/parameters.py",
+          "backend/app/services/parameter_service.py",
+          "backend/app/services/stress_analysis.py",
+          "backend/app/models/schemas.py",
+          "backend/app/services/voi.py"
+        ],
+        "top1Correct": false,
+        "top5Correct": false,
+        "matchRank": null
+      }
+    },
+    {
+      "slug": "stochastic-sampling",
+      "title": "Stochastic sampling generation",
+      "query": "randomized sample generation probability distributions",
+      "scope": "backend/app/",
+      "notes": "Semantic: 'randomized'~'montecarlo', 'sample generation' is concept.",
+      "profile": "semantic",
+      "expectedPaths": [
+        "backend/app/services/montecarlo_generator.py"
+      ],
+      "agora_stdio": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 10.558,
+          "p50": 11.578,
+          "mean": 12.933,
+          "p95": 21.253,
+          "max": 21.253
+        },
+        "backendMs": {
+          "min": 0.0,
+          "p50": 1.0,
+          "mean": 0.857,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/scenario_analysis.py",
+          "backend/app/services/montecarlo_generator.py",
+          "backend/app/services/doe_generator.py",
+          "backend/app/services/scenario_sampler.py",
+          "backend/app/services/stress_generator.py"
+        ],
+        "top1Correct": false,
+        "top5Correct": true,
+        "matchRank": 2
+      },
+      "agora_http": {
+        "source": "scoped",
+        "wallMs": {
+          "min": 11.635,
+          "p50": 13.108,
+          "mean": 13.311,
+          "p95": 16.68,
+          "max": 16.68
+        },
+        "backendMs": {
+          "min": 1.0,
+          "p50": 1.0,
+          "mean": 1.0,
+          "p95": 1.0,
+          "max": 1.0
+        },
+        "topPaths": [
+          "backend/app/services/scenario_analysis.py",
+          "backend/app/services/montecarlo_generator.py",
+          "backend/app/services/doe_generator.py",
+          "backend/app/services/scenario_sampler.py",
+          "backend/app/services/stress_generator.py"
+        ],
+        "top1Correct": false,
+        "top5Correct": true,
+        "matchRank": 2
+      },
+      "lexical": {
+        "wallMs": {
+          "min": 7.265,
+          "p50": 7.696,
+          "mean": 7.976,
+          "p95": 9.097,
+          "max": 9.097
+        },
+        "topPaths": [
+          "backend/app/services/scenario_sampler.py",
+          "backend/app/models/schemas.py",
+          "backend/app/routers/campaigns.py",
+          "backend/app/services/stress_generator.py",
+          "backend/app/services/montecarlo_generator.py"
+        ],
+        "top1Correct": false,
+        "top5Correct": true,
+        "matchRank": 5
+      }
+    }
+  ]
+}
