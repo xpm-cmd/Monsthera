@@ -1,10 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import { VERSION, SUPPORTED_LANGUAGES } from "../core/constants.js";
+import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
-import { getHead, getChangedFiles, getRecentCommits, isValidCommit } from "../git/operations.js";
+import { getHead, getChangedFiles, getDiffStats, getRecentCommits, isValidCommit } from "../git/operations.js";
 import { getIndexedCommit } from "../indexing/indexer.js";
 
 type GetContext = () => Promise<AgoraContext>;
@@ -56,8 +56,8 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           trustTiers: ["A", "B"],
           roles: ["developer", "reviewer", "observer", "admin"],
           coordinationTopologies: ["hub-spoke", "hybrid", "mesh"],
-          maxCandidates: 5,
-          maxExpanded: 3,
+          maxCandidates: STAGE_A_MAX_CANDIDATES,
+          maxExpanded: STAGE_B_MAX_EXPANDED,
           maxCodeSpanLines: 200,
           semanticSearch: {
             available: c.searchRouter.getSemanticReranker()?.isAvailable() ?? false,
@@ -277,16 +277,20 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       }
 
       const changes = await getChangedFiles(base, head, { cwd: c.repoPath });
+      const diffStats = await getDiffStats(base, head, { cwd: c.repoPath });
       c.insight.debug(`get_change_pack: ${changes.length} files since ${base.slice(0, 7)}`);
 
       const enriched = changes.map((ch) => {
         const f = queries.getFileByPath(c.db, c.repoId, ch.path);
+        const stats = diffStats.get(ch.path);
         return {
           status: ch.status,
           path: ch.path,
           language: f?.language ?? null,
           summary: f?.summary ?? null,
           hasSecrets: f?.hasSecrets ?? false,
+          linesAdded: stats?.added ?? null,
+          linesRemoved: stats?.removed ?? null,
         };
       });
 

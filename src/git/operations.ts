@@ -48,6 +48,31 @@ export async function getChangedFiles(
   });
 }
 
+/**
+ * Get per-file diff stats (lines added/removed) between two commits.
+ * Uses `git diff --numstat` which is fast and produces compact output.
+ */
+export async function getDiffStats(
+  fromCommit: string,
+  toCommit: string,
+  opts: GitExecOptions,
+): Promise<Map<string, { added: number; removed: number }>> {
+  const output = await git(["diff", "--numstat", fromCommit, toCommit], opts);
+  const stats = new Map<string, { added: number; removed: number }>();
+  if (!output) return stats;
+
+  for (const line of output.split("\n")) {
+    const [addedStr, removedStr, ...pathParts] = line.split("\t");
+    const path = pathParts.join("\t");
+    if (!path) continue;
+    // Binary files show "-" for added/removed
+    const added = addedStr === "-" ? 0 : parseInt(addedStr!, 10);
+    const removed = removedStr === "-" ? 0 : parseInt(removedStr!, 10);
+    stats.set(path, { added: isNaN(added) ? 0 : added, removed: isNaN(removed) ? 0 : removed });
+  }
+  return stats;
+}
+
 export async function getChangedFilesSinceCommit(
   sinceCommit: string,
   opts: GitExecOptions,
