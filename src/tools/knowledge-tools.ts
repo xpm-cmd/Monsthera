@@ -128,31 +128,72 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
         results.push(...searchFts5(c.globalSqlite, "global"));
       }
 
-      // Enhance: if semantic model available, blend FTS5 + vector scores
+      // Hybrid: if semantic model available, do independent vector search + blend with FTS5
       const reranker = c.searchRouter.getSemanticReranker();
-      if (reranker?.isAvailable() && results.length > 0) {
+      if (reranker?.isAvailable()) {
         const queryEmbedding = await reranker.embed(query);
         if (queryEmbedding) {
-          // Normalize FTS5 scores to [0,1]
+          const cosine = (a: Float32Array, b: Float32Array): number => {
+            let dot = 0, nA = 0, nB = 0;
+            for (let i = 0; i < a.length; i++) { dot += a[i]! * b[i]!; nA += a[i]! * a[i]!; nB += b[i]! * b[i]!; }
+            const d = Math.sqrt(nA) * Math.sqrt(nB);
+            return d ? (dot / d + 1) / 2 : 0; // normalized to [0,1]
+          };
+
+          // Track which entries came from FTS5 (for score blending)
+          const ftsScores = new Map(results.map((r) => [r.key, r.score]));
           const maxFts5 = Math.max(...results.map((r) => r.score), 1);
+          const existingKeys = new Set(results.map((r) => r.key));
+
+          // Independent vector search: scan all knowledge embeddings
+          const targets: Array<{ sqlite: typeof c.sqlite; db: typeof c.db; scopeLabel: string }> = [];
+          if (scope === "repo" || scope === "all") targets.push({ sqlite: c.sqlite, db: c.db, scopeLabel: "repo" });
+          if ((scope === "global" || scope === "all") && c.globalSqlite) targets.push({ sqlite: c.globalSqlite!, db: c.globalDb!, scopeLabel: "global" });
+
+          for (const t of targets) {
+            const rows = t.sqlite.prepare(
+              "SELECT id, embedding FROM knowledge WHERE status = 'active' AND embedding IS NOT NULL",
+            ).all() as Array<{ id: number; embedding: Buffer }>;
+
+            for (const row of rows) {
+              const emb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
+              const sim = cosine(queryEmbedding, emb);
+              if (sim < 0.6) continue; // only semantically relevant entries
+
+              const entry = queries.getKnowledgeById(t.db, row.id);
+              if (!entry?.content) continue;
+              if (type && entry.type !== type) continue;
+
+              if (!existingKeys.has(entry.key)) {
+                // New entry found only by vector search
+                existingKeys.add(entry.key);
+                results.push({
+                  key: entry.key,
+                  type: entry.type,
+                  scope: t.scopeLabel,
+                  title: entry.key,
+                  content: entry.content,
+                  tags: entry.tagsJson ? JSON.parse(entry.tagsJson) : [],
+                  score: sim, // semantic-only score
+                });
+              }
+            }
+          }
+
+          // Blend scores for entries found by FTS5
           for (const r of results) {
-            const targetSqlite = r.scope === "global" ? c.globalSqlite! : c.sqlite;
-            const entry = queries.getKnowledgeByKey(
-              r.scope === "global" ? c.globalDb! : c.db,
-              r.key,
-            );
-            if (entry) {
-              const rows = targetSqlite
-                .prepare("SELECT embedding FROM knowledge WHERE id = ?")
-                .get(entry.id) as { embedding: Buffer | null } | undefined;
-              if (rows?.embedding) {
-                const emb = new Float32Array(rows.embedding.buffer, rows.embedding.byteOffset, rows.embedding.byteLength / 4);
-                const dot = Array.from(queryEmbedding).reduce((sum, v, i) => sum + v * emb[i]!, 0);
-                const normA = Math.sqrt(Array.from(queryEmbedding).reduce((s, v) => s + v * v, 0));
-                const normB = Math.sqrt(Array.from(emb).reduce((s, v) => s + v * v, 0));
-                const semantic = normA && normB ? (dot / (normA * normB) + 1) / 2 : 0.5;
-                const normalizedFts5 = r.score / maxFts5;
-                r.score = 0.5 * normalizedFts5 + 0.5 * semantic;
+            const fts = ftsScores.get(r.key);
+            if (fts !== undefined) {
+              // Recompute semantic score for FTS5 entries
+              const t = r.scope === "global" ? { sqlite: c.globalSqlite!, db: c.globalDb! } : { sqlite: c.sqlite, db: c.db };
+              const entry = queries.getKnowledgeByKey(t.db, r.key);
+              if (entry) {
+                const row = t.sqlite.prepare("SELECT embedding FROM knowledge WHERE id = ?").get(entry.id) as { embedding: Buffer | null } | undefined;
+                if (row?.embedding) {
+                  const emb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
+                  const sim = cosine(queryEmbedding, emb);
+                  r.score = 0.5 * (fts / maxFts5) + 0.5 * sim;
+                }
               }
             }
           }
