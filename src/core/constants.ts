@@ -8,6 +8,7 @@ export const STAGE_A_MAX_CANDIDATES = 10;
 export const STAGE_B_MAX_EXPANDED = 5;
 export const MAX_CODE_SPAN_LINES = 200;
 export const MIN_RELEVANCE_SCORE = 0.35; // Filter low-confidence results (nonsense guard)
+export const MIN_RELEVANCE_SCORE_SCOPED = 0.15; // Lower threshold for scoped queries (smaller candidate pool)
 
 // Trust
 export const DEFAULT_TRUST_TIER = "B" as const;

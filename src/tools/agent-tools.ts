@@ -79,14 +79,17 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
           disconnectSession(c.db, s.id);
         }
       }
-      const activeSessions = queries.getActiveSessions(c.db);
+
+      // Show ALL sessions (including disconnected) so timestamps are always visible
+      const allSessions = queries.getAllSessions(c.db);
+      const activeCount = allSessions.filter((s) => s.state === "active").length;
 
       return {
         content: [{
           type: "text" as const,
           text: JSON.stringify({
             totalAgents: agents.length,
-            activeSessions: activeSessions.length,
+            activeSessions: activeCount,
             agents: agents.map((a) => ({
               id: a.id,
               name: a.name,
@@ -95,7 +98,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
               trustTier: a.trustTier,
               registeredAt: a.registeredAt,
             })),
-            sessions: activeSessions.map((s) => ({
+            sessions: allSessions.map((s) => ({
               id: s.id,
               agentId: s.agentId,
               state: s.state,
