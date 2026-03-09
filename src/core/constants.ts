@@ -4,8 +4,8 @@ export const DEFAULT_AGORA_DIR = ".agora";
 export const DEFAULT_DB_NAME = "agora.db";
 
 // Evidence Bundle limits
-export const STAGE_A_MAX_CANDIDATES = 5;
-export const STAGE_B_MAX_EXPANDED = 3;
+export const STAGE_A_MAX_CANDIDATES = 10;
+export const STAGE_B_MAX_EXPANDED = 5;
 export const MAX_CODE_SPAN_LINES = 200;
 
 // Trust
