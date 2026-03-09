@@ -70,6 +70,9 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
         }
       }
 
+      // Rebuild knowledge FTS5 index to keep search in sync
+      try { c.searchRouter.rebuildKnowledgeFts(targetSqlite); } catch { /* non-fatal */ }
+
       c.insight.info(`Knowledge stored: ${key} (${scope})`);
 
       return {
@@ -84,7 +87,7 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
   // ─── search_knowledge ──────────────────────────────────────
   server.tool(
     "search_knowledge",
-    "Search knowledge by semantic similarity. Searches both repo and global scopes by default, merges results.",
+    "Search knowledge by FTS5 full-text search, enhanced with semantic similarity when available. Searches both repo and global scopes by default.",
     {
       query: z.string().min(1).max(1000).describe("Search query"),
       scope: z.enum(["repo", "global", "all"]).default("all").describe("Which scope to search"),
@@ -93,61 +96,71 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     },
     async ({ query, scope, type, limit }) => {
       const c = await getContext();
-      const reranker = c.searchRouter.getSemanticReranker();
 
       type ScoredEntry = { key: string; type: string; scope: string; title: string; content: string; tags: string[]; score: number };
       let results: ScoredEntry[] = [];
 
-      // Try semantic search first
-      if (reranker?.isAvailable()) {
+      // Primary: FTS5 search (always available, no model dependency)
+      const searchFts5 = (sqlite: typeof c.sqlite, scopeLabel: string): ScoredEntry[] => {
+        const ftsResults = c.searchRouter.searchKnowledge(sqlite, query, limit, type);
+        // Enrich with full content from DB
+        return ftsResults.map((r) => {
+          const entry = queries.getKnowledgeById(
+            scopeLabel === "global" ? c.globalDb! : c.db,
+            r.knowledgeId,
+          );
+          return {
+            key: entry?.key ?? `id:${r.knowledgeId}`,
+            type: entry?.type ?? "unknown",
+            scope: scopeLabel,
+            title: r.title,
+            content: entry?.content ?? "",
+            tags: entry?.tagsJson ? JSON.parse(entry.tagsJson) : [],
+            score: r.score,
+          };
+        }).filter((r) => r.content); // skip orphaned FTS entries
+      };
+
+      if (scope === "repo" || scope === "all") {
+        results.push(...searchFts5(c.sqlite, "repo"));
+      }
+      if ((scope === "global" || scope === "all") && c.globalSqlite) {
+        results.push(...searchFts5(c.globalSqlite, "global"));
+      }
+
+      // Enhance: if semantic model available, blend FTS5 + vector scores
+      const reranker = c.searchRouter.getSemanticReranker();
+      if (reranker?.isAvailable() && results.length > 0) {
         const queryEmbedding = await reranker.embed(query);
         if (queryEmbedding) {
-          if (scope === "repo" || scope === "all") {
-            const repoResults = reranker.searchKnowledgeByVector(c.sqlite, queryEmbedding, limit);
-            results.push(...repoResults.map((r) => ({
-              key: r.key, type: r.type, scope: "repo", title: r.title, content: r.content,
-              tags: r.tagsJson ? JSON.parse(r.tagsJson) : [], score: r.score,
-            })));
+          // Normalize FTS5 scores to [0,1]
+          const maxFts5 = Math.max(...results.map((r) => r.score), 1);
+          for (const r of results) {
+            const targetSqlite = r.scope === "global" ? c.globalSqlite! : c.sqlite;
+            const entry = queries.getKnowledgeByKey(
+              r.scope === "global" ? c.globalDb! : c.db,
+              r.key,
+            );
+            if (entry) {
+              const rows = targetSqlite
+                .prepare("SELECT embedding FROM knowledge WHERE id = ?")
+                .get(entry.id) as { embedding: Buffer | null } | undefined;
+              if (rows?.embedding) {
+                const emb = new Float32Array(rows.embedding.buffer, rows.embedding.byteOffset, rows.embedding.byteLength / 4);
+                const dot = Array.from(queryEmbedding).reduce((sum, v, i) => sum + v * emb[i]!, 0);
+                const normA = Math.sqrt(Array.from(queryEmbedding).reduce((s, v) => s + v * v, 0));
+                const normB = Math.sqrt(Array.from(emb).reduce((s, v) => s + v * v, 0));
+                const semantic = normA && normB ? (dot / (normA * normB) + 1) / 2 : 0.5;
+                const normalizedFts5 = r.score / maxFts5;
+                r.score = 0.5 * normalizedFts5 + 0.5 * semantic;
+              }
+            }
           }
-          if ((scope === "global" || scope === "all") && c.globalSqlite) {
-            const globalResults = reranker.searchKnowledgeByVector(c.globalSqlite, queryEmbedding, limit);
-            results.push(...globalResults.map((r) => ({
-              key: r.key, type: r.type, scope: "global", title: r.title, content: r.content,
-              tags: r.tagsJson ? JSON.parse(r.tagsJson) : [], score: r.score,
-            })));
-          }
-          results.sort((a, b) => b.score - a.score);
-          results = results.slice(0, limit);
         }
       }
 
-      // Fallback: substring search
-      if (results.length === 0) {
-        const q = query.toLowerCase();
-        const searchDb = (db: typeof c.db, scopeLabel: string): ScoredEntry[] => {
-          const all = queries.queryKnowledge(db, { type, status: "active" });
-          return all
-            .filter((k) => k.title.toLowerCase().includes(q) || k.content.toLowerCase().includes(q))
-            .map((k) => ({
-              key: k.key, type: k.type, scope: scopeLabel, title: k.title,
-              content: k.content, tags: k.tagsJson ? JSON.parse(k.tagsJson) : [],
-              score: 1,
-            }));
-        };
-
-        if (scope === "repo" || scope === "all") {
-          results.push(...searchDb(c.db, "repo"));
-        }
-        if ((scope === "global" || scope === "all") && c.globalDb) {
-          results.push(...searchDb(c.globalDb, "global"));
-        }
-        results = results.slice(0, limit);
-      }
-
-      // Post-filter by type if semantic search didn't pre-filter
-      if (type) {
-        results = results.filter((r) => r.type === type);
-      }
+      results.sort((a, b) => b.score - a.score);
+      results = results.slice(0, limit);
 
       return {
         content: [{
@@ -242,6 +255,13 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       }
 
       queries.archiveKnowledge(targetDb, key);
+
+      // Rebuild knowledge FTS5 (archived entries removed from FTS)
+      const archiveSqlite = scope === "global" ? c.globalSqlite : c.sqlite;
+      if (archiveSqlite) {
+        try { c.searchRouter.rebuildKnowledgeFts(archiveSqlite); } catch { /* non-fatal */ }
+      }
+
       c.insight.info(`Knowledge archived: ${key} (${scope})`);
 
       return {
@@ -281,6 +301,13 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       }
 
       queries.deleteKnowledge(targetDb, key);
+
+      // Rebuild knowledge FTS5 (deleted entries removed from FTS)
+      const deleteSqlite = scope === "global" ? c.globalSqlite : c.sqlite;
+      if (deleteSqlite) {
+        try { c.searchRouter.rebuildKnowledgeFts(deleteSqlite); } catch { /* non-fatal */ }
+      }
+
       c.insight.info(`Knowledge deleted: ${key} (${scope})`);
 
       return {

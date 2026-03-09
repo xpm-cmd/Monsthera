@@ -25,14 +25,14 @@ Everything runs locally. No cloud. No API keys. One binary, zero runtime config.
 
 ## Features
 
-- **Git-aware indexing** &mdash; Tree-sitter parsing for TS, JS, Python, Go, Rust. Symbols, summaries, and 384-dim embeddings per file.
-- **Hybrid search** &mdash; FTS5 full-text + semantic vector search merged with tuned alpha weights.
+- **Git-aware indexing** &mdash; Tree-sitter parsing for TS, JS, Python, Go, Rust. Symbols, summaries, and 384-dim embeddings per file. Binary assets auto-excluded via configurable `excludePatterns`.
+- **Hybrid search** &mdash; FTS5 full-text + semantic vector search merged with tuned alpha weights. AND semantics for precision, BM25 column weights (path 1.5×, summary 1×, symbols 2×), test/config-file penalties, and **scope filtering** to restrict results by path prefix.
 - **Evidence Bundles** &mdash; Deterministic, reproducible context packages with code spans, related commits, and linked notes.
-- **Multi-agent coordination** &mdash; Agent registry, session management, file claims, patch proposals with stale-rejection.
+- **Multi-agent coordination** &mdash; Agent registry, session management, file claims, patch proposals with stale-rejection. Live presence tracking with online/idle/offline status.
 - **Trust & security** &mdash; Two-tier access (A/B), four roles (developer, reviewer, observer, admin), secret scanning.
-- **Knowledge Store** &mdash; Two-scope architecture (repo-local + global cross-project). Seven types: decision, gotcha, pattern, context, plan, solution, preference.
-- **Real-time dashboard** &mdash; Command center UI with SVG charts, SSE live updates, tabbed data views.
-- **Obsidian export** &mdash; One command to export all knowledge as Markdown with YAML frontmatter.
+- **Knowledge Store** &mdash; Two-scope architecture (repo-local + global cross-project). Seven types: decision, gotcha, pattern, context, plan, solution, preference. Dedicated `knowledge_fts` FTS5 table for fast search without requiring the semantic model.
+- **Real-time dashboard** &mdash; Command center with live agents panel, SVG charts, SSE updates, tabbed data views. Configurable port via `--dashboard-port`.
+- **Obsidian export** &mdash; One-click button in dashboard or CLI command to export all knowledge as Markdown with YAML frontmatter.
 
 ## Install
 
@@ -91,7 +91,7 @@ agora serve
     |        |
     |        +---> 22 Tools ---> Trust Layer (Tier A/B + Roles)
     |        |                      |
-    |        |       Search --------+---> FTS5 + Semantic Hybrid
+    |        |       Search --------+---> FTS5 + Semantic Hybrid + Scope Filter
     |        |       Evidence Bundles ---> Stage A (top 5) + Stage B (expand 3)
     |        |       Coordination Bus --> hub-spoke | hybrid | mesh
     |        |       Knowledge Store --> repo (.agora/) + global (~/.agora/)
@@ -100,12 +100,31 @@ agora serve
     |        +---> Global DB (~/.agora/knowledge.db)
     |
     +---> Dashboard (http://localhost:3141)
-             +---> REST API + SSE + SVG Charts
+             +---> Live Agents + REST API + SSE + SVG Charts
 ```
 
 ### Search Pipeline
 
-Query &rarr; FTS5 keyword matches &rarr; Semantic embedding (MiniLM-L6-v2, 384d) &rarr; Hybrid merge (alpha=0.5) &rarr; Evidence Bundle
+```
+Code Search (get_code_pack):
+  Query + scope? ──► FTS5 (AND semantics, BM25 path=1.5× summary=1× symbols=2×)
+                         │ scope → WHERE path LIKE 'prefix%'
+                         │ test penalty → ×0.7 when query ≠ test
+                         │ config penalty → ×0.5 for tsconfig, eslintrc, etc.
+                         ▼
+                     Semantic embedding (MiniLM-L6-v2, 384d)
+                         │ scope → post-filter vector results
+                         ▼
+                     Hybrid merge (alpha=0.5) ──► Evidence Bundle
+
+Knowledge Search (search_knowledge):
+  Query ──► FTS5 knowledge_fts (BM25 title=3× content=1× tags=2×)
+                │ always available (no model dependency)
+                ▼
+            Semantic blend (if model loaded, alpha=0.5)
+                ▼
+            Ranked knowledge entries
+```
 
 ### Trust Model
 
@@ -116,7 +135,13 @@ Query &rarr; FTS5 keyword matches &rarr; Semantic embedding (MiniLM-L6-v2, 384d)
 
 ## Dashboard
 
-Built-in command center on port 3141 with SVG charts (activity sparkline, tool usage donut, knowledge type bars, patch state ring), tabbed data views, and SSE real-time updates.
+Built-in command center (default port 3141, configurable via `--dashboard-port`) with:
+
+- **Live Agents panel** &mdash; Online/idle/offline status dots, role badges, claimed files, 10s cross-process polling
+- **SVG Charts** &mdash; Activity sparkline, tool usage donut, knowledge type bars, patch state ring
+- **Tabbed data views** &mdash; Agents, Activity Log, Patches, Notes, Knowledge (with live counters)
+- **SSE real-time updates** &mdash; 7 event types streamed to connected browsers
+- **One-click Obsidian export** &mdash; Button in the dashboard UI
 
 ## Obsidian Export
 
@@ -133,9 +158,19 @@ agora v1.0.0
 Commands:  serve | init | index | status | export
 
 Options:
-  --repo-path, --transport, --http-port, --verbosity
-  --no-dashboard, --no-semantic, --debug-logging
-  --obsidian, --vault, --version, --help
+  --repo-path       Path to the git repository (default: cwd)
+  --transport       stdio | http (default: stdio)
+  --http-port       HTTP server port (default: 3141)
+  --dashboard-port  Dashboard port when separate from HTTP (default: same as http-port)
+  --verbosity       quiet | normal | verbose (default: normal)
+  --semantic         Enable semantic search (overrides config)
+  --no-dashboard    Disable dashboard UI
+  --no-semantic     Disable semantic search
+  --debug-logging   Store raw payloads in debug_payloads table (TTL 24h)
+  --obsidian        Export knowledge to Obsidian vault
+  --vault           Target vault path for export
+  --version         Show version
+  --help            Show help
 ```
 
 ## Development

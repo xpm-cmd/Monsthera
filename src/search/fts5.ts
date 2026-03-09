@@ -6,6 +6,13 @@ import * as tables from "../db/schema.js";
 import type { SearchBackend, SearchResult } from "./interface.js";
 
 const FTS_TABLE = "files_fts";
+const KNOWLEDGE_FTS_TABLE = "knowledge_fts";
+
+export interface KnowledgeFtsResult {
+  knowledgeId: number;
+  title: string;
+  score: number;
+}
 
 /**
  * FTS5 search backend — always available since it uses SQLite's built-in FTS5 extension.
@@ -67,15 +74,98 @@ export class FTS5Backend implements SearchBackend {
     batch();
   }
 
+  // ─── Knowledge FTS5 ───────────────────────────────────────
+
+  /**
+   * Create the knowledge FTS5 virtual table (idempotent).
+   * Operates on a given sqlite handle to support both repo and global DBs.
+   */
+  initKnowledgeFts(sqlite: DatabaseType): void {
+    sqlite.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS ${KNOWLEDGE_FTS_TABLE} USING fts5(
+        knowledge_id UNINDEXED,
+        title,
+        content,
+        type UNINDEXED,
+        tags
+      );
+    `);
+  }
+
+  /**
+   * Rebuild the knowledge FTS index from the knowledge table.
+   * Fast for <500 entries — called on store/archive/delete.
+   */
+  rebuildKnowledgeFts(sqlite: DatabaseType): void {
+    sqlite.exec(`DELETE FROM ${KNOWLEDGE_FTS_TABLE}`);
+    const rows = sqlite
+      .prepare("SELECT id, title, content, type, tags_json FROM knowledge WHERE status = 'active'")
+      .all() as Array<{ id: number; title: string; content: string; type: string; tags_json: string | null }>;
+
+    const insert = sqlite.prepare(
+      `INSERT INTO ${KNOWLEDGE_FTS_TABLE}(knowledge_id, title, content, type, tags) VALUES (?, ?, ?, ?, ?)`,
+    );
+
+    const batch = sqlite.transaction(() => {
+      for (const row of rows) {
+        insert.run(row.id, row.title, row.content, row.type, row.tags_json ?? "");
+      }
+    });
+    batch();
+  }
+
+  /**
+   * Search knowledge entries via FTS5.
+   * BM25 weights: title=3.0, content=1.0 (title matches rank higher).
+   * Works regardless of semantic model status.
+   */
+  searchKnowledge(sqlite: DatabaseType, query: string, limit = 10, type?: string): KnowledgeFtsResult[] {
+    const sanitized = sanitizeFts5Query(query);
+    if (!sanitized) return [];
+
+    try {
+      let sql = `
+        SELECT knowledge_id, title, bm25(${KNOWLEDGE_FTS_TABLE}, 3.0, 1.0) AS rank
+        FROM ${KNOWLEDGE_FTS_TABLE}
+        WHERE ${KNOWLEDGE_FTS_TABLE} MATCH ?`;
+      const params: unknown[] = [sanitized];
+
+      if (type) {
+        sql += ` AND type = ?`;
+        params.push(type);
+      }
+
+      sql += ` ORDER BY rank LIMIT ?`;
+      params.push(limit);
+
+      const rows = sqlite.prepare(sql).all(...params) as Array<{
+        knowledge_id: number;
+        title: string;
+        rank: number;
+      }>;
+
+      return rows.map((row) => ({
+        knowledgeId: row.knowledge_id,
+        title: row.title,
+        score: Math.abs(row.rank),
+      }));
+    } catch {
+      return []; // FTS5 query failed (bad syntax), return empty
+    }
+  }
+
+  // ─── File search ─────────────────────────────────────────
+
   async search(query: string, repoId: number, limit = 20, scope?: string): Promise<SearchResult[]> {
     const sanitized = sanitizeFts5Query(query);
     if (!sanitized) return [];
 
     try {
-      // bm25() column weights: path=3.0, summary=1.0, symbols=2.0
+      // bm25() column weights: path=1.5, summary=1.0, symbols=2.0
+      // Path is boosted slightly (filenames are relevant) but not dominant
       // UNINDEXED columns (file_id, repo_id, language) are skipped automatically
       let sql = `
-        SELECT file_id, path, bm25(${FTS_TABLE}, 3.0, 1.0, 2.0) AS rank
+        SELECT file_id, path, bm25(${FTS_TABLE}, 1.5, 1.0, 2.0) AS rank
         FROM ${FTS_TABLE}
         WHERE ${FTS_TABLE} MATCH ? AND repo_id = ?`;
       const params: unknown[] = [sanitized, repoId];
@@ -107,6 +197,10 @@ export class FTS5Backend implements SearchBackend {
         // Penalize test files when query doesn't mention testing
         if (!queryMentionsTest && isTestFile(row.path)) {
           score *= 0.7;
+        }
+        // Penalize config/build files (rarely the target of code searches)
+        if (isConfigFile(row.path)) {
+          score *= 0.5;
         }
         return { path: row.path, score };
       })
@@ -150,7 +244,9 @@ function sanitizeFts5Query(query: string): string {
     .filter(Boolean);
 
   if (terms.length === 0) return "";
-  return terms.join(" OR ");
+  // AND semantics: all terms must appear (in any combination of path/summary/symbols)
+  // This prevents single common words like "node" from polluting results
+  return terms.join(" AND ");
 }
 
 const TEST_PATH_PATTERN = /\/(tests?|__tests__|spec|__spec__)\//i;
@@ -158,4 +254,10 @@ const TEST_FILE_PATTERN = /\.(test|spec)\.[^.]+$/i;
 
 function isTestFile(path: string): boolean {
   return TEST_PATH_PATTERN.test(path) || TEST_FILE_PATTERN.test(path);
+}
+
+const CONFIG_FILE_PATTERN = /\/(tsconfig[^/]*|\.eslintrc[^/]*|vite\.config[^/]*|webpack[^/]*|jest\.config[^/]*|package\.json|\.prettierrc[^/]*|\.babelrc[^/]*|rollup\.config[^/]*)$/i;
+
+function isConfigFile(path: string): boolean {
+  return CONFIG_FILE_PATTERN.test(path);
 }

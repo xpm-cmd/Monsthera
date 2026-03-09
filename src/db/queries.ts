@@ -298,6 +298,10 @@ export function getKnowledgeByKey(db: DB, key: string) {
   return db.select().from(tables.knowledge).where(eq(tables.knowledge.key, key)).get();
 }
 
+export function getKnowledgeById(db: DB, id: number) {
+  return db.select().from(tables.knowledge).where(eq(tables.knowledge.id, id)).get();
+}
+
 export function queryKnowledge(
   db: DB,
   opts: { type?: string; tags?: string[]; status?: string },

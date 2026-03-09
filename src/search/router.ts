@@ -2,7 +2,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import type { SearchBackend, SearchBackendName, SearchResult } from "./interface.js";
-import { FTS5Backend } from "./fts5.js";
+import { FTS5Backend, type KnowledgeFtsResult } from "./fts5.js";
 import { ZoektBackend } from "./zoekt.js";
 import { SemanticReranker, mergeResults } from "./semantic.js";
 
@@ -37,6 +37,8 @@ export class SearchRouter {
 
   async initialize(): Promise<void> {
     this.fts5.initFtsTable();
+    // Initialize knowledge FTS for repo DB
+    this.fts5.initKnowledgeFts(this.opts.sqlite);
 
     if (this.zoekt && (await this.zoekt.isAvailable())) {
       this.activeBackend = this.zoekt;
@@ -108,5 +110,22 @@ export class SearchRouter {
 
   getSemanticReranker(): SemanticReranker | null {
     return this.semantic;
+  }
+
+  // ─── Knowledge FTS5 pass-through ──────────────────────────
+
+  /** Initialize knowledge FTS table for an arbitrary sqlite handle (repo or global). */
+  initKnowledgeFts(sqlite: DatabaseType): void {
+    this.fts5.initKnowledgeFts(sqlite);
+  }
+
+  /** Rebuild knowledge FTS index for an arbitrary sqlite handle. */
+  rebuildKnowledgeFts(sqlite: DatabaseType): void {
+    this.fts5.rebuildKnowledgeFts(sqlite);
+  }
+
+  /** Search knowledge entries via FTS5. Works regardless of semantic model status. */
+  searchKnowledge(sqlite: DatabaseType, query: string, limit?: number, type?: string): KnowledgeFtsResult[] {
+    return this.fts5.searchKnowledge(sqlite, query, limit, type);
   }
 }

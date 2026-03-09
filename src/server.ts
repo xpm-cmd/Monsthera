@@ -65,6 +65,10 @@ export function createAgoraServer(config: AgoraConfig) {
       const globalResult = initGlobalDatabase();
       globalDb = globalResult.globalDb;
       globalSqlite = globalResult.globalSqlite;
+      // Initialize knowledge FTS5 table for global DB
+      if (globalSqlite) {
+        searchRouter.initKnowledgeFts(globalSqlite);
+      }
     } catch (err) {
       insight.warn(`Global knowledge DB init failed: ${err}`);
     }

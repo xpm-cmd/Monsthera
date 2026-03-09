@@ -325,29 +325,27 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         n.type.toLowerCase().includes(q),
       );
 
-      // Also search knowledge entries (where store_knowledge writes)
-      const searchKnowledgeDb = (db: typeof c.db, scopeLabel: string) => {
-        const entries = queries.queryKnowledge(db, { status: "active" });
-        return entries
-          .filter((k) =>
-            k.title.toLowerCase().includes(q) ||
-            k.content.toLowerCase().includes(q) ||
-            k.type.toLowerCase().includes(q),
-          )
-          .map((k) => ({
-            key: k.key,
-            type: k.type,
+      // Search knowledge entries via FTS5 (always available, no model dependency)
+      const searchKnowledgeFts = (sqlite: typeof c.sqlite, db: typeof c.db, scopeLabel: string) => {
+        const ftsResults = c.searchRouter.searchKnowledge(sqlite, query, 10);
+        return ftsResults.map((r) => {
+          const entry = queries.getKnowledgeById(db, r.knowledgeId);
+          if (!entry) return null;
+          return {
+            key: entry.key,
+            type: entry.type,
             scope: scopeLabel,
-            title: k.title,
-            content: k.content.slice(0, 500) + (k.content.length > 500 ? "..." : ""),
-            tags: k.tagsJson ? JSON.parse(k.tagsJson) : [],
-            updatedAt: k.updatedAt,
-          }));
+            title: entry.title,
+            content: entry.content.slice(0, 500) + (entry.content.length > 500 ? "..." : ""),
+            tags: entry.tagsJson ? JSON.parse(entry.tagsJson) : [],
+            updatedAt: entry.updatedAt,
+          };
+        }).filter(Boolean);
       };
 
       const matchedKnowledge = [
-        ...searchKnowledgeDb(c.db, "repo"),
-        ...(c.globalDb ? searchKnowledgeDb(c.globalDb, "global") : []),
+        ...searchKnowledgeFts(c.sqlite, c.db, "repo"),
+        ...(c.globalSqlite && c.globalDb ? searchKnowledgeFts(c.globalSqlite, c.globalDb, "global") : []),
       ];
 
       return {

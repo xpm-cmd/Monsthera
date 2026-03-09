@@ -44,11 +44,13 @@ flowchart TB
 
     subgraph SEARCH["🔍 Sistema de Busqueda"]
         router["🎯 SearchRouter\nOrquesta los backends"]
-        fts5["📚 FTS5 Backend\nBusqueda full-text SQLite\npath + summary + symbols"]
+        fts5["📚 FTS5 Backend — Codigo\nBM25: path=1.5× summary=1× symbols=2×\nAND semantics · scope filter\nTest penalty 0.7× · Config penalty 0.5×"]
+        kfts5["📚 FTS5 Backend — Knowledge\nknowledge_fts virtual table\nBM25: title=3× content=1× tags=2×\nSiempre disponible (sin modelo)"]
         zoekt["🔎 Zoekt Backend\nMotor de busqueda de codigo\nOpcional"]
         semantic["🧠 Semantic Reranker\nONNX · MiniLM-L6-v2\n384 dimensiones · cosine sim"]
         hybrid["⚗️ Hybrid Search\nalpha=0.5 — FTS5 ∪ Vector\nMejor recall que FTS5 solo"]
         router --> fts5
+        router --> kfts5
         router --> zoekt
         fts5 --> hybrid
         semantic --> hybrid
@@ -87,8 +89,8 @@ flowchart TB
     end
 
     subgraph DATA["💾 Capa de Datos"]
-        repodb["📦 Repo DB — .agora/agora.db\n─────────────────────\n📁 files + imports\n🤖 agents + sessions\n📝 notes\n🩹 patches\n📊 event_logs + debug_payloads\n🧬 knowledge scope=repo\n🔍 files_fts FTS5 virtual table"]
-        globaldb["🌐 Global DB — ~/.agora/knowledge.db\n─────────────────────\n🧬 knowledge scope=global\nCompartido entre proyectos\nDecisiones cross-repo"]
+        repodb["📦 Repo DB — .agora/agora.db\n─────────────────────\n📁 files + imports\n🤖 agents + sessions\n📝 notes\n🩹 patches\n📊 event_logs + debug_payloads\n🧬 knowledge scope=repo\n🔍 files_fts FTS5 virtual table\n🔍 knowledge_fts FTS5 virtual table"]
+        globaldb["🌐 Global DB — ~/.agora/knowledge.db\n─────────────────────\n🧬 knowledge scope=global\n🔍 knowledge_fts FTS5 virtual table\nCompartido entre proyectos\nDecisiones cross-repo"]
     end
 
     INDEXING --> repodb
@@ -151,7 +153,13 @@ sequenceDiagram
     A->>M: store_knowledge(decision, title, content)
     M->>T: checkToolAccess
     T->>D: UPSERT knowledge + embedding
+    T->>D: Rebuild knowledge_fts
     D-->>A: stored key
+
+    A->>M: search_knowledge(query)
+    M->>S: FTS5 knowledge_fts (primary)
+    S->>S: Semantic blend (if model available)
+    S-->>A: ranked knowledge entries
 
     A->>M: propose_patch(diff, baseCommit)
     M->>T: checkToolAccess + canProposePatch
@@ -184,11 +192,11 @@ flowchart LR
     end
 
     subgraph OPS["⚡ 5 Operaciones"]
-        store["💾 store\nUpsert + embedding auto"]
-        search["🔍 search\nSemantica + substring"]
+        store["💾 store\nUpsert + embedding + rebuild FTS"]
+        search["🔍 search\nFTS5 primary + semantic blend"]
         query["📋 query\nSQL: type, tags, status"]
-        archive["📦 archive\nSoft delete"]
-        delete["🗑️ delete\nHard delete permanente"]
+        archive["📦 archive\nSoft delete + rebuild FTS"]
+        delete["🗑️ delete\nHard delete + rebuild FTS"]
     end
 
     TYPES --> SCOPE
