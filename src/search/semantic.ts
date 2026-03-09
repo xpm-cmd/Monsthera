@@ -3,6 +3,7 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import type { SearchResult } from "./interface.js";
 import * as queries from "../db/queries.js";
+import { isTestFile } from "./fts5.js";
 
 export interface SemanticRerankerOptions {
   sqlite: DatabaseType;
@@ -166,23 +167,41 @@ export class SemanticReranker {
   }
 
   /**
-   * Vector search: embed the query and scan ALL file embeddings by cosine similarity.
+   * Vector search: embed the query and scan file embeddings by cosine similarity.
    * Unlike rerank(), this is not gated by FTS5 — it can discover files with zero token overlap.
-   * O(n) where n = files with embeddings. Practical up to ~10K files.
+   * O(n) where n = files with embeddings (filtered by scope if provided).
+   * Applies test/config file penalties consistent with FTS5 search.
    */
-  async vectorSearch(query: string, repoId: number, limit = 10): Promise<SearchResult[]> {
+  async vectorSearch(query: string, repoId: number, limit = 10, scope?: string): Promise<SearchResult[]> {
     const queryEmbedding = await this.embed(query);
     if (!queryEmbedding) return [];
 
+    const queryMentionsTest = /test|spec/i.test(query);
+
+    // Filter by scope at SQL level (not post-hoc) to avoid false positives
+    let sql = "SELECT id, path, embedding FROM files WHERE repo_id = ? AND embedding IS NOT NULL";
+    const params: unknown[] = [repoId];
+    if (scope) {
+      sql += " AND path LIKE ?";
+      params.push(scope.replace(/%/g, "\\%") + "%");
+    }
+
     const rows = this.opts.sqlite
-      .prepare("SELECT id, path, embedding FROM files WHERE repo_id = ? AND embedding IS NOT NULL")
-      .all(repoId) as Array<{ id: number; path: string; embedding: Buffer }>;
+      .prepare(sql)
+      .all(...params) as Array<{ id: number; path: string; embedding: Buffer }>;
 
     const scored: SearchResult[] = [];
     for (const row of rows) {
       const fileEmb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
       const similarity = cosineSimilarity(queryEmbedding, fileEmb);
-      scored.push({ path: row.path, score: (similarity + 1) / 2 }); // map [-1,1] → [0,1]
+      let score = (similarity + 1) / 2; // map [-1,1] → [0,1]
+
+      // Consistent test file penalty across both search paths (FTS5 + vector)
+      if (!queryMentionsTest && isTestFile(row.path)) {
+        score *= 0.4;
+      }
+
+      scored.push({ path: row.path, score });
     }
 
     scored.sort((a, b) => b.score - a.score);
@@ -202,6 +221,7 @@ export function mergeResults(
   vectorResults: SearchResult[],
   limit = 10,
   alpha = 0.5,
+  scopeActive = false,
 ): SearchResult[] {
   // Normalize FTS5 scores to [0, 1]
   const maxFts5 = Math.max(...fts5Results.map((r) => r.score), 1);
@@ -215,6 +235,10 @@ export function mergeResults(
   for (const r of vectorResults) {
     vectorMap.set(r.path, r.score); // already [0,1] from vectorSearch
   }
+
+  // When scope is active and FTS5 found nothing, vector-only results are suspect:
+  // no keyword match in the scoped area = strong signal of tangential semantic match
+  const demoteVectorOnly = scopeActive && fts5Results.length === 0;
 
   // Union all paths
   const allPaths = new Set([...fts5Map.keys(), ...vectorMap.keys()]);
@@ -233,8 +257,8 @@ export function mergeResults(
       // FTS5 only — penalized (no semantic signal)
       score = normalizedFts5 * (1 - alpha);
     } else {
-      // Vector only — the hybrid win
-      score = vectorScore! * alpha;
+      // Vector only — demote when scoped FTS5 found nothing
+      score = vectorScore! * alpha * (demoteVectorOnly ? 0.5 : 1.0);
     }
 
     merged.push({

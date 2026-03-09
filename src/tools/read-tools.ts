@@ -5,7 +5,7 @@ import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
 import { getHead, getChangedFiles, getDiffStats, getPerFileDiffs, getRecentCommits, isValidCommit } from "../git/operations.js";
-import { getIndexedCommit } from "../indexing/indexer.js";
+import { getIndexedCommit, incrementalIndex } from "../indexing/indexer.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -192,7 +192,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
   // ─── get_code_pack ────────────────────────────────────────
   server.tool(
     "get_code_pack",
-    "Search for relevant code and return an Evidence Bundle",
+    "Search for relevant code and return an Evidence Bundle. Auto-reindexes incrementally when stale.",
     {
       query: z.string().min(1).max(1000).describe("Search query"),
       scope: z.string().optional().describe("Path scope filter"),
@@ -217,6 +217,30 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         };
       }
 
+      // Auto-incremental reindex when stale (cheap: just git diff + changed files)
+      let autoReindexed = false;
+      let effectiveCommit = indexedCommit;
+      if (indexedCommit !== head) {
+        try {
+          const result = await incrementalIndex(indexedCommit, {
+            repoPath: c.repoPath,
+            repoId: c.repoId,
+            db: c.db,
+            sensitiveFilePatterns: c.config.sensitiveFilePatterns,
+            excludePatterns: c.config.excludePatterns,
+            onProgress: (msg) => c.insight.detail(msg),
+            semanticReranker: c.searchRouter.getSemanticReranker(),
+          });
+          await c.searchRouter.rebuildIndex(c.repoId);
+          autoReindexed = true;
+          effectiveCommit = result.commit;
+          c.insight.info(`Auto-reindex: ${result.filesIndexed} files in ${result.durationMs}ms`);
+        } catch {
+          // Non-fatal: search with stale index rather than fail
+          c.insight.debug("Auto-reindex failed, using stale index");
+        }
+      }
+
       const rawResults = await c.searchRouter.search(query, c.repoId, 10, scope);
       // Nonsense guard: dynamic threshold — scoped queries have smaller candidate pools so scores are lower
       const threshold = scope ? MIN_RELEVANCE_SCORE_SCOPED : MIN_RELEVANCE_SCORE;
@@ -227,7 +251,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         query,
         repoId: c.repoId,
         repoPath: c.repoPath,
-        commit: indexedCommit,
+        commit: effectiveCommit,
         trustTier: "A",
         searchBackend: c.searchRouter.getActiveBackendName(),
         searchResults,
@@ -240,8 +264,9 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           type: "text" as const,
           text: JSON.stringify({
             ...bundle,
-            indexStale: indexedCommit !== head,
+            indexStale: !autoReindexed && indexedCommit !== head,
             currentHead: head,
+            ...(autoReindexed && { autoReindexed: true }),
           }, null, 2),
         }],
       };

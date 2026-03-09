@@ -49,3 +49,46 @@ export function generateRawSummary(filePath: string, content: string): string {
   const ext = filePath.slice(filePath.lastIndexOf("."));
   return `${lines.length} lines | extension: ${ext}`;
 }
+
+/**
+ * Generate a rich summary for Markdown files.
+ * Extracts headings (for use as "symbols" in FTS5) and body text
+ * so that documentation files become searchable by content, not just path.
+ */
+export function generateMarkdownSummary(
+  filePath: string,
+  content: string,
+): { summary: string; headings: string[] } {
+  const lines = content.split("\n");
+
+  // Extract headings (# lines) — these become FTS5 "symbols" (weight 2.0)
+  const headings: string[] = [];
+  for (const line of lines) {
+    const match = line.match(/^#{1,6}\s+(.+)/);
+    if (match) {
+      headings.push(match[1]!.trim());
+    }
+  }
+
+  // Strip markdown syntax from body text for FTS5 indexing
+  const bodyText = lines
+    .filter((l) => !l.startsWith("#") && !l.startsWith("```"))
+    .join("\n")
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")     // images FIRST (![alt](url) contains [alt](url))
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links → text
+    .replace(/[*_~`]+/g, "")                   // bold, italic, strikethrough, code
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+  const bodySnippet = bodyText.slice(0, 500);
+
+  const parts: string[] = [];
+  if (headings.length > 0) {
+    parts.push(`Headings: ${headings.join(", ")}`);
+  }
+  parts.push(`${lines.length} lines`);
+  if (bodySnippet) {
+    parts.push(bodySnippet);
+  }
+
+  return { summary: parts.join(" | "), headings };
+}

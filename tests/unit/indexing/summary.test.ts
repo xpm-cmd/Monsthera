@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { generateSummary, generateRawSummary } from "../../../src/indexing/summary.js";
+import { generateSummary, generateRawSummary, generateMarkdownSummary } from "../../../src/indexing/summary.js";
 import type { ParseResult } from "../../../src/indexing/parser.js";
 
 describe("generateSummary", () => {
@@ -50,5 +50,49 @@ describe("generateRawSummary", () => {
     const summary = generateRawSummary("data.json", content);
     expect(summary).toContain("3 lines");
     expect(summary).toContain(".json");
+  });
+});
+
+describe("generateMarkdownSummary", () => {
+  it("extracts headings from markdown", () => {
+    const content = "# Title\n\nSome text\n\n## Section A\n\nMore text\n\n### Subsection";
+    const result = generateMarkdownSummary("README.md", content);
+    expect(result.headings).toEqual(["Title", "Section A", "Subsection"]);
+    expect(result.summary).toContain("Headings: Title, Section A, Subsection");
+  });
+
+  it("strips markdown syntax from body text", () => {
+    const content = "# Title\n\nSome **bold** and [link](http://x.com) text.";
+    const result = generateMarkdownSummary("doc.md", content);
+    expect(result.summary).toContain("Some bold and link text.");
+  });
+
+  it("truncates body to 500 chars", () => {
+    const content = "# Title\n\n" + "A".repeat(600);
+    const result = generateMarkdownSummary("long.md", content);
+    // Body snippet should be at most 500 chars
+    const bodyPart = result.summary.split(" | ").pop()!;
+    expect(bodyPart.length).toBeLessThanOrEqual(500);
+  });
+
+  it("handles markdown with no headings", () => {
+    const content = "Just plain text\nwith no headings.";
+    const result = generateMarkdownSummary("plain.md", content);
+    expect(result.headings).toEqual([]);
+    expect(result.summary).toContain("2 lines");
+    expect(result.summary).toContain("Just plain text");
+  });
+
+  it("handles empty markdown", () => {
+    const result = generateMarkdownSummary("empty.md", "");
+    expect(result.headings).toEqual([]);
+    expect(result.summary).toContain("1 lines");
+  });
+
+  it("removes image references from body", () => {
+    const content = "# Doc\n\nHere is ![alt text](image.png) in a paragraph.";
+    const result = generateMarkdownSummary("doc.md", content);
+    expect(result.summary).toContain("Here is  in a paragraph.");
+    expect(result.summary).not.toContain("image.png");
   });
 });

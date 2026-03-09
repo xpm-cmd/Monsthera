@@ -82,12 +82,9 @@ export class SearchRouter {
     // Hybrid: run vector search in parallel and merge with FTS5 results
     if (this.semantic?.isAvailable()) {
       try {
-        let vectorResults = await this.semantic.vectorSearch(query, repoId, effectiveLimit);
-        // Apply scope filter to vector results (vectorSearch scans all embeddings)
-        if (scope) {
-          vectorResults = vectorResults.filter((r) => r.path.startsWith(scope));
-        }
-        return mergeResults(fts5Results, vectorResults, effectiveLimit);
+        // Scope is now filtered at SQL level inside vectorSearch (not post-hoc)
+        const vectorResults = await this.semantic.vectorSearch(query, repoId, effectiveLimit, scope);
+        return mergeResults(fts5Results, vectorResults, effectiveLimit, 0.5, !!scope);
       } catch {
         this.opts.onFallback?.("Semantic vector search failed, using FTS5 results");
       }

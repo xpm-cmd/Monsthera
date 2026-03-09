@@ -196,7 +196,7 @@ export class FTS5Backend implements SearchBackend {
         let score = Math.abs(row.rank);
         // Penalize test files when query doesn't mention testing
         if (!queryMentionsTest && isTestFile(row.path)) {
-          score *= 0.7;
+          score *= 0.4;
         }
         // Penalize config/build files (rarely the target of code searches)
         if (isConfigFile(row.path)) {
@@ -258,13 +258,13 @@ function sanitizeFts5Query(query: string): string {
 const TEST_PATH_PATTERN = /\/(tests?|__tests__|spec|__spec__)\//i;
 const TEST_FILE_PATTERN = /\.(test|spec)\.[^.]+$/i;
 
-function isTestFile(path: string): boolean {
+export function isTestFile(path: string): boolean {
   return TEST_PATH_PATTERN.test(path) || TEST_FILE_PATTERN.test(path);
 }
 
 const CONFIG_FILE_PATTERN = /\/(tsconfig[^/]*|\.eslintrc[^/]*|vite\.config[^/]*|webpack[^/]*|jest\.config[^/]*|package\.json|\.prettierrc[^/]*|\.babelrc[^/]*|rollup\.config[^/]*)$/i;
 
-function isConfigFile(path: string): boolean {
+export function isConfigFile(path: string): boolean {
   return CONFIG_FILE_PATTERN.test(path);
 }
 

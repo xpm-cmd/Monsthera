@@ -6,7 +6,7 @@ import * as tables from "../db/schema.js";
 import { getHead, getAllTrackedFiles, getFileContent, getChangedFilesSinceCommit } from "../git/operations.js";
 import { detectLanguage } from "../git/language.js";
 import { parseFile, isParserAvailable } from "./parser.js";
-import { generateSummary, generateRawSummary } from "./summary.js";
+import { generateSummary, generateRawSummary, generateMarkdownSummary } from "./summary.js";
 import { scanForSecrets, isSensitiveFile } from "../trust/secret-patterns.js";
 import { IndexError } from "../core/errors.js";
 import type { SemanticReranker } from "../search/semantic.js";
@@ -266,7 +266,20 @@ async function indexSingleFile(
       summary = generateRawSummary(filePath, content);
     }
   } else {
-    summary = generateRawSummary(filePath, content);
+    // Markdown-specific summary: extract headings + body text for FTS5
+    const ext = filePath.slice(filePath.lastIndexOf("."));
+    if (ext === ".md" || ext === ".mdx") {
+      const mdResult = generateMarkdownSummary(filePath, content);
+      summary = mdResult.summary;
+      // Treat headings as "symbols" — they get BM25 weight 2.0 (highest priority)
+      if (mdResult.headings.length > 0) {
+        symbolsJson = JSON.stringify(
+          mdResult.headings.map((h) => ({ name: h, kind: "heading" })),
+        );
+      }
+    } else {
+      summary = generateRawSummary(filePath, content);
+    }
   }
 
   // Raw fallback path — needs .returning().get() for embedding
