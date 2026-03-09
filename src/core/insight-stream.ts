@@ -15,9 +15,9 @@ export class InsightStream {
     }
   }
 
-  /** Only shown at normal or verbose */
+  /** Only shown at verbose */
   detail(msg: string): void {
-    if (this.verbosity !== "quiet") {
+    if (this.verbosity === "verbose") {
       console.error(`[AGORA] ${msg}`);
     }
   }

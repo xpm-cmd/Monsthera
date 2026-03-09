@@ -14,14 +14,15 @@ async function main() {
   const args = process.argv.slice(2);
   const command = args[0];
 
-  const repoPath = getArg(args, "--repo-path") ?? process.cwd();
-  const verbosity = (getArg(args, "--verbosity") ?? "normal") as "quiet" | "normal" | "verbose";
-  const debugLogging = args.includes("--debug-logging");
-  const transport = (getArg(args, "--transport") ?? "stdio") as "stdio" | "http";
-  const httpPort = parseInt(getArg(args, "--http-port") ?? "3000", 10);
-  const noDashboard = args.includes("--no-dashboard");
-  const dashboardPort = parseInt(getArg(args, "--dashboard-port") ?? "3141", 10);
-  // Semantic search: CLI flags take precedence, then config file, then Zod default (false)
+  // Precedence: CLI flags > env vars > config file > Zod defaults
+  const repoPath = getArg(args, "--repo-path") ?? process.env.AGORA_REPO_PATH ?? process.cwd();
+  const verbosity = (getArg(args, "--verbosity") ?? process.env.AGORA_VERBOSITY ?? "normal") as "quiet" | "normal" | "verbose";
+  const debugLogging = args.includes("--debug-logging") || process.env.AGORA_DEBUG_LOGGING === "true";
+  const transport = (getArg(args, "--transport") ?? process.env.AGORA_TRANSPORT ?? "stdio") as "stdio" | "http";
+  const httpPort = parseInt(getArg(args, "--http-port") ?? process.env.AGORA_HTTP_PORT ?? "3000", 10);
+  const noDashboard = args.includes("--no-dashboard") || process.env.AGORA_NO_DASHBOARD === "true";
+  const dashboardPort = parseInt(getArg(args, "--dashboard-port") ?? process.env.AGORA_DASHBOARD_PORT ?? "3141", 10);
+  // Semantic search: CLI flags > env vars > config file > Zod default (false)
   let fileConfigSemantic: boolean | undefined;
   try {
     const cfgPath = join(repoPath, ".agora", "config.json");
@@ -35,6 +36,8 @@ async function main() {
 
   const semanticEnabled = args.includes("--no-semantic") ? false
     : args.includes("--semantic") ? true
+    : process.env.AGORA_SEMANTIC === "true" ? true
+    : process.env.AGORA_SEMANTIC === "false" ? false
     : fileConfigSemantic;
 
   if (args.includes("--version") || args.includes("-v")) {
@@ -118,12 +121,27 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
   // Map of sessionId → { server, transport }
   const sessions = new Map<string, { server: ReturnType<typeof createAgoraServer>; transport: InstanceType<typeof StreamableHTTPServerTransport> }>();
 
+  const MCP_CORS_HEADERS: Record<string, string> = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, mcp-session-id",
+    "Access-Control-Expose-Headers": "mcp-session-id",
+    "X-Content-Type-Options": "nosniff",
+  };
+
   const httpServer = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${config.httpPort}`);
 
+    // CORS preflight
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, MCP_CORS_HEADERS);
+      res.end();
+      return;
+    }
+
     // Only handle /mcp endpoint
     if (url.pathname !== "/mcp") {
-      res.writeHead(404, { "Content-Type": "application/json" });
+      res.writeHead(404, { ...MCP_CORS_HEADERS, "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Not found. Use /mcp endpoint." }));
       return;
     }
@@ -140,7 +158,7 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
 
     if (sessionId && !sessions.has(sessionId)) {
       // Unknown session ID → 404
-      res.writeHead(404, { "Content-Type": "application/json" });
+      res.writeHead(404, { ...MCP_CORS_HEADERS, "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Session not found. Send an initialization request without a session ID." }));
       return;
     }
@@ -379,6 +397,16 @@ function printHelp() {
   console.error("  --vault          Obsidian vault path (default: repo root)");
   console.error("  --version, -v    Show version");
   console.error("  --help, -h       Show help");
+  console.error("");
+  console.error("Environment Variables (overridden by CLI flags):");
+  console.error("  AGORA_REPO_PATH       Repository path");
+  console.error("  AGORA_VERBOSITY       quiet | normal | verbose");
+  console.error("  AGORA_TRANSPORT       stdio | http");
+  console.error("  AGORA_HTTP_PORT       HTTP transport port");
+  console.error("  AGORA_DASHBOARD_PORT  Dashboard UI port");
+  console.error("  AGORA_SEMANTIC        true | false");
+  console.error("  AGORA_DEBUG_LOGGING   true | false");
+  console.error("  AGORA_NO_DASHBOARD    true | false");
 }
 
 function getArg(args: string[], flag: string): string | undefined {
