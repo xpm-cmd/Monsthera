@@ -24,8 +24,8 @@ importers:
         specifier: ^0.1.13
         version: 0.1.13
       web-tree-sitter:
-        specifier: 0.20.8
-        version: 0.20.8
+        specifier: 0.26.6
+        version: 0.26.6
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -2306,8 +2306,8 @@ packages:
       jsdom:
         optional: true
 
-  web-tree-sitter@0.20.8:
-    resolution: {integrity: sha512-weOVgZ3aAARgdnb220GqYuh7+rZU0Ka9k9yfKtGAzEYMa6GgiCzW9JjQRJyCJakvibQW+dfjJdihjInKuuCAUQ==}
+  web-tree-sitter@0.26.6:
+    resolution: {integrity: sha512-fSPR7VBW/fZQdUSp/bXTDLT+i/9dwtbnqgEBMzowrM4U3DzeCwDbY3MKo0584uQxID4m/1xpLflrlT/rLIRPew==}
 
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
@@ -4309,7 +4309,7 @@ snapshots:
       - tsx
       - yaml
 
-  web-tree-sitter@0.20.8: {}
+  web-tree-sitter@0.26.6: {}
 
   which@2.0.2:
     dependencies:
