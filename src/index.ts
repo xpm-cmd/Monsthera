@@ -250,6 +250,24 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
   const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
 
+  // Initialize semantic reranker if enabled (generates embeddings during indexing)
+  let semanticReranker: import("./search/semantic.js").SemanticReranker | null = null;
+  if (config.semanticEnabled) {
+    try {
+      const { SemanticReranker } = await import("./search/semantic.js");
+      semanticReranker = new SemanticReranker({ sqlite, db, onFallback: (r) => insight.warn(r) });
+      const ok = await semanticReranker.initialize();
+      if (ok) {
+        insight.info("Semantic model loaded — embeddings will be generated during indexing");
+      } else {
+        insight.warn("Semantic model failed to load — indexing without embeddings");
+        semanticReranker = null;
+      }
+    } catch (err) {
+      insight.warn(`Semantic init error: ${err}`);
+    }
+  }
+
   insight.info("Starting full index...");
   const result = await fullIndex({
     repoPath: repoRoot,
@@ -258,6 +276,7 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
     sensitiveFilePatterns: config.sensitiveFilePatterns,
     excludePatterns: config.excludePatterns,
     onProgress: (msg) => insight.detail(msg),
+    semanticReranker,
   });
 
   // Initialize knowledge FTS5 table (idempotent, ensures search_knowledge works after index)

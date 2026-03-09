@@ -63,7 +63,7 @@ export class FTS5Backend implements SearchBackend {
         let symbolNames = "";
         try {
           const symbols = JSON.parse(file.symbolsJson ?? "[]") as Array<{ name: string }>;
-          symbolNames = symbols.map((s) => s.name).join(" ");
+          symbolNames = symbols.map((s) => expandCamelCase(s.name)).join(" ");
         } catch {
           // ignore parse errors
         }
@@ -266,4 +266,18 @@ const CONFIG_FILE_PATTERN = /\/(tsconfig[^/]*|\.eslintrc[^/]*|vite\.config[^/]*|
 
 function isConfigFile(path: string): boolean {
   return CONFIG_FILE_PATTERN.test(path);
+}
+
+/**
+ * Expand CamelCase/PascalCase identifiers into constituent words for FTS5.
+ * "OptimizationNode" → "OptimizationNode Optimization Node"
+ * "useCreateCampaign" → "useCreateCampaign use Create Campaign"
+ * Keeps the original name intact so exact matches still work.
+ */
+function expandCamelCase(name: string): string {
+  // Split on camelCase boundaries: lowercase→uppercase, or between consecutive uppercase and lowercase
+  const parts = name.split(/(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/);
+  if (parts.length <= 1) return name;
+  // Return original + individual parts (lowercased for FTS5 matching)
+  return `${name} ${parts.join(" ")}`;
 }
