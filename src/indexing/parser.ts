@@ -1,16 +1,15 @@
 import Parser from "web-tree-sitter";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import type { SupportedLanguage } from "../core/constants.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 
 let parserReady = false;
 const languageParsers = new Map<SupportedLanguage, Parser>();
 
 function getWasmPath(grammarName: string): string {
-  // Resolve from node_modules/tree-sitter-wasms/out/
-  return join(__dirname, "../../node_modules/tree-sitter-wasms/out", `tree-sitter-${grammarName}.wasm`);
+  // Use Node.js module resolution — works correctly from dist/ with npm/pnpm/yarn
+  return require.resolve(`tree-sitter-wasms/out/tree-sitter-${grammarName}.wasm`);
 }
 
 async function initParser(): Promise<void> {

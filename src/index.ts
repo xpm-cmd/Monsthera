@@ -264,6 +264,10 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
   try {
     const { FTS5Backend } = await import("./search/fts5.js");
     const fts5 = new FTS5Backend(sqlite, db);
+    // Rebuild code FTS5 index (files_fts) so get_code_pack works immediately
+    fts5.initFtsTable();
+    fts5.rebuildIndex(repoId);
+    // Rebuild knowledge FTS5 index
     fts5.initKnowledgeFts(sqlite);
     fts5.rebuildKnowledgeFts(sqlite);
     // Also init for global DB if available

@@ -7,6 +7,7 @@ import { ZoektBackend } from "./zoekt.js";
 import { SemanticReranker, mergeResults } from "./semantic.js";
 
 export interface SearchRouterOptions {
+  repoId: number;
   sqlite: DatabaseType;
   db: BetterSQLite3Database<typeof schema>;
   repoPath: string;
@@ -37,8 +38,10 @@ export class SearchRouter {
 
   async initialize(): Promise<void> {
     this.fts5.initFtsTable();
+    this.fts5.rebuildIndex(this.opts.repoId);
     // Initialize knowledge FTS for repo DB
     this.fts5.initKnowledgeFts(this.opts.sqlite);
+    this.fts5.rebuildKnowledgeFts(this.opts.sqlite);
 
     if (this.zoekt && (await this.zoekt.isAvailable())) {
       this.activeBackend = this.zoekt;

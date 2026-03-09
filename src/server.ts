@@ -46,6 +46,7 @@ export function createAgoraServer(config: AgoraConfig) {
     const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
 
     const searchRouter = new SearchRouter({
+      repoId,
       sqlite,
       db,
       repoPath: repoRoot,

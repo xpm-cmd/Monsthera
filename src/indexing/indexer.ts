@@ -260,8 +260,9 @@ async function indexSingleFile(
       });
 
       return "indexed";
-    } catch {
-      // Tree-sitter parse failed — fall through to raw indexing
+    } catch (err) {
+      // Tree-sitter parse failed — log and fall through to raw indexing
+      opts.onProgress?.(`⚠ Parse failed for ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
       summary = generateRawSummary(filePath, content);
     }
   } else {
