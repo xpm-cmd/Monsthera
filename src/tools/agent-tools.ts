@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
-import { registerAgent, getAgentStatus, disconnectSession, touchSession } from "../agents/registry.js";
+import { registerAgent, getAgentStatus, touchSession } from "../agents/registry.js";
 import * as queries from "../db/queries.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 
@@ -69,20 +69,24 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
       }
 
       const agents = queries.getAllAgents(c.db);
-
-      // Expire stale sessions (no activity within heartbeat timeout)
-      const now = Date.now();
-      const allActive = queries.getActiveSessions(c.db);
-      for (const s of allActive) {
-        const lastMs = new Date(s.lastActivity).getTime();
-        if (now - lastMs > HEARTBEAT_TIMEOUT_MS) {
-          disconnectSession(c.db, s.id);
-        }
-      }
-
-      // Show ALL sessions (including disconnected) so timestamps are always visible
       const allSessions = queries.getAllSessions(c.db);
-      const activeCount = allSessions.filter((s) => s.state === "active").length;
+
+      // Annotate sessions with staleness — observational, not destructive
+      const now = Date.now();
+      const annotated = allSessions.map((s) => {
+        const lastMs = new Date(s.lastActivity).getTime();
+        const isStale = s.state === "active" && (now - lastMs > HEARTBEAT_TIMEOUT_MS);
+        return {
+          id: s.id,
+          agentId: s.agentId,
+          state: s.state,
+          isStale,
+          connectedAt: s.connectedAt,
+          lastActivity: s.lastActivity,
+        };
+      });
+      const activeCount = annotated.filter((s) => s.state === "active").length;
+      const staleCount = annotated.filter((s) => s.isStale).length;
 
       return {
         content: [{
@@ -91,6 +95,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
             totalAgents: agents.length,
             totalSessions: allSessions.length,
             activeSessions: activeCount,
+            staleSessions: staleCount,
             agents: agents.map((a) => ({
               id: a.id,
               name: a.name,
@@ -99,13 +104,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
               trustTier: a.trustTier,
               registeredAt: a.registeredAt,
             })),
-            sessions: allSessions.map((s) => ({
-              id: s.id,
-              agentId: s.agentId,
-              state: s.state,
-              connectedAt: s.connectedAt,
-              lastActivity: s.lastActivity,
-            })),
+            sessions: annotated,
           }, null, 2),
         }],
       };
