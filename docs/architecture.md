@@ -21,9 +21,9 @@ flowchart TB
 
     CTX --> TOOLS
 
-    subgraph TOOLS["🛠️ 22 Herramientas MCP"]
+    subgraph TOOLS["🛠️ 23 Herramientas MCP"]
         read["📖 Lectura\nstatus · capabilities · schema\nget_code_pack · get_change_pack\nget_issue_pack"]
-        agent["🤖 Agentes\nregister_agent · agent_status\nbroadcast · claim_files"]
+        agent["🤖 Agentes\nregister_agent · agent_status\nbroadcast · claim_files · end_session"]
         coord["🔗 Coordinacion\nsend_coordination\npoll_coordination"]
         patch["🩹 Parches\npropose_patch\nlist_patches"]
         note["📝 Notas\npropose_note\nlist_notes"]
@@ -59,8 +59,8 @@ flowchart TB
     SEARCH --> EVIDENCE
 
     subgraph EVIDENCE["📦 Evidence Bundles — Paquetes de Contexto"]
-        stageA["🅰️ Stage A — Candidatos\nTop 5 resultados de busqueda\npath + symbols + score + summary"]
-        stageB["🅱️ Stage B — Expansion\nTop 3 expandidos con:\n· Code spans de 200 lineas\n· Commits relacionados\n· Notas vinculadas\n· Deteccion de secretos"]
+        stageA["🅰️ Stage A — Candidatos\nTop 10 resultados de busqueda\npath + symbols + score + summary"]
+        stageB["🅱️ Stage B — Expansion\nTop 5 expandidos con:\n· Code spans de 200 lineas\n· Commits relacionados\n· Notas vinculadas\n· Deteccion de secretos"]
         bid["🔑 bundleId Deterministico\nSHA-256 de query+commit+paths\nMismo input = mismo bundle"]
         stageA --> stageB --> bid
     end
@@ -158,7 +158,8 @@ sequenceDiagram
 
     A->>M: search_knowledge(query)
     M->>S: FTS5 knowledge_fts (primary)
-    S->>S: Semantic blend (if model available)
+    S->>S: Vector scan independiente (all embeddings, cosine ≥ 0.6)
+    S->>S: Hybrid merge: FTS5 ∪ vector (alpha=0.5)
     S-->>A: ranked knowledge entries
 
     A->>M: propose_patch(diff, baseCommit)
@@ -170,6 +171,12 @@ sequenceDiagram
     A->>M: send_coordination(broadcast, payload)
     M->>B: bus.send(message)
     B-->>A: messageId
+
+    A->>M: end_session(sessionId)
+    M->>D: SET state=disconnected, release claims
+    D-->>A: ended confirmation
+
+    Note over M,D: Lifecycle: reapStaleSessions() desconecta sesiones<br/>inactivas por > 10 min (HEARTBEAT_TIMEOUT_MS)
 ```
 
 ## Modelo de Conocimiento
@@ -193,7 +200,7 @@ flowchart LR
 
     subgraph OPS["⚡ 5 Operaciones"]
         store["💾 store\nUpsert + embedding + rebuild FTS"]
-        search["🔍 search\nFTS5 primary + semantic blend"]
+        search["🔍 search\nFTS5 + vector scan independiente\nHybrid merge (alpha=0.5)"]
         query["📋 query\nSQL: type, tags, status"]
         archive["📦 archive\nSoft delete + rebuild FTS"]
         delete["🗑️ delete\nHard delete + rebuild FTS"]

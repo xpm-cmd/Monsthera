@@ -23,7 +23,11 @@ proposed → validated → applied → committed
 - Agents can call `claim_files([paths])` to signal intent
 - Other agents see claimed files in `status()` response
 - Proposing a patch touching claimed files emits a warning (not a hard block)
-- Claims are released on: explicit release, session disconnect (after timeout), or patch commit
+- Claims are released on:
+  - Explicit release (via `claim_files` with empty paths)
+  - `end_session` call (immediately disconnects session and clears claims)
+  - Automatic stale reaping (sessions inactive > `HEARTBEAT_TIMEOUT_MS` = 10 min)
+  - Patch commit
 
 ## Provenance
 

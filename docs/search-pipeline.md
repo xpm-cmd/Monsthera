@@ -6,10 +6,14 @@ Agora uses two FTS5-backed search subsystems: one for **code files** and one for
 
 ### Query Construction
 
-Multi-word queries use **AND semantics** — all terms must match for a file to rank:
+Query semantics depend on term count:
+
+- **Short queries (1-3 terms)**: AND semantics — all terms must match. Precise, avoids false positives.
+- **Long queries (4+ terms)**: OR semantics — BM25 ranks multi-match documents higher. AND with many terms is too restrictive; test/config penalties handle noise.
 
 ```
-"optimization node scipy"  →  "optimization" AND "node" AND "scipy"
+"optimization node scipy"    →  "optimization" AND "node" AND "scipy"   (3 terms → AND)
+"React hooks state reducer"  →  "React" OR "hooks" OR "state" OR "reducer"  (4 terms → OR)
 ```
 
 Terms shorter than 2 characters or containing FTS5 operators are filtered out. The sanitizer strips punctuation and wraps each remaining token in double quotes.
@@ -76,21 +80,25 @@ BM25 column weights:
 ```
 Query ──► FTS5 knowledge_fts (always available)
               │
-              ├── if semantic model loaded ──► blend FTS5 + vector scores
-              │                                 (alpha=0.5)
+              ├── if semantic model loaded:
+              │       Independent vector scan (all embeddings, cosine ≥ 0.6)
+              │       FTS5 results ∪ vector-discovered entries
+              │       Hybrid merge (alpha=0.5): score = 0.5 × norm(fts5) + 0.5 × cosine
+              │       Type filter applied post-merge for vector-only entries
               │
-              └── return FTS5 results ranked by BM25
+              └── else: return FTS5 results ranked by BM25
 ```
 
 **Key design decision**: FTS5 is the primary search path, not a fallback. This ensures `search_knowledge` returns results even when `semanticEnabled: false` in config. Semantic search enhances ranking when available but never gates result availability.
 
 ### Type Filtering
 
-When `type` parameter is provided, FTS5 filters at query time:
+When `type` parameter is provided:
 
-```sql
-SELECT ... FROM knowledge_fts WHERE knowledge_fts MATCH ? AND type = ?
-```
+- **FTS5 path**: filtered at query time (`WHERE ... AND type = ?`)
+- **Vector path**: filtered post-scan — the vector search scans all active embeddings, then filters by type after computing cosine similarity
+
+This means vector search can discover entries of any type during the scan phase; the type constraint is applied after scoring.
 
 ## Embedding Model
 
@@ -104,6 +112,6 @@ SELECT ... FROM knowledge_fts WHERE knowledge_fts MATCH ? AND type = ?
 
 Search results feed into the evidence bundle pipeline:
 
-1. **Stage A** — Top 5 candidates: path + symbols + score + summary
-2. **Stage B** — Top 3 expanded with: code spans (200 lines max), related commits, linked notes, secret detection
+1. **Stage A** — Top 10 candidates: path + symbols + score + summary
+2. **Stage B** — Top 5 expanded with: code spans (200 lines max), related commits, linked notes, secret detection
 3. **Bundle ID** — SHA-256 of `query + commit + sorted paths` = deterministic, cacheable

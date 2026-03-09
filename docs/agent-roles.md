@@ -27,3 +27,31 @@ Custom roles can be defined via the dashboard or `agora` CLI. Each role specifie
 Agents self-register on first connection via `register_agent(name, type?, desired_role?)`.
 The system assigns the role based on configuration or defaults to `observer`.
 Pre-registered agents (via config or dashboard) get their assigned role automatically.
+
+## Session Lifecycle
+
+### Ending a Session
+
+Agents should call `end_session(sessionId)` when they finish their work. This:
+- Marks the session as `disconnected`
+- Releases all file claims held by the session
+- Makes the session visible as ended in `agent_status` responses
+
+### Heartbeat and Stale Reaping
+
+Sessions are kept alive implicitly by any tool call that touches the session (e.g., `claim_files`, `broadcast`). If an agent goes silent, the system reaps stale sessions automatically:
+
+- **HEARTBEAT_TIMEOUT_MS**: 10 minutes (600,000 ms)
+- `reapStaleSessions()` runs during `agent_status` calls (list-all mode)
+- Stale sessions are disconnected and their file claims released
+- Agents can maintain presence by periodically calling `claim_files` or `broadcast`
+
+### Agent Tools
+
+| Tool | Description |
+|------|-------------|
+| `register_agent` | Register and create a session |
+| `agent_status` | Get agent/session status (also triggers stale reaping) |
+| `broadcast` | Send a message to other agents via Insight Stream |
+| `claim_files` | Claim files to prevent double-work (advisory) |
+| `end_session` | End a session, release claims |

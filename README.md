@@ -70,12 +70,12 @@ Add to Claude Code (`.claude/settings.json`):
 
 ## Tools
 
-22 MCP tools organized by domain:
+23 MCP tools organized by domain:
 
 | Domain | Tools |
 |--------|-------|
 | **Search** | `status`, `capabilities`, `schema`, `get_code_pack`, `get_change_pack`, `get_issue_pack` |
-| **Agents** | `register_agent`, `agent_status`, `broadcast`, `claim_files` |
+| **Agents** | `register_agent`, `agent_status`, `broadcast`, `claim_files`, `end_session` |
 | **Coordination** | `send_coordination`, `poll_coordination` |
 | **Patches** | `propose_patch`, `list_patches` |
 | **Notes** | `propose_note`, `list_notes` |
@@ -89,10 +89,10 @@ agora serve
     |
     +---> MCP Server (stdio | HTTP)
     |        |
-    |        +---> 22 Tools ---> Trust Layer (Tier A/B + Roles)
+    |        +---> 23 Tools ---> Trust Layer (Tier A/B + Roles)
     |        |                      |
     |        |       Search --------+---> FTS5 + Semantic Hybrid + Scope Filter
-    |        |       Evidence Bundles ---> Stage A (top 5) + Stage B (expand 3)
+    |        |       Evidence Bundles ---> Stage A (top 10) + Stage B (expand 5)
     |        |       Coordination Bus --> hub-spoke | hybrid | mesh
     |        |       Knowledge Store --> repo (.agora/) + global (~/.agora/)
     |        |
@@ -107,7 +107,7 @@ agora serve
 
 ```
 Code Search (get_code_pack):
-  Query + scope? ──► FTS5 (AND semantics, BM25 path=1.5× summary=1× symbols=2×)
+  Query + scope? ──► FTS5 (≤3 terms: AND, 4+ terms: OR; BM25 path=1.5× summary=1× symbols=2×)
                          │ scope → WHERE path LIKE 'prefix%'
                          │ test penalty → ×0.7 when query ≠ test
                          │ config penalty → ×0.5 for tsconfig, eslintrc, etc.
@@ -120,8 +120,13 @@ Code Search (get_code_pack):
 Knowledge Search (search_knowledge):
   Query ──► FTS5 knowledge_fts (BM25 title=3× content=1× tags=2×)
                 │ always available (no model dependency)
-                ▼
-            Semantic blend (if model loaded, alpha=0.5)
+                │
+                ├── if semantic model loaded:
+                │       Independent vector scan (all embeddings, cosine ≥ 0.6)
+                │       ──► discovers entries with zero keyword overlap
+                │       ──► merge: FTS5 ∪ vector results (alpha=0.5)
+                │
+                └── else: return FTS5 results ranked by BM25
                 ▼
             Ranked knowledge entries
 ```
