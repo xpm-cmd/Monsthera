@@ -1,4 +1,9 @@
-export const VERSION = "1.0.0";
+// Version injected by tsup define at build time; fallback for dev (tsx)
+export const VERSION: string = typeof __AGORA_VERSION__ !== "undefined"
+  ? __AGORA_VERSION__
+  : "1.0.0-dev";
+
+declare const __AGORA_VERSION__: string;
 export const DEFAULT_DASHBOARD_PORT = 3141;
 export const DEFAULT_AGORA_DIR = ".agora";
 export const DEFAULT_DB_NAME = "agora.db";

@@ -38,6 +38,15 @@ export class DashboardSSE {
   }
 }
 
+const SECURITY_HEADERS = {
+  "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Access-Control-Allow-Origin": "http://localhost",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
 export function startDashboard(
   deps: DashboardDeps,
   port: number,
@@ -49,9 +58,16 @@ export function startDashboard(
     const url = new URL(req.url ?? "/", `http://localhost:${port}`);
     const path = url.pathname;
 
+    // Handle CORS preflight
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, SECURITY_HEADERS);
+      res.end();
+      return;
+    }
+
     try {
       if (path === "/" || path === "/index.html") {
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS });
         res.end(renderDashboard());
         return;
       }
@@ -93,6 +109,7 @@ export function startDashboard(
         res.writeHead(200, {
           "Content-Type": "application/json",
           "Cache-Control": "no-cache",
+          ...SECURITY_HEADERS,
         });
         res.end(JSON.stringify(data));
         return;

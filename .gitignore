@@ -8,3 +8,10 @@ dist/
 .DS_Store
 *.tsbuildinfo
 coverage/
+.env
+.env.*
+.env.local
+*.log
+tmp/
+.vscode/
+.idea/

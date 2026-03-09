@@ -1,11 +1,17 @@
 {
-  "name": "agora",
+  "name": "agora-mcp",
   "version": "1.0.0",
   "description": "Local, commit-scoped shared context and multi-agent coordination platform for co-coding",
   "type": "module",
   "bin": {
     "agora": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts -- serve",
     "dev:http": "tsx watch src/index.ts -- serve --transport http",
@@ -15,6 +21,8 @@
     "test:watch": "vitest",
     "lint": "eslint src/ tests/",
     "typecheck": "tsc --noEmit",
+    "format": "prettier --write src/ tests/",
+    "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "benchmark": "vitest run tests/benchmark/"
@@ -23,10 +31,26 @@
     "mcp",
     "multi-agent",
     "co-coding",
-    "shared-context"
+    "shared-context",
+    "cli",
+    "code-search",
+    "tree-sitter",
+    "sqlite",
+    "fts5",
+    "semantic-search",
+    "ai-coding",
+    "code-index"
   ],
-  "author": "",
+  "author": "xpm-cmd (https://github.com/xpm-cmd)",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xpm-cmd/Agora.git"
+  },
+  "homepage": "https://github.com/xpm-cmd/Agora#readme",
+  "bugs": {
+    "url": "https://github.com/xpm-cmd/Agora/issues"
+  },
   "packageManager": "pnpm@10.30.3",
   "pnpm": {
     "onlyBuiltDependencies": [

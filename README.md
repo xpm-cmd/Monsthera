@@ -7,11 +7,19 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/agora-mcp"><img src="https://img.shields.io/npm/v/agora-mcp" alt="npm version"></a>
+  <a href="https://github.com/xpm-cmd/Agora/actions"><img src="https://github.com/xpm-cmd/Agora/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js >= 22">
+</p>
+
+<p align="center">
   <a href="#install">Install</a> &middot;
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="#tools">Tools</a> &middot;
   <a href="#architecture">Architecture</a> &middot;
   <a href="#dashboard">Dashboard</a> &middot;
+  <a href="#contributing">Contributing</a> &middot;
   <a href="LICENSE">MIT License</a>
 </p>
 
@@ -37,13 +45,27 @@ Everything runs locally. No cloud. No API keys. One binary, zero runtime config.
 ## Install
 
 ```bash
+npm install -g agora-mcp
+```
+
+Or use directly with `npx`:
+
+```bash
+npx agora-mcp serve
+```
+
+<details>
+<summary><strong>Build from source</strong></summary>
+
+```bash
 git clone https://github.com/xpm-cmd/Agora.git
 cd Agora
 pnpm install
 pnpm build
 ```
+</details>
 
-**Requirements:** Node.js >= 22, pnpm
+**Requirements:** Node.js >= 22. Native build tools (Python 3, make, gcc/clang) needed for `better-sqlite3`.
 
 ## Quick Start
 
@@ -55,14 +77,14 @@ agora serve                   # Start MCP server (stdio)
 agora serve --transport http  # Or HTTP mode + dashboard
 ```
 
-Add to Claude Code (`.claude/settings.json`):
+Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 
 ```json
 {
   "mcpServers": {
     "agora": {
-      "command": "agora",
-      "args": ["serve"]
+      "command": "npx",
+      "args": ["-y", "agora-mcp", "serve"]
     }
   }
 }
@@ -165,8 +187,8 @@ Commands:  serve | init | index | status | export
 Options:
   --repo-path       Path to the git repository (default: cwd)
   --transport       stdio | http (default: stdio)
-  --http-port       HTTP server port (default: 3141)
-  --dashboard-port  Dashboard port when separate from HTTP (default: same as http-port)
+  --http-port       HTTP server port (default: 3000)
+  --dashboard-port  Dashboard UI port (default: 3141)
   --verbosity       quiet | normal | verbose (default: normal)
   --semantic         Enable semantic search (overrides config)
   --no-dashboard    Disable dashboard UI
@@ -190,6 +212,17 @@ pnpm dev          # Watch mode
 ## Tech Stack
 
 TypeScript (strict) &middot; Node.js 22+ &middot; MCP SDK &middot; SQLite + Drizzle ORM &middot; FTS5 + ONNX MiniLM-L6-v2 &middot; Tree-sitter &middot; Zod v4 &middot; tsup &middot; Vitest
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style guidelines, and PR process.
+
+For security vulnerabilities, see [SECURITY.md](SECURITY.md).
+
+## Getting Help
+
+- [GitHub Issues](https://github.com/xpm-cmd/Agora/issues) &mdash; bug reports, feature requests
+- [Docs](docs/) &mdash; architecture, search pipeline, trust model, agent roles
 
 ## License
 
