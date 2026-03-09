@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync, realpathSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -25,14 +25,17 @@ describe("git operations", () => {
   let repoDir: string;
 
   beforeEach(() => {
-    repoDir = realpathSync(mkdtempSync(join(tmpdir(), "agora-test-")));
-    git(["init", "-b", "main"], repoDir);
-    git(["config", "user.email", "test@test.com"], repoDir);
-    git(["config", "user.name", "Test"], repoDir);
+    const tmpBase = mkdtempSync(join(tmpdir(), "agora-test-"));
+    git(["init", "-b", "main"], tmpBase);
+    git(["config", "user.email", "test@test.com"], tmpBase);
+    git(["config", "user.name", "Test"], tmpBase);
 
-    writeFileSync(join(repoDir, "hello.ts"), 'export const hello = "world";');
-    git(["add", "."], repoDir);
-    git(["commit", "-m", "init"], repoDir);
+    writeFileSync(join(tmpBase, "hello.ts"), 'export const hello = "world";');
+    git(["add", "."], tmpBase);
+    git(["commit", "-m", "init"], tmpBase);
+
+    // Resolve canonical path via git (avoids Windows 8.3 short names like RUNNER~1)
+    repoDir = git(["rev-parse", "--show-toplevel"], tmpBase);
   });
 
   afterEach(() => {
