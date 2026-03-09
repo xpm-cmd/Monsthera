@@ -73,6 +73,44 @@ export async function getDiffStats(
   return stats;
 }
 
+/**
+ * Get the full unified diff between two commits, split into per-file entries.
+ * Each entry is truncated to maxLinesPerFile to keep the response manageable.
+ */
+export async function getPerFileDiffs(
+  fromCommit: string,
+  toCommit: string,
+  maxLinesPerFile: number,
+  opts: GitExecOptions,
+): Promise<Map<string, string>> {
+  const diffs = new Map<string, string>();
+  try {
+    const output = await git(["diff", "-U3", fromCommit, toCommit], opts);
+    if (!output) return diffs;
+
+    // Split by "diff --git" boundary — each chunk is one file's diff
+    const chunks = output.split(/^(?=diff --git )/m);
+    for (const chunk of chunks) {
+      if (!chunk.trim()) continue;
+      // Extract path from "diff --git a/<path> b/<path>"
+      const headerMatch = chunk.match(/^diff --git a\/(.+?) b\/(.+)/);
+      if (!headerMatch) continue;
+      const filePath = headerMatch[2]!;
+
+      const lines = chunk.split("\n");
+      if (lines.length <= maxLinesPerFile) {
+        diffs.set(filePath, chunk);
+      } else {
+        const truncated = lines.slice(0, maxLinesPerFile).join("\n");
+        diffs.set(filePath, `${truncated}\n... (${lines.length - maxLinesPerFile} more lines)`);
+      }
+    }
+  } catch {
+    // Non-fatal: diffs are supplementary
+  }
+  return diffs;
+}
+
 export async function getChangedFilesSinceCommit(
   sinceCommit: string,
   opts: GitExecOptions,

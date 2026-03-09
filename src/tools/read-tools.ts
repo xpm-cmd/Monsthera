@@ -1,10 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MIN_RELEVANCE_SCORE, MIN_RELEVANCE_SCORE_SCOPED } from "../core/constants.js";
+import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MIN_RELEVANCE_SCORE, MIN_RELEVANCE_SCORE_SCOPED, MAX_DIFF_LINES_PER_FILE } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
-import { getHead, getChangedFiles, getDiffStats, getRecentCommits, isValidCommit } from "../git/operations.js";
+import { getHead, getChangedFiles, getDiffStats, getPerFileDiffs, getRecentCommits, isValidCommit } from "../git/operations.js";
 import { getIndexedCommit } from "../indexing/indexer.js";
 
 type GetContext = () => Promise<AgoraContext>;
@@ -280,7 +280,10 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       }
 
       const changes = await getChangedFiles(base, head, { cwd: c.repoPath });
-      const diffStats = await getDiffStats(base, head, { cwd: c.repoPath });
+      const [diffStats, fileDiffs] = await Promise.all([
+        getDiffStats(base, head, { cwd: c.repoPath }),
+        getPerFileDiffs(base, head, MAX_DIFF_LINES_PER_FILE, { cwd: c.repoPath }),
+      ]);
       c.insight.debug(`get_change_pack: ${changes.length} files since ${base.slice(0, 7)}`);
 
       const enriched = changes.map((ch) => {
@@ -294,6 +297,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           hasSecrets: f?.hasSecrets ?? false,
           linesAdded: stats?.added ?? null,
           linesRemoved: stats?.removed ?? null,
+          diff: fileDiffs.get(ch.path) ?? null,
         };
       });
 

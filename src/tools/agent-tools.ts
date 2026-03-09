@@ -89,6 +89,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
           type: "text" as const,
           text: JSON.stringify({
             totalAgents: agents.length,
+            totalSessions: allSessions.length,
             activeSessions: activeCount,
             agents: agents.map((a) => ({
               id: a.id,

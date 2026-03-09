@@ -9,6 +9,7 @@ export const STAGE_B_MAX_EXPANDED = 5;
 export const MAX_CODE_SPAN_LINES = 200;
 export const MIN_RELEVANCE_SCORE = 0.35; // Filter low-confidence results (nonsense guard)
 export const MIN_RELEVANCE_SCORE_SCOPED = 0.15; // Lower threshold for scoped queries (smaller candidate pool)
+export const MAX_DIFF_LINES_PER_FILE = 50; // Truncate per-file diffs in get_change_pack
 
 // Trust
 export const DEFAULT_TRUST_TIER = "B" as const;
