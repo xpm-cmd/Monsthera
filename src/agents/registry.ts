@@ -6,6 +6,7 @@ import * as tables from "../db/schema.js";
 import * as queries from "../db/queries.js";
 import { BUILT_IN_ROLES, type RoleId } from "../../schemas/agent.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
+import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 
 export interface RegisterResult {
   agentId: string;
@@ -78,4 +79,26 @@ export function disconnectSession(
 ): void {
   queries.updateSessionState(db, sessionId, "disconnected");
   queries.updateSessionClaims(db, sessionId, []);
+}
+
+/**
+ * Reap stale sessions: disconnect active sessions whose lastActivity
+ * exceeds HEARTBEAT_TIMEOUT_MS. Returns the number of sessions reaped.
+ */
+export function reapStaleSessions(
+  db: BetterSQLite3Database<typeof schema>,
+): number {
+  const now = Date.now();
+  const active = queries.getActiveSessions(db);
+  let reaped = 0;
+
+  for (const s of active) {
+    const lastMs = new Date(s.lastActivity).getTime();
+    if (now - lastMs > HEARTBEAT_TIMEOUT_MS) {
+      disconnectSession(db, s.id);
+      reaped++;
+    }
+  }
+
+  return reaped;
 }

@@ -1,9 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
-import { registerAgent, getAgentStatus, touchSession } from "../agents/registry.js";
+import { registerAgent, getAgentStatus, touchSession, reapStaleSessions, disconnectSession } from "../agents/registry.js";
 import * as queries from "../db/queries.js";
-import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -68,25 +67,12 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
         };
       }
 
+      // Lifecycle cleanup: reap stale sessions before building response
+      const reaped = reapStaleSessions(c.db);
+
       const agents = queries.getAllAgents(c.db);
       const allSessions = queries.getAllSessions(c.db);
-
-      // Annotate sessions with staleness — observational, not destructive
-      const now = Date.now();
-      const annotated = allSessions.map((s) => {
-        const lastMs = new Date(s.lastActivity).getTime();
-        const isStale = s.state === "active" && (now - lastMs > HEARTBEAT_TIMEOUT_MS);
-        return {
-          id: s.id,
-          agentId: s.agentId,
-          state: s.state,
-          isStale,
-          connectedAt: s.connectedAt,
-          lastActivity: s.lastActivity,
-        };
-      });
-      const activeCount = annotated.filter((s) => s.state === "active").length;
-      const staleCount = annotated.filter((s) => s.isStale).length;
+      const activeCount = allSessions.filter((s) => s.state === "active").length;
 
       return {
         content: [{
@@ -95,7 +81,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
             totalAgents: agents.length,
             totalSessions: allSessions.length,
             activeSessions: activeCount,
-            staleSessions: staleCount,
+            reapedSessions: reaped,
             agents: agents.map((a) => ({
               id: a.id,
               name: a.name,
@@ -104,7 +90,13 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
               trustTier: a.trustTier,
               registeredAt: a.registeredAt,
             })),
-            sessions: annotated,
+            sessions: allSessions.map((s) => ({
+              id: s.id,
+              agentId: s.agentId,
+              state: s.state,
+              connectedAt: s.connectedAt,
+              lastActivity: s.lastActivity,
+            })),
           }, null, 2),
         }],
       };
@@ -184,6 +176,45 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
             conflicts,
             warning: conflicts.length > 0 ? "Some files are already claimed by other agents" : null,
           }, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── end_session ─────────────────────────────────────────────
+  server.tool(
+    "end_session",
+    "End a session when an agent finishes its work. Releases file claims and marks session as disconnected.",
+    {
+      sessionId: z.string().describe("Session ID to end"),
+    },
+    async ({ sessionId }) => {
+      const c = await getContext();
+      const session = queries.getSession(c.db, sessionId);
+
+      if (!session) {
+        return {
+          content: [{ type: "text" as const, text: `Session not found: ${sessionId}` }],
+          isError: true,
+        };
+      }
+
+      if (session.state === "disconnected") {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ ended: false, reason: "Session already disconnected", sessionId }, null, 2),
+          }],
+        };
+      }
+
+      disconnectSession(c.db, sessionId);
+      c.insight.info(`Session ended: ${sessionId} (agent: ${session.agentId})`);
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({ ended: true, sessionId, agentId: session.agentId }, null, 2),
         }],
       };
     },
