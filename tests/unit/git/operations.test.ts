@@ -18,6 +18,9 @@ function git(args: string[], cwd: string) {
   return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
 }
 
+/** Normalize path separators for cross-platform comparison (Windows backslash → forward slash) */
+const normalizePath = (p: string) => p.replace(/\\/g, "/");
+
 describe("git operations", () => {
   let repoDir: string;
 
@@ -106,7 +109,7 @@ describe("git operations", () => {
     it("returns same as getRepoRoot in a normal repo", async () => {
       const repoRoot = await getRepoRoot({ cwd: repoDir });
       const mainRoot = await getMainRepoRoot({ cwd: repoDir });
-      expect(mainRoot).toBe(repoRoot);
+      expect(normalizePath(mainRoot)).toBe(normalizePath(repoRoot));
     });
 
     it("returns main repo root from a worktree", async () => {
@@ -118,10 +121,10 @@ describe("git operations", () => {
       const wtRepoRoot = await getRepoRoot({ cwd: worktreeDir });
       const wtMainRoot = await getMainRepoRoot({ cwd: worktreeDir });
 
-      // Worktree root differs from main repo root
-      expect(wtRepoRoot).toBe(worktreeDir);
+      // Worktree root differs from main repo root (normalize for Windows path separators)
+      expect(normalizePath(wtRepoRoot)).toBe(normalizePath(worktreeDir));
       // But getMainRepoRoot always returns the main repo
-      expect(wtMainRoot).toBe(mainRoot);
+      expect(normalizePath(wtMainRoot)).toBe(normalizePath(mainRoot));
 
       // Cleanup
       git(["worktree", "remove", worktreeDir], repoDir);

@@ -7,6 +7,11 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
+    ignore:
+      # Pinned to 0.20.8 — tree-sitter-wasms requires this exact version.
+      # v0.21+ has breaking TypeScript type changes (Parser/SyntaxNode exports).
+      - dependency-name: "web-tree-sitter"
+        versions: [">= 0.21"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
