@@ -247,7 +247,7 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
   const repoRoot = await getRepoRoot({ cwd: config.repoPath });
   const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
   const repoName = basename(repoRoot);
-  const { db } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
 
   insight.info("Starting full index...");
@@ -259,6 +259,22 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
     excludePatterns: config.excludePatterns,
     onProgress: (msg) => insight.detail(msg),
   });
+
+  // Initialize knowledge FTS5 table (idempotent, ensures search_knowledge works after index)
+  try {
+    const { FTS5Backend } = await import("./search/fts5.js");
+    const fts5 = new FTS5Backend(sqlite, db);
+    fts5.initKnowledgeFts(sqlite);
+    fts5.rebuildKnowledgeFts(sqlite);
+    // Also init for global DB if available
+    try {
+      const { globalSqlite } = initGlobalDatabase();
+      if (globalSqlite) {
+        fts5.initKnowledgeFts(globalSqlite);
+        fts5.rebuildKnowledgeFts(globalSqlite);
+      }
+    } catch { /* global DB may not exist */ }
+  } catch { /* non-fatal: FTS5 will be created on next serve */ }
 
   insight.info(`Done: ${result.filesIndexed} files indexed at ${result.commit.slice(0, 7)} (${result.durationMs}ms)`);
   if (result.errors.length > 0) {
