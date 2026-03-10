@@ -58,7 +58,7 @@ export function createAgoraServer(config: AgoraConfig) {
     });
     await searchRouter.initialize();
 
-    const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke");
+    const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke", 200, db, repoId);
 
     // Global knowledge DB (~/.agora/knowledge.db)
     let globalDb: AgoraContext["globalDb"] = null;

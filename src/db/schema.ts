@@ -128,6 +128,29 @@ export const ticketComments = sqliteTable("ticket_comments", {
   createdAt: text("created_at").notNull(),
 });
 
+// --- Coordination Messages ---
+
+export const coordinationMessages = sqliteTable("coordination_messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: integer("repo_id").notNull().references(() => repos.id),
+  messageId: text("message_id").notNull().unique(),
+  fromAgentId: text("from_agent_id").notNull(),
+  toAgentId: text("to_agent_id"),
+  type: text("type").notNull(),
+  payloadJson: text("payload_json").notNull(),
+  timestamp: text("timestamp").notNull(),
+});
+
+// --- Dashboard Events ---
+
+export const dashboardEvents = sqliteTable("dashboard_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: integer("repo_id").notNull().references(() => repos.id),
+  eventType: text("event_type").notNull(),
+  dataJson: text("data_json").notNull(),
+  timestamp: text("timestamp").notNull(),
+});
+
 // --- Agents ---
 
 export const agents = sqliteTable("agents", {

@@ -76,7 +76,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
       const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
       const { CoordinationBus } = await import("./coordination/bus.js");
       const { startDashboard } = await import("./dashboard/server.js");
-      const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke");
+      const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke", 200, db, repoId);
       let globalDb = null;
       try { globalDb = initGlobalDatabase().globalDb; } catch { /* non-fatal */ }
       startDashboard({ db, repoId, repoPath: repoRoot, bus, globalDb }, config.dashboardPort, insight);

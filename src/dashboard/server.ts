@@ -6,7 +6,7 @@ import {
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence, type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
-import { type DashboardEvent, subscribeDashboardEvents } from "./events.js";
+import { getDashboardEventsAfter, getLatestDashboardEventId, type DashboardEvent } from "./events.js";
 import {
   assignTicketRecord,
   commentTicketRecord,
@@ -56,7 +56,18 @@ export function startDashboard(
   insight: InsightStream,
 ): Server & { sse: DashboardSSE } {
   const sse = new DashboardSSE();
-  const unsubscribe = subscribeDashboardEvents((event) => sse.broadcast(event));
+  let lastDashboardEventId = getLatestDashboardEventId(deps.db, deps.repoId);
+  const poller = setInterval(() => {
+    try {
+      const events = getDashboardEventsAfter(deps.db, deps.repoId, lastDashboardEventId, 100);
+      for (const event of events) {
+        lastDashboardEventId = event.id;
+        sse.broadcast({ type: event.type, data: event.data });
+      }
+    } catch (error) {
+      insight.warn(`Dashboard event poll failed: ${error}`);
+    }
+  }, 1000);
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${port}`);
@@ -107,6 +118,7 @@ export function startDashboard(
           repoId: deps.repoId,
           repoPath: deps.repoPath,
           insight,
+          bus: deps.bus,
         }, {
           title: String(body.title ?? ""),
           description: String(body.description ?? ""),
@@ -138,6 +150,7 @@ export function startDashboard(
             repoId: deps.repoId,
             repoPath: deps.repoPath,
             insight,
+            bus: deps.bus,
           }, {
             ticketId: decodeURIComponent(ticketId),
             content: String(body.content ?? ""),
@@ -153,6 +166,7 @@ export function startDashboard(
             repoId: deps.repoId,
             repoPath: deps.repoPath,
             insight,
+            bus: deps.bus,
           }, {
             ticketId: decodeURIComponent(ticketId),
             assigneeAgentId: String(body.assigneeAgentId ?? ""),
@@ -168,6 +182,7 @@ export function startDashboard(
             repoId: deps.repoId,
             repoPath: deps.repoPath,
             insight,
+            bus: deps.bus,
           }, {
             ticketId: decodeURIComponent(ticketId),
             status: String(body.status ?? "") as Parameters<typeof updateTicketStatusRecord>[1]["status"],
@@ -220,7 +235,7 @@ export function startDashboard(
   });
 
   server.on("close", () => {
-    unsubscribe();
+    clearInterval(poller);
   });
 
   // Attach SSE broadcaster to the server for external access

@@ -511,3 +511,89 @@ export function getPatchesByTicketId(db: DB, ticketInternalId: number) {
     .orderBy(desc(tables.patches.createdAt))
     .all();
 }
+
+// --- Coordination Messages ---
+
+export function insertCoordinationMessage(
+  db: DB,
+  message: typeof tables.coordinationMessages.$inferInsert,
+): typeof tables.coordinationMessages.$inferSelect {
+  return db.insert(tables.coordinationMessages).values(message).returning().get();
+}
+
+export function getCoordinationMessagesByRepo(
+  db: DB,
+  repoId: number,
+  opts?: { since?: string; afterId?: number; limit?: number },
+) {
+  const conditions = [eq(tables.coordinationMessages.repoId, repoId)];
+
+  if (opts?.since) {
+    conditions.push(sql`${tables.coordinationMessages.timestamp} > ${opts.since}`);
+  }
+
+  if (opts?.afterId !== undefined) {
+    conditions.push(sql`${tables.coordinationMessages.id} > ${opts.afterId}`);
+  }
+
+  const query = db
+    .select()
+    .from(tables.coordinationMessages)
+    .where(and(...conditions))
+    .orderBy(tables.coordinationMessages.id);
+
+  return opts?.limit ? query.limit(opts.limit).all() : query.all();
+}
+
+export function getLatestCoordinationMessageId(db: DB, repoId: number): number {
+  const latest = db
+    .select({ id: tables.coordinationMessages.id })
+    .from(tables.coordinationMessages)
+    .where(eq(tables.coordinationMessages.repoId, repoId))
+    .orderBy(desc(tables.coordinationMessages.id))
+    .get();
+  return latest?.id ?? 0;
+}
+
+// --- Dashboard Events ---
+
+export function insertDashboardEvent(
+  db: DB,
+  event: typeof tables.dashboardEvents.$inferInsert,
+): typeof tables.dashboardEvents.$inferSelect {
+  return db.insert(tables.dashboardEvents).values(event).returning().get();
+}
+
+export function getDashboardEventsByRepo(
+  db: DB,
+  repoId: number,
+  opts?: { afterId?: number; since?: string; limit?: number },
+) {
+  const conditions = [eq(tables.dashboardEvents.repoId, repoId)];
+
+  if (opts?.afterId !== undefined) {
+    conditions.push(sql`${tables.dashboardEvents.id} > ${opts.afterId}`);
+  }
+
+  if (opts?.since) {
+    conditions.push(sql`${tables.dashboardEvents.timestamp} > ${opts.since}`);
+  }
+
+  const query = db
+    .select()
+    .from(tables.dashboardEvents)
+    .where(and(...conditions))
+    .orderBy(tables.dashboardEvents.id);
+
+  return opts?.limit ? query.limit(opts.limit).all() : query.all();
+}
+
+export function getLatestDashboardEventId(db: DB, repoId: number): number {
+  const latest = db
+    .select({ id: tables.dashboardEvents.id })
+    .from(tables.dashboardEvents)
+    .where(eq(tables.dashboardEvents.repoId, repoId))
+    .orderBy(desc(tables.dashboardEvents.id))
+    .get();
+  return latest?.id ?? 0;
+}

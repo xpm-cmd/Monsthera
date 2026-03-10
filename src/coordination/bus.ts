@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { MessageType } from "../../schemas/coordination.js";
+import type * as schema from "../db/schema.js";
+import * as queries from "../db/queries.js";
 
 export type Topology = "hub-spoke" | "hybrid" | "mesh";
 
@@ -16,10 +19,19 @@ export class CoordinationBus {
   private messages: BusMessage[] = [];
   private topology: Topology;
   private maxHistory: number;
+  private db: BetterSQLite3Database<typeof schema> | null;
+  private repoId: number | null;
 
-  constructor(topology: Topology = "hub-spoke", maxHistory = 200) {
+  constructor(
+    topology: Topology = "hub-spoke",
+    maxHistory = 200,
+    db?: BetterSQLite3Database<typeof schema>,
+    repoId?: number,
+  ) {
     this.topology = topology;
     this.maxHistory = maxHistory;
+    this.db = db ?? null;
+    this.repoId = repoId ?? null;
   }
 
   send(msg: Omit<BusMessage, "id" | "timestamp">): BusMessage {
@@ -28,6 +40,20 @@ export class CoordinationBus {
       id: `msg-${randomUUID().slice(0, 12)}`,
       timestamp: new Date().toISOString(),
     };
+
+    if (this.db && this.repoId !== null) {
+      queries.insertCoordinationMessage(this.db, {
+        repoId: this.repoId,
+        messageId: full.id,
+        fromAgentId: full.from,
+        toAgentId: full.to,
+        type: full.type,
+        payloadJson: JSON.stringify(full.payload),
+        timestamp: full.timestamp,
+      });
+      return full;
+    }
+
     this.messages.push(full);
 
     // Trim old messages
@@ -40,7 +66,18 @@ export class CoordinationBus {
 
   /** Get messages visible to a given agent. */
   getMessages(agentId: string, since?: string, limit = 50): BusMessage[] {
-    let filtered = this.messages.filter((m) => {
+    const source = this.db && this.repoId !== null
+      ? queries.getCoordinationMessagesByRepo(this.db, this.repoId, { since }).map((m) => ({
+        id: m.messageId,
+        from: m.fromAgentId,
+        to: m.toAgentId,
+        type: m.type as MessageType,
+        payload: JSON.parse(m.payloadJson) as Record<string, unknown>,
+        timestamp: m.timestamp,
+      }))
+      : this.messages;
+
+    let filtered = source.filter((m) => {
       // Broadcasts visible to all (including own broadcasts)
       if (m.to === null) return true;
       // Direct messages TO this agent
@@ -50,7 +87,7 @@ export class CoordinationBus {
       return false;
     });
 
-    if (since) {
+    if (since && !this.db) {
       filtered = filtered.filter((m) => m.timestamp > since);
     }
 
@@ -62,6 +99,7 @@ export class CoordinationBus {
   }
 
   clear(): void {
+    if (this.db) return;
     this.messages = [];
   }
 }

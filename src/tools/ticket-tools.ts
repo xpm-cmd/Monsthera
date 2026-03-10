@@ -40,6 +40,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        bus: c.bus,
       }, {
         title,
         description,
@@ -72,6 +73,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        bus: c.bus,
       }, {
         ticketId,
         assigneeAgentId,
@@ -100,6 +102,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        bus: c.bus,
       }, {
         ticketId,
         status: targetStatus as TicketStatusType,
@@ -265,6 +268,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        bus: c.bus,
       }, {
         ticketId,
         content,

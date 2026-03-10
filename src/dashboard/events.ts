@@ -1,3 +1,9 @@
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type * as schema from "../db/schema.js";
+import * as queries from "../db/queries.js";
+
+type DB = BetterSQLite3Database<typeof schema>;
+
 export interface DashboardEvent {
   type:
     | "agent_registered"
@@ -14,17 +20,33 @@ export interface DashboardEvent {
   data: Record<string, unknown>;
 }
 
-type DashboardListener = (event: DashboardEvent) => void;
-
-const listeners = new Set<DashboardListener>();
-
-export function subscribeDashboardEvents(listener: DashboardListener): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+export function recordDashboardEvent(
+  db: DB,
+  repoId: number,
+  event: DashboardEvent,
+): typeof schema.dashboardEvents.$inferSelect {
+  return queries.insertDashboardEvent(db, {
+    repoId,
+    eventType: event.type,
+    dataJson: JSON.stringify(event.data),
+    timestamp: new Date().toISOString(),
+  });
 }
 
-export function publishDashboardEvent(event: DashboardEvent): void {
-  for (const listener of listeners) {
-    listener(event);
-  }
+export function getDashboardEventsAfter(
+  db: DB,
+  repoId: number,
+  afterId: number,
+  limit = 100,
+): Array<DashboardEvent & { id: number; timestamp: string }> {
+  return queries.getDashboardEventsByRepo(db, repoId, { afterId, limit }).map((event) => ({
+    id: event.id,
+    type: event.eventType as DashboardEvent["type"],
+    data: JSON.parse(event.dataJson) as Record<string, unknown>,
+    timestamp: event.timestamp,
+  }));
+}
+
+export function getLatestDashboardEventId(db: DB, repoId: number): number {
+  return queries.getLatestDashboardEventId(db, repoId);
 }

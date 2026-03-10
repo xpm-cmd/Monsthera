@@ -1,11 +1,26 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
+import * as schema from "../../../src/db/schema.js";
+import * as queries from "../../../src/db/queries.js";
 
 describe("CoordinationBus", () => {
   let bus: CoordinationBus;
+  let tempDir: string | null = null;
 
   beforeEach(() => {
     bus = new CoordinationBus("hub-spoke");
+  });
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = null;
+    }
   });
 
   it("sends and retrieves broadcast messages", () => {
@@ -58,5 +73,36 @@ describe("CoordinationBus", () => {
     expect(bus.getTopology()).toBe("hub-spoke");
     const meshBus = new CoordinationBus("mesh");
     expect(meshBus.getTopology()).toBe("mesh");
+  });
+
+  it("shares coordination messages across bus instances via SQLite", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "agora-bus-"));
+    const dbPath = join(tempDir, "agora.db");
+
+    const sqliteA = new Database(dbPath);
+    const sqliteB = new Database(dbPath);
+    sqliteA.pragma("journal_mode = WAL");
+    sqliteB.pragma("journal_mode = WAL");
+
+    sqliteA.exec(`
+      CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE coordination_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, message_id TEXT NOT NULL UNIQUE, from_agent_id TEXT NOT NULL, to_agent_id TEXT, type TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp TEXT NOT NULL);
+    `);
+
+    const dbA = drizzle(sqliteA, { schema });
+    const dbB = drizzle(sqliteB, { schema });
+    const repoId = queries.upsertRepo(dbA, "/test", "test").id;
+
+    const sharedA = new CoordinationBus("hub-spoke", 200, dbA, repoId);
+    const sharedB = new CoordinationBus("hub-spoke", 200, dbB, repoId);
+
+    sharedA.send({ from: "agent-1", to: null, type: "status_update", payload: { domain: "ticket", ticketId: "TKT-1" } });
+
+    const messages = sharedB.getMessages("agent-2");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.payload).toMatchObject({ domain: "ticket", ticketId: "TKT-1" });
+
+    sqliteA.close();
+    sqliteB.close();
   });
 });

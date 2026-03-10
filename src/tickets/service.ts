@@ -12,7 +12,8 @@ import {
 } from "../../schemas/ticket.js";
 import type { RoleId } from "../../schemas/agent.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
-import { publishDashboardEvent } from "../dashboard/events.js";
+import { recordDashboardEvent } from "../dashboard/events.js";
+import type { CoordinationBus } from "../coordination/bus.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
@@ -21,6 +22,7 @@ export interface TicketServiceContext {
   repoId: number;
   repoPath: string;
   insight: Pick<InsightStream, "info" | "warn">;
+  bus?: CoordinationBus;
 }
 
 export interface TicketServiceError {
@@ -118,9 +120,15 @@ export async function createTicketRecord(
   });
 
   ctx.insight.info(`Ticket ${ticketId} created by ${input.agentId}`);
-  publishDashboardEvent({
+  recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_created",
     data: { ticketId, status: "backlog", severity: input.severity, creatorAgentId: input.agentId },
+  });
+  broadcastTicketRealtime(ctx, input.agentId, "ticket_created", {
+    ticketId,
+    status: "backlog",
+    severity: input.severity,
+    creatorAgentId: input.agentId,
   });
 
   return ok({
@@ -182,7 +190,7 @@ export function assignTicketRecord(
   );
 
   ctx.insight.info(`Ticket ${input.ticketId} assigned to ${input.assigneeAgentId} by ${input.agentId}`);
-  publishDashboardEvent({
+  recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_assigned",
     data: {
       ticketId: input.ticketId,
@@ -190,6 +198,11 @@ export function assignTicketRecord(
       status: updates.status ?? ticket.status,
       agentId: input.agentId,
     },
+  });
+  broadcastTicketRealtime(ctx, input.agentId, "ticket_assigned", {
+    ticketId: input.ticketId,
+    assigneeAgentId: input.assigneeAgentId,
+    status: updates.status ?? ticket.status,
   });
 
   return ok({
@@ -249,7 +262,7 @@ export function updateTicketStatusRecord(
   });
 
   ctx.insight.info(`Ticket ${input.ticketId}: ${current} → ${input.status} by ${input.agentId}`);
-  publishDashboardEvent({
+  recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_status_changed",
     data: {
       ticketId: input.ticketId,
@@ -257,6 +270,11 @@ export function updateTicketStatusRecord(
       status: input.status,
       agentId: input.agentId,
     },
+  });
+  broadcastTicketRealtime(ctx, input.agentId, "ticket_status_changed", {
+    ticketId: input.ticketId,
+    previousStatus: current,
+    status: input.status,
   });
 
   return ok({
@@ -288,9 +306,14 @@ export function commentTicketRecord(
     createdAt: now,
   });
 
-  publishDashboardEvent({
+  recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_commented",
     data: { ticketId: input.ticketId, commentId: comment.id, agentId: input.agentId },
+  });
+  broadcastTicketRealtime(ctx, input.agentId, "ticket_commented", {
+    ticketId: input.ticketId,
+    commentId: comment.id,
+    agentId: input.agentId,
   });
 
   return ok({
@@ -321,6 +344,24 @@ function resolveTicketActor(db: DB, agentId: string, sessionId: string): Resolve
 
 function ok<T>(data: T): TicketServiceSuccess<T> {
   return { ok: true, data };
+}
+
+function broadcastTicketRealtime(
+  ctx: TicketServiceContext,
+  agentId: string,
+  eventType: "ticket_created" | "ticket_assigned" | "ticket_status_changed" | "ticket_commented",
+  data: Record<string, unknown>,
+): void {
+  ctx.bus?.send({
+    from: agentId,
+    to: null,
+    type: "status_update",
+    payload: {
+      domain: "ticket",
+      eventType,
+      ...data,
+    },
+  });
 }
 
 function err(
