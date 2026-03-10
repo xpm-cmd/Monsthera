@@ -45,6 +45,7 @@ describe("read tool discovery", () => {
       "list_notes",
       "end_session",
       "search_tickets",
+      "lookup_dependencies",
     ]));
   });
 

@@ -10,6 +10,7 @@ export const CAPABILITY_TOOL_NAMES = [
   "create_ticket", "assign_ticket", "update_ticket_status", "update_ticket",
   "list_tickets", "search_tickets", "get_ticket", "comment_ticket",
   "link_tickets", "unlink_tickets",
+  "lookup_dependencies",
 ] as const;
 
 export type CapabilityToolName = (typeof CAPABILITY_TOOL_NAMES)[number];

@@ -278,6 +278,10 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           agentId: "string (required)",
           sessionId: "string (required)",
         },
+        // ── analysis tools ──
+        lookup_dependencies: {
+          filePath: "string (file path relative to repo root, required)",
+        },
       };
 
       const s = schemas[toolName];
@@ -509,6 +513,45 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
               updatedAt: n.updatedAt,
             })),
             matchedKnowledge,
+          }, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── lookup_dependencies ─────────────────────────────────
+  server.tool(
+    "lookup_dependencies",
+    "Look up file dependencies from the imports index. Returns what a file imports (forward) and which files import it (reverse).",
+    {
+      filePath: z.string().min(1).describe("File path relative to repo root"),
+    },
+    async ({ filePath }) => {
+      const c = await getContext();
+      const file = queries.getFileByPath(c.db, c.repoId, filePath);
+
+      const forward = file
+        ? queries.getImportsForFile(c.db, file.id).map((imp) => ({
+            targetPath: imp.targetPath,
+            kind: imp.kind,
+          }))
+        : [];
+
+      const reverseRows = queries.getFilesImporting(c.db, filePath);
+      const reverse = reverseRows.map((row) => ({
+        sourcePath: row.files.path,
+        importPath: row.imports.targetPath,
+        kind: row.imports.kind,
+      }));
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            filePath,
+            indexed: !!file,
+            forward,
+            reverse,
           }, null, 2),
         }],
       };
