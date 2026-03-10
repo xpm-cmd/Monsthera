@@ -225,6 +225,21 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
 .actor-chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--text2);padding:.25rem .55rem;border-radius:20px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05)}
 
+/* ── Dependency graph ──────────────────────── */
+.dep-graph-toolbar{display:flex;gap:.6rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap}
+.dep-graph-toolbar input,.dep-graph-toolbar select{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:.45rem .6rem;font-size:.78rem}
+.dep-graph-toolbar input{flex:1;min-width:180px;max-width:300px}
+.dep-graph-toolbar .dep-graph-info{margin-left:auto;font-size:.72rem;color:var(--text3)}
+.dep-graph-wrap{position:relative;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg)}
+.dep-graph-wrap canvas{display:block;width:100%;cursor:grab}
+.dep-graph-wrap canvas:active{cursor:grabbing}
+.dep-graph-legend{display:flex;gap:1rem;padding:.55rem .8rem;font-size:.68rem;color:var(--text3);border-top:1px solid var(--border)}
+.dep-graph-legend span{display:inline-flex;align-items:center;gap:.3rem}
+.dep-graph-legend .swatch{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dep-graph-tooltip{position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.5rem .7rem;font-size:.74rem;color:var(--text2);pointer-events:none;display:none;z-index:10;max-width:280px}
+.dep-graph-tooltip .mono{font-family:monospace;font-size:.72rem;color:var(--text)}
+.dep-graph-empty{padding:3rem;text-align:center;color:var(--text3);font-size:.82rem}
+
 /* ── Footer ─────────────────────────────────── */
 footer{text-align:center;font-size:.7rem;color:var(--text3);padding:1.5rem;border-top:1px solid var(--border);margin-top:1rem}
 footer a{color:var(--blue);text-decoration:none}
@@ -260,6 +275,7 @@ footer a{color:var(--blue);text-decoration:none}
   <div id="notes" class="section"></div>
   <div id="knowledge" class="section"></div>
   <div id="tickets" class="section"></div>
+  <div id="dependencies" class="section"></div>
 </div>
 
 <footer>Agora &mdash; Multi-agent shared context &amp; coordination server</footer>
@@ -268,7 +284,7 @@ footer a{color:var(--blue);text-decoration:none}
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const api=p=>fetch('/api/'+p).then(r=>r.json());
-const tabs=[['agents','Agents'],['timeline','Agent Timeline'],['search-debug','Search Debug'],['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['knowledge','Knowledge'],['tickets','Tickets']];
+const tabs=[['agents','Agents'],['timeline','Agent Timeline'],['search-debug','Search Debug'],['dependencies','Dependencies'],['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['knowledge','Knowledge'],['tickets','Tickets']];
 const PALETTE=['#3b82f6','#22c55e','#f59e0b','#a855f7','#06b6d4','#ec4899','#6366f1','#ef4444','#14b8a6','#f97316'];
 const COMMENT_TONES=[
   {accent:'#3b82f6',bg:'rgba(59,130,246,.10)'},
@@ -296,7 +312,7 @@ const TICKET_BOARD_COLUMNS=[
   {id:'blocked',label:'Blocked',statuses:['blocked']},
   {id:'done',label:'Done',statuses:['resolved','closed','wont_fix']}
 ];
-let tabCounts={agents:0,timeline:0,'search-debug':0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
+let tabCounts={agents:0,timeline:0,'search-debug':0,dependencies:0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
 let selectedTicketId=null;
 let selectedTicketDetail=null;
 let selectedActorSessionId=null;
@@ -527,6 +543,12 @@ function makeTable(headers,rows){
 
 function b(v,c){return{badge:v,cls:c}}
 function m(v){return{mono:v}}
+function eventStatusClass(status){
+  if(status==='success') return 'success';
+  if(status==='denied') return 'orange';
+  if(status==='stale') return 'blue';
+  return 'red';
+}
 
 function isDoneTicketStatus(status){
   return DONE_TICKET_STATUSES.includes(status);
@@ -1215,10 +1237,14 @@ function renderAgentTimelineSection(timeline){
   }
   section.innerHTML='<div class="timeline-grid">'+timeline.map(function(agent){
     var events=(agent.events||[]).map(function(event){
+      var detail=event.errorDetail
+        ?'<div class="timeline-event-summary"><strong>'+esc(event.errorCode||'issue')+':</strong> '+esc(event.errorDetail)+'</div>'
+        :'';
       return '<div class="timeline-event">'
         +'<div class="timeline-event-head"><span class="timeline-event-tool">'+esc(event.tool)+'</span><span>'+esc(new Date(event.timestamp).toLocaleString())+'</span></div>'
-        +'<div class="timeline-event-head"><span><span class="badge badge-'+(event.status==='success'?'success':'red')+'">'+esc(event.status)+'</span></span><span>'+esc(event.durationMs)+'ms · '+esc((event.sessionId||'-').slice(0,12))+'</span></div>'
+        +'<div class="timeline-event-head"><span><span class="badge badge-'+eventStatusClass(event.status)+'">'+esc(event.status)+'</span></span><span>'+esc(event.durationMs)+'ms · '+esc((event.sessionId||'-').slice(0,12))+'</span></div>'
         +'<div class="timeline-event-summary">'+esc(event.redactedSummary||'No summary captured')+'</div>'
+        +detail
       +'</div>';
     }).join('')||'<div class="ticket-help">No recent events.</div>';
     return '<div class="timeline-card">'
@@ -1323,6 +1349,290 @@ async function runSearchDebug(){
   }
 }
 
+/* ── Dependency Graph ────────────────────────── */
+var depGraphState={scope:'',nodes:[],edges:[],cycleCount:0,loaded:false};
+
+var LANG_COLORS_MAP={typescript:'#3178c6',javascript:'#f7df1e',python:'#3776ab',go:'#00add8',rust:'#dea584',java:'#b07219',ruby:'#cc342d',php:'#4f5d95'};
+
+function langColor(lang){
+  if(!lang) return '#6b7280';
+  var l=lang.toLowerCase();
+  return LANG_COLORS_MAP[l]||'#6b7280';
+}
+
+function renderDepGraphSection(){
+  var el=document.getElementById('dependencies');
+  if(!depGraphState.loaded){
+    el.textContent='Loading dependency graph\u2026';
+    return;
+  }
+  if(!depGraphState.nodes.length){
+    el.textContent='No indexed files with imports found'+(depGraphState.scope?' in scope "'+depGraphState.scope+'"':'')+'.';
+    return;
+  }
+
+  var info=String(depGraphState.nodes.length)+' files, '+String(depGraphState.edges.length)+' imports';
+  if(depGraphState.cycleCount>0) info+=', '+String(depGraphState.cycleCount)+' in cycles';
+
+  // Build DOM
+  while(el.firstChild) el.removeChild(el.firstChild);
+
+  // Toolbar
+  var toolbar=document.createElement('div');toolbar.className='dep-graph-toolbar';
+  var scopeInput=document.createElement('input');scopeInput.id='dep-scope';scopeInput.type='text';scopeInput.placeholder='Scope prefix (e.g. src/)';scopeInput.value=depGraphState.scope;
+  var loadBtn=document.createElement('button');loadBtn.className='action-submit';loadBtn.textContent='Load Graph';
+  var infoSpan=document.createElement('div');infoSpan.className='dep-graph-info';infoSpan.textContent=info;
+  toolbar.appendChild(scopeInput);toolbar.appendChild(loadBtn);toolbar.appendChild(infoSpan);
+  el.appendChild(toolbar);
+
+  loadBtn.addEventListener('click',function(){
+    depGraphState.scope=(scopeInput.value||'').trim();
+    loadDepGraph();
+  });
+  scopeInput.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){depGraphState.scope=this.value.trim();loadDepGraph();}
+  });
+
+  // Canvas wrap
+  var wrap=document.createElement('div');wrap.className='dep-graph-wrap';
+  var canvas=document.createElement('canvas');canvas.id='dep-canvas';canvas.height=500;
+  var tooltip=document.createElement('div');tooltip.className='dep-graph-tooltip';tooltip.id='dep-tooltip';
+  wrap.appendChild(canvas);wrap.appendChild(tooltip);
+
+  // Legend
+  var legend=document.createElement('div');legend.className='dep-graph-legend';
+  var langList=[['#3178c6','TypeScript'],['#f7df1e','JavaScript'],['#3776ab','Python'],['#00add8','Go'],['#dea584','Rust'],['#6b7280','Other'],['#ef4444','Cycle']];
+  langList.forEach(function(pair){
+    var s=document.createElement('span');
+    var sw=document.createElement('span');sw.className='swatch';sw.style.background=pair[0];
+    s.appendChild(sw);s.appendChild(document.createTextNode(' '+pair[1]));
+    legend.appendChild(s);
+  });
+  wrap.appendChild(legend);
+  el.appendChild(wrap);
+
+  initDepCanvas();
+}
+
+function initDepCanvas(){
+  var canvas=document.getElementById('dep-canvas');
+  if(!canvas) return;
+  var rect=canvas.parentElement.getBoundingClientRect();
+  var W=Math.floor(rect.width);
+  var H=500;
+  var dpr=window.devicePixelRatio||1;
+  canvas.width=W*dpr;
+  canvas.height=H*dpr;
+  canvas.style.width=W+'px';
+  canvas.style.height=H+'px';
+  var ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  var nodes=depGraphState.nodes.map(function(n){
+    return{id:n.id,path:n.path,lang:n.language,inCycle:n.inCycle,
+      x:W/2+(Math.random()-.5)*W*0.6,
+      y:H/2+(Math.random()-.5)*H*0.6,
+      vx:0,vy:0,r:4};
+  });
+  var idToIdx={};
+  nodes.forEach(function(n,i){idToIdx[n.id]=i});
+  var edges=depGraphState.edges.filter(function(e){return idToIdx[e.source]!==undefined&&idToIdx[e.target]!==undefined})
+    .map(function(e){return{s:idToIdx[e.source],t:idToIdx[e.target],kind:e.kind}});
+
+  // Compute degrees for node sizing
+  var deg=new Array(nodes.length).fill(0);
+  edges.forEach(function(e){deg[e.s]++;deg[e.t]++});
+  var maxDeg=Math.max.apply(null,deg.concat([1]));
+  nodes.forEach(function(n,i){n.r=3+Math.sqrt(deg[i]/maxDeg)*5});
+
+  var camX=0,camY=0,zoom=1;
+  var dragging=null,dragStart=null;
+  var hovered=null;
+
+  // Simple force simulation
+  var alpha=1;
+  var running=true;
+
+  function simulate(){
+    if(alpha<0.001){running=false;return}
+    alpha*=0.98;
+    var N=nodes.length;
+
+    // Repulsion
+    for(var i=0;i<N;i++){
+      for(var j=i+1;j<N;j++){
+        var dx=nodes[j].x-nodes[i].x;
+        var dy=nodes[j].y-nodes[i].y;
+        var d2=dx*dx+dy*dy+1;
+        var f=200*alpha/d2;
+        var fx=dx*f,fy=dy*f;
+        nodes[i].vx-=fx;nodes[i].vy-=fy;
+        nodes[j].vx+=fx;nodes[j].vy+=fy;
+      }
+    }
+
+    // Attraction along edges
+    edges.forEach(function(e){
+      var a=nodes[e.s],b=nodes[e.t];
+      var dx=b.x-a.x,dy=b.y-a.y;
+      var d=Math.sqrt(dx*dx+dy*dy)+0.1;
+      var f=0.03*alpha*(d-60)/d;
+      var fx=dx*f,fy=dy*f;
+      a.vx+=fx;a.vy+=fy;
+      b.vx-=fx;b.vy-=fy;
+    });
+
+    // Center gravity
+    nodes.forEach(function(n){
+      n.vx+=(W/2-n.x)*0.001*alpha;
+      n.vy+=(H/2-n.y)*0.001*alpha;
+    });
+
+    // Integrate
+    nodes.forEach(function(n){
+      if(n===dragging) return;
+      n.vx*=0.6;n.vy*=0.6;
+      n.x+=n.vx;n.y+=n.vy;
+      n.x=Math.max(n.r,Math.min(W-n.r,n.x));
+      n.y=Math.max(n.r,Math.min(H-n.r,n.y));
+    });
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    ctx.save();
+    ctx.translate(camX,camY);
+    ctx.scale(zoom,zoom);
+
+    // Edges
+    ctx.lineWidth=0.5/zoom;
+    edges.forEach(function(e){
+      var a=nodes[e.s],b=nodes[e.t];
+      var isCycle=a.inCycle&&b.inCycle;
+      ctx.strokeStyle=isCycle?'rgba(239,68,68,.45)':'rgba(255,255,255,.08)';
+      ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+    });
+
+    // Nodes
+    nodes.forEach(function(n,i){
+      ctx.beginPath();
+      ctx.arc(n.x,n.y,n.r/zoom,0,Math.PI*2);
+      if(n.inCycle){
+        ctx.fillStyle='#ef4444';
+        ctx.strokeStyle='rgba(239,68,68,.6)';
+        ctx.lineWidth=1.5/zoom;
+        ctx.fill();ctx.stroke();
+      }else{
+        ctx.fillStyle=langColor(n.lang);
+        ctx.fill();
+      }
+      if(i===hovered){
+        ctx.strokeStyle='#fff';
+        ctx.lineWidth=2/zoom;
+        ctx.stroke();
+      }
+    });
+
+    ctx.restore();
+    if(running){simulate();requestAnimationFrame(draw)}
+  }
+
+  // Interaction
+  function worldPos(e){
+    var r=canvas.getBoundingClientRect();
+    return{x:(e.clientX-r.left-camX)/zoom,y:(e.clientY-r.top-camY)/zoom};
+  }
+
+  function findNode(wx,wy){
+    for(var i=nodes.length-1;i>=0;i--){
+      var n=nodes[i];
+      var dx=n.x-wx,dy=n.y-wy;
+      if(dx*dx+dy*dy<(n.r/zoom+4)*(n.r/zoom+4)) return i;
+    }
+    return -1;
+  }
+
+  canvas.addEventListener('mousedown',function(e){
+    var p=worldPos(e);
+    var idx=findNode(p.x,p.y);
+    if(idx>=0){dragging=nodes[idx];dragging.vx=0;dragging.vy=0}
+    else{dragStart={mx:e.clientX,my:e.clientY,cx:camX,cy:camY}}
+  });
+
+  canvas.addEventListener('mousemove',function(e){
+    var p=worldPos(e);
+    if(dragging){
+      dragging.x=p.x;dragging.y=p.y;
+      alpha=Math.max(alpha,0.1);running=true;requestAnimationFrame(draw);
+    }else if(dragStart){
+      camX=dragStart.cx+(e.clientX-dragStart.mx);
+      camY=dragStart.cy+(e.clientY-dragStart.my);
+      requestAnimationFrame(draw);
+    }else{
+      var idx=findNode(p.x,p.y);
+      if(idx!==hovered){
+        hovered=idx>=0?idx:null;
+        var tt=document.getElementById('dep-tooltip');
+        if(hovered!==null){
+          var n=nodes[hovered];
+          var inCount=edges.filter(function(e){return e.t===hovered}).length;
+          var outCount=edges.filter(function(e){return e.s===hovered}).length;
+          tt.textContent='';
+          var mp=document.createElement('div');mp.className='mono';mp.textContent=n.path;
+          var md=document.createElement('div');md.textContent=(n.lang||'unknown')+' \u00b7 '+outCount+' imports \u00b7 '+inCount+' importers'+(n.inCycle?' \u00b7 in cycle':'');
+          tt.appendChild(mp);tt.appendChild(md);
+          tt.style.display='block';
+          var r=canvas.getBoundingClientRect();
+          tt.style.left=Math.min(e.clientX-r.left+12,W-200)+'px';
+          tt.style.top=(e.clientY-r.top+12)+'px';
+        }else{
+          tt.style.display='none';
+        }
+        if(!running){requestAnimationFrame(draw)}
+      }
+    }
+  });
+
+  canvas.addEventListener('mouseup',function(){dragging=null;dragStart=null});
+  canvas.addEventListener('mouseleave',function(){
+    dragging=null;dragStart=null;hovered=null;
+    document.getElementById('dep-tooltip').style.display='none';
+    if(!running) requestAnimationFrame(draw);
+  });
+
+  canvas.addEventListener('wheel',function(e){
+    e.preventDefault();
+    var r=canvas.getBoundingClientRect();
+    var mx=e.clientX-r.left,my=e.clientY-r.top;
+    var oldZoom=zoom;
+    zoom*=e.deltaY<0?1.1:0.9;
+    zoom=Math.max(0.1,Math.min(5,zoom));
+    camX=mx-(mx-camX)*(zoom/oldZoom);
+    camY=my-(my-camY)*(zoom/oldZoom);
+    if(!running) requestAnimationFrame(draw);
+  },{passive:false});
+
+  requestAnimationFrame(draw);
+}
+
+async function loadDepGraph(){
+  depGraphState.loaded=false;
+  renderDepGraphSection();
+  try{
+    var params=depGraphState.scope?'?scope='+encodeURIComponent(depGraphState.scope):'';
+    var data=await api('dependency-graph'+params);
+    depGraphState.nodes=data.nodes||[];
+    depGraphState.edges=data.edges||[];
+    depGraphState.cycleCount=data.cycleCount||0;
+    depGraphState.loaded=true;
+  }catch(e){
+    depGraphState.nodes=[];depGraphState.edges=[];depGraphState.cycleCount=0;
+    depGraphState.loaded=true;
+    console.error('Dep graph load failed:',e);
+  }
+  renderDepGraphSection();
+}
+
 async function refreshPresence(){
   try{
     var agents=await api('presence');
@@ -1372,7 +1682,7 @@ async function refresh(){
     renderCharts(o,logs,patches,knowledge,presence,files);
 
     /* Tab counts */
-    tabCounts={agents:agents.length,timeline:timeline.length,'search-debug':searchDebugState.data&&searchDebugState.data.mergedResults?searchDebugState.data.mergedResults.length:0,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};
+    tabCounts={agents:agents.length,timeline:timeline.length,'search-debug':searchDebugState.data&&searchDebugState.data.mergedResults?searchDebugState.data.mergedResults.length:0,dependencies:depGraphState.nodes.length,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};
     updateCounts();
 
     /* Agents */
@@ -1386,10 +1696,24 @@ async function refresh(){
     /* Search debugger */
     renderSearchDebugSection();
 
+    /* Dependency graph — lazy load on first tab visit */
+    if(!depGraphState.loaded) loadDepGraph();
+
     /* Logs */
     document.getElementById('logs').replaceChildren(makeTable(
-      ['Event','Agent','Tool','Status','Duration','In','Out','Time'],
-      logs.map(function(l){return[m(l.eventId.slice(0,10)),l.agentId||'-',b(l.tool,'a'),b(l.status,l.status==='success'?'success':'red'),m(l.durationMs+'ms'),l.payloadSizeIn||'-',l.payloadSizeOut||'-',new Date(l.timestamp).toLocaleTimeString()]})));
+      ['Event','Agent','Tool','Status','Summary','Detail','Duration','In','Out','Time'],
+      logs.map(function(l){return[
+        m(l.eventId.slice(0,10)),
+        l.agentId||'-',
+        b(l.tool,'a'),
+        b(l.status,eventStatusClass(l.status)),
+        l.redactedSummary||'-',
+        l.errorDetail?(l.errorCode?l.errorCode+': ':'')+l.errorDetail:'-',
+        m(l.durationMs+'ms'),
+        l.payloadSizeIn||'-',
+        l.payloadSizeOut||'-',
+        new Date(l.timestamp).toLocaleTimeString()
+      ]})));
 
     /* Patches */
     document.getElementById('patches').replaceChildren(makeTable(

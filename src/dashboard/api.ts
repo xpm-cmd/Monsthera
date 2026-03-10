@@ -85,6 +85,8 @@ export function getAgentTimeline(deps: DashboardDeps, limitPerAgent = 8) {
         timestamp: event.timestamp,
         durationMs: event.durationMs,
         redactedSummary: event.redactedSummary,
+        errorCode: event.errorCode,
+        errorDetail: event.errorDetail ?? event.denialReason ?? null,
       }));
 
       const activeSessionCount = liveSessions.filter((session) => session.agentId === agent.id).length;
@@ -121,6 +123,8 @@ export function getEventLogsList(deps: DashboardDeps, limit = 50) {
     payloadSizeIn: e.payloadSizeIn,
     payloadSizeOut: e.payloadSizeOut,
     redactedSummary: e.redactedSummary,
+    errorCode: e.errorCode,
+    errorDetail: e.errorDetail ?? e.denialReason ?? null,
   }));
 }
 
@@ -457,6 +461,56 @@ export function getKnowledgeList(deps: DashboardDeps) {
       agentId: k.agentId,
       updatedAt: k.updatedAt,
     }));
+}
+
+export function getDependencyGraph(deps: DashboardDeps, scope?: string) {
+  const { files, edges } = queries.getImportGraph(deps.db, deps.repoId, scope);
+
+  // Detect cycles via DFS
+  const adj = new Map<number, number[]>();
+  for (const edge of edges) {
+    if (!adj.has(edge.source)) adj.set(edge.source, []);
+    adj.get(edge.source)!.push(edge.target);
+  }
+
+  const cycleNodes = new Set<number>();
+  const WHITE = 0, GRAY = 1, BLACK = 2;
+  const color = new Map<number, number>();
+  const parent = new Map<number, number>();
+
+  function dfs(u: number): void {
+    color.set(u, GRAY);
+    for (const v of adj.get(u) ?? []) {
+      if (color.get(v) === GRAY) {
+        // Back edge — trace the cycle
+        let cur = u;
+        while (cur !== v) {
+          cycleNodes.add(cur);
+          cur = parent.get(cur)!;
+        }
+        cycleNodes.add(v);
+      } else if ((color.get(v) ?? WHITE) === WHITE) {
+        parent.set(v, u);
+        dfs(v);
+      }
+    }
+    color.set(u, BLACK);
+  }
+
+  for (const file of files) {
+    if ((color.get(file.id) ?? WHITE) === WHITE) {
+      dfs(file.id);
+    }
+  }
+
+  const nodes = files.map((f) => ({
+    id: f.id,
+    path: f.path,
+    language: f.language ?? null,
+    inCycle: cycleNodes.has(f.id),
+  }));
+
+  return { nodes, edges, cycleCount: cycleNodes.size };
 }
 
 function ticketAgeDays(createdAt: string, now = Date.now()): number {

@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
-import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, getAgentTimeline, type DashboardDeps } from "../../../src/dashboard/api.js";
+import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, getAgentTimeline, getEventLogsList, getDependencyGraph, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -13,6 +13,7 @@ function createTestDb() {
     `CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL)`,
     `CREATE TABLE index_state (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, db_indexed_commit TEXT, zoekt_indexed_commit TEXT, indexed_at TEXT, last_success TEXT, last_error TEXT)`,
     `CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, path TEXT NOT NULL, language TEXT, content_hash TEXT, summary TEXT, symbols_json TEXT, has_secrets INTEGER DEFAULT 0, secret_line_ranges TEXT, indexed_at TEXT, commit_sha TEXT, embedding BLOB)`,
+    `CREATE TABLE imports (id INTEGER PRIMARY KEY AUTOINCREMENT, source_file_id INTEGER NOT NULL REFERENCES files(id), target_path TEXT NOT NULL, kind TEXT NOT NULL)`,
     `CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL)`,
     `CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT)`,
     `CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
@@ -21,7 +22,7 @@ function createTestDb() {
     `CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL)`,
     `CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL, to_ticket_id INTEGER NOT NULL, relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL)`,
     `CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, type TEXT NOT NULL, key TEXT NOT NULL UNIQUE, content TEXT NOT NULL, metadata_json TEXT, linked_paths_json TEXT, agent_id TEXT, session_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
-    `CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, denial_reason TEXT)`,
+    `CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, error_code TEXT, error_detail TEXT, denial_reason TEXT)`,
   ]) {
     sqlite.prepare(stmt).run();
   }
@@ -107,13 +108,13 @@ describe("Dashboard API", () => {
       INSERT INTO event_logs (
         event_id, agent_id, session_id, tool, timestamp, duration_ms, status,
         repo_id, commit_scope, payload_size_in, payload_size_out, input_hash,
-        output_hash, redacted_summary, denial_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        output_hash, redacted_summary, error_code, error_detail, denial_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    insertEvent.run("evt-1", "agent-a", "session-a", "create_ticket", recent, 42, "success", "1", "abc1234", 10, 20, "in1", "out1", "Created ticket", null);
-    insertEvent.run("evt-2", "agent-a", "session-a", "comment_ticket", older, 30, "success", "1", "abc1234", 10, 20, "in2", "out2", "Added context", null);
-    insertEvent.run("evt-3", "agent-b", "session-b", "search_tickets", older, 55, "success", "1", "abc1234", 10, 20, "in3", "out3", "Searched tickets", null);
+    insertEvent.run("evt-1", "agent-a", "session-a", "create_ticket", recent, 42, "success", "1", "abc1234", 10, 20, "in1", "out1", "Created ticket", null, null, null);
+    insertEvent.run("evt-2", "agent-a", "session-a", "comment_ticket", older, 30, "success", "1", "abc1234", 10, 20, "in2", "out2", "Added context", null, null, null);
+    insertEvent.run("evt-3", "agent-b", "session-b", "search_tickets", older, 55, "success", "1", "abc1234", 10, 20, "in3", "out3", "Searched tickets", null, null, null);
 
     const timeline = getAgentTimeline(deps, 5);
 
@@ -175,6 +176,25 @@ describe("Dashboard API", () => {
     expect(overview.totalAgents).toBe(0);
     expect(overview.totalPatches).toBe(0);
     expect(overview.fileCount).toBe(0);
+  });
+
+  it("surfaces error detail in event log payloads", () => {
+    sqlite.prepare(`
+      INSERT INTO event_logs (
+        event_id, agent_id, session_id, tool, timestamp, duration_ms, status,
+        repo_id, commit_scope, payload_size_in, payload_size_out, input_hash,
+        output_hash, redacted_summary, error_code, error_detail, denial_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("evt-error", "agent-x", "session-x", "store_knowledge", new Date().toISOString(), 18, "error", "1", "abc1234", 12, 30, "in", "out", "store_knowledge: error [sqlite_busy] sqlite busy", "sqlite_busy", "sqlite busy", null);
+
+    const logs = getEventLogsList(deps, 10);
+
+    expect(logs[0]).toMatchObject({
+      tool: "store_knowledge",
+      status: "error",
+      errorCode: "sqlite_busy",
+      errorDetail: "sqlite busy",
+    });
   });
 
   it("aggregates indexed file metrics by language and extension fallback", () => {
@@ -318,5 +338,49 @@ describe("Dashboard API", () => {
 
   it("returns null for a missing ticket detail", () => {
     expect(getTicketDetail(deps, "TKT-missing")).toBeNull();
+  });
+
+  it("returns dependency graph with nodes and edges", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/index.ts", "typescript", "h1", "entry", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/utils.ts", "typescript", "h2", "utils", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`)
+      .run(1, "src/utils.ts", "import");
+
+    const result = getDependencyGraph(deps);
+    expect(result.nodes).toHaveLength(2);
+    expect(result.edges).toHaveLength(1);
+    expect(result.edges[0]).toMatchObject({ source: 1, target: 2, kind: "import" });
+    expect(result.cycleCount).toBe(0);
+  });
+
+  it("detects circular dependencies in graph", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/a.ts", "typescript", "h1", "a", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/b.ts", "typescript", "h2", "b", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`)
+      .run(1, "src/b.ts", "import");
+    sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`)
+      .run(2, "src/a.ts", "import");
+
+    const result = getDependencyGraph(deps);
+    expect(result.cycleCount).toBe(2);
+    expect(result.nodes.filter((n) => n.inCycle)).toHaveLength(2);
+  });
+
+  it("filters dependency graph by scope prefix", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/app.ts", "typescript", "h1", "app", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "test/app.test.ts", "typescript", "h2", "test", "[]", now, "abc");
+
+    const scoped = getDependencyGraph(deps, "src/");
+    expect(scoped.nodes).toHaveLength(1);
+    expect(scoped.nodes[0].path).toBe("src/app.ts");
   });
 });

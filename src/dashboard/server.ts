@@ -6,6 +6,7 @@ import {
   getOverview, getAgentsList, getEventLogsList,
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence,
   getIndexedFilesMetrics, getTicketMetrics, getAgentTimeline, getTicketTemplates, getSearchDebug,
+  getDependencyGraph,
   type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
@@ -386,6 +387,10 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
     case "ticket-templates": return getTicketTemplates(deps);
     case "files": return getIndexedFilesMetrics(deps);
     case "presence": return getPresence(deps);
+    case "dependency-graph": {
+      const scope = url.searchParams.get("scope")?.trim() ?? undefined;
+      return getDependencyGraph(deps, scope);
+    }
     case "search/debug": {
       const query = url.searchParams.get("query")?.trim() ?? "";
       const scope = url.searchParams.get("scope")?.trim() ?? undefined;

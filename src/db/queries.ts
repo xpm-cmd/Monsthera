@@ -84,6 +84,40 @@ export function getFilesImporting(db: DB, targetPath: string) {
     .all();
 }
 
+export function getImportGraph(db: DB, repoId: number, scope?: string) {
+  let fileFilter = eq(tables.files.repoId, repoId);
+  if (scope) {
+    fileFilter = and(fileFilter, like(tables.files.path, `${scope}%`))!;
+  }
+
+  const files = db.select({
+    id: tables.files.id,
+    path: tables.files.path,
+    language: tables.files.language,
+  }).from(tables.files).where(fileFilter).all();
+
+  const fileIds = new Set(files.map((f) => f.id));
+  const pathToId = new Map(files.map((f) => [f.path, f.id]));
+
+  // Get all imports originating from scoped files
+  const allImports = files.length === 0 ? [] : db.select({
+    sourceFileId: tables.imports.sourceFileId,
+    targetPath: tables.imports.targetPath,
+    kind: tables.imports.kind,
+  }).from(tables.imports).all();
+
+  const edges: Array<{ source: number; target: number; kind: string }> = [];
+  for (const imp of allImports) {
+    if (!fileIds.has(imp.sourceFileId)) continue;
+    const targetId = pathToId.get(imp.targetPath);
+    if (targetId !== undefined) {
+      edges.push({ source: imp.sourceFileId, target: targetId, kind: imp.kind });
+    }
+  }
+
+  return { files, edges };
+}
+
 // --- Index State ---
 
 export function getIndexState(db: DB, repoId: number) {
