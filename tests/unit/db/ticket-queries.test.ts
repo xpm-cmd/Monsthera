@@ -16,6 +16,7 @@ function createTestDb() {
     CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER REFERENCES tickets(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL REFERENCES tickets(id), to_ticket_id INTEGER NOT NULL REFERENCES tickets(id), relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
 }
@@ -108,7 +109,7 @@ describe("ticket queries", () => {
       agentId: "a1", sessionId: "s1", comment: "Created", timestamp: now,
     });
     queries.insertTicketHistory(db, {
-      ticketId: t.id, fromStatus: "backlog", toStatus: "assigned",
+      ticketId: t.id, fromStatus: "backlog", toStatus: "technical_analysis",
       agentId: "a1", sessionId: "s1", timestamp: now,
     });
     const history = queries.getTicketHistory(db, t.id);
@@ -182,5 +183,71 @@ describe("ticket queries", () => {
     for (let i = 0; i < 5; i++) makeTicket();
     const result = queries.getTicketsByRepo(db, repoId, { limit: 3 });
     expect(result).toHaveLength(3);
+  });
+
+  // --- Ticket Dependencies ---
+
+  it("creates and retrieves a blocks dependency", () => {
+    const a = makeTicket({ ticketId: "TKT-a" });
+    const b = makeTicket({ ticketId: "TKT-b" });
+    queries.createTicketDependency(db, {
+      fromTicketId: a.id, toTicketId: b.id,
+      relationType: "blocks", createdByAgentId: "a1", createdAt: now,
+    });
+    const deps = queries.getTicketDependencies(db, a.id);
+    expect(deps.outgoing).toHaveLength(1);
+    expect(deps.outgoing[0]!.toTicketId).toBe(b.id);
+    expect(deps.incoming).toHaveLength(0);
+
+    const depsB = queries.getTicketDependencies(db, b.id);
+    expect(depsB.incoming).toHaveLength(1);
+    expect(depsB.incoming[0]!.fromTicketId).toBe(a.id);
+    expect(depsB.outgoing).toHaveLength(0);
+  });
+
+  it("creates and retrieves a relates_to dependency", () => {
+    const a = makeTicket({ ticketId: "TKT-r1" });
+    const b = makeTicket({ ticketId: "TKT-r2" });
+    queries.createTicketDependency(db, {
+      fromTicketId: a.id, toTicketId: b.id,
+      relationType: "relates_to", createdByAgentId: "a1", createdAt: now,
+    });
+    // relates_to is visible from both sides
+    const depsA = queries.getTicketDependencies(db, a.id);
+    expect(depsA.outgoing).toHaveLength(1);
+    const depsB = queries.getTicketDependencies(db, b.id);
+    expect(depsB.incoming).toHaveLength(1);
+  });
+
+  it("deletes a dependency (including relates_to in reverse)", () => {
+    const a = makeTicket({ ticketId: "TKT-d1" });
+    const b = makeTicket({ ticketId: "TKT-d2" });
+    queries.createTicketDependency(db, {
+      fromTicketId: a.id, toTicketId: b.id,
+      relationType: "relates_to", createdByAgentId: "a1", createdAt: now,
+    });
+    // Delete using reverse direction — should still remove relates_to
+    queries.deleteTicketDependency(db, b.id, a.id);
+    const deps = queries.getTicketDependencies(db, a.id);
+    expect(deps.outgoing).toHaveLength(0);
+    expect(deps.incoming).toHaveLength(0);
+  });
+
+  it("getAllBlocksEdges returns only blocks edges", () => {
+    const a = makeTicket({ ticketId: "TKT-e1" });
+    const b = makeTicket({ ticketId: "TKT-e2" });
+    const c = makeTicket({ ticketId: "TKT-e3" });
+    queries.createTicketDependency(db, {
+      fromTicketId: a.id, toTicketId: b.id,
+      relationType: "blocks", createdByAgentId: "a1", createdAt: now,
+    });
+    queries.createTicketDependency(db, {
+      fromTicketId: a.id, toTicketId: c.id,
+      relationType: "relates_to", createdByAgentId: "a1", createdAt: now,
+    });
+    const edges = queries.getAllBlocksEdges(db);
+    expect(edges).toHaveLength(1);
+    expect(edges[0]!.fromTicketId).toBe(a.id);
+    expect(edges[0]!.toTicketId).toBe(b.id);
   });
 });

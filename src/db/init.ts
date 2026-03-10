@@ -164,6 +164,14 @@ function createTables(sqlite: Database.Database): void {
       content TEXT NOT NULL,
       created_at TEXT NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS ticket_dependencies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+      to_ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+      relation_type TEXT NOT NULL,
+      created_by_agent_id TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS coordination_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       repo_id INTEGER NOT NULL REFERENCES repos(id),

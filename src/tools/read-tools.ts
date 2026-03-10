@@ -49,7 +49,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         text: JSON.stringify({
           version: VERSION,
           tools: [...CAPABILITY_TOOL_NAMES],
-          ticketStatuses: ["backlog", "technical_analysis", "approved", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"],
+          ticketStatuses: ["backlog", "technical_analysis", "approved", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"],
           ticketSeverities: ["critical", "high", "medium", "low"],
           languages: [...SUPPORTED_LANGUAGES],
           trustTiers: ["A", "B"],
@@ -217,7 +217,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         update_ticket_status: {
           ticketId: "string (TKT-...)",
-          status: "enum: backlog|technical_analysis|assigned|in_progress|in_review|blocked|resolved|closed|wont_fix",
+          status: "enum: backlog|technical_analysis|approved|in_progress|in_review|blocked|resolved|closed|wont_fix",
           comment: "string (optional, max 500)",
           agentId: "string (required)",
           sessionId: "string (required)",
@@ -261,6 +261,19 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         comment_ticket: {
           ticketId: "string (TKT-...)",
           content: "string (1-2000 chars)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        link_tickets: {
+          fromTicketId: "string (TKT-...)",
+          toTicketId: "string (TKT-...)",
+          relationType: "enum: blocks|relates_to",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        unlink_tickets: {
+          fromTicketId: "string (TKT-...)",
+          toTicketId: "string (TKT-...)",
           agentId: "string (required)",
           sessionId: "string (required)",
         },

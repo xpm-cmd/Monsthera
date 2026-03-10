@@ -160,8 +160,8 @@ export function assignTicketRecord(
     if (input.assigneeAgentId !== input.agentId) {
       return err("denied", "Developers can only self-assign tickets");
     }
-    if (ticket.status !== "backlog" && ticket.status !== "technical_analysis") {
-      return err("invalid_request", "Developers can only assign tickets in backlog or technical_analysis status");
+    if (!["backlog", "technical_analysis", "approved"].includes(ticket.status)) {
+      return err("invalid_request", "Developers can only assign tickets in backlog, technical_analysis, or approved status");
     }
   }
 
@@ -171,19 +171,6 @@ export function assignTicketRecord(
 
   const now = new Date().toISOString();
   const updates: Record<string, unknown> = { assigneeAgentId: input.assigneeAgentId };
-
-  if (ticket.status === "backlog" || ticket.status === "technical_analysis") {
-    updates.status = "assigned";
-    queries.insertTicketHistory(ctx.db, {
-      ticketId: ticket.id,
-      fromStatus: ticket.status as TicketStatusType,
-      toStatus: "assigned",
-      agentId: input.agentId,
-      sessionId: input.sessionId,
-      comment: `Assigned to ${input.assigneeAgentId}`,
-      timestamp: now,
-    });
-  }
 
   queries.updateTicket(
     ctx.db,
@@ -198,20 +185,20 @@ export function assignTicketRecord(
     data: {
       ticketId: input.ticketId,
       assigneeAgentId: input.assigneeAgentId,
-      status: updates.status ?? ticket.status,
+      status: ticket.status,
       agentId: input.agentId,
     },
   });
   broadcastTicketRealtime(ctx, input.agentId, "ticket_assigned", {
     ticketId: input.ticketId,
     assigneeAgentId: input.assigneeAgentId,
-    status: updates.status ?? ticket.status,
+    status: ticket.status,
   });
 
   return ok({
     ticketId: input.ticketId,
     assigneeAgentId: input.assigneeAgentId,
-    status: updates.status ?? ticket.status,
+    status: ticket.status,
   });
 }
 
@@ -329,6 +316,130 @@ export function commentTicketRecord(
   });
 }
 
+// --- Ticket Dependencies ---
+
+interface LinkTicketsInput {
+  fromTicketId: string; // TKT-... (the blocker)
+  toTicketId: string;   // TKT-... (the blocked)
+  relationType: "blocks" | "relates_to";
+  agentId: string;
+  sessionId: string;
+}
+
+export function linkTicketsRecord(
+  ctx: TicketServiceContext,
+  input: LinkTicketsInput,
+): TicketServiceResult<Record<string, unknown>> {
+  const resolved = resolveTicketActor(ctx.db, input.agentId, input.sessionId);
+  if (!resolved) return err("invalid_actor", "Agent or session not found / inactive");
+
+  const access = checkToolAccess("link_tickets", resolved.role, resolved.trustTier);
+  if (!access.allowed) return err("denied", access.reason, { denied: true });
+
+  const fromTicket = queries.getTicketByTicketId(ctx.db, input.fromTicketId);
+  if (!fromTicket) return err("not_found", `Ticket not found: ${input.fromTicketId}`);
+
+  const toTicket = queries.getTicketByTicketId(ctx.db, input.toTicketId);
+  if (!toTicket) return err("not_found", `Ticket not found: ${input.toTicketId}`);
+
+  if (fromTicket.id === toTicket.id) return err("invalid_request", "Cannot link a ticket to itself");
+
+  // For "blocks", validate DAG (no cycles)
+  if (input.relationType === "blocks") {
+    const edges = queries.getAllBlocksEdges(ctx.db);
+    // Add proposed edge and check for cycle
+    const proposed = { fromTicketId: fromTicket.id, toTicketId: toTicket.id };
+    if (wouldCreateCycle(edges, proposed)) {
+      return err("invalid_request", `Adding ${input.fromTicketId} blocks ${input.toTicketId} would create a cycle`);
+    }
+  }
+
+  const now = new Date().toISOString();
+  const dep = queries.createTicketDependency(ctx.db, {
+    fromTicketId: fromTicket.id,
+    toTicketId: toTicket.id,
+    relationType: input.relationType,
+    createdByAgentId: input.agentId,
+    createdAt: now,
+  });
+
+  recordDashboardEvent(ctx.db, ctx.repoId, {
+    type: "ticket_linked",
+    data: { fromTicketId: input.fromTicketId, toTicketId: input.toTicketId, relationType: input.relationType },
+  });
+
+  return ok({
+    id: dep.id,
+    fromTicketId: input.fromTicketId,
+    toTicketId: input.toTicketId,
+    relationType: input.relationType,
+  });
+}
+
+interface UnlinkTicketsInput {
+  fromTicketId: string;
+  toTicketId: string;
+  agentId: string;
+  sessionId: string;
+}
+
+export function unlinkTicketsRecord(
+  ctx: TicketServiceContext,
+  input: UnlinkTicketsInput,
+): TicketServiceResult<Record<string, unknown>> {
+  const resolved = resolveTicketActor(ctx.db, input.agentId, input.sessionId);
+  if (!resolved) return err("invalid_actor", "Agent or session not found / inactive");
+
+  const access = checkToolAccess("unlink_tickets", resolved.role, resolved.trustTier);
+  if (!access.allowed) return err("denied", access.reason, { denied: true });
+
+  const fromTicket = queries.getTicketByTicketId(ctx.db, input.fromTicketId);
+  if (!fromTicket) return err("not_found", `Ticket not found: ${input.fromTicketId}`);
+
+  const toTicket = queries.getTicketByTicketId(ctx.db, input.toTicketId);
+  if (!toTicket) return err("not_found", `Ticket not found: ${input.toTicketId}`);
+
+  queries.deleteTicketDependency(ctx.db, fromTicket.id, toTicket.id);
+
+  return ok({
+    fromTicketId: input.fromTicketId,
+    toTicketId: input.toTicketId,
+    unlinked: true,
+  });
+}
+
+/** BFS cycle detection: would adding (from→to) create a cycle in the blocks DAG? */
+function wouldCreateCycle(
+  edges: { fromTicketId: number; toTicketId: number }[],
+  proposed: { fromTicketId: number; toTicketId: number },
+): boolean {
+  // A cycle exists if we can reach proposed.fromTicketId starting from proposed.toTicketId
+  const adj = new Map<number, number[]>();
+  for (const e of edges) {
+    const list = adj.get(e.fromTicketId) ?? [];
+    list.push(e.toTicketId);
+    adj.set(e.fromTicketId, list);
+  }
+  // Add proposed edge
+  const list = adj.get(proposed.fromTicketId) ?? [];
+  list.push(proposed.toTicketId);
+  adj.set(proposed.fromTicketId, list);
+
+  // BFS from proposed.toTicketId — can we reach proposed.fromTicketId?
+  const visited = new Set<number>();
+  const queue = [proposed.toTicketId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === proposed.fromTicketId) return true;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    for (const next of adj.get(current) ?? []) {
+      queue.push(next);
+    }
+  }
+  return false;
+}
+
 function resolveTicketActor(db: DB, agentId: string, sessionId: string): ResolvedTicketActor | null {
   const agent = queries.getAgent(db, agentId);
   if (!agent) return null;
@@ -353,7 +464,7 @@ function ok<T>(data: T): TicketServiceSuccess<T> {
 function broadcastTicketRealtime(
   ctx: TicketServiceContext,
   agentId: string,
-  eventType: "ticket_created" | "ticket_assigned" | "ticket_status_changed" | "ticket_commented",
+  eventType: "ticket_created" | "ticket_assigned" | "ticket_status_changed" | "ticket_commented" | "ticket_linked",
   data: Record<string, unknown>,
 ): void {
   ctx.bus?.send({

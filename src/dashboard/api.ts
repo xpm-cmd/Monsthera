@@ -5,8 +5,14 @@ import { getIndexedCommit } from "../indexing/indexer.js";
 import { VERSION } from "../core/constants.js";
 import type { CoordinationBus } from "../coordination/bus.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
+import { loadTicketTemplates, type TicketTemplate } from "../tickets/templates.js";
+import type { CodeSearchDebugResult } from "../search/debug.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
+
+export interface DashboardSearchDebugProvider {
+  searchCode: (params: { query: string; scope?: string; limit?: number }) => Promise<CodeSearchDebugResult>;
+}
 
 export interface DashboardDeps {
   db: DB;
@@ -15,6 +21,7 @@ export interface DashboardDeps {
   bus: CoordinationBus;
   globalDb: DB | null;
   refreshTicketSearch?: () => void;
+  searchDebug?: DashboardSearchDebugProvider;
 }
 
 export function getOverview(deps: DashboardDeps) {
@@ -60,6 +67,46 @@ export function getAgentsList(deps: DashboardDeps) {
     registeredAt: a.registeredAt,
     activeSessions: activeSessions.filter((s) => s.agentId === a.id).length,
   }));
+}
+
+export function getAgentTimeline(deps: DashboardDeps, limitPerAgent = 8) {
+  const agents = queries.getAllAgents(deps.db);
+  const liveCutoff = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString();
+  const liveSessions = queries.getLiveSessions(deps.db, liveCutoff);
+
+  return agents
+    .map((agent) => {
+      const events = queries.getEventLogsByAgent(deps.db, agent.id, limitPerAgent).map((event) => ({
+        eventId: event.eventId,
+        sessionId: event.sessionId,
+        tool: event.tool,
+        status: event.status,
+        timestamp: event.timestamp,
+        durationMs: event.durationMs,
+        redactedSummary: event.redactedSummary,
+      }));
+
+      const activeSessionCount = liveSessions.filter((session) => session.agentId === agent.id).length;
+      const lastEventAt = events[0]?.timestamp ?? null;
+
+      return {
+        agentId: agent.id,
+        name: agent.name,
+        type: agent.type,
+        role: agent.roleId,
+        trustTier: agent.trustTier,
+        activeSessions: activeSessionCount,
+        totalEvents: events.length,
+        lastEventAt,
+        events,
+      };
+    })
+    .filter((agent) => agent.totalEvents > 0 || agent.activeSessions > 0)
+    .sort((a, b) => {
+      const aTime = a.lastEventAt ?? "";
+      const bTime = b.lastEventAt ?? "";
+      return bTime.localeCompare(aTime) || b.activeSessions - a.activeSessions || a.name.localeCompare(b.name);
+    });
 }
 
 export function getEventLogsList(deps: DashboardDeps, limit = 50) {
@@ -203,6 +250,23 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
   const comments = queries.getTicketComments(deps.db, ticket.id);
   const history = queries.getTicketHistory(deps.db, ticket.id);
   const linkedPatches = queries.getPatchesByTicketId(deps.db, ticket.id);
+  const ticketDeps = queries.getTicketDependencies(deps.db, ticket.id);
+
+  const resolvePublicId = (internalId: number) => {
+    const t = queries.getTicketById(deps.db, internalId);
+    return t?.ticketId ?? `#${internalId}`;
+  };
+
+  const blocking = ticketDeps.outgoing
+    .filter((d) => d.relationType === "blocks")
+    .map((d) => resolvePublicId(d.toTicketId));
+  const blockedBy = ticketDeps.incoming
+    .filter((d) => d.relationType === "blocks")
+    .map((d) => resolvePublicId(d.fromTicketId));
+  const relatedTo = [
+    ...ticketDeps.outgoing.filter((d) => d.relationType === "relates_to").map((d) => resolvePublicId(d.toTicketId)),
+    ...ticketDeps.incoming.filter((d) => d.relationType === "relates_to").map((d) => resolvePublicId(d.fromTicketId)),
+  ];
 
   return {
     ticketId: ticket.ticketId,
@@ -220,6 +284,7 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
     commitSha: ticket.commitSha,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
+    dependencies: { blocking, blockedBy, relatedTo },
     comments: comments.map((comment) => ({
       agentId: comment.agentId,
       agentName: queries.getAgent(deps.db, comment.agentId)?.name ?? null,
@@ -316,6 +381,34 @@ export function getTicketMetrics(deps: DashboardDeps) {
     assigneeLoad: assigneeLoad.slice(0, 6),
     oldestOpen,
   };
+}
+
+export function getTicketTemplates(deps: DashboardDeps): {
+  path: string;
+  exists: boolean;
+  error?: string;
+  templates: TicketTemplate[];
+} {
+  return loadTicketTemplates(deps.repoPath);
+}
+
+export async function getSearchDebug(
+  deps: DashboardDeps,
+  query: string,
+  opts?: { scope?: string; limit?: number },
+): Promise<CodeSearchDebugResult | { unavailable: true; reason: string }> {
+  if (!deps.searchDebug) {
+    return {
+      unavailable: true,
+      reason: "Search debugging is not configured for this dashboard runtime.",
+    };
+  }
+
+  return deps.searchDebug.searchCode({
+    query,
+    scope: opts?.scope,
+    limit: opts?.limit,
+  });
 }
 
 export function getKnowledgeList(deps: DashboardDeps) {

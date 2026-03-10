@@ -16,7 +16,8 @@ export interface DashboardEvent {
     | "ticket_created"
     | "ticket_assigned"
     | "ticket_status_changed"
-    | "ticket_commented";
+    | "ticket_commented"
+    | "ticket_linked";
   data: Record<string, unknown>;
 }
 

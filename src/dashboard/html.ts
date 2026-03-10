@@ -132,6 +132,33 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .agent-time{font-size:.65rem;color:var(--text3);margin-top:4px;font-family:monospace}
 .agent-files{font-size:.65rem;color:var(--text3);margin-top:2px}
 
+/* ── Agent timeline ─────────────────────────── */
+.timeline-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.75rem}
+.timeline-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.05rem}
+.timeline-head{display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;margin-bottom:.8rem}
+.timeline-title{font-size:.86rem;font-weight:700;color:var(--text)}
+.timeline-meta{font-size:.68rem;color:var(--text3);display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.25rem}
+.timeline-events{display:flex;flex-direction:column;gap:.55rem}
+.timeline-event{border:1px solid rgba(255,255,255,.05);border-radius:8px;background:rgba(255,255,255,.02);padding:.65rem .75rem}
+.timeline-event-head{display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;font-size:.67rem;color:var(--text3);margin-bottom:.3rem}
+.timeline-event-tool{color:var(--blue);font-weight:600}
+.timeline-event-summary{font-size:.76rem;color:var(--text2);line-height:1.45;white-space:pre-wrap}
+
+/* ── Search debugger ────────────────────────── */
+.search-debug-wrap{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:.75rem}
+.search-debug-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.05rem}
+.search-debug-panel h4{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem}
+.search-debug-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.55rem;margin-bottom:.8rem}
+.search-debug-results{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
+.search-debug-column{border:1px solid rgba(255,255,255,.05);border-radius:8px;background:rgba(255,255,255,.02);padding:.8rem}
+.search-debug-column h5{font-size:.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.65rem}
+.search-debug-list{display:flex;flex-direction:column;gap:.5rem}
+.search-debug-item{border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:.55rem .6rem;background:rgba(255,255,255,.02)}
+.search-debug-path{font-size:.74rem;color:var(--text);font-family:monospace;word-break:break-word}
+.search-debug-score{font-size:.66rem;color:var(--text3);display:flex;justify-content:space-between;gap:.5rem;margin-top:.25rem}
+.search-debug-hint{font-size:.74rem;color:var(--text3);line-height:1.5}
+.template-hint{font-size:.68rem;color:var(--text3);line-height:1.45}
+
 /* ── Ticket detail ──────────────────────────── */
 .detail-card{margin-top:.9rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem}
 .detail-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:.85rem}
@@ -141,6 +168,7 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .detail-block{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);border-radius:8px;padding:.75rem}
 .detail-label{font-size:.64rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem}
 .detail-value{font-size:.8rem;color:var(--text2);line-height:1.5}
+.dep-link{color:#3b82f6;text-decoration:none;font-weight:500}.dep-link:hover{text-decoration:underline;color:#60a5fa}
 .detail-section{margin-top:1rem}
 .detail-section h4{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.55rem}
 .comment-list,.history-list,.patch-list{display:flex;flex-direction:column;gap:.55rem}
@@ -189,6 +217,8 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .field input,.field textarea,.field select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:.6rem .7rem;font-size:.8rem}
 .field textarea{min-height:88px;resize:vertical}
 .field-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.65rem}
+.field-toggle .toggle-row{display:flex;align-items:center;gap:.55rem;min-height:38px;padding:.2rem 0;color:var(--text2);font-size:.78rem;line-height:1.4}
+.field-toggle input[type="checkbox"]{width:16px;height:16px;accent-color:var(--blue);flex-shrink:0}
 .action-submit{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);color:var(--text);padding:.55rem .9rem;border-radius:8px;cursor:pointer;font-size:.78rem}
 .action-submit:hover{background:rgba(59,130,246,.18)}
 .action-submit:disabled{opacity:.55;cursor:not-allowed}
@@ -223,6 +253,8 @@ footer a{color:var(--blue);text-decoration:none}
   <div class="charts" id="charts"></div>
   <div class="tab-bar" id="tab-bar"></div>
   <div id="agents" class="section active"></div>
+  <div id="timeline" class="section"></div>
+  <div id="search-debug" class="section"></div>
   <div id="logs" class="section"></div>
   <div id="patches" class="section"></div>
   <div id="notes" class="section"></div>
@@ -236,7 +268,7 @@ footer a{color:var(--blue);text-decoration:none}
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const api=p=>fetch('/api/'+p).then(r=>r.json());
-const tabs=[['agents','Agents'],['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['knowledge','Knowledge'],['tickets','Tickets']];
+const tabs=[['agents','Agents'],['timeline','Agent Timeline'],['search-debug','Search Debug'],['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['knowledge','Knowledge'],['tickets','Tickets']];
 const PALETTE=['#3b82f6','#22c55e','#f59e0b','#a855f7','#06b6d4','#ec4899','#6366f1','#ef4444','#14b8a6','#f97316'];
 const COMMENT_TONES=[
   {accent:'#3b82f6',bg:'rgba(59,130,246,.10)'},
@@ -251,26 +283,28 @@ const COMMENT_TONES=[
 const COMMENT_EMOJIS=['🤖','🧠','🧪','🛠️','📡','🛰️','🔎','⚙️','🧭','📝'];
 const TYPE_COLORS={decision:'#3b82f6',gotcha:'#f59e0b',pattern:'#a855f7',context:'#06b6d4',plan:'#ec4899',solution:'#22c55e',preference:'#6366f1',runbook:'#14b8a6'};
 const STATE_COLORS={proposed:'#f59e0b',validated:'#3b82f6',applied:'#22c55e',committed:'#22c55e',stale:'#ef4444',failed:'#ef4444'};
-const TICKET_STATUS_CLS={resolved:'success',closed:'success',technical_analysis:'purple',approved:'success',in_progress:'blue',in_review:'blue',backlog:'orange',assigned:'orange',blocked:'red',wont_fix:'red'};
-const TICKET_TRANSITIONS={backlog:['technical_analysis','assigned','wont_fix'],technical_analysis:['backlog','approved','assigned','wont_fix'],approved:['assigned','backlog','wont_fix'],assigned:['in_progress','wont_fix'],in_progress:['in_review','blocked','wont_fix'],in_review:['in_progress','resolved'],blocked:['in_progress'],resolved:['in_progress','closed'],closed:[],wont_fix:[]};
+const TICKET_STATUS_CLS={resolved:'success',closed:'success',technical_analysis:'purple',approved:'success',in_progress:'blue',in_review:'blue',backlog:'orange',blocked:'red',wont_fix:'red'};
+const TICKET_TRANSITIONS={backlog:['technical_analysis','wont_fix'],technical_analysis:['backlog','approved','wont_fix'],approved:['in_progress','backlog','wont_fix'],in_progress:['in_review','blocked','wont_fix'],in_review:['in_progress','resolved'],blocked:['in_progress'],resolved:['in_progress','closed'],closed:[],wont_fix:[]};
+const DONE_TICKET_STATUSES=['resolved','closed','wont_fix'];
 const TICKET_BOARD_COLUMNS=[
   {id:'backlog',label:'Backlog',statuses:['backlog']},
   {id:'technical_analysis',label:'Technical Analysis',statuses:['technical_analysis']},
   {id:'approved',label:'Approved',statuses:['approved']},
-  {id:'assigned',label:'Assigned',statuses:['assigned']},
   {id:'in_progress',label:'In Progress',statuses:['in_progress']},
   {id:'in_review',label:'In Review',statuses:['in_review']},
   {id:'blocked',label:'Blocked',statuses:['blocked']},
   {id:'done',label:'Done',statuses:['resolved','closed','wont_fix']}
 ];
-let tabCounts={agents:0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
+let tabCounts={agents:0,timeline:0,'search-debug':0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
 let selectedTicketId=null;
 let selectedTicketDetail=null;
 let selectedActorSessionId=null;
 let ticketActors=[];
 let dashboardAgents=[];
 let ticketViewMode='table';
-let ticketFilters={search:'',status:'all',severity:'all',assignee:'all'};
+let ticketFilters={search:'',status:'all',severity:'all',assignee:'all',hideDone:true};
+let selectedTicketTemplateId='';
+let searchDebugState={query:'',scope:'',limit:10,loading:false,error:'',data:null};
 
 function repoBasename(repoPath){
   if(!repoPath) return 'unknown repo';
@@ -283,12 +317,36 @@ function actorLabel(actor){
   return actor.name+' ('+actor.role+') · '+actor.sessionId.slice(0,12);
 }
 
+function getTicketTemplatesData(){
+  return window.__agoraTicketTemplates||{templates:[],exists:false,path:'',error:''};
+}
+
+function getTicketTemplateById(templateId){
+  if(!templateId) return null;
+  return (getTicketTemplatesData().templates||[]).find(function(template){return template.id===templateId})||null;
+}
+
 function getSelectedActor(){
   if(!ticketActors.length) return null;
   var found=ticketActors.find(function(actor){return actor.sessionId===selectedActorSessionId});
   if(found) return found;
   selectedActorSessionId=ticketActors[0].sessionId;
   return ticketActors[0];
+}
+
+function applyTemplateToCreateForm(template){
+  if(!template) return;
+  var setValue=function(id,value){
+    var el=document.getElementById(id);
+    if(el) el.value=value;
+  };
+  setValue('create-ticket-title',template.title||'');
+  setValue('create-ticket-description',template.description||'');
+  setValue('create-ticket-severity',template.severity||'medium');
+  setValue('create-ticket-priority',String(template.priority!=null?template.priority:5));
+  setValue('create-ticket-tags',(template.tags||[]).join(', '));
+  setValue('create-ticket-paths',(template.affectedPaths||[]).join(', '));
+  setValue('create-ticket-criteria',template.acceptanceCriteria||'');
 }
 
 async function apiPost(path,body){
@@ -469,6 +527,14 @@ function makeTable(headers,rows){
 function b(v,c){return{badge:v,cls:c}}
 function m(v){return{mono:v}}
 
+function isDoneTicketStatus(status){
+  return DONE_TICKET_STATUSES.includes(status);
+}
+
+function hideDoneTicketsActive(){
+  return ticketFilters.hideDone && ticketFilters.status==='all';
+}
+
 function filterTicketList(tickets){
   return tickets.filter(function(ticket){
     var search=String(ticketFilters.search||'').trim().toLowerCase();
@@ -483,6 +549,7 @@ function filterTicketList(tickets){
       ].join(' ').toLowerCase();
       if(!haystack.includes(search)) return false;
     }
+    if(hideDoneTicketsActive() && isDoneTicketStatus(ticket.status)) return false;
     if(ticketFilters.status!=='all' && ticket.status!==ticketFilters.status) return false;
     if(ticketFilters.severity!=='all' && ticket.severity!==ticketFilters.severity) return false;
     if(ticketFilters.assignee!=='all' && (ticket.assignee||'unassigned')!==ticketFilters.assignee) return false;
@@ -505,14 +572,27 @@ function ticketAssigneeOptions(tickets){
 
 function renderTicketToolbar(tickets,filteredTickets){
   var actor=getSelectedActor();
+  var templateData=getTicketTemplatesData();
+  var templateOptions=['<option value="">Custom ticket</option>'].concat((templateData.templates||[]).map(function(template){
+    return '<option value="'+esc(template.id)+'"'+(selectedTicketTemplateId===template.id?' selected':'')+'>'+esc(template.name)+'</option>';
+  })).join('');
+  var templateHint=templateData.error
+    ?'Template file is invalid: '+templateData.error
+    :templateData.exists
+      ?'Loaded '+String((templateData.templates||[]).length)+' templates from '+templateData.path
+      :'No template file yet. Create '+templateData.path+' to enable presets.';
   var actorOptions=ticketActors.map(function(option){
     return '<option value="'+esc(option.sessionId)+'"'+(actor&&actor.sessionId===option.sessionId?' selected':'')+'>'+esc(actorLabel(option))+'</option>';
   }).join('');
   var assigneeOptions=ticketAssigneeOptions(tickets).map(function(option){
     return '<option value="'+esc(option.value)+'"'+(ticketFilters.assignee===option.value?' selected':'')+'>'+esc(option.label)+'</option>';
   }).join('');
+  var toolbarMeta='Showing '+esc(String(filteredTickets.length))+' of '+esc(String(tickets.length))+' tickets';
+  if(hideDoneTicketsActive()){
+    toolbarMeta+=' · done hidden';
+  }
   return '<div class="ticket-toolbar-top">'
-    +'<div class="ticket-toolbar-meta">Showing '+esc(String(filteredTickets.length))+' of '+esc(String(tickets.length))+' tickets</div>'
+    +'<div class="ticket-toolbar-meta">'+toolbarMeta+'</div>'
     +'<div class="view-toggle">'
       +'<button type="button" class="view-btn'+(ticketViewMode==='table'?' active':'')+'" data-ticket-view="table">Table</button>'
       +'<button type="button" class="view-btn'+(ticketViewMode==='board'?' active':'')+'" data-ticket-view="board">Board</button>'
@@ -527,14 +607,19 @@ function renderTicketToolbar(tickets,filteredTickets){
     +'<div class="action-card"><h4>Filters</h4>'
       +'<div class="filters-grid">'
         +'<div class="field"><label for="ticket-filter-search">Search</label><input id="ticket-filter-search" value="'+esc(ticketFilters.search||'')+'" placeholder="ID, title, creator"></div>'
-        +'<div class="field"><label for="ticket-filter-status">Status</label><select id="ticket-filter-status"><option value="all"'+(ticketFilters.status==='all'?' selected':'')+'>All statuses</option><option value="backlog"'+(ticketFilters.status==='backlog'?' selected':'')+'>backlog</option><option value="technical_analysis"'+(ticketFilters.status==='technical_analysis'?' selected':'')+'>technical_analysis</option><option value="approved"'+(ticketFilters.status==='approved'?' selected':'')+'>approved</option><option value="assigned"'+(ticketFilters.status==='assigned'?' selected':'')+'>assigned</option><option value="in_progress"'+(ticketFilters.status==='in_progress'?' selected':'')+'>in_progress</option><option value="in_review"'+(ticketFilters.status==='in_review'?' selected':'')+'>in_review</option><option value="blocked"'+(ticketFilters.status==='blocked'?' selected':'')+'>blocked</option><option value="resolved"'+(ticketFilters.status==='resolved'?' selected':'')+'>resolved</option><option value="closed"'+(ticketFilters.status==='closed'?' selected':'')+'>closed</option><option value="wont_fix"'+(ticketFilters.status==='wont_fix'?' selected':'')+'>wont_fix</option></select></div>'
+        +'<div class="field"><label for="ticket-filter-status">Status</label><select id="ticket-filter-status"><option value="all"'+(ticketFilters.status==='all'?' selected':'')+'>All statuses</option><option value="backlog"'+(ticketFilters.status==='backlog'?' selected':'')+'>backlog</option><option value="technical_analysis"'+(ticketFilters.status==='technical_analysis'?' selected':'')+'>technical_analysis</option><option value="approved"'+(ticketFilters.status==='approved'?' selected':'')+'>approved</option><option value="in_progress"'+(ticketFilters.status==='in_progress'?' selected':'')+'>in_progress</option><option value="in_review"'+(ticketFilters.status==='in_review'?' selected':'')+'>in_review</option><option value="blocked"'+(ticketFilters.status==='blocked'?' selected':'')+'>blocked</option><option value="resolved"'+(ticketFilters.status==='resolved'?' selected':'')+'>resolved</option><option value="closed"'+(ticketFilters.status==='closed'?' selected':'')+'>closed</option><option value="wont_fix"'+(ticketFilters.status==='wont_fix'?' selected':'')+'>wont_fix</option></select></div>'
         +'<div class="field"><label for="ticket-filter-severity">Severity</label><select id="ticket-filter-severity"><option value="all"'+(ticketFilters.severity==='all'?' selected':'')+'>All severities</option><option value="critical"'+(ticketFilters.severity==='critical'?' selected':'')+'>critical</option><option value="high"'+(ticketFilters.severity==='high'?' selected':'')+'>high</option><option value="medium"'+(ticketFilters.severity==='medium'?' selected':'')+'>medium</option><option value="low"'+(ticketFilters.severity==='low'?' selected':'')+'>low</option></select></div>'
         +'<div class="field"><label for="ticket-filter-assignee">Assignee</label><select id="ticket-filter-assignee">'+assigneeOptions+'</select></div>'
+        +'<div class="field field-toggle"><label for="ticket-filter-hide-done">Done tickets</label><label class="toggle-row" for="ticket-filter-hide-done"><input id="ticket-filter-hide-done" type="checkbox"'+(ticketFilters.hideDone?' checked':'')+'><span>Hide resolved, closed, and wont_fix by default</span></label></div>'
       +'</div>'
     +'</div>'
     +'<div class="action-card"><h4>Create Ticket</h4>'
     +(ticketActors.length
       ?'<form id="create-ticket-form">'
+        +'<div class="field-row">'
+          +'<div class="field"><label for="create-ticket-template">Template</label><select id="create-ticket-template">'+templateOptions+'</select></div>'
+          +'<div class="field"><label>&nbsp;</label><button class="btn" id="apply-ticket-template" type="button">Apply Template</button><div class="template-hint">'+esc(templateHint)+'</div></div>'
+        +'</div>'
         +'<div class="field"><label for="create-ticket-title">Title</label><input id="create-ticket-title" name="title" maxlength="200" required></div>'
         +'<div class="field"><label for="create-ticket-description">Description</label><textarea id="create-ticket-description" name="description" maxlength="5000" required></textarea></div>'
         +'<div class="field-row">'
@@ -555,7 +640,7 @@ function renderTicketToolbar(tickets,filteredTickets){
 
 function renderTicketMetrics(metrics){
   if(!metrics) return '';
-  var statusOrder=['backlog','technical_analysis','approved','assigned','in_progress','in_review','blocked','resolved','closed','wont_fix'];
+  var statusOrder=['backlog','technical_analysis','approved','in_progress','in_review','blocked','resolved','closed','wont_fix'];
   var severityOrder=['critical','high','medium','low'];
   var agingLabels=[
     ['under1d','< 1 day'],
@@ -618,6 +703,26 @@ function attachTicketToolbarListeners(){
     });
   }
 
+  var templateSelect=document.getElementById('create-ticket-template');
+  if(templateSelect){
+    templateSelect.addEventListener('change',function(e){
+      selectedTicketTemplateId=e.target.value||'';
+    });
+  }
+
+  var applyTemplateBtn=document.getElementById('apply-ticket-template');
+  if(applyTemplateBtn){
+    applyTemplateBtn.addEventListener('click',function(){
+      var template=getTicketTemplateById(selectedTicketTemplateId);
+      if(!template){
+        showToast('Select a template first','error');
+        return;
+      }
+      applyTemplateToCreateForm(template);
+      showToast('Applied template '+template.name,'success');
+    });
+  }
+
   var searchInput=document.getElementById('ticket-filter-search');
   if(searchInput){
     searchInput.addEventListener('input',function(e){
@@ -634,6 +739,14 @@ function attachTicketToolbarListeners(){
       renderTicketsSection(window.__agoraTickets||[]);
     });
   });
+
+  var hideDoneToggle=document.getElementById('ticket-filter-hide-done');
+  if(hideDoneToggle){
+    hideDoneToggle.addEventListener('change',function(e){
+      ticketFilters.hideDone=!!e.target.checked;
+      renderTicketsSection(window.__agoraTickets||[]);
+    });
+  }
 
   var createForm=document.getElementById('create-ticket-form');
   if(createForm){
@@ -669,6 +782,7 @@ function attachTicketToolbarListeners(){
         selectedTicketId=created.ticketId;
         selectedTicketDetail=null;
         createForm.reset();
+        selectedTicketTemplateId='';
         document.getElementById('create-ticket-severity').value='medium';
         document.getElementById('create-ticket-priority').value='5';
         showToast('Created '+created.ticketId,'success');
@@ -754,6 +868,7 @@ function renderTicketDetail(error){
     +'<div class="detail-block"><div class="detail-label">Context</div><div class="detail-value">Severity: '+esc(t.severity||'-')+'<br>Priority: '+esc(String(t.priority??'-'))+'<br>Commit: '+esc((t.commitSha||'-').slice(0,7))+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Tags</div><div class="detail-value">'+esc(tags)+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Affected Paths</div><div class="detail-value">'+esc(affectedPaths)+'</div></div>'
+    +(function(){var deps=t.dependencies;if(!deps)return '';var parts=[];if(deps.blocking&&deps.blocking.length)parts.push('Blocks: '+deps.blocking.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.blockedBy&&deps.blockedBy.length)parts.push('Blocked by: '+deps.blockedBy.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.relatedTo&&deps.relatedTo.length)parts.push('Related: '+deps.relatedTo.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(!parts.length)return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">-</div></div>';return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">'+parts.join('<br>')+'</div></div>';})()
     +'</div>'
     +'<div class="detail-section"><h4>Actions</h4>'+actionsHtml+'</div>'
     +'<div class="detail-section"><h4>Comments</h4><div class="comment-list">'+comments+'</div></div>'
@@ -787,7 +902,10 @@ function renderTicketsSection(tickets,metrics){
   if(ticketViewMode==='board'){
     var board=document.createElement('div');
     board.className='board-wrap';
-    TICKET_BOARD_COLUMNS.forEach(function(column){
+    var boardColumns=hideDoneTicketsActive()
+      ? TICKET_BOARD_COLUMNS.filter(function(column){return column.id!=='done';})
+      : TICKET_BOARD_COLUMNS;
+    boardColumns.forEach(function(column){
       var columnTickets=filteredTickets.filter(function(ticket){return column.statuses.includes(ticket.status)});
       var col=document.createElement('div');
       col.className='board-column';
@@ -857,6 +975,13 @@ function renderTicketsSection(tickets,metrics){
 }
 
 function attachTicketDetailListeners(ticket){
+  document.querySelectorAll('.dep-link').forEach(function(link){
+    link.addEventListener('click',function(e){
+      e.preventDefault();
+      var depTicketId=link.getAttribute('data-ticket');
+      if(depTicketId) loadTicketDetail(depTicketId);
+    });
+  });
   var actor=getSelectedActor();
   if(!actor) return;
 
@@ -1080,6 +1205,119 @@ function renderPresence(agents){
   });
 }
 
+function renderAgentTimelineSection(timeline){
+  var section=document.getElementById('timeline');
+  if(!timeline||!timeline.length){
+    section.innerHTML='<div class="empty">No agent activity logged yet</div>';
+    return;
+  }
+  section.innerHTML='<div class="timeline-grid">'+timeline.map(function(agent){
+    var events=(agent.events||[]).map(function(event){
+      return '<div class="timeline-event">'
+        +'<div class="timeline-event-head"><span class="timeline-event-tool">'+esc(event.tool)+'</span><span>'+esc(new Date(event.timestamp).toLocaleString())+'</span></div>'
+        +'<div class="timeline-event-head"><span><span class="badge badge-'+(event.status==='success'?'success':'red')+'">'+esc(event.status)+'</span></span><span>'+esc(event.durationMs)+'ms · '+esc((event.sessionId||'-').slice(0,12))+'</span></div>'
+        +'<div class="timeline-event-summary">'+esc(event.redactedSummary||'No summary captured')+'</div>'
+      +'</div>';
+    }).join('')||'<div class="ticket-help">No recent events.</div>';
+    return '<div class="timeline-card">'
+      +'<div class="timeline-head"><div><div class="timeline-title">'+esc(agent.name)+'</div><div class="timeline-meta"><span>'+esc(agent.type)+'</span><span class="badge badge-'+esc(agent.role)+'">'+esc(agent.role)+'</span><span class="badge badge-'+(agent.trustTier==='A'?'blue':'orange')+'">Tier '+esc(agent.trustTier)+'</span></div></div><div class="timeline-meta"><span>'+esc(String(agent.totalEvents))+' events</span><span>'+esc(String(agent.activeSessions))+' live</span></div></div>'
+      +'<div class="timeline-events">'+events+'</div>'
+    +'</div>';
+  }).join('')+'</div>';
+}
+
+function renderSearchDebugSection(){
+  var section=document.getElementById('search-debug');
+  var data=searchDebugState.data;
+  var resultsHtml='';
+  if(searchDebugState.loading){
+    resultsHtml='<div class="search-debug-hint">Running search diagnostics…</div>';
+  }else if(searchDebugState.error){
+    resultsHtml='<div class="search-debug-hint">'+esc(searchDebugState.error)+'</div>';
+  }else if(!data){
+    resultsHtml='<div class="search-debug-hint">Run a query to inspect the FTS5 and semantic ranking pipeline for code search.</div>';
+  }else if(data.unavailable){
+    resultsHtml='<div class="search-debug-hint">'+esc(data.reason||'Search debug unavailable.')+'</div>';
+  }else{
+    var renderColumn=function(title,items){
+      return '<div class="search-debug-column"><h5>'+esc(title)+'</h5>'
+        +(items.length
+          ?'<div class="search-debug-list">'+items.map(function(item){
+            return '<div class="search-debug-item"><div class="search-debug-path">'+esc(item.path)+'</div><div class="search-debug-score"><span>'+esc(item.source)+'</span><span>'+esc(String(item.score))+'</span></div></div>';
+          }).join('')+'</div>'
+          :'<div class="search-debug-hint">No results.</div>')
+        +'</div>';
+    };
+    resultsHtml=''
+      +'<div class="search-debug-meta">'
+        +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(data.runtimeBackend)+'</span><span class="chart-indicator-label">Runtime backend</span></div>'
+        +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(data.semanticAvailable?'on':'off')+'</span><span class="chart-indicator-label">Semantic</span></div>'
+        +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(data.sanitizedQuery||'∅')+'</span><span class="chart-indicator-label">Sanitized FTS query</span></div>'
+        +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(String((data.mergedResults||[]).length))+'</span><span class="chart-indicator-label">Merged results</span></div>'
+      +'</div>'
+      +'<div class="search-debug-results">'
+        +renderColumn('FTS5',data.fts5Results||[])
+        +renderColumn('Semantic',data.vectorResults||[])
+        +renderColumn('Merged',data.mergedResults||[])
+      +'</div>';
+  }
+
+  section.innerHTML=''
+    +'<div class="search-debug-wrap">'
+      +'<div class="search-debug-panel"><h4>Query Inspector</h4>'
+        +'<form id="search-debug-form">'
+          +'<div class="field"><label for="search-debug-query">Query</label><input id="search-debug-query" value="'+esc(searchDebugState.query||'')+'" placeholder="repository name header"></div>'
+          +'<div class="field"><label for="search-debug-scope">Scope prefix</label><input id="search-debug-scope" value="'+esc(searchDebugState.scope||'')+'" placeholder="src/dashboard/"></div>'
+          +'<div class="field"><label for="search-debug-limit">Limit</label><input id="search-debug-limit" type="number" min="1" max="20" value="'+esc(String(searchDebugState.limit||10))+'"></div>'
+          +'<button class="action-submit" type="submit">'+(searchDebugState.loading?'Running...':'Run Debug Search')+'</button>'
+        +'</form>'
+        +'<div class="template-hint" style="margin-top:.8rem">This is a read-only diagnostic for code search. It shows the runtime backend, the sanitized FTS query, and how lexical plus semantic candidates merge.</div>'
+      +'</div>'
+      +'<div class="search-debug-panel"><h4>Results</h4>'+resultsHtml+'</div>'
+    +'</div>';
+
+  var form=document.getElementById('search-debug-form');
+  if(form){
+    form.addEventListener('submit',function(e){
+      e.preventDefault();
+      runSearchDebug();
+    });
+  }
+}
+
+async function runSearchDebug(){
+  var queryEl=document.getElementById('search-debug-query');
+  var scopeEl=document.getElementById('search-debug-scope');
+  var limitEl=document.getElementById('search-debug-limit');
+  searchDebugState.query=queryEl?queryEl.value.trim():searchDebugState.query;
+  searchDebugState.scope=scopeEl?scopeEl.value.trim():searchDebugState.scope;
+  var parsedLimit=parseInt(limitEl?limitEl.value:'10',10);
+  searchDebugState.limit=isNaN(parsedLimit)?10:Math.max(1,Math.min(20,parsedLimit));
+  if(!searchDebugState.query){
+    searchDebugState.error='Provide a query first.';
+    searchDebugState.data=null;
+    renderSearchDebugSection();
+    return;
+  }
+  searchDebugState.loading=true;
+  searchDebugState.error='';
+  renderSearchDebugSection();
+  try{
+    var params=new URLSearchParams({query:searchDebugState.query,limit:String(searchDebugState.limit)});
+    if(searchDebugState.scope) params.set('scope',searchDebugState.scope);
+    var res=await fetch('/api/search/debug?'+params.toString());
+    var data=await res.json();
+    if(!res.ok) throw new Error(data.error||'Search debug failed');
+    searchDebugState.data=data;
+  }catch(err){
+    searchDebugState.data=null;
+    searchDebugState.error=String(err.message||err);
+  }finally{
+    searchDebugState.loading=false;
+    renderSearchDebugSection();
+  }
+}
+
 async function refreshPresence(){
   try{
     var agents=await api('presence');
@@ -1091,10 +1329,11 @@ async function refreshPresence(){
 async function refresh(){
   try{
     var results=await Promise.all([
-      api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets'),api('tickets/metrics'),api('files')
+      api('overview'),api('agents'),api('agent-timeline'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets'),api('tickets/metrics'),api('files'),api('ticket-templates')
     ]);
-    var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5],presence=results[6],tickets=results[7],ticketMetrics=results[8],files=results[9];
+    var o=results[0],agents=results[1],timeline=results[2],logs=results[3],patches=results[4],notes=results[5],knowledge=results[6],presence=results[7],tickets=results[8],ticketMetrics=results[9],files=results[10],ticketTemplates=results[11];
     dashboardAgents=agents;
+    window.__agoraTicketTemplates=ticketTemplates;
     ticketActors=[];
     presence.forEach(function(agent){
       (agent.sessions||[]).forEach(function(session){
@@ -1128,13 +1367,19 @@ async function refresh(){
     renderCharts(o,logs,patches,knowledge,presence,files);
 
     /* Tab counts */
-    tabCounts={agents:agents.length,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};
+    tabCounts={agents:agents.length,timeline:timeline.length,'search-debug':searchDebugState.data&&searchDebugState.data.mergedResults?searchDebugState.data.mergedResults.length:0,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};
     updateCounts();
 
     /* Agents */
     document.getElementById('agents').replaceChildren(makeTable(
       ['ID','Name','Type','Role','Tier','Sessions'],
       agents.map(function(a){return[m(a.id),a.name,a.type,b(a.role,a.role),b(a.trustTier,a.trustTier.toLowerCase()),a.activeSessions]})));
+
+    /* Agent timeline */
+    renderAgentTimelineSection(timeline);
+
+    /* Search debugger */
+    renderSearchDebugSection();
 
     /* Logs */
     document.getElementById('logs').replaceChildren(makeTable(

@@ -1,4 +1,4 @@
-import { eq, and, like, desc, sql, notInArray } from "drizzle-orm";
+import { eq, and, like, desc, or, sql, notInArray } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "./schema.js";
 import * as tables from "./schema.js";
@@ -560,6 +560,67 @@ export function getPatchesByTicketId(db: DB, ticketInternalId: number) {
     .from(tables.patches)
     .where(eq(tables.patches.ticketId, ticketInternalId))
     .orderBy(desc(tables.patches.createdAt))
+    .all();
+}
+
+// --- Ticket Dependencies ---
+
+export function createTicketDependency(
+  db: DB,
+  dep: typeof tables.ticketDependencies.$inferInsert,
+) {
+  return db.insert(tables.ticketDependencies).values(dep).returning().get();
+}
+
+export function deleteTicketDependency(
+  db: DB,
+  fromTicketId: number,
+  toTicketId: number,
+) {
+  // Delete canonical "blocks" or "relates_to" in either direction for relates_to
+  return db
+    .delete(tables.ticketDependencies)
+    .where(
+      or(
+        and(
+          eq(tables.ticketDependencies.fromTicketId, fromTicketId),
+          eq(tables.ticketDependencies.toTicketId, toTicketId),
+        ),
+        // Also handle relates_to stored in reverse direction
+        and(
+          eq(tables.ticketDependencies.fromTicketId, toTicketId),
+          eq(tables.ticketDependencies.toTicketId, fromTicketId),
+          eq(tables.ticketDependencies.relationType, "relates_to"),
+        ),
+      ),
+    )
+    .run();
+}
+
+export function getTicketDependencies(db: DB, ticketInternalId: number) {
+  // Get all dependencies where this ticket is either source or target
+  const outgoing = db
+    .select()
+    .from(tables.ticketDependencies)
+    .where(eq(tables.ticketDependencies.fromTicketId, ticketInternalId))
+    .all();
+  const incoming = db
+    .select()
+    .from(tables.ticketDependencies)
+    .where(eq(tables.ticketDependencies.toTicketId, ticketInternalId))
+    .all();
+  return { outgoing, incoming };
+}
+
+/** Get all "blocks" edges for cycle detection (DAG validation). */
+export function getAllBlocksEdges(db: DB) {
+  return db
+    .select({
+      fromTicketId: tables.ticketDependencies.fromTicketId,
+      toTicketId: tables.ticketDependencies.toTicketId,
+    })
+    .from(tables.ticketDependencies)
+    .where(eq(tables.ticketDependencies.relationType, "blocks"))
     .all();
 }
 

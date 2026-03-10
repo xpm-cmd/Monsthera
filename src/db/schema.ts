@@ -128,6 +128,17 @@ export const ticketComments = sqliteTable("ticket_comments", {
   createdAt: text("created_at").notNull(),
 });
 
+// --- Ticket Dependencies ---
+
+export const ticketDependencies = sqliteTable("ticket_dependencies", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  fromTicketId: integer("from_ticket_id").notNull().references(() => tickets.id),
+  toTicketId: integer("to_ticket_id").notNull().references(() => tickets.id),
+  relationType: text("relation_type").notNull(), // "blocks" | "relates_to"
+  createdByAgentId: text("created_by_agent_id").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
 // --- Coordination Messages ---
 
 export const coordinationMessages = sqliteTable("coordination_messages", {

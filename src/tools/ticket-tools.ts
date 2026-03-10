@@ -12,6 +12,8 @@ import {
   assignTicketRecord,
   commentTicketRecord,
   createTicketRecord,
+  linkTicketsRecord,
+  unlinkTicketsRecord,
   updateTicketStatusRecord,
 } from "../tickets/service.js";
 
@@ -60,7 +62,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
   // ─── assign_ticket ──────────────────────────────────────────
   server.tool(
     "assign_ticket",
-    "Assign a ticket. Developers self-assign from backlog or technical_analysis; admins reassign at any status.",
+    "Assign a ticket owner. Developers self-assign from backlog, technical_analysis, or approved; admins reassign at any status.",
     {
       ticketId: z.string().describe("Ticket ID (TKT-...)"),
       assigneeAgentId: z.string().describe("Agent to assign"),
@@ -284,6 +286,28 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         queries.getPatchesByTicketId(c.db, ticket.id),
       ];
 
+      // Resolve dependencies
+      const deps = queries.getTicketDependencies(c.db, ticket.id);
+      const ticketIdCache = new Map<number, string>();
+      const resolvePublicId = (internalId: number) => {
+        if (ticketIdCache.has(internalId)) return ticketIdCache.get(internalId)!;
+        const t = queries.getTicketById(c.db, internalId);
+        const publicId = t?.ticketId ?? `#${internalId}`;
+        ticketIdCache.set(internalId, publicId);
+        return publicId;
+      };
+
+      const blocking = deps.outgoing
+        .filter((d) => d.relationType === "blocks")
+        .map((d) => resolvePublicId(d.toTicketId));
+      const blockedBy = deps.incoming
+        .filter((d) => d.relationType === "blocks")
+        .map((d) => resolvePublicId(d.fromTicketId));
+      const relatedTo = [
+        ...deps.outgoing.filter((d) => d.relationType === "relates_to").map((d) => resolvePublicId(d.toTicketId)),
+        ...deps.incoming.filter((d) => d.relationType === "relates_to").map((d) => resolvePublicId(d.fromTicketId)),
+      ];
+
       return okJson({
         ticketId: ticket.ticketId, title: ticket.title,
         description: ticket.description, status: ticket.status,
@@ -296,6 +320,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         resolvedByAgentId: ticket.resolvedByAgentId,
         commitSha: ticket.commitSha,
         createdAt: ticket.createdAt, updatedAt: ticket.updatedAt,
+        dependencies: { blocking, blockedBy, relatedTo },
         history: history.map((h) => ({
           fromStatus: h.fromStatus, toStatus: h.toStatus,
           agentId: h.agentId, comment: h.comment, timestamp: h.timestamp,
@@ -333,6 +358,66 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       }, {
         ticketId,
         content,
+        agentId,
+        sessionId,
+      });
+      return result.ok ? okJson(result.data) : errService(result);
+    },
+  );
+
+  // ─── link_tickets ──────────────────────────────────────────
+  server.tool(
+    "link_tickets",
+    "Create a dependency between two tickets. Types: 'blocks' (A blocks B) or 'relates_to' (symmetric).",
+    {
+      fromTicketId: z.string().describe("Source ticket ID (TKT-...)"),
+      toTicketId: z.string().describe("Target ticket ID (TKT-...)"),
+      relationType: z.enum(["blocks", "relates_to"]).describe("Relationship type"),
+      agentId: z.string().describe("Requesting agent ID"),
+      sessionId: z.string().describe("Active session ID"),
+    },
+    async ({ fromTicketId, toTicketId, relationType, agentId, sessionId }) => {
+      const c = await getContext();
+      const result = linkTicketsRecord({
+        db: c.db,
+        repoId: c.repoId,
+        repoPath: c.repoPath,
+        insight: c.insight,
+        bus: c.bus,
+        refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
+      }, {
+        fromTicketId,
+        toTicketId,
+        relationType,
+        agentId,
+        sessionId,
+      });
+      return result.ok ? okJson(result.data) : errService(result);
+    },
+  );
+
+  // ─── unlink_tickets ────────────────────────────────────────
+  server.tool(
+    "unlink_tickets",
+    "Remove a dependency between two tickets",
+    {
+      fromTicketId: z.string().describe("Source ticket ID (TKT-...)"),
+      toTicketId: z.string().describe("Target ticket ID (TKT-...)"),
+      agentId: z.string().describe("Requesting agent ID"),
+      sessionId: z.string().describe("Active session ID"),
+    },
+    async ({ fromTicketId, toTicketId, agentId, sessionId }) => {
+      const c = await getContext();
+      const result = unlinkTicketsRecord({
+        db: c.db,
+        repoId: c.repoId,
+        repoPath: c.repoPath,
+        insight: c.insight,
+        bus: c.bus,
+        refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
+      }, {
+        fromTicketId,
+        toTicketId,
         agentId,
         sessionId,
       });

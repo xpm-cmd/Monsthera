@@ -31,6 +31,7 @@ function createTestDb() {
     CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL REFERENCES tickets(id), to_ticket_id INTEGER NOT NULL REFERENCES tickets(id), relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE coordination_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), message_id TEXT NOT NULL UNIQUE, from_agent_id TEXT NOT NULL, to_agent_id TEXT, type TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER REFERENCES tickets(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -159,7 +160,7 @@ describe("ticket tools", () => {
 
     const payload = JSON.parse(assignResult.content[0].text);
     const ticket = queries.getTicketByTicketId(db, ticketId)!;
-    expect(payload.status).toBe("assigned");
+    expect(payload.status).toBe("backlog");
     expect(ticket.assigneeAgentId).toBe("agent-dev");
   });
 
@@ -183,9 +184,40 @@ describe("ticket tools", () => {
 
     const payload = JSON.parse(assignResult.content[0].text);
     const ticket = queries.getTicketByTicketId(db, ticketId)!;
-    expect(payload.status).toBe("assigned");
+    expect(payload.status).toBe("technical_analysis");
     expect(ticket.assigneeAgentId).toBe("agent-dev");
     expect(queries.getTicketHistory(db, ticket.id).some((entry) => entry.toStatus === "technical_analysis")).toBe(true);
+  });
+
+  it("allows developer self-assignment from approved without changing status", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const assignResult = await handler("assign_ticket")({
+      ticketId,
+      assigneeAgentId: "agent-dev",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    const payload = JSON.parse(assignResult.content[0].text);
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+    expect(payload.status).toBe("approved");
+    expect(ticket.status).toBe("approved");
+    expect(ticket.assigneeAgentId).toBe("agent-dev");
   });
 
   it("denies developer assigning another agent", async () => {
@@ -212,6 +244,18 @@ describe("ticket tools", () => {
       assigneeAgentId: "agent-dev",
       agentId: "agent-dev",
       sessionId: "session-dev",
+    });
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
     });
     await handler("update_ticket_status")({
       ticketId,
@@ -247,7 +291,7 @@ describe("ticket tools", () => {
     ticket = queries.getTicketByTicketId(db, ticketId)!;
     expect(ticket.status).toBe("in_progress");
     expect(ticket.resolvedByAgentId).toBeNull();
-    expect(queries.getTicketHistory(db, ticket.id)).toHaveLength(6);
+    expect(queries.getTicketHistory(db, ticket.id)).toHaveLength(7);
   });
 
   it("rejects invalid status transitions", async () => {

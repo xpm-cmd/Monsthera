@@ -39,6 +39,7 @@ function createTestDb() {
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE coordination_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), message_id TEXT NOT NULL UNIQUE, from_agent_id TEXT NOT NULL, to_agent_id TEXT, type TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
+    CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL REFERENCES tickets(id), to_ticket_id INTEGER NOT NULL REFERENCES tickets(id), relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER REFERENCES tickets(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
@@ -165,6 +166,18 @@ describe("ticket lifecycle", () => {
       agentId: "agent-dev",
       sessionId: "session-dev",
     });
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
     await handler("comment_ticket")({
       ticketId,
       content: "Developer clarification request",
@@ -221,12 +234,114 @@ describe("ticket lifecycle", () => {
     const searchPayload = JSON.parse(search.content[0].text);
 
     expect(detailPayload.status).toBe("resolved");
-    expect(detailPayload.history).toHaveLength(5);
+    expect(detailPayload.history).toHaveLength(6);
     expect(detailPayload.comments).toHaveLength(2);
     expect(detailPayload.linkedPatches).toHaveLength(1);
     expect(detailPayload.linkedPatches[0].proposalId).toBe("patch-123");
     expect(listPayload.tickets.map((ticket: { ticketId: string }) => ticket.ticketId)).toContain(ticketId);
     expect(searchPayload.tickets.map((ticket: { ticketId: string }) => ticket.ticketId)).toContain(ticketId);
     expect(bus.getMessages("agent-review").some((message) => message.payload.domain === "ticket")).toBe(true);
+  });
+
+  it("links tickets with blocks relationship and rejects cycles", async () => {
+    // Create three tickets: A, B, C
+    const aRes = await handler("create_ticket")({
+      title: "Ticket A", description: "First", agentId: "agent-dev", sessionId: "session-dev",
+    });
+    const bRes = await handler("create_ticket")({
+      title: "Ticket B", description: "Second", agentId: "agent-dev", sessionId: "session-dev",
+    });
+    const cRes = await handler("create_ticket")({
+      title: "Ticket C", description: "Third", agentId: "agent-dev", sessionId: "session-dev",
+    });
+    const idA = JSON.parse(aRes.content[0].text).ticketId;
+    const idB = JSON.parse(bRes.content[0].text).ticketId;
+    const idC = JSON.parse(cRes.content[0].text).ticketId;
+
+    // A blocks B — should succeed
+    const link1 = await handler("link_tickets")({
+      fromTicketId: idA, toTicketId: idB, relationType: "blocks",
+      agentId: "agent-dev", sessionId: "session-dev",
+    });
+    expect(link1.isError).toBeFalsy();
+
+    // B blocks C — should succeed
+    const link2 = await handler("link_tickets")({
+      fromTicketId: idB, toTicketId: idC, relationType: "blocks",
+      agentId: "agent-dev", sessionId: "session-dev",
+    });
+    expect(link2.isError).toBeFalsy();
+
+    // C blocks A — would create cycle, should fail
+    const link3 = await handler("link_tickets")({
+      fromTicketId: idC, toTicketId: idA, relationType: "blocks",
+      agentId: "agent-dev", sessionId: "session-dev",
+    });
+    expect(link3.isError).toBe(true);
+    expect(link3.content[0].text).toContain("cycle");
+
+    // Verify get_ticket shows dependencies
+    const detail = await handler("get_ticket")({
+      ticketId: idB, agentId: "agent-dev", sessionId: "session-dev",
+    });
+    const detailData = JSON.parse(detail.content[0].text);
+    expect(detailData.dependencies.blockedBy).toContain(idA);
+    expect(detailData.dependencies.blocking).toContain(idC);
+  });
+
+  it("links tickets with relates_to and unlinks them", async () => {
+    const aRes = await handler("create_ticket")({
+      title: "Related A", description: "One", agentId: "agent-dev", sessionId: "session-dev",
+    });
+    const bRes = await handler("create_ticket")({
+      title: "Related B", description: "Two", agentId: "agent-dev", sessionId: "session-dev",
+    });
+    const idA = JSON.parse(aRes.content[0].text).ticketId;
+    const idB = JSON.parse(bRes.content[0].text).ticketId;
+
+    // Create relates_to link
+    const link = await handler("link_tickets")({
+      fromTicketId: idA, toTicketId: idB, relationType: "relates_to",
+      agentId: "agent-dev", sessionId: "session-dev",
+    });
+    expect(link.isError).toBeFalsy();
+
+    // Verify both sides see the relationship
+    const detailA = JSON.parse((await handler("get_ticket")({
+      ticketId: idA, agentId: "agent-dev", sessionId: "session-dev",
+    })).content[0].text);
+    expect(detailA.dependencies.relatedTo).toContain(idB);
+
+    const detailB = JSON.parse((await handler("get_ticket")({
+      ticketId: idB, agentId: "agent-dev", sessionId: "session-dev",
+    })).content[0].text);
+    expect(detailB.dependencies.relatedTo).toContain(idA);
+
+    // Unlink
+    const unlink = await handler("unlink_tickets")({
+      fromTicketId: idA, toTicketId: idB,
+      agentId: "agent-dev", sessionId: "session-dev",
+    });
+    expect(unlink.isError).toBeFalsy();
+
+    // Verify gone
+    const afterUnlink = JSON.parse((await handler("get_ticket")({
+      ticketId: idA, agentId: "agent-dev", sessionId: "session-dev",
+    })).content[0].text);
+    expect(afterUnlink.dependencies.relatedTo).toHaveLength(0);
+  });
+
+  it("rejects self-linking", async () => {
+    const res = await handler("create_ticket")({
+      title: "Self", description: "Self-link test", agentId: "agent-dev", sessionId: "session-dev",
+    });
+    const id = JSON.parse(res.content[0].text).ticketId;
+
+    const link = await handler("link_tickets")({
+      fromTicketId: id, toTicketId: id, relationType: "blocks",
+      agentId: "agent-dev", sessionId: "session-dev",
+    });
+    expect(link.isError).toBe(true);
+    expect(link.content[0].text).toContain("itself");
   });
 });
