@@ -59,7 +59,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
   // ─── assign_ticket ──────────────────────────────────────────
   server.tool(
     "assign_ticket",
-    "Assign a ticket. Developers self-assign from backlog; admins reassign at any status.",
+    "Assign a ticket. Developers self-assign from backlog or technical_analysis; admins reassign at any status.",
     {
       ticketId: z.string().describe("Ticket ID (TKT-...)"),
       assigneeAgentId: z.string().describe("Agent to assign"),

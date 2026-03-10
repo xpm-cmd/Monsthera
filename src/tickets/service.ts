@@ -158,8 +158,8 @@ export function assignTicketRecord(
     if (input.assigneeAgentId !== input.agentId) {
       return err("denied", "Developers can only self-assign tickets");
     }
-    if (ticket.status !== "backlog") {
-      return err("invalid_request", "Developers can only assign tickets in backlog status");
+    if (ticket.status !== "backlog" && ticket.status !== "technical_analysis") {
+      return err("invalid_request", "Developers can only assign tickets in backlog or technical_analysis status");
     }
   }
 
@@ -170,11 +170,11 @@ export function assignTicketRecord(
   const now = new Date().toISOString();
   const updates: Record<string, unknown> = { assigneeAgentId: input.assigneeAgentId };
 
-  if (ticket.status === "backlog") {
+  if (ticket.status === "backlog" || ticket.status === "technical_analysis") {
     updates.status = "assigned";
     queries.insertTicketHistory(ctx.db, {
       ticketId: ticket.id,
-      fromStatus: "backlog",
+      fromStatus: ticket.status as TicketStatusType,
       toStatus: "assigned",
       agentId: input.agentId,
       sessionId: input.sessionId,

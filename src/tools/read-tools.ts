@@ -54,7 +54,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             "create_ticket", "assign_ticket", "update_ticket_status", "update_ticket",
             "list_tickets", "get_ticket", "comment_ticket",
           ],
-          ticketStatuses: ["backlog", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"],
+          ticketStatuses: ["backlog", "technical_analysis", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"],
           ticketSeverities: ["critical", "high", "medium", "low"],
           languages: [...SUPPORTED_LANGUAGES],
           trustTiers: ["A", "B"],
@@ -197,7 +197,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         update_ticket_status: {
           ticketId: "string (TKT-...)",
-          status: "enum: backlog|assigned|in_progress|in_review|blocked|resolved|closed|wont_fix",
+          status: "enum: backlog|technical_analysis|assigned|in_progress|in_review|blocked|resolved|closed|wont_fix",
           comment: "string (optional, max 500)",
           agentId: "string (required)",
           sessionId: "string (required)",

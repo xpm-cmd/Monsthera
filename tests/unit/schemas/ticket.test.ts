@@ -6,7 +6,7 @@ import {
 
 describe("TicketStatus", () => {
   it("accepts all valid statuses", () => {
-    for (const s of ["backlog", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"]) {
+    for (const s of ["backlog", "technical_analysis", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"]) {
       expect(TicketStatus.parse(s)).toBe(s);
     }
   });
@@ -59,7 +59,8 @@ describe("VALID_TRANSITIONS", () => {
     expect(VALID_TRANSITIONS.wont_fix).toEqual([]);
   });
 
-  it("backlog can go to assigned or wont_fix", () => {
+  it("backlog can go to technical_analysis, assigned, or wont_fix", () => {
+    expect(VALID_TRANSITIONS.backlog).toContain("technical_analysis");
     expect(VALID_TRANSITIONS.backlog).toContain("assigned");
     expect(VALID_TRANSITIONS.backlog).toContain("wont_fix");
     expect(VALID_TRANSITIONS.backlog).not.toContain("in_progress");

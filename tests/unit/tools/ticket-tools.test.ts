@@ -151,6 +151,31 @@ describe("ticket tools", () => {
     expect(ticket.assigneeAgentId).toBe("agent-dev");
   });
 
+  it("allows developer self-assignment from technical_analysis", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const assignResult = await handler("assign_ticket")({
+      ticketId,
+      assigneeAgentId: "agent-dev",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    const payload = JSON.parse(assignResult.content[0].text);
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+    expect(payload.status).toBe("assigned");
+    expect(ticket.assigneeAgentId).toBe("agent-dev");
+    expect(queries.getTicketHistory(db, ticket.id).some((entry) => entry.toStatus === "technical_analysis")).toBe(true);
+  });
+
   it("denies developer assigning another agent", async () => {
     const createResult = await createTicket();
     const ticketId = JSON.parse(createResult.content[0].text).ticketId;
