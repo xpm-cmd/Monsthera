@@ -24,6 +24,8 @@ function createTestDb() {
       input_hash TEXT NOT NULL DEFAULT '',
       output_hash TEXT NOT NULL DEFAULT '',
       redacted_summary TEXT NOT NULL DEFAULT '',
+      error_code TEXT,
+      error_detail TEXT,
       denial_reason TEXT
     );
   `);
@@ -46,16 +48,18 @@ function insertEvent(sqlite: Database.Database, overrides: Record<string, unknow
     input_hash: "sha256:aaa",
     output_hash: "sha256:bbb",
     redacted_summary: "searched for foo",
+    error_code: null,
+    error_detail: null,
     denial_reason: null,
   };
   const row = { ...defaults, ...overrides };
   sqlite.prepare(`
     INSERT INTO event_logs (event_id, agent_id, session_id, tool, timestamp, duration_ms,
       status, repo_id, commit_scope, payload_size_in, payload_size_out,
-      input_hash, output_hash, redacted_summary, denial_reason)
+      input_hash, output_hash, redacted_summary, error_code, error_detail, denial_reason)
     VALUES (@event_id, @agent_id, @session_id, @tool, @timestamp, @duration_ms,
       @status, @repo_id, @commit_scope, @payload_size_in, @payload_size_out,
-      @input_hash, @output_hash, @redacted_summary, @denial_reason)
+      @input_hash, @output_hash, @redacted_summary, @error_code, @error_detail, @denial_reason)
   `).run(row);
 }
 
@@ -92,13 +96,34 @@ describe("exportAuditTrail", () => {
     const result = exportAuditTrail({ db, format: "csv" });
     const lines = result.content.split("\n");
     expect(lines[0]).toContain("eventId,agentId,sessionId,tool");
+    expect(lines[0]).toContain("errorCode,errorDetail,denialReason");
     expect(lines).toHaveLength(2); // header + 1 row
   });
 
   it("escapes CSV fields with commas and quotes", () => {
-    insertEvent(sqlite, { redacted_summary: 'searched for "foo, bar"' });
+    insertEvent(sqlite, {
+      redacted_summary: 'searched for "foo, bar"',
+      error_detail: 'bad "detail, value"',
+    });
     const result = exportAuditTrail({ db, format: "csv" });
     expect(result.content).toContain('"searched for ""foo, bar"""');
+    expect(result.content).toContain('"bad ""detail, value"""');
+  });
+
+  it("exports error metadata in JSON", () => {
+    insertEvent(sqlite, {
+      event_id: "evt-error",
+      status: "error",
+      error_code: "sqlite_busy",
+      error_detail: "database is locked",
+    });
+    const result = exportAuditTrail({ db, format: "json" });
+    const parsed = JSON.parse(result.content);
+    expect(parsed.events[0]).toMatchObject({
+      eventId: "evt-error",
+      errorCode: "sqlite_busy",
+      errorDetail: "database is locked",
+    });
   });
 
   it("filters by agentId", () => {

@@ -49,7 +49,7 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
 
       const validation = await validatePatch(c.db, c.repoPath, c.repoId, {
         diff, message, baseCommit, bundleId,
-        secretPatterns: compileSecretPatterns(c.config.secretPatterns),
+        secretPatterns: compileSecretPatterns(c.config?.secretPatterns ?? []),
       });
 
       // Validate ticket exists BEFORE persisting anything

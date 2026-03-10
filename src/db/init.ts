@@ -205,6 +205,8 @@ function createTables(sqlite: Database.Database): void {
       input_hash TEXT NOT NULL,
       output_hash TEXT NOT NULL,
       redacted_summary TEXT NOT NULL,
+      error_code TEXT,
+      error_detail TEXT,
       denial_reason TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS knowledge (
@@ -285,5 +287,19 @@ function runMigrations(sqlite: Database.Database): void {
     sqlite.prepare("SELECT ticket_id FROM patches LIMIT 0").get();
   } catch {
     sqlite.prepare("ALTER TABLE patches ADD COLUMN ticket_id INTEGER").run();
+  }
+
+  // Migration 3: Add error_code column to event_logs
+  try {
+    sqlite.prepare("SELECT error_code FROM event_logs LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE event_logs ADD COLUMN error_code TEXT").run();
+  }
+
+  // Migration 4: Add error_detail column to event_logs
+  try {
+    sqlite.prepare("SELECT error_detail FROM event_logs LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE event_logs ADD COLUMN error_detail TEXT").run();
   }
 }

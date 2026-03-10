@@ -19,6 +19,8 @@ interface RuntimeEventInput {
   status: "success" | "error" | "denied" | "stale";
   durationMs: number;
   denialReason?: string;
+  errorCode?: string;
+  errorDetail?: string;
   agentId?: string;
   sessionId?: string;
 }
@@ -73,7 +75,7 @@ export function instrumentToolHandler(
         tool,
         input,
         output: error instanceof Error ? error.message : String(error),
-        status: "error",
+        ...classifyThrownError(error),
         durationMs: Date.now() - startedAt,
         ...extractActor(input),
       });
@@ -112,6 +114,8 @@ export async function recordRuntimeEventWithContext(
     status: event.status,
     durationMs: event.durationMs,
     denialReason: event.denialReason,
+    errorCode: event.errorCode,
+    errorDetail: event.errorDetail,
   }, ctx.config.debugLogging, ctx.config.secretPatterns);
 }
 
@@ -145,14 +149,15 @@ function serializeResult(result: unknown): string {
   return safeStringify(result);
 }
 
-function classifyResult(result: unknown): Pick<RuntimeEventInput, "status" | "denialReason"> {
+function classifyResult(result: unknown): Pick<RuntimeEventInput, "status" | "denialReason" | "errorCode" | "errorDetail"> {
   const output = serializeResult(result);
   const parsed = tryParseJson(output);
   const isError = Boolean(result && typeof result === "object" && Reflect.get(result, "isError"));
+  const detail = extractDetail(parsed, output);
 
   if (!isError) {
     if ((parsed && (parsed.stale === true || parsed.state === "stale")) || /\bstale\b/i.test(output)) {
-      return { status: "stale" };
+      return { status: "stale", errorCode: normalizeErrorCode(getStringField(parsed, ["errorCode", "code", "state"]) ?? "stale"), errorDetail: detail };
     }
     return { status: "success" };
   }
@@ -160,19 +165,69 @@ function classifyResult(result: unknown): Pick<RuntimeEventInput, "status" | "de
   if (parsed?.denied === true) {
     return {
       status: "denied",
-      denialReason: typeof parsed.reason === "string" ? parsed.reason : undefined,
+      denialReason: getStringField(parsed, ["reason", "error", "message"]) ?? detail,
+      errorCode: normalizeErrorCode(getStringField(parsed, ["errorCode", "code"]) ?? "denied"),
+      errorDetail: detail,
     };
   }
 
   if ((parsed && (parsed.stale === true || parsed.state === "stale")) || /\bstale\b/i.test(output)) {
-    return { status: "stale" };
+    return {
+      status: "stale",
+      errorCode: normalizeErrorCode(getStringField(parsed, ["errorCode", "code", "state"]) ?? "stale"),
+      errorDetail: detail,
+    };
   }
 
-  return { status: "error" };
+  return {
+    status: "error",
+    errorCode: normalizeErrorCode(getStringField(parsed, ["errorCode", "code"]) ?? "error"),
+    errorDetail: detail,
+  };
 }
 
-export function classifyResultForLogging(result: unknown): Pick<RuntimeEventInput, "status" | "denialReason"> {
+export function classifyResultForLogging(result: unknown): Pick<RuntimeEventInput, "status" | "denialReason" | "errorCode" | "errorDetail"> {
   return classifyResult(result);
+}
+
+function classifyThrownError(error: unknown): Pick<RuntimeEventInput, "status" | "errorCode" | "errorDetail"> {
+  const detail = error instanceof Error ? error.message : String(error);
+  const rawCode = typeof error === "object" && error && typeof Reflect.get(error, "code") === "string"
+    ? String(Reflect.get(error, "code"))
+    : error instanceof Error && error.name
+      ? error.name
+      : "error";
+  if (/\bstale\b/i.test(detail)) {
+    return { status: "stale", errorCode: normalizeErrorCode(rawCode || "stale"), errorDetail: detail };
+  }
+  return { status: "error", errorCode: normalizeErrorCode(rawCode || "error"), errorDetail: detail };
+}
+
+function extractDetail(parsed: Record<string, unknown> | null, fallback: string): string | undefined {
+  return getStringField(parsed, ["detail", "details", "reason", "error", "message"]) ?? truncateDetail(fallback);
+}
+
+function getStringField(parsed: Record<string, unknown> | null, keys: string[]): string | undefined {
+  if (!parsed) return undefined;
+  for (const key of keys) {
+    const value = parsed[key];
+    if (typeof value === "string" && value.trim()) return truncateDetail(value);
+  }
+  return undefined;
+}
+
+function truncateDetail(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 240 ? `${trimmed.slice(0, 237)}...` : trimmed;
+}
+
+function normalizeErrorCode(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || "error";
 }
 
 function tryParseJson(text: string): Record<string, unknown> | null {

@@ -26,6 +26,7 @@ export const CLAIM_RELEASE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 // Logging
 export const DEBUG_PAYLOAD_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const REDACTED_SUMMARY_MAX_LENGTH = 200;
+export const REDACTED_ERROR_DETAIL_MAX_LENGTH = 240;
 
 // Indexing
 export const LARGE_FILE_THRESHOLD_LINES = 10_000;

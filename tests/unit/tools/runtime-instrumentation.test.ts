@@ -18,7 +18,7 @@ function createTestDb() {
   sqlite.pragma("journal_mode = WAL");
   sqlite.exec(`
     CREATE TABLE index_state (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, db_indexed_commit TEXT, zoekt_indexed_commit TEXT, indexed_at TEXT, last_success TEXT, last_error TEXT);
-    CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, denial_reason TEXT);
+    CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, error_code TEXT, error_detail TEXT, denial_reason TEXT);
     CREATE TABLE debug_payloads (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL REFERENCES event_logs(event_id), raw_input TEXT, raw_output TEXT, expires_at TEXT NOT NULL);
   `);
   sqlite.prepare(`INSERT INTO index_state (repo_id, db_indexed_commit) VALUES (?, ?)`).run(1, "abc1234");
@@ -72,6 +72,27 @@ describe("runtime instrumentation", () => {
     expect(row.tool).toBe("claim_files");
     expect(row.status).toBe("denied");
     expect(row.denial_reason).toBe("nope");
+    expect(row.error_code).toBe("denied");
+    expect(row.error_detail).toBe("nope");
     expect(row.agent_id).toBe("agent-1");
+  });
+
+  it("logs thrown errors with normalized code and detail", async () => {
+    server.tool("store_knowledge", "store_knowledge", {}, async () => {
+      const error = new Error("sqlite busy");
+      (error as Error & { code?: string }).code = "SQLITE_BUSY";
+      throw error;
+    });
+
+    await expect(server.handlers.get("store_knowledge")!({
+      agentId: "agent-2",
+      sessionId: "session-2",
+    })).rejects.toThrow("sqlite busy");
+
+    const row = sqlite.prepare("SELECT * FROM event_logs").get() as Record<string, unknown>;
+    expect(row.tool).toBe("store_knowledge");
+    expect(row.status).toBe("error");
+    expect(row.error_code).toBe("sqlite_busy");
+    expect(row.error_detail).toBe("sqlite busy");
   });
 });

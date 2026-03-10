@@ -213,6 +213,8 @@ export const eventLogs = sqliteTable("event_logs", {
   inputHash: text("input_hash").notNull(),
   outputHash: text("output_hash").notNull(),
   redactedSummary: text("redacted_summary").notNull(),
+  errorCode: text("error_code"),
+  errorDetail: text("error_detail"),
   denialReason: text("denial_reason"),
 });
 

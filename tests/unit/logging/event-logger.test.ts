@@ -8,7 +8,7 @@ function createTestDb() {
   const sqlite = new Database(":memory:");
   sqlite.pragma("journal_mode = WAL");
   for (const stmt of [
-    `CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, denial_reason TEXT)`,
+    `CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, error_code TEXT, error_detail TEXT, denial_reason TEXT)`,
     `CREATE TABLE debug_payloads (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL REFERENCES event_logs(event_id), raw_input TEXT, raw_output TEXT, expires_at TEXT NOT NULL)`,
   ]) {
     sqlite.prepare(stmt).run();
@@ -95,6 +95,27 @@ describe("Event Logger", () => {
 
     const rows = sqlite.prepare("SELECT * FROM event_logs").all() as Array<Record<string, unknown>>;
     expect(rows[0]!.denial_reason).toBe("Observer cannot propose patches");
+  });
+
+  it("stores actionable error detail without raw payload logging", () => {
+    logEvent(db, {
+      agentId: "a1",
+      sessionId: "s1",
+      tool: "store_knowledge",
+      repoId: "r1",
+      commitScope: "abc",
+      input: '{"content":"token=secret-value"}',
+      output: '{"error":"db write failed"}',
+      status: "error",
+      durationMs: 3,
+      errorCode: "db_write_failed",
+      errorDetail: 'failed to persist token "secret-value"',
+    }, false, [{ name: "token", pattern: "secret-value" }]);
+
+    const row = sqlite.prepare("SELECT * FROM event_logs").get() as Record<string, unknown>;
+    expect(row.error_code).toBe("db_write_failed");
+    expect(row.error_detail).toContain("[REDACTED]");
+    expect(String(row.redacted_summary)).toContain("db_write_failed");
   });
 
   it("cleans expired payloads", () => {

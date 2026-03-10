@@ -17,7 +17,7 @@ function createTestDb() {
     CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER REFERENCES tickets(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
-    CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, denial_reason TEXT);
+    CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, error_code TEXT, error_detail TEXT, denial_reason TEXT);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
 }
@@ -80,7 +80,7 @@ describe("queries", () => {
 
   it("inserts and queries event logs", () => {
     const now = new Date().toISOString();
-    queries.insertEventLog(db, { eventId: "e1", agentId: "a1", sessionId: "s1", tool: "get_code_pack", timestamp: now, durationMs: 150, status: "success", repoId: "r1", commitScope: "abc", payloadSizeIn: 100, payloadSizeOut: 2000, inputHash: "hi", outputHash: "ho", redactedSummary: "ok" });
+    queries.insertEventLog(db, { eventId: "e1", agentId: "a1", sessionId: "s1", tool: "get_code_pack", timestamp: now, durationMs: 150, status: "success", repoId: "r1", commitScope: "abc", payloadSizeIn: 100, payloadSizeOut: 2000, inputHash: "hi", outputHash: "ho", redactedSummary: "ok", errorCode: null, errorDetail: null });
     expect(queries.getEventLogs(db, 10).length).toBe(1);
     expect(queries.getEventLogsByAgent(db, "a1").length).toBe(1);
   });

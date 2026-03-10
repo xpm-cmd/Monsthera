@@ -29,6 +29,8 @@ interface AuditRow {
   inputHash: string;
   outputHash: string;
   redactedSummary: string;
+  errorCode: string | null;
+  errorDetail: string | null;
   denialReason: string | null;
 }
 
@@ -36,7 +38,7 @@ const CSV_HEADERS: (keyof AuditRow)[] = [
   "eventId", "agentId", "sessionId", "tool", "timestamp",
   "durationMs", "status", "repoId", "commitScope",
   "payloadSizeIn", "payloadSizeOut", "inputHash", "outputHash",
-  "redactedSummary", "denialReason",
+  "redactedSummary", "errorCode", "errorDetail", "denialReason",
 ];
 
 function escapeCsvField(value: string | number | null): string {
@@ -84,6 +86,8 @@ export function exportAuditTrail(opts: AuditExportOptions): { content: string; r
     inputHash: e.inputHash,
     outputHash: e.outputHash,
     redactedSummary: e.redactedSummary,
+    errorCode: e.errorCode,
+    errorDetail: e.errorDetail,
     denialReason: e.denialReason,
   }));
 
