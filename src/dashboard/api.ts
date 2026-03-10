@@ -482,9 +482,9 @@ export function getDependencyGraph(deps: DashboardDeps, scope?: string) {
     color.set(u, GRAY);
     for (const v of adj.get(u) ?? []) {
       if (color.get(v) === GRAY) {
-        // Back edge — trace the cycle
+        // Back edge — trace the cycle back through parent chain
         let cur = u;
-        while (cur !== v) {
+        while (cur !== v && parent.has(cur)) {
           cycleNodes.add(cur);
           cur = parent.get(cur)!;
         }

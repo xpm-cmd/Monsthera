@@ -96,19 +96,22 @@ export function getImportGraph(db: DB, repoId: number, scope?: string) {
     language: tables.files.language,
   }).from(tables.files).where(fileFilter).all();
 
-  const fileIds = new Set(files.map((f) => f.id));
+  if (files.length === 0) return { files, edges: [] as Array<{ source: number; target: number; kind: string }> };
+
   const pathToId = new Map(files.map((f) => [f.path, f.id]));
 
-  // Get all imports originating from scoped files
-  const allImports = files.length === 0 ? [] : db.select({
+  // Join imports with scoped files to filter at the SQL level
+  const scopedImports = db.select({
     sourceFileId: tables.imports.sourceFileId,
     targetPath: tables.imports.targetPath,
     kind: tables.imports.kind,
-  }).from(tables.imports).all();
+  }).from(tables.imports)
+    .innerJoin(tables.files, eq(tables.imports.sourceFileId, tables.files.id))
+    .where(fileFilter)
+    .all();
 
   const edges: Array<{ source: number; target: number; kind: string }> = [];
-  for (const imp of allImports) {
-    if (!fileIds.has(imp.sourceFileId)) continue;
+  for (const imp of scopedImports) {
     const targetId = pathToId.get(imp.targetPath);
     if (targetId !== undefined) {
       edges.push({ source: imp.sourceFileId, target: targetId, kind: imp.kind });

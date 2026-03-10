@@ -381,6 +381,6 @@ describe("Dashboard API", () => {
 
     const scoped = getDependencyGraph(deps, "src/");
     expect(scoped.nodes).toHaveLength(1);
-    expect(scoped.nodes[0].path).toBe("src/app.ts");
+    expect(scoped.nodes[0]?.path).toBe("src/app.ts");
   });
 });
