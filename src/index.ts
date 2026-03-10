@@ -75,10 +75,21 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
       const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
       const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
       const { CoordinationBus } = await import("./coordination/bus.js");
-      const { FTS5Backend } = await import("./search/fts5.js");
+      const { SearchRouter } = await import("./search/router.js");
+      const { buildCodeSearchDebug } = await import("./search/debug.js");
       const { startDashboard } = await import("./dashboard/server.js");
       const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke", 200, db, repoId);
-      const fts5 = new FTS5Backend(sqlite, db);
+      const searchRouter = new SearchRouter({
+        repoId,
+        sqlite,
+        db,
+        repoPath: repoRoot,
+        zoektEnabled: config.zoektEnabled,
+        semanticEnabled: config.semanticEnabled,
+        indexDir: `${mainRepoRoot}/${config.agoraDir}`,
+        onFallback: (reason) => insight.warn(reason),
+      });
+      await searchRouter.initialize();
       let globalDb = null;
       try { globalDb = initGlobalDatabase().globalDb; } catch { /* non-fatal */ }
       startDashboard({
@@ -87,9 +98,15 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
         repoPath: repoRoot,
         bus,
         globalDb,
-        refreshTicketSearch: () => {
-          fts5.initTicketFts();
-          fts5.rebuildTicketFts(repoId);
+        refreshTicketSearch: () => searchRouter.rebuildTicketFts(repoId),
+        searchDebug: {
+          searchCode: (params) => buildCodeSearchDebug({
+            sqlite,
+            db,
+            repoId,
+            runtimeBackend: searchRouter.getActiveBackendName(),
+            semanticReranker: searchRouter.getSemanticReranker(),
+          }, params),
         },
       }, config.dashboardPort, insight);
     }

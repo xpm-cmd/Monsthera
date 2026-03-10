@@ -385,7 +385,7 @@ const STOP_WORDS = new Set([
   "this", "that", "not", "no", "if", "so", "do", "my", "we", "up",
 ]);
 
-function sanitizeFts5Query(query: string): string {
+export function sanitizeFts5Query(query: string): string {
   // Split on whitespace AND colons/hyphens to tokenize key prefixes like "map:fe-hooks-stores"
   const terms = query
     .split(/[\s:]+/)

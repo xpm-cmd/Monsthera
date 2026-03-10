@@ -4,7 +4,9 @@ import { renderDashboard } from "./html.js";
 import { cleanupExpiredPayloads } from "../logging/event-logger.js";
 import {
   getOverview, getAgentsList, getEventLogsList,
-  getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence, getIndexedFilesMetrics, getTicketMetrics, type DashboardDeps,
+  getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence,
+  getIndexedFilesMetrics, getTicketMetrics, getAgentTimeline, getTicketTemplates, getSearchDebug,
+  type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
 import { getDashboardEventsAfter, getLatestDashboardEventId, type DashboardEvent } from "./events.js";
@@ -239,7 +241,7 @@ export function startDashboard(
 
       if (path.startsWith("/api/")) {
         const route = path.slice(5);
-        const data = routeApi(route, deps);
+        const data = await routeApi(route, deps, url);
 
         if (data === null) {
           res.writeHead(404, { "Content-Type": "application/json" });
@@ -364,7 +366,7 @@ function ticketErrorStatus(error: TicketServiceError): number {
   }
 }
 
-function routeApi(route: string, deps: DashboardDeps): unknown {
+async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<unknown> {
   if (route.startsWith("tickets/")) {
     if (route === "tickets/metrics") {
       return getTicketMetrics(deps);
@@ -375,13 +377,25 @@ function routeApi(route: string, deps: DashboardDeps): unknown {
   switch (route) {
     case "overview": return getOverview(deps);
     case "agents": return getAgentsList(deps);
+    case "agent-timeline": return getAgentTimeline(deps);
     case "logs": return getEventLogsList(deps);
     case "patches": return getPatchesList(deps);
     case "notes": return getNotesList(deps);
     case "knowledge": return getKnowledgeList(deps);
     case "tickets": return getTicketsList(deps);
+    case "ticket-templates": return getTicketTemplates(deps);
     case "files": return getIndexedFilesMetrics(deps);
     case "presence": return getPresence(deps);
+    case "search/debug": {
+      const query = url.searchParams.get("query")?.trim() ?? "";
+      const scope = url.searchParams.get("scope")?.trim() ?? undefined;
+      const limitRaw = Number(url.searchParams.get("limit") ?? "10");
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(20, Math.trunc(limitRaw))) : 10;
+      if (!query) {
+        return { unavailable: true, reason: "Provide a search query." };
+      }
+      return getSearchDebug(deps, query, { scope, limit });
+    }
     default: return null;
   }
 }
