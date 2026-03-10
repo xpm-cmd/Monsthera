@@ -323,12 +323,103 @@ let ticketCreateMode='agent';
 let ticketFilters={search:'',status:'all',severity:'all',assignee:'all',hideDone:true};
 let selectedTicketTemplateId='';
 let searchDebugState={query:'',scope:'',limit:10,loading:false,error:'',data:null};
+const DASHBOARD_LOCALE='en-US';
+const COMMENT_RELATIVE_TIME_FORMATTER=typeof Intl!=='undefined'&&Intl.RelativeTimeFormat
+  ?new Intl.RelativeTimeFormat(DASHBOARD_LOCALE,{numeric:'auto'})
+  :null;
+const COMMENT_TIME_FORMATTER=typeof Intl!=='undefined'
+  ?new Intl.DateTimeFormat(DASHBOARD_LOCALE,{hour:'2-digit',minute:'2-digit'})
+  :null;
+const COMMENT_DATE_TIME_FORMATTER=typeof Intl!=='undefined'
+  ?new Intl.DateTimeFormat(DASHBOARD_LOCALE,{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})
+  :null;
+const COMMENT_FULL_TIME_FORMATTER=typeof Intl!=='undefined'
+  ?new Intl.DateTimeFormat(DASHBOARD_LOCALE,{dateStyle:'medium',timeStyle:'short'})
+  :null;
 
 function repoBasename(repoPath){
   if(!repoPath) return 'unknown repo';
   var clean=String(repoPath).replace(/[\\\\/]+$/,'');
   var parts=clean.split(/[\\\\/]/);
   return parts[parts.length-1]||clean;
+}
+
+function parseDashboardDate(value){
+  if(!value) return null;
+  var raw=String(value).trim();
+  if(!raw) return null;
+  var parsed=new Date(raw);
+  if(!Number.isNaN(parsed.getTime())) return parsed;
+  var localMatch=raw.match(/^(\\d{4})-(\\d{2})-(\\d{2}) (\\d{2}):(\\d{2})(?::(\\d{2}))?$/);
+  if(localMatch){
+    parsed=new Date(
+      Number(localMatch[1]),
+      Number(localMatch[2])-1,
+      Number(localMatch[3]),
+      Number(localMatch[4]),
+      Number(localMatch[5]),
+      Number(localMatch[6]||0)
+    );
+    if(!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  parsed=new Date(raw.replace(' ','T'));
+  return Number.isNaN(parsed.getTime())?null:parsed;
+}
+
+function sameCalendarDay(a,b){
+  return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate();
+}
+
+function previousCalendarDay(a,b){
+  var yesterday=new Date(b.getFullYear(),b.getMonth(),b.getDate()-1);
+  return sameCalendarDay(a,yesterday);
+}
+
+function formatRelativeTime(value,unit){
+  if(COMMENT_RELATIVE_TIME_FORMATTER) return COMMENT_RELATIVE_TIME_FORMATTER.format(value,unit);
+  if(unit==='day'&&value===-1) return 'yesterday';
+  if(unit==='minute'&&value===0) return 'now';
+  var abs=Math.abs(value);
+  var suffix=value<0?' ago':'';
+  var prefix=value>0?'in ':'';
+  var label=abs+' '+unit+(abs===1?'':'s');
+  return prefix+label+suffix;
+}
+
+function formatClockTime(date){
+  return COMMENT_TIME_FORMATTER?COMMENT_TIME_FORMATTER.format(date):date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+
+function formatTicketConversationTime(value){
+  var date=parseDashboardDate(value);
+  if(!date){
+    return {label:String(value||'-'),title:String(value||'-')};
+  }
+  var title=COMMENT_FULL_TIME_FORMATTER?COMMENT_FULL_TIME_FORMATTER.format(date):date.toLocaleString();
+  var now=new Date();
+  var deltaMs=date.getTime()-now.getTime();
+  var absMs=Math.abs(deltaMs);
+  if(absMs<60*1000){
+    return {label:formatRelativeTime(0,'minute'),title:title};
+  }
+  if(absMs<60*60*1000){
+    var minutes=Math.max(1,Math.floor(absMs/(60*1000)));
+    return {label:formatRelativeTime(deltaMs<0?-minutes:minutes,'minute'),title:title};
+  }
+  if(absMs<6*60*60*1000){
+    var hours=Math.max(1,Math.floor(absMs/(60*60*1000)));
+    return {label:formatRelativeTime(deltaMs<0?-hours:hours,'hour'),title:title};
+  }
+  if(sameCalendarDay(date,now)){
+    return {label:formatClockTime(date),title:title};
+  }
+  if(previousCalendarDay(date,now)){
+    return {label:formatRelativeTime(-1,'day')+' '+formatClockTime(date),title:title};
+  }
+  return {
+    label:COMMENT_DATE_TIME_FORMATTER?COMMENT_DATE_TIME_FORMATTER.format(date):date.toLocaleString(),
+    title:title,
+  };
 }
 
 function actorLabel(actor){
@@ -903,10 +994,11 @@ function renderTicketDetail(error){
     var tone=commentTone(c.agentId||'-');
     var persona=commentPersona(c);
     var shortLabel=agentShortLabel(c.agentName||c.agentId||'-');
+    var timeMeta=formatTicketConversationTime(c.createdAt);
     return '<div class="comment-item" style="--comment-accent:'+tone.accent+';--comment-bg:'+tone.bg+'">'
       +'<div class="comment-meta">'
       +'<span class="comment-author"><span class="comment-author-swatch"></span>'+persona.emoji+' '+esc(shortLabel)+' · '+esc(persona.name)+'<span class="comment-author-id">'+(c.agentName&&c.agentName!==c.agentId?'('+esc(c.agentId||'-')+')':'')+'</span></span>'
-      +'<span class="comment-time">'+esc(new Date(c.createdAt).toLocaleString())+'</span>'
+      +'<span class="comment-time" title="'+esc(timeMeta.title)+'">'+esc(timeMeta.label)+'</span>'
       +'</div><div class="comment-content">'+esc(c.content||'')+'</div></div>';
   }).join('')||'<div class="ticket-help">No comments yet.</div>';
   var history=(t.history||[]).map(function(h){

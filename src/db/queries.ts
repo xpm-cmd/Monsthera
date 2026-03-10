@@ -662,7 +662,10 @@ export function getTicketHistory(db: DB, ticketInternalId: number) {
     .select()
     .from(tables.ticketHistory)
     .where(eq(tables.ticketHistory.ticketId, ticketInternalId))
-    .orderBy(tables.ticketHistory.timestamp)
+    .orderBy(
+      sql`coalesce(julianday(${tables.ticketHistory.timestamp}), 0)`,
+      tables.ticketHistory.id,
+    )
     .all();
 }
 
@@ -680,7 +683,10 @@ export function getTicketComments(db: DB, ticketInternalId: number) {
     .select()
     .from(tables.ticketComments)
     .where(eq(tables.ticketComments.ticketId, ticketInternalId))
-    .orderBy(tables.ticketComments.createdAt)
+    .orderBy(
+      sql`coalesce(julianday(${tables.ticketComments.createdAt}), 0)`,
+      tables.ticketComments.id,
+    )
     .all();
 }
 

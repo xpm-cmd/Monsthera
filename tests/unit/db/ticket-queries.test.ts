@@ -118,6 +118,25 @@ describe("ticket queries", () => {
     expect(history[1]!.fromStatus).toBe("backlog");
   });
 
+  it("orders ticket history chronologically across mixed timestamp formats", () => {
+    const t = makeTicket();
+    queries.insertTicketHistory(db, {
+      ticketId: t.id, fromStatus: null, toStatus: "backlog",
+      agentId: "a1", sessionId: "s1", comment: "Created", timestamp: "2026-03-10 09:25:20",
+    });
+    queries.insertTicketHistory(db, {
+      ticketId: t.id, fromStatus: "backlog", toStatus: "technical_analysis",
+      agentId: "a2", sessionId: "s2", comment: "TA", timestamp: "2026-03-10T09:50:06.000Z",
+    });
+    queries.insertTicketHistory(db, {
+      ticketId: t.id, fromStatus: "technical_analysis", toStatus: "approved",
+      agentId: "a3", sessionId: "s3", comment: "Approved", timestamp: "2026-03-10 11:15:58",
+    });
+
+    const history = queries.getTicketHistory(db, t.id);
+    expect(history.map((entry) => entry.toStatus)).toEqual(["backlog", "technical_analysis", "approved"]);
+  });
+
   it("inserts and retrieves ticket comments", () => {
     const t = makeTicket();
     queries.insertTicketComment(db, {
@@ -126,6 +145,22 @@ describe("ticket queries", () => {
     const comments = queries.getTicketComments(db, t.id);
     expect(comments).toHaveLength(1);
     expect(comments[0]!.content).toBe("Hello");
+  });
+
+  it("orders ticket comments chronologically across mixed timestamp formats", () => {
+    const t = makeTicket();
+    queries.insertTicketComment(db, {
+      ticketId: t.id, agentId: "a1", sessionId: "s1", content: "first", createdAt: "2026-03-10 09:25:20",
+    });
+    queries.insertTicketComment(db, {
+      ticketId: t.id, agentId: "a2", sessionId: "s2", content: "second", createdAt: "2026-03-10T09:50:06.000Z",
+    });
+    queries.insertTicketComment(db, {
+      ticketId: t.id, agentId: "a3", sessionId: "s3", content: "third", createdAt: "2026-03-10 11:15:58",
+    });
+
+    const comments = queries.getTicketComments(db, t.id);
+    expect(comments.map((comment) => comment.content)).toEqual(["first", "second", "third"]);
   });
 
   it("links patch to ticket and retrieves by ticket", () => {

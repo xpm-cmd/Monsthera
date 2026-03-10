@@ -296,6 +296,10 @@ describe("Dashboard API", () => {
     const now = new Date().toISOString();
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run("reviewer-1", "Claude Review", "claude", "reviewer", "A", now);
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("reviewer-2", "Codex Review", "codex", "reviewer", "A", now);
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("reviewer-3", "Mixed Review", "claude", "reviewer", "A", now);
     sqlite.prepare(`
       INSERT INTO tickets (
         id, repo_id, ticket_id, title, description, status, severity, priority,
@@ -314,6 +318,14 @@ describe("Dashboard API", () => {
       VALUES (?, ?, ?, ?, ?)
     `).run(1, "reviewer-1", "session-1", "Need dashboard visibility for comments.", now);
     sqlite.prepare(`
+      INSERT INTO ticket_comments (ticket_id, agent_id, session_id, content, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(1, "reviewer-2", "session-2", "Follow-up from another reviewer.", "2026-03-10 09:25:20");
+    sqlite.prepare(`
+      INSERT INTO ticket_comments (ticket_id, agent_id, session_id, content, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(1, "reviewer-3", "session-3", "ISO timestamp reply should stay in order.", "2026-03-10T09:50:06.000Z");
+    sqlite.prepare(`
       INSERT INTO ticket_history (ticket_id, from_status, to_status, agent_id, session_id, comment, timestamp)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(1, "in_progress", "in_review", "developer-1", "session-2", "Ready for review", now);
@@ -327,10 +339,15 @@ describe("Dashboard API", () => {
     const detail = getTicketDetail(deps, "TKT-detail");
 
     expect(detail?.ticketId).toBe("TKT-detail");
-    expect(detail?.comments).toHaveLength(1);
-    expect(detail?.comments[0]?.agentName).toBe("Claude Review");
-    expect(detail?.comments[0]?.agentType).toBe("claude");
-    expect(detail?.comments[0]?.content).toContain("dashboard visibility");
+    expect(detail?.comments).toHaveLength(3);
+    expect(detail?.comments?.map((comment) => comment.content)).toEqual([
+      "Follow-up from another reviewer.",
+      "ISO timestamp reply should stay in order.",
+      "Need dashboard visibility for comments.",
+    ]);
+    expect(detail?.comments[2]?.agentName).toBe("Claude Review");
+    expect(detail?.comments[2]?.agentType).toBe("claude");
+    expect(detail?.comments[2]?.content).toContain("dashboard visibility");
     expect(detail?.history).toHaveLength(1);
     expect(detail?.linkedPatches).toHaveLength(1);
     expect(detail?.linkedPatches[0]?.proposalId).toBe("patch-ticket");
