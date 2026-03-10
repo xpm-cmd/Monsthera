@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
-import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, type DashboardDeps } from "../../../src/dashboard/api.js";
+import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -75,6 +75,43 @@ describe("Dashboard API", () => {
     expect(agents).toHaveLength(1);
     expect(agents[0]!.name).toBe("Dev");
     expect(agents[0]!.activeSessions).toBe(1); // only active, not disconnected
+  });
+
+  it("hides agents from presence when newest activity is older than 30 minutes", () => {
+    const now = Date.now();
+    const stale = new Date(now - 31 * 60 * 1000).toISOString();
+    const recent = new Date(now - 5 * 60 * 1000).toISOString();
+
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-stale", "Stale Agent", "codex", "developer", "A", stale);
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-recent", "Recent Agent", "codex", "reviewer", "A", recent);
+
+    sqlite.prepare(`INSERT INTO sessions (id, agent_id, state, connected_at, last_activity) VALUES (?, ?, ?, ?, ?)`)
+      .run("s-stale", "agent-stale", "active", stale, stale);
+    sqlite.prepare(`INSERT INTO sessions (id, agent_id, state, connected_at, last_activity) VALUES (?, ?, ?, ?, ?)`)
+      .run("s-recent", "agent-recent", "active", recent, recent);
+
+    const presence = getPresence(deps);
+
+    expect(presence).toHaveLength(1);
+    expect(presence[0]?.id).toBe("agent-recent");
+  });
+
+  it("keeps recently active or recently disconnected agents in presence", () => {
+    const now = Date.now();
+    const recent = new Date(now - 12 * 60 * 1000).toISOString();
+
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-disconnected", "Recent Disconnect", "claude", "reviewer", "A", recent);
+    sqlite.prepare(`INSERT INTO sessions (id, agent_id, state, connected_at, last_activity) VALUES (?, ?, ?, ?, ?)`)
+      .run("s-disconnected", "agent-disconnected", "disconnected", recent, recent);
+
+    const presence = getPresence(deps);
+
+    expect(presence).toHaveLength(1);
+    expect(presence[0]?.id).toBe("agent-disconnected");
+    expect(presence[0]?.status).toBe("offline");
   });
 
   it("returns empty overview for clean repo", () => {

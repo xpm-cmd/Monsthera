@@ -126,6 +126,7 @@ export function getPresence(deps: DashboardDeps) {
 
   const TWO_MINUTES = 2 * 60 * 1000;
   const TEN_MINUTES = 10 * 60 * 1000;
+  const THIRTY_MINUTES = 30 * 60 * 1000;
 
   function computeStatus(lastActivity: string, state: string): "online" | "idle" | "offline" {
     if (state !== "active") return "offline";
@@ -153,6 +154,11 @@ export function getPresence(deps: DashboardDeps) {
         ? "idle"
         : "offline";
 
+    const newestActivityMs = sessions.reduce((latest, session) => {
+      const activityMs = new Date(session.lastActivity).getTime();
+      return Number.isNaN(activityMs) ? latest : Math.max(latest, activityMs);
+    }, 0);
+
     return {
       id: a.id,
       name: a.name,
@@ -161,8 +167,12 @@ export function getPresence(deps: DashboardDeps) {
       trustTier: a.trustTier,
       status: bestStatus,
       sessions,
+      newestActivityMs,
     };
-  });
+  }).filter((agent) => {
+    if (agent.newestActivityMs === 0) return false;
+    return now - agent.newestActivityMs <= THIRTY_MINUTES;
+  }).map(({ newestActivityMs: _newestActivityMs, ...agent }) => agent);
 }
 
 export function getTicketsList(deps: DashboardDeps) {

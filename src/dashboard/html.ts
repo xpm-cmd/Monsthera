@@ -157,6 +157,25 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .ticket-toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.75rem;margin-bottom:.9rem}
 .action-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem}
 .action-card h4{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem}
+.ticket-toolbar-top{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.8rem}
+.ticket-toolbar-meta{font-size:.72rem;color:var(--text3)}
+.view-toggle{display:inline-flex;gap:.35rem;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);padding:.25rem;border-radius:999px}
+.view-btn{border:none;background:transparent;color:var(--text2);padding:.4rem .8rem;border-radius:999px;cursor:pointer;font-size:.75rem}
+.view-btn.active{background:rgba(59,130,246,.14);color:var(--text)}
+.view-btn:hover{color:var(--text)}
+.filters-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.65rem}
+.board-wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.75rem}
+.board-column{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem;display:flex;flex-direction:column;gap:.65rem;min-height:220px}
+.board-column-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.board-column-title{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+.board-column-count{font-family:monospace;font-size:.72rem;color:var(--text3)}
+.board-list{display:flex;flex-direction:column;gap:.6rem}
+.board-card{border:1px solid rgba(255,255,255,.05);border-left:3px solid rgba(59,130,246,.45);border-radius:8px;background:rgba(255,255,255,.02);padding:.7rem;cursor:pointer;transition:all .15s}
+.board-card:hover{background:rgba(255,255,255,.04);border-color:rgba(59,130,246,.25)}
+.board-card.active{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.35)}
+.board-card-title{font-size:.8rem;color:var(--text);font-weight:600;line-height:1.35;margin:.35rem 0}
+.board-card-meta{display:flex;gap:.4rem;flex-wrap:wrap;font-size:.68rem;color:var(--text3)}
+.board-card-sub{font-size:.68rem;color:var(--text3);font-family:monospace}
 .field{display:flex;flex-direction:column;gap:.35rem;margin-bottom:.7rem}
 .field label{font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
 .field input,.field textarea,.field select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:.6rem .7rem;font-size:.8rem}
@@ -226,12 +245,22 @@ const TYPE_COLORS={decision:'#3b82f6',gotcha:'#f59e0b',pattern:'#a855f7',context
 const STATE_COLORS={proposed:'#f59e0b',validated:'#3b82f6',applied:'#22c55e',committed:'#22c55e',stale:'#ef4444',failed:'#ef4444'};
 const TICKET_STATUS_CLS={resolved:'success',closed:'success',in_progress:'blue',in_review:'blue',backlog:'orange',assigned:'orange',blocked:'red',wont_fix:'red'};
 const TICKET_TRANSITIONS={backlog:['assigned','wont_fix'],assigned:['in_progress','wont_fix'],in_progress:['in_review','blocked','wont_fix'],in_review:['in_progress','resolved'],blocked:['in_progress'],resolved:['in_progress','closed'],closed:[],wont_fix:[]};
+const TICKET_BOARD_COLUMNS=[
+  {id:'backlog',label:'Backlog',statuses:['backlog']},
+  {id:'assigned',label:'Assigned',statuses:['assigned']},
+  {id:'in_progress',label:'In Progress',statuses:['in_progress']},
+  {id:'in_review',label:'In Review',statuses:['in_review']},
+  {id:'blocked',label:'Blocked',statuses:['blocked']},
+  {id:'done',label:'Done',statuses:['resolved','closed','wont_fix']}
+];
 let tabCounts={agents:0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
 let selectedTicketId=null;
 let selectedTicketDetail=null;
 let selectedActorSessionId=null;
 let ticketActors=[];
 let dashboardAgents=[];
+let ticketViewMode='table';
+let ticketFilters={search:'',status:'all',severity:'all',assignee:'all'};
 
 function repoBasename(repoPath){
   if(!repoPath) return 'unknown repo';
@@ -430,16 +459,68 @@ function makeTable(headers,rows){
 function b(v,c){return{badge:v,cls:c}}
 function m(v){return{mono:v}}
 
-function renderTicketToolbar(){
+function filterTicketList(tickets){
+  return tickets.filter(function(ticket){
+    var search=String(ticketFilters.search||'').trim().toLowerCase();
+    if(search){
+      var haystack=[
+        ticket.ticketId,
+        ticket.title,
+        ticket.status,
+        ticket.severity,
+        ticket.assignee||'',
+        ticket.creator||''
+      ].join(' ').toLowerCase();
+      if(!haystack.includes(search)) return false;
+    }
+    if(ticketFilters.status!=='all' && ticket.status!==ticketFilters.status) return false;
+    if(ticketFilters.severity!=='all' && ticket.severity!==ticketFilters.severity) return false;
+    if(ticketFilters.assignee!=='all' && (ticket.assignee||'unassigned')!==ticketFilters.assignee) return false;
+    return true;
+  });
+}
+
+function ticketAssigneeOptions(tickets){
+  var seen={};
+  var options=[{value:'all',label:'All assignees'},{value:'unassigned',label:'Unassigned'}];
+  tickets.forEach(function(ticket){
+    if(ticket.assignee && !seen[ticket.assignee]){
+      seen[ticket.assignee]=true;
+      var agent=dashboardAgents.find(function(entry){return entry.id===ticket.assignee});
+      options.push({value:ticket.assignee,label:agent?agent.name:ticket.assignee});
+    }
+  });
+  return options;
+}
+
+function renderTicketToolbar(tickets,filteredTickets){
   var actor=getSelectedActor();
   var actorOptions=ticketActors.map(function(option){
     return '<option value="'+esc(option.sessionId)+'"'+(actor&&actor.sessionId===option.sessionId?' selected':'')+'>'+esc(actorLabel(option))+'</option>';
   }).join('');
-  return '<div class="ticket-toolbar">'
+  var assigneeOptions=ticketAssigneeOptions(tickets).map(function(option){
+    return '<option value="'+esc(option.value)+'"'+(ticketFilters.assignee===option.value?' selected':'')+'>'+esc(option.label)+'</option>';
+  }).join('');
+  return '<div class="ticket-toolbar-top">'
+    +'<div class="ticket-toolbar-meta">Showing '+esc(String(filteredTickets.length))+' of '+esc(String(tickets.length))+' tickets</div>'
+    +'<div class="view-toggle">'
+      +'<button type="button" class="view-btn'+(ticketViewMode==='table'?' active':'')+'" data-ticket-view="table">Table</button>'
+      +'<button type="button" class="view-btn'+(ticketViewMode==='board'?' active':'')+'" data-ticket-view="board">Board</button>'
+    +'</div>'
+  +'</div>'
+  +'<div class="ticket-toolbar">'
     +'<div class="action-card"><h4>Active Session</h4>'
     +(ticketActors.length
       ?'<div class="field"><label for="ticket-actor-select">Act as</label><select id="ticket-actor-select">'+actorOptions+'</select></div><div class="actor-chip">Using '+esc(actorLabel(actor))+'</div>'
       :'<div class="ticket-help">No active agent sessions available. Register an agent first to create or update tickets.</div>')
+    +'</div>'
+    +'<div class="action-card"><h4>Filters</h4>'
+      +'<div class="filters-grid">'
+        +'<div class="field"><label for="ticket-filter-search">Search</label><input id="ticket-filter-search" value="'+esc(ticketFilters.search||'')+'" placeholder="ID, title, creator"></div>'
+        +'<div class="field"><label for="ticket-filter-status">Status</label><select id="ticket-filter-status"><option value="all"'+(ticketFilters.status==='all'?' selected':'')+'>All statuses</option><option value="backlog"'+(ticketFilters.status==='backlog'?' selected':'')+'>backlog</option><option value="assigned"'+(ticketFilters.status==='assigned'?' selected':'')+'>assigned</option><option value="in_progress"'+(ticketFilters.status==='in_progress'?' selected':'')+'>in_progress</option><option value="in_review"'+(ticketFilters.status==='in_review'?' selected':'')+'>in_review</option><option value="blocked"'+(ticketFilters.status==='blocked'?' selected':'')+'>blocked</option><option value="resolved"'+(ticketFilters.status==='resolved'?' selected':'')+'>resolved</option><option value="closed"'+(ticketFilters.status==='closed'?' selected':'')+'>closed</option><option value="wont_fix"'+(ticketFilters.status==='wont_fix'?' selected':'')+'>wont_fix</option></select></div>'
+        +'<div class="field"><label for="ticket-filter-severity">Severity</label><select id="ticket-filter-severity"><option value="all"'+(ticketFilters.severity==='all'?' selected':'')+'>All severities</option><option value="critical"'+(ticketFilters.severity==='critical'?' selected':'')+'>critical</option><option value="high"'+(ticketFilters.severity==='high'?' selected':'')+'>high</option><option value="medium"'+(ticketFilters.severity==='medium'?' selected':'')+'>medium</option><option value="low"'+(ticketFilters.severity==='low'?' selected':'')+'>low</option></select></div>'
+        +'<div class="field"><label for="ticket-filter-assignee">Assignee</label><select id="ticket-filter-assignee">'+assigneeOptions+'</select></div>'
+      +'</div>'
     +'</div>'
     +'<div class="action-card"><h4>Create Ticket</h4>'
     +(ticketActors.length
@@ -463,6 +544,13 @@ function renderTicketToolbar(){
 }
 
 function attachTicketToolbarListeners(){
+  document.querySelectorAll('[data-ticket-view]').forEach(function(button){
+    button.addEventListener('click',function(){
+      ticketViewMode=button.getAttribute('data-ticket-view')||'table';
+      renderTicketsSection(window.__agoraTickets||[]);
+    });
+  });
+
   var actorSelect=document.getElementById('ticket-actor-select');
   if(actorSelect){
     actorSelect.addEventListener('change',function(e){
@@ -470,6 +558,23 @@ function attachTicketToolbarListeners(){
       renderTicketsSection(window.__agoraTickets||[]);
     });
   }
+
+  var searchInput=document.getElementById('ticket-filter-search');
+  if(searchInput){
+    searchInput.addEventListener('input',function(e){
+      ticketFilters.search=e.target.value||'';
+      renderTicketsSection(window.__agoraTickets||[]);
+    });
+  }
+
+  ['status','severity','assignee'].forEach(function(key){
+    var el=document.getElementById('ticket-filter-'+key);
+    if(!el) return;
+    el.addEventListener('change',function(e){
+      ticketFilters[key]=e.target.value||'all';
+      renderTicketsSection(window.__agoraTickets||[]);
+    });
+  });
 
   var createForm=document.getElementById('create-ticket-form');
   if(createForm){
@@ -601,53 +706,93 @@ function renderTicketDetail(error){
 
 function renderTicketsSection(tickets){
   var section=document.getElementById('tickets');
+  var filteredTickets=filterTicketList(tickets);
   window.__agoraTickets=tickets;
   section.innerHTML='';
-  section.insertAdjacentHTML('beforeend',renderTicketToolbar());
-  if(!tickets.length){
-    section.appendChild(makeTable(['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'],[]));
-    attachTicketToolbarListeners();
-    return;
+  section.insertAdjacentHTML('beforeend',renderTicketToolbar(tickets,filteredTickets));
+  if(!filteredTickets.some(function(ticket){return ticket.ticketId===selectedTicketId})){
+    selectedTicketId=null;
+    selectedTicketDetail=null;
   }
-  var wrap=document.createElement('div');
-  wrap.className='table-wrap';
-  var table=document.createElement('table');
-  var thead=document.createElement('thead');
-  var hr=document.createElement('tr');
-  ['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'].forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
-  thead.appendChild(hr);
-  table.appendChild(thead);
-  var tbody=document.createElement('tbody');
-  tickets.forEach(function(t){
-    var tr=document.createElement('tr');
-    tr.className='clickable'+(selectedTicketId===t.ticketId?' active':'');
-    tr.addEventListener('click',function(){loadTicketDetail(t.ticketId)});
-    [
-      m(t.ticketId),
-      t.title.slice(0,60),
-      b(t.status,TICKET_STATUS_CLS[t.status]||'blue'),
-      b(t.severity,t.severity==='critical'?'red':t.severity==='high'?'orange':'blue'),
-      t.priority,
-      t.assignee||'-',
-      t.creator||'-',
-      new Date(t.updatedAt).toLocaleString(),
-    ].forEach(function(cell){
-      var td=document.createElement('td');
-      if(typeof cell==='object'&&cell&&cell.badge){var s=document.createElement('span');s.className='badge badge-'+cell.cls;s.textContent=cell.badge;td.appendChild(s);}
-      else if(typeof cell==='object'&&cell&&cell.mono){td.className='mono';td.textContent=cell.mono;}
-      else{td.textContent=String(cell);}
-      tr.appendChild(td);
+  if(!filteredTickets.length){
+    section.appendChild(makeTable(['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'],[]));
+    var emptyDetail=document.createElement('div');
+    emptyDetail.id='ticket-detail';
+    section.appendChild(emptyDetail);
+    attachTicketToolbarListeners();
+    renderTicketDetail();
+    return filteredTickets;
+  }
+  if(ticketViewMode==='board'){
+    var board=document.createElement('div');
+    board.className='board-wrap';
+    TICKET_BOARD_COLUMNS.forEach(function(column){
+      var columnTickets=filteredTickets.filter(function(ticket){return column.statuses.includes(ticket.status)});
+      var col=document.createElement('div');
+      col.className='board-column';
+      col.innerHTML='<div class="board-column-head"><div class="board-column-title">'+esc(column.label)+'</div><div class="board-column-count">'+esc(String(columnTickets.length))+'</div></div>';
+      var list=document.createElement('div');
+      list.className='board-list';
+      if(!columnTickets.length){
+        list.innerHTML='<div class="ticket-help">No tickets</div>';
+      }else{
+        columnTickets.forEach(function(ticket){
+          var card=document.createElement('div');
+          card.className='board-card'+(selectedTicketId===ticket.ticketId?' active':'');
+          card.addEventListener('click',function(){loadTicketDetail(ticket.ticketId)});
+          card.innerHTML='<div class="board-card-sub">'+esc(ticket.ticketId)+'</div>'
+            +'<div class="board-card-title">'+esc(ticket.title)+'</div>'
+            +'<div class="board-card-meta"><span class="badge badge-'+(TICKET_STATUS_CLS[ticket.status]||'blue')+'">'+esc(ticket.status)+'</span><span class="badge badge-'+(ticket.severity==='critical'?'red':ticket.severity==='high'?'orange':'blue')+'">'+esc(ticket.severity)+'</span><span>P'+esc(String(ticket.priority))+'</span></div>'
+            +'<div class="board-card-meta"><span>'+(ticket.assignee?esc(ticket.assignee):'unassigned')+'</span><span>'+esc(new Date(ticket.updatedAt).toLocaleDateString())+'</span></div>';
+          list.appendChild(card);
+        });
+      }
+      col.appendChild(list);
+      board.appendChild(col);
     });
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-  wrap.appendChild(table);
-  section.appendChild(wrap);
+    section.appendChild(board);
+  }else{
+    var wrap=document.createElement('div');
+    wrap.className='table-wrap';
+    var table=document.createElement('table');
+    var thead=document.createElement('thead');
+    var hr=document.createElement('tr');
+    ['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'].forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    var tbody=document.createElement('tbody');
+    filteredTickets.forEach(function(t){
+      var tr=document.createElement('tr');
+      tr.className='clickable'+(selectedTicketId===t.ticketId?' active':'');
+      tr.addEventListener('click',function(){loadTicketDetail(t.ticketId)});
+      [
+        m(t.ticketId),
+        t.title.slice(0,60),
+        b(t.status,TICKET_STATUS_CLS[t.status]||'blue'),
+        b(t.severity,t.severity==='critical'?'red':t.severity==='high'?'orange':'blue'),
+        t.priority,
+        t.assignee||'-',
+        t.creator||'-',
+        new Date(t.updatedAt).toLocaleString(),
+      ].forEach(function(cell){
+        var td=document.createElement('td');
+        if(typeof cell==='object'&&cell&&cell.badge){var s=document.createElement('span');s.className='badge badge-'+cell.cls;s.textContent=cell.badge;td.appendChild(s);}
+        else if(typeof cell==='object'&&cell&&cell.mono){td.className='mono';td.textContent=cell.mono;}
+        else{td.textContent=String(cell);}
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    section.appendChild(wrap);
+  }
   var detail=document.createElement('div');
   detail.id='ticket-detail';
   section.appendChild(detail);
   attachTicketToolbarListeners();
   renderTicketDetail();
+  return filteredTickets;
 }
 
 function attachTicketDetailListeners(ticket){
@@ -951,11 +1096,11 @@ async function refresh(){
       knowledge.map(function(k){return[b(k.type,k.type),k.title,b(k.scope,k.scope),k.tags.join(', ')||'-',b(k.status,k.status==='active'?'active':'stale'),k.agentId||'-',new Date(k.updatedAt).toLocaleString()]})));
 
     /* Tickets */
-    renderTicketsSection(tickets);
-    if(selectedTicketId && tickets.some(function(t){return t.ticketId===selectedTicketId})){
+    var visibleTickets=renderTicketsSection(tickets);
+    if(selectedTicketId && visibleTickets.some(function(t){return t.ticketId===selectedTicketId})){
       selectedTicketDetail=await api('tickets/'+encodeURIComponent(selectedTicketId));
       renderTicketDetail();
-    }else if(selectedTicketId && !tickets.some(function(t){return t.ticketId===selectedTicketId})){
+    }else if(selectedTicketId && !visibleTickets.some(function(t){return t.ticketId===selectedTicketId})){
       selectedTicketId=null;
       selectedTicketDetail=null;
       renderTicketDetail();
