@@ -130,6 +130,8 @@ describe("Dashboard API", () => {
 
   it("returns ticket detail with comments, history, and linked patches", () => {
     const now = new Date().toISOString();
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("reviewer-1", "Claude Review", "claude", "reviewer", "A", now);
     sqlite.prepare(`
       INSERT INTO tickets (
         id, repo_id, ticket_id, title, description, status, severity, priority,
@@ -162,6 +164,8 @@ describe("Dashboard API", () => {
 
     expect(detail?.ticketId).toBe("TKT-detail");
     expect(detail?.comments).toHaveLength(1);
+    expect(detail?.comments[0]?.agentName).toBe("Claude Review");
+    expect(detail?.comments[0]?.agentType).toBe("claude");
     expect(detail?.comments[0]?.content).toContain("dashboard visibility");
     expect(detail?.history).toHaveLength(1);
     expect(detail?.linkedPatches).toHaveLength(1);

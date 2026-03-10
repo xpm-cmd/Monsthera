@@ -204,6 +204,8 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
     updatedAt: ticket.updatedAt,
     comments: comments.map((comment) => ({
       agentId: comment.agentId,
+      agentName: queries.getAgent(deps.db, comment.agentId)?.name ?? null,
+      agentType: queries.getAgent(deps.db, comment.agentId)?.type ?? null,
       content: comment.content,
       createdAt: comment.createdAt,
     })),
