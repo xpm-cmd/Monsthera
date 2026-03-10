@@ -51,6 +51,9 @@ describe("read tool discovery", () => {
     const storeKnowledge = await handler("schema")({ toolName: "store_knowledge" });
     const pollCoordination = await handler("schema")({ toolName: "poll_coordination" });
     const endSession = await handler("schema")({ toolName: "end_session" });
+    const requestReindex = await handler("schema")({ toolName: "request_reindex" });
+    const listPatches = await handler("schema")({ toolName: "list_patches" });
+    const listNotes = await handler("schema")({ toolName: "list_notes" });
 
     expect(JSON.parse(storeKnowledge.content[0].text).inputSchema).toMatchObject({
       agentId: "string (required)",
@@ -61,6 +64,18 @@ describe("read tool discovery", () => {
       sessionId: "string (required)",
     });
     expect(JSON.parse(endSession.content[0].text).inputSchema).toMatchObject({
+      agentId: "string (required)",
+      sessionId: "string (required)",
+    });
+    expect(JSON.parse(requestReindex.content[0].text).inputSchema).toMatchObject({
+      agentId: "string (required)",
+      sessionId: "string (required)",
+    });
+    expect(JSON.parse(listPatches.content[0].text).inputSchema).toMatchObject({
+      agentId: "string (required)",
+      sessionId: "string (required)",
+    });
+    expect(JSON.parse(listNotes.content[0].text).inputSchema).toMatchObject({
       agentId: "string (required)",
       sessionId: "string (required)",
     });

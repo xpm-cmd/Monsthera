@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { InsightStream } from "../core/insight-stream.js";
 import { renderDashboard } from "./html.js";
+import { cleanupExpiredPayloads } from "../logging/event-logger.js";
 import {
   getOverview, getAgentsList, getEventLogsList,
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence, getIndexedFilesMetrics, type DashboardDeps,
@@ -14,6 +15,8 @@ import {
   updateTicketStatusRecord,
   type TicketServiceError,
 } from "../tickets/service.js";
+import { reapStaleSessions } from "../agents/registry.js";
+import { classifyResultForLogging, recordRuntimeEventWithContext } from "../tools/runtime-instrumentation.js";
 
 export class DashboardSSE {
   private clients = new Set<ServerResponse>();
@@ -68,6 +71,14 @@ export function startDashboard(
       insight.warn(`Dashboard event poll failed: ${error}`);
     }
   }, 1000);
+  const reaper = setInterval(() => {
+    try {
+      reapStaleSessions(deps.db);
+      cleanupExpiredPayloads(deps.db);
+    } catch (error) {
+      insight.warn(`Dashboard lifecycle maintenance failed: ${error}`);
+    }
+  }, 60_000);
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${port}`);
@@ -113,6 +124,7 @@ export function startDashboard(
 
       if (path === "/api/tickets/create" && req.method === "POST") {
         const body = await readJsonBody(req);
+        const startedAt = Date.now();
         const result = await createTicketRecord({
           db: deps.db,
           repoId: deps.repoId,
@@ -130,6 +142,12 @@ export function startDashboard(
           agentId: String(body.agentId ?? ""),
           sessionId: String(body.sessionId ?? ""),
         });
+        await logDashboardMutation(deps, {
+          tool: "dashboard.create_ticket",
+          input: body,
+          result,
+          startedAt,
+        });
         return writeTicketMutationResult(res, result);
       }
 
@@ -145,6 +163,7 @@ export function startDashboard(
         const body = await readJsonBody(req);
 
         if (action === "comment") {
+          const startedAt = Date.now();
           const result = commentTicketRecord({
             db: deps.db,
             repoId: deps.repoId,
@@ -157,10 +176,17 @@ export function startDashboard(
             agentId: String(body.agentId ?? ""),
             sessionId: String(body.sessionId ?? ""),
           });
+          await logDashboardMutation(deps, {
+            tool: "dashboard.comment_ticket",
+            input: body,
+            result,
+            startedAt,
+          });
           return writeTicketMutationResult(res, result);
         }
 
         if (action === "assign") {
+          const startedAt = Date.now();
           const result = assignTicketRecord({
             db: deps.db,
             repoId: deps.repoId,
@@ -173,10 +199,17 @@ export function startDashboard(
             agentId: String(body.agentId ?? ""),
             sessionId: String(body.sessionId ?? ""),
           });
+          await logDashboardMutation(deps, {
+            tool: "dashboard.assign_ticket",
+            input: body,
+            result,
+            startedAt,
+          });
           return writeTicketMutationResult(res, result);
         }
 
         if (action === "status") {
+          const startedAt = Date.now();
           const result = updateTicketStatusRecord({
             db: deps.db,
             repoId: deps.repoId,
@@ -189,6 +222,12 @@ export function startDashboard(
             comment: body.comment ? String(body.comment) : null,
             agentId: String(body.agentId ?? ""),
             sessionId: String(body.sessionId ?? ""),
+          });
+          await logDashboardMutation(deps, {
+            tool: "dashboard.update_ticket_status",
+            input: body,
+            result,
+            startedAt,
           });
           return writeTicketMutationResult(res, result);
         }
@@ -236,12 +275,42 @@ export function startDashboard(
 
   server.on("close", () => {
     clearInterval(poller);
+    clearInterval(reaper);
   });
 
   // Attach SSE broadcaster to the server for external access
   const enhanced = server as Server & { sse: DashboardSSE };
   enhanced.sse = sse;
   return enhanced;
+}
+
+async function logDashboardMutation(
+  deps: DashboardDeps,
+  args: {
+    tool: string;
+    input: Record<string, unknown>;
+    result: Awaited<ReturnType<typeof createTicketRecord>> | ReturnType<typeof assignTicketRecord> | ReturnType<typeof commentTicketRecord> | ReturnType<typeof updateTicketStatusRecord>;
+    startedAt: number;
+  },
+): Promise<void> {
+  const output = JSON.stringify(args.result.ok ? args.result.data : { error: args.result.message, ...args.result.data });
+  await recordRuntimeEventWithContext({
+    config: { debugLogging: false },
+    db: deps.db,
+    repoId: deps.repoId,
+    repoPath: deps.repoPath,
+  }, {
+    tool: args.tool,
+    input: args.input,
+    output,
+    ...classifyResultForLogging({
+      isError: !args.result.ok,
+      content: [{ type: "text", text: output }],
+    }),
+    durationMs: Date.now() - args.startedAt,
+    agentId: typeof args.input.agentId === "string" ? args.input.agentId : undefined,
+    sessionId: typeof args.input.sessionId === "string" ? args.input.sessionId : undefined,
+  });
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {

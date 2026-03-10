@@ -62,6 +62,19 @@ describe("Dashboard API", () => {
     expect(overview.coordinationTopology).toBe("hub-spoke");
   });
 
+  it("does not count stale active sessions in overview metrics", () => {
+    const stale = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-stale", "Stale Dev", "test", "developer", "A", stale);
+    sqlite.prepare(`INSERT INTO sessions (id, agent_id, state, connected_at, last_activity) VALUES (?, ?, ?, ?, ?)`)
+      .run("s-stale", "agent-stale", "active", stale, stale);
+
+    const overview = getOverview(deps);
+
+    expect(overview.totalAgents).toBe(1);
+    expect(overview.activeSessions).toBe(0);
+  });
+
   it("returns agents list with session counts", () => {
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run("agent-1", "Dev", "claude-code", "developer", "A", new Date().toISOString());

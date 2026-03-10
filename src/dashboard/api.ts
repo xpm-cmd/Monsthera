@@ -4,6 +4,7 @@ import * as queries from "../db/queries.js";
 import { getIndexedCommit } from "../indexing/indexer.js";
 import { VERSION } from "../core/constants.js";
 import type { CoordinationBus } from "../coordination/bus.js";
+import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
@@ -19,7 +20,10 @@ export function getOverview(deps: DashboardDeps) {
   const indexedCommit = getIndexedCommit(deps.db, deps.repoId);
   const fileCount = queries.getFileCount(deps.db, deps.repoId);
   const agents = queries.getAllAgents(deps.db);
-  const activeSessions = queries.getActiveSessions(deps.db);
+  const activeSessions = queries.getLiveSessions(
+    deps.db,
+    new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString(),
+  );
   const patches = queries.getPatchesByRepo(deps.db, deps.repoId);
 
   const totalTickets = queries.getTotalTicketCount(deps.db, deps.repoId);
@@ -41,7 +45,10 @@ export function getOverview(deps: DashboardDeps) {
 
 export function getAgentsList(deps: DashboardDeps) {
   const agents = queries.getAllAgents(deps.db);
-  const activeSessions = queries.getActiveSessions(deps.db);
+  const activeSessions = queries.getLiveSessions(
+    deps.db,
+    new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString(),
+  );
 
   return agents.map((a) => ({
     id: a.id,

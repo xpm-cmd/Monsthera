@@ -202,6 +202,17 @@ export function getActiveSessions(db: DB) {
   return db.select().from(tables.sessions).where(eq(tables.sessions.state, "active")).all();
 }
 
+export function getLiveSessions(db: DB, cutoffIso: string) {
+  return db
+    .select()
+    .from(tables.sessions)
+    .where(and(
+      eq(tables.sessions.state, "active"),
+      sql`${tables.sessions.lastActivity} >= ${cutoffIso}`,
+    ))
+    .all();
+}
+
 export function getAllSessions(db: DB) {
   return db.select().from(tables.sessions).all();
 }

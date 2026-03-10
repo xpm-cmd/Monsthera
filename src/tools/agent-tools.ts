@@ -5,6 +5,7 @@ import { AgentRegistrationError, registerAgent, getAgentStatus, reapStaleSession
 import * as queries from "../db/queries.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
+import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -198,7 +199,10 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
       }
 
       // Check for existing claims
-      const activeSessions = queries.getActiveSessions(c.db);
+      const activeSessions = queries.getLiveSessions(
+        c.db,
+        new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString(),
+      );
       const conflicts: Array<{ path: string; claimedBy: string }> = [];
 
       for (const s of activeSessions) {

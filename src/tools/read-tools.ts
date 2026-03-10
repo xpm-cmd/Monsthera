@@ -1,11 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MIN_RELEVANCE_SCORE, MIN_RELEVANCE_SCORE_SCOPED, MAX_DIFF_LINES_PER_FILE } from "../core/constants.js";
+import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MIN_RELEVANCE_SCORE, MIN_RELEVANCE_SCORE_SCOPED, MAX_DIFF_LINES_PER_FILE, HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
 import { getHead, getChangedFiles, getDiffStats, getPerFileDiffs, getRecentCommits, isValidCommit } from "../git/operations.js";
 import { getIndexedCommit, incrementalIndex } from "../indexing/indexer.js";
+import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -14,7 +15,10 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
   server.tool("status", "Get Agora index status and connected agents", {}, async () => {
     const c = await getContext();
     const indexState = queries.getIndexState(c.db, c.repoId);
-    const activeSessions = queries.getActiveSessions(c.db);
+    const activeSessions = queries.getLiveSessions(
+      c.db,
+      new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString(),
+    );
     const head = await getHead({ cwd: c.repoPath });
 
     return {
@@ -44,18 +48,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         type: "text" as const,
         text: JSON.stringify({
           version: VERSION,
-          tools: [
-            "status", "capabilities", "schema",
-            "get_code_pack", "get_change_pack", "get_issue_pack",
-            "propose_patch", "propose_note",
-            "register_agent", "agent_status", "broadcast",
-            "send_coordination", "poll_coordination",
-            "claim_files", "end_session", "request_reindex",
-            "list_patches", "list_notes",
-            "store_knowledge", "search_knowledge", "query_knowledge", "archive_knowledge", "delete_knowledge",
-            "create_ticket", "assign_ticket", "update_ticket_status", "update_ticket",
-            "list_tickets", "get_ticket", "comment_ticket",
-          ],
+          tools: [...CAPABILITY_TOOL_NAMES],
           ticketStatuses: ["backlog", "technical_analysis", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"],
           ticketSeverities: ["critical", "high", "medium", "low"],
           languages: [...SUPPORTED_LANGUAGES],
@@ -169,7 +162,11 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           sessionId: "string (required)",
         },
         // ── index tools ──
-        request_reindex: { full: "boolean (default false)" },
+        request_reindex: {
+          full: "boolean (default false)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
         // ── patch tools ──
         propose_patch: {
           diff: "string (unified diff, required)",
@@ -183,6 +180,8 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         list_patches: {
           state: "enum: proposed|validated|applied|committed|stale|failed (optional)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
         },
         // ── note tools ──
         propose_note: {
@@ -195,6 +194,8 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         list_notes: {
           type: "enum: issue|decision|change_note|gotcha|runbook|repo_map|module_map|file_summary (optional)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
         },
         // ── ticket tools ──
         create_ticket: {

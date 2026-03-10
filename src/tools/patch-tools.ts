@@ -114,9 +114,30 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
     {
       state: z.enum(["proposed", "validated", "applied", "committed", "stale", "failed"])
         .optional().describe("Filter by patch state"),
+      agentId: z.string().describe("Agent ID"),
+      sessionId: z.string().describe("Active session ID"),
     },
-    async ({ state }) => {
+    async ({ state, agentId, sessionId }) => {
       const c = await getContext();
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved) {
+        return {
+          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          isError: true,
+        };
+      }
+
+      const access = checkToolAccess("list_patches", resolved.role, resolved.trustTier);
+      if (!access.allowed) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ denied: true, reason: access.reason }),
+          }],
+          isError: true,
+        };
+      }
+
       const patches = queries.getPatchesByRepo(c.db, c.repoId, state);
 
       return {

@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { createHash } from "node:crypto";
 import type { AgoraContext } from "../core/context.js";
-import { checkToolAccess, canWriteNoteType } from "../trust/tiers.js";
+import { checkToolAccess, canReadNoteType, canWriteNoteType } from "../trust/tiers.js";
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
 import { resolveAgent } from "./resolve-agent.js";
@@ -110,10 +110,46 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
     "List notes, optionally filtered by type",
     {
       type: z.enum(NOTE_TYPES).optional().describe("Filter by note type"),
+      agentId: z.string().describe("Agent ID"),
+      sessionId: z.string().describe("Active session ID"),
     },
-    async ({ type }) => {
+    async ({ type, agentId, sessionId }) => {
       const c = await getContext();
-      const notes = queries.getNotesByRepo(c.db, c.repoId, type);
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved) {
+        return {
+          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          isError: true,
+        };
+      }
+
+      const access = checkToolAccess("list_notes", resolved.role, resolved.trustTier);
+      if (!access.allowed) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ denied: true, reason: access.reason }),
+          }],
+          isError: true,
+        };
+      }
+
+      if (type && !canReadNoteType(resolved.role, type)) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              denied: true,
+              reason: `Role ${resolved.role} cannot read notes of type ${type}`,
+            }),
+          }],
+          isError: true,
+        };
+      }
+
+      const notes = queries
+        .getNotesByRepo(c.db, c.repoId, type)
+        .filter((note) => canReadNoteType(resolved.role, note.type));
 
       return {
         content: [{

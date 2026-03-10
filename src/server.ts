@@ -17,6 +17,7 @@ import { registerNoteTools } from "./tools/note-tools.js";
 import { registerCoordinationTools } from "./tools/coordination-tools.js";
 import { registerKnowledgeTools } from "./tools/knowledge-tools.js";
 import { registerTicketTools } from "./tools/ticket-tools.js";
+import { installToolRuntimeInstrumentation } from "./tools/runtime-instrumentation.js";
 
 export function createAgoraServer(config: AgoraConfig) {
   const server = new McpServer({
@@ -79,6 +80,8 @@ export function createAgoraServer(config: AgoraConfig) {
     insight.info(`Initialized for ${repoRoot} (search: ${searchRouter.getActiveBackendName()})`);
     return ctx;
   }
+
+  installToolRuntimeInstrumentation(server, getContext);
 
   // Register tool groups
   registerReadTools(server, getContext);
