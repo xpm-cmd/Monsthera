@@ -1145,13 +1145,7 @@ function renderCharts(overview,logs,patches,knowledge,presence,indexedFiles){
   var typeData=Object.entries(typeCounts).sort(function(a,b){return b[1]-a[1]}).map(function(e){return{label:e[0],value:e[1],color:TYPE_COLORS[e[0]]||'#3b82f6'}});
   var kPanel=makeChartPanel('Knowledge Types','cyan',colorMap,typeData.length?makeBarChart(typeData,240,18,5):mkEmpty());
 
-  /* Patch states donut */
-  var stateCounts={};
-  patches.forEach(function(p){stateCounts[p.state]=(stateCounts[p.state]||0)+1});
-  var stateData=Object.entries(stateCounts).map(function(e){return{label:e[0],value:e[1],color:STATE_COLORS[e[0]]||'#3b82f6'}});
-  var pPanel=makeChartPanel('Patch States','green',colorMap,'<div class="chart-body">'+makeDonut(stateData,90,14)+'<div class="chart-legend">'+makeLegend(stateData)+'</div></div>');
-
-  container.replaceChildren(sparkPanel,toolPanel,filesPanel,kPanel,pPanel);
+  container.replaceChildren(sparkPanel,toolPanel,filesPanel,kPanel);
 }
 
 function makeChartPanel(title,dotColor,colorMap,bodyHtml){
