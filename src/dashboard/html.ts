@@ -56,6 +56,11 @@ code,pre,.mono{font-family:'JetBrains Mono','Fira Code',monospace}
 .chart-title .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
 .chart-body{display:flex;align-items:center;gap:1rem;min-height:100px}
 .chart-body svg{flex-shrink:0}
+.chart-stack{display:flex;flex-direction:column;gap:.85rem;width:100%}
+.chart-indicators{display:grid;grid-template-columns:repeat(auto-fit,minmax(86px,1fr));gap:.55rem}
+.chart-indicator{border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02);border-radius:8px;padding:.55rem .65rem}
+.chart-indicator-value{display:block;color:var(--text);font-family:monospace;font-size:1rem;font-weight:700}
+.chart-indicator-label{display:block;color:var(--text3);font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;margin-top:.2rem}
 .chart-legend{font-size:.75rem;color:var(--text2);line-height:1.7}
 .chart-legend .item{display:flex;align-items:center;gap:.4rem}
 .chart-legend .swatch{width:8px;height:8px;border-radius:2px;display:inline-block;flex-shrink:0}
@@ -296,10 +301,16 @@ function makeSparkline(values,width,height){
   return '<svg width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'">'+gradient+'<path d="'+area+'" fill="url(#sg)"/><polyline points="'+pts+'" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/></svg>';
 }
 
-function mkEmpty(){return '<div class="chart-empty">No data</div>';}
+function mkEmpty(message){return '<div class="chart-empty">'+esc(message||'No data')+'</div>';}
 
 function makeLegend(data){
   return data.map(function(d){return '<div class="item"><span class="swatch" style="background:'+d.color+'"></span>'+esc(d.label)+'<span class="count">'+d.value+'</span></div>'}).join('');
+}
+
+function makeIndicators(items){
+  return '<div class="chart-indicators">'+items.map(function(item){
+    return '<div class="chart-indicator"><span class="chart-indicator-value">'+esc(String(item.value))+'</span><span class="chart-indicator-label">'+esc(item.label)+'</span></div>';
+  }).join('')+'</div>';
 }
 
 /* ── Init ────────────────────────────────────── */
@@ -659,19 +670,71 @@ function attachTicketDetailListeners(ticket){
 }
 
 /* ── Chart panels ────────────────────────────── */
-function renderCharts(logs,patches,knowledge,agents){
+function renderCharts(overview,logs,patches,knowledge,presence,indexedFiles){
   var container=document.getElementById('charts');
   var colorMap={blue:'#3b82f6',green:'#22c55e',purple:'#a855f7',cyan:'#06b6d4',orange:'#f59e0b',red:'#ef4444'};
+  var onlineAgents=(presence||[]).filter(function(agent){return agent.status==='online'}).length;
+  var activeSessions=(presence||[]).reduce(function(total,agent){
+    return total+(agent.sessions||[]).filter(function(session){return session.state==='active'}).length;
+  },0);
+  var successCount=logs.filter(function(l){return l.status==='success'}).length;
+  var avgDuration=logs.length?Math.round(logs.reduce(function(total,log){return total+(Number(log.durationMs)||0)},0)/logs.length):0;
 
   /* Activity sparkline */
   var hourBuckets=bucketByHour(logs.map(function(l){return l.timestamp}));
-  var sparkPanel=makeChartPanel('Activity (24h)','blue',colorMap,'<div style="width:100%">'+makeSparkline(hourBuckets,320,55)+'</div>');
+  var sparkPanel=makeChartPanel(
+    'Activity (24h)',
+    'blue',
+    colorMap,
+    '<div class="chart-stack"><div style="width:100%">'+(logs.length?makeSparkline(hourBuckets,320,55):mkEmpty('No recent event logs'))+'</div>'
+      +makeIndicators([
+        {label:'Events',value:logs.length},
+        {label:'Success',value:(logs.length?Math.round((successCount/logs.length)*100):0)+'%'},
+        {label:'Avg ms',value:avgDuration},
+        {label:'Live',value:onlineAgents+'/'+activeSessions},
+      ])
+    +'</div>'
+  );
 
   /* Tool usage donut */
   var toolCounts={};
   logs.forEach(function(l){toolCounts[l.tool]=(toolCounts[l.tool]||0)+1});
   var toolData=Object.entries(toolCounts).sort(function(a,b){return b[1]-a[1]}).slice(0,8).map(function(e,i){return{label:e[0],value:e[1],color:PALETTE[i%PALETTE.length]}});
-  var toolPanel=makeChartPanel('Tool Usage','purple',colorMap,'<div class="chart-body">'+makeDonut(toolData,100,16)+'<div class="chart-legend">'+makeLegend(toolData)+'</div></div>');
+  var topTool=toolData.length?toolData[0].label:'none';
+  var failureCount=logs.filter(function(l){return l.status!=='success'}).length;
+  var toolPanel=makeChartPanel(
+    'Tool Usage',
+    'purple',
+    colorMap,
+    '<div class="chart-stack">'
+      +'<div class="chart-body">'+(toolData.length?makeDonut(toolData,100,16):mkEmpty('No tool logs yet'))+'<div class="chart-legend">'+(toolData.length?makeLegend(toolData):'<div class="chart-empty">Usage appears here after tool calls are logged.</div>')+'</div></div>'
+      +makeIndicators([
+        {label:'Tools',value:Object.keys(toolCounts).length},
+        {label:'Top tool',value:topTool},
+        {label:'Failures',value:failureCount},
+      ])
+    +'</div>'
+  );
+
+  /* Indexed files by language */
+  var fileData=(indexedFiles.topLanguages||[]).map(function(entry,i){
+    return {label:entry.label,value:entry.count,color:PALETTE[i%PALETTE.length]};
+  });
+  var topBucket=fileData.length?fileData[0].label:'none';
+  var filesPanel=makeChartPanel(
+    'Indexed Files',
+    'orange',
+    colorMap,
+    '<div class="chart-stack">'
+      +(fileData.length?makeBarChart(fileData,240,18,5):mkEmpty('No indexed files'))
+      +makeIndicators([
+        {label:'Indexed',value:indexedFiles.totalFiles||overview.fileCount||0},
+        {label:'Buckets',value:indexedFiles.uniqueBuckets||0},
+        {label:'Top',value:topBucket},
+        {label:'Unknown',value:indexedFiles.unknownFiles||0},
+      ])
+    +'</div>'
+  );
 
   /* Knowledge by type bars */
   var typeCounts={};
@@ -685,7 +748,7 @@ function renderCharts(logs,patches,knowledge,agents){
   var stateData=Object.entries(stateCounts).map(function(e){return{label:e[0],value:e[1],color:STATE_COLORS[e[0]]||'#3b82f6'}});
   var pPanel=makeChartPanel('Patch States','green',colorMap,'<div class="chart-body">'+makeDonut(stateData,90,14)+'<div class="chart-legend">'+makeLegend(stateData)+'</div></div>');
 
-  container.replaceChildren(sparkPanel,toolPanel,kPanel,pPanel);
+  container.replaceChildren(sparkPanel,toolPanel,filesPanel,kPanel,pPanel);
 }
 
 function makeChartPanel(title,dotColor,colorMap,bodyHtml){
@@ -758,9 +821,9 @@ async function refreshPresence(){
 async function refresh(){
   try{
     var results=await Promise.all([
-      api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets')
+      api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets'),api('files')
     ]);
-    var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5],presence=results[6],tickets=results[7];
+    var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5],presence=results[6],tickets=results[7],files=results[8];
     dashboardAgents=agents;
     ticketActors=[];
     presence.forEach(function(agent){
@@ -792,7 +855,7 @@ async function refresh(){
     renderPresence(presence);
 
     /* Charts */
-    renderCharts(logs,patches,knowledge,agents);
+    renderCharts(o,logs,patches,knowledge,presence,files);
 
     /* Tab counts */
     tabCounts={agents:agents.length,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};

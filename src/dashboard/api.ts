@@ -68,6 +68,35 @@ export function getEventLogsList(deps: DashboardDeps, limit = 50) {
   }));
 }
 
+function classifyIndexedFile(language: string | null, path: string): string {
+  if (language?.trim()) return language.trim();
+
+  const match = path.toLowerCase().match(/\.([a-z0-9]+)$/);
+  if (!match) return "unknown";
+  return `.${match[1]}`;
+}
+
+export function getIndexedFilesMetrics(deps: DashboardDeps) {
+  const files = queries.getAllFiles(deps.db, deps.repoId);
+  const counts = new Map<string, number>();
+
+  for (const file of files) {
+    const bucket = classifyIndexedFile(file.language, file.path);
+    counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
+  }
+
+  const byLanguage = [...counts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+  return {
+    totalFiles: files.length,
+    uniqueBuckets: byLanguage.length,
+    unknownFiles: byLanguage.find((entry) => entry.label === "unknown")?.count ?? 0,
+    topLanguages: byLanguage.slice(0, 6),
+  };
+}
+
 export function getPatchesList(deps: DashboardDeps) {
   return queries.getPatchesByRepo(deps.db, deps.repoId).map((p) => ({
     proposalId: p.proposalId,

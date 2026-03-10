@@ -3,7 +3,7 @@ import type { InsightStream } from "../core/insight-stream.js";
 import { renderDashboard } from "./html.js";
 import {
   getOverview, getAgentsList, getEventLogsList,
-  getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence, type DashboardDeps,
+  getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence, getIndexedFilesMetrics, type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
 import { getDashboardEventsAfter, getLatestDashboardEventId, type DashboardEvent } from "./events.js";
@@ -304,6 +304,7 @@ function routeApi(route: string, deps: DashboardDeps): unknown {
     case "notes": return getNotesList(deps);
     case "knowledge": return getKnowledgeList(deps);
     case "tickets": return getTicketsList(deps);
+    case "files": return getIndexedFilesMetrics(deps);
     case "presence": return getPresence(deps);
     default: return null;
   }

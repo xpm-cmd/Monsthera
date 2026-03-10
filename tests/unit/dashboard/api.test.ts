@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
-import { getOverview, getAgentsList, getTicketsList, getTicketDetail, type DashboardDeps } from "../../../src/dashboard/api.js";
+import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -82,6 +82,34 @@ describe("Dashboard API", () => {
     expect(overview.totalAgents).toBe(0);
     expect(overview.totalPatches).toBe(0);
     expect(overview.fileCount).toBe(0);
+  });
+
+  it("aggregates indexed file metrics by language and extension fallback", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`
+      INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(1, "src/dashboard/html.ts", "typescript", "h1", "summary", "[]", now, "abc1234");
+    sqlite.prepare(`
+      INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(1, "src/dashboard/api.ts", "typescript", "h2", "summary", "[]", now, "abc1234");
+    sqlite.prepare(`
+      INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(1, "README.md", null, "h3", "summary", "[]", now, "abc1234");
+    sqlite.prepare(`
+      INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(1, "Dockerfile", null, "h4", "summary", "[]", now, "abc1234");
+
+    const files = getIndexedFilesMetrics(deps);
+
+    expect(files.totalFiles).toBe(4);
+    expect(files.uniqueBuckets).toBe(3);
+    expect(files.topLanguages[0]).toEqual({ label: "typescript", count: 2 });
+    expect(files.topLanguages[1]).toEqual({ label: ".md", count: 1 });
+    expect(files.unknownFiles).toBe(1);
   });
 
   it("returns all tickets for the dashboard, not just the first 50", () => {
