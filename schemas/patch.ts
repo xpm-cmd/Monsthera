@@ -28,6 +28,7 @@ export const PatchProposal = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   committedSha: z.string().nullable().default(null), // set after successful commit
+  ticketId: z.string().nullable().default(null), // links patch to a ticket (TKT-...)
 });
 export type PatchProposal = z.infer<typeof PatchProposal>;
 
@@ -37,5 +38,6 @@ export const ProposePatchInput = z.object({
   baseCommit: z.string().min(7), // at least short SHA
   bundleId: z.string().optional(),
   dryRun: z.boolean().default(false),
+  ticketId: z.string().optional(), // optional link to a ticket
 });
 export type ProposePatchInput = z.infer<typeof ProposePatchInput>;

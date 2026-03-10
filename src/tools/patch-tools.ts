@@ -21,8 +21,9 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
       agentId: z.string().describe("Proposing agent ID"),
       sessionId: z.string().describe("Active session ID"),
       dryRun: z.boolean().default(false).describe("Validate only, don't persist"),
+      ticketId: z.string().optional().describe("Link patch to a ticket (TKT-...)"),
     },
-    async ({ diff, message, baseCommit, bundleId, agentId, sessionId, dryRun }) => {
+    async ({ diff, message, baseCommit, bundleId, agentId, sessionId, dryRun, ticketId }) => {
       const c = await getContext();
 
       const resolved = resolveAgent(c, agentId, sessionId);
@@ -64,7 +65,7 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
       const now = new Date().toISOString();
       const state = validation.valid ? "validated" : "stale";
 
-      queries.insertPatch(c.db, {
+      const patch = queries.insertPatch(c.db, {
         repoId: c.repoId,
         proposalId: validation.proposalId,
         baseCommit,
@@ -77,12 +78,26 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
         createdAt: now, updatedAt: now,
       });
 
+      // Link patch to ticket if provided
+      let linkedTicketId: string | null = null;
+      if (ticketId) {
+        const ticket = queries.getTicketByTicketId(c.db, ticketId);
+        if (!ticket) {
+          return {
+            content: [{ type: "text" as const, text: `Ticket not found: ${ticketId}. Patch was created but not linked.` }],
+            isError: true,
+          };
+        }
+        queries.linkPatchToTicket(c.db, patch.id, ticket.id);
+        linkedTicketId = ticketId;
+      }
+
       c.insight.info(`Patch ${validation.proposalId} by ${agentId}: ${state}`);
 
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ ...validationSummary(validation), state }, null, 2),
+          text: JSON.stringify({ ...validationSummary(validation), state, ...(linkedTicketId && { linkedTicketId }) }, null, 2),
         }],
       };
     },

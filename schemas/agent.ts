@@ -14,6 +14,8 @@ export const RolePermissions = z.object({
   allowedNoteTypes: z.array(z.string()).default([]),
   readableNoteTypes: z.array(z.string()).default([]),
   canViewSharedLogs: z.boolean(),
+  canCreateTicket: z.boolean(),
+  canTransitionTicket: z.boolean(),
 });
 export type RolePermissions = z.infer<typeof RolePermissions>;
 
@@ -38,6 +40,8 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
         "register_agent", "agent_status", "broadcast",
         "request_reindex",
         "store_knowledge", "search_knowledge", "query_knowledge", "archive_knowledge", "delete_knowledge",
+        "create_ticket", "assign_ticket", "update_ticket_status", "update_ticket",
+        "list_tickets", "get_ticket", "comment_ticket",
       ],
       trustTier: "A",
       canBroadcast: true,
@@ -47,6 +51,8 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
       allowedNoteTypes: ["issue", "decision", "change_note", "gotcha", "runbook", "repo_map", "module_map", "file_summary"],
       readableNoteTypes: ["issue", "decision", "change_note", "gotcha", "runbook", "repo_map", "module_map", "file_summary"],
       canViewSharedLogs: true,
+      canCreateTicket: true,
+      canTransitionTicket: true,
     },
   },
   reviewer: {
@@ -60,6 +66,8 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
         "status", "capabilities", "schema",
         "register_agent", "agent_status",
         "store_knowledge", "search_knowledge", "query_knowledge",
+        "create_ticket", "update_ticket_status",
+        "list_tickets", "get_ticket", "comment_ticket",
       ],
       trustTier: "A",
       canBroadcast: true,
@@ -69,6 +77,8 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
       allowedNoteTypes: ["issue", "decision", "change_note", "gotcha"],
       readableNoteTypes: ["issue", "decision", "change_note", "gotcha", "runbook", "repo_map", "module_map", "file_summary"],
       canViewSharedLogs: true,
+      canCreateTicket: true,
+      canTransitionTicket: true,
     },
   },
   observer: {
@@ -81,6 +91,7 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
         "status", "capabilities", "schema",
         "register_agent", "agent_status",
         "search_knowledge", "query_knowledge",
+        "list_tickets", "get_ticket",
       ],
       trustTier: "B",
       canBroadcast: false,
@@ -90,6 +101,8 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
       allowedNoteTypes: [],
       readableNoteTypes: ["issue", "decision", "change_note"],
       canViewSharedLogs: false,
+      canCreateTicket: false,
+      canTransitionTicket: false,
     },
   },
   admin: {
@@ -106,6 +119,8 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
       allowedNoteTypes: ["issue", "decision", "change_note", "gotcha", "runbook", "repo_map", "module_map", "file_summary"],
       readableNoteTypes: ["issue", "decision", "change_note", "gotcha", "runbook", "repo_map", "module_map", "file_summary"],
       canViewSharedLogs: true,
+      canCreateTicket: true,
+      canTransitionTicket: true,
     },
   },
 };

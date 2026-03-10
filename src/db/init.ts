@@ -122,8 +122,47 @@ function createTables(sqlite: Database.Database): void {
       agent_id TEXT NOT NULL,
       session_id TEXT NOT NULL,
       committed_sha TEXT,
+      ticket_id INTEGER REFERENCES tickets(id),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS tickets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_id INTEGER NOT NULL REFERENCES repos(id),
+      ticket_id TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'backlog',
+      severity TEXT NOT NULL DEFAULT 'medium',
+      priority INTEGER NOT NULL DEFAULT 5,
+      tags_json TEXT,
+      affected_paths_json TEXT,
+      acceptance_criteria TEXT,
+      creator_agent_id TEXT NOT NULL,
+      creator_session_id TEXT NOT NULL,
+      assignee_agent_id TEXT,
+      resolved_by_agent_id TEXT,
+      commit_sha TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS ticket_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      comment TEXT,
+      timestamp TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS ticket_comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+      agent_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS event_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,5 +251,14 @@ function runMigrations(sqlite: Database.Database): void {
     sqlite.prepare("SELECT embedding FROM files LIMIT 0").get();
   } catch {
     sqlite.prepare("ALTER TABLE files ADD COLUMN embedding BLOB").run();
+  }
+
+  // Migration 2: Add ticket_id column to patches table
+  // Note: ALTER TABLE in SQLite adds the column but NOT the FK constraint.
+  // Integrity is application-level for migrated DBs, physical for new installs.
+  try {
+    sqlite.prepare("SELECT ticket_id FROM patches LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE patches ADD COLUMN ticket_id INTEGER").run();
   }
 }

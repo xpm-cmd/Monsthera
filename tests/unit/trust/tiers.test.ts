@@ -37,6 +37,34 @@ describe("checkToolAccess", () => {
     expect(checkToolAccess("status", "observer", "B").allowed).toBe(true);
     expect(checkToolAccess("capabilities", "observer", "B").allowed).toBe(true);
   });
+
+  // --- Ticket permissions ---
+  it("allows developer to create tickets", () => {
+    expect(checkToolAccess("create_ticket", "developer", "A").allowed).toBe(true);
+  });
+
+  it("allows reviewer to create tickets", () => {
+    expect(checkToolAccess("create_ticket", "reviewer", "A").allowed).toBe(true);
+  });
+
+  it("denies observer from creating tickets", () => {
+    expect(checkToolAccess("create_ticket", "observer", "B").allowed).toBe(false);
+  });
+
+  it("allows developer to transition tickets", () => {
+    expect(checkToolAccess("update_ticket_status", "developer", "A").allowed).toBe(true);
+    expect(checkToolAccess("assign_ticket", "developer", "A").allowed).toBe(true);
+  });
+
+  it("denies observer from transitioning tickets", () => {
+    expect(checkToolAccess("update_ticket_status", "observer", "B").allowed).toBe(false);
+    expect(checkToolAccess("assign_ticket", "observer", "B").allowed).toBe(false);
+  });
+
+  it("allows observer to list and get tickets", () => {
+    expect(checkToolAccess("list_tickets", "observer", "B").allowed).toBe(true);
+    expect(checkToolAccess("get_ticket", "observer", "B").allowed).toBe(true);
+  });
 });
 
 describe("canReadNoteType", () => {

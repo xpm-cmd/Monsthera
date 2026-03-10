@@ -80,8 +80,52 @@ export const patches = sqliteTable("patches", {
   agentId: text("agent_id").notNull(),
   sessionId: text("session_id").notNull(),
   committedSha: text("committed_sha"),
+  ticketId: integer("ticket_id").references(() => tickets.id),  // physical FK for new installs, app-level for migrated
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+});
+
+// --- Tickets ---
+
+export const tickets = sqliteTable("tickets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: integer("repo_id").notNull().references(() => repos.id),
+  ticketId: text("ticket_id").notNull().unique(),  // TKT-{uuid8}
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  status: text("status").notNull().default("backlog"),
+  severity: text("severity").notNull().default("medium"),
+  priority: integer("priority").notNull().default(5),
+  tagsJson: text("tags_json"),
+  affectedPathsJson: text("affected_paths_json"),
+  acceptanceCriteria: text("acceptance_criteria"),
+  creatorAgentId: text("creator_agent_id").notNull(),
+  creatorSessionId: text("creator_session_id").notNull(),
+  assigneeAgentId: text("assignee_agent_id"),
+  resolvedByAgentId: text("resolved_by_agent_id"),
+  commitSha: text("commit_sha").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const ticketHistory = sqliteTable("ticket_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ticketId: integer("ticket_id").notNull().references(() => tickets.id),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  agentId: text("agent_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  comment: text("comment"),
+  timestamp: text("timestamp").notNull(),
+});
+
+export const ticketComments = sqliteTable("ticket_comments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ticketId: integer("ticket_id").notNull().references(() => tickets.id),
+  agentId: text("agent_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  content: text("content").notNull(),
+  createdAt: text("created_at").notNull(),
 });
 
 // --- Agents ---

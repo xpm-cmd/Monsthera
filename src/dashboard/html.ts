@@ -155,6 +155,7 @@ footer a{color:var(--blue);text-decoration:none}
   <div id="patches" class="section"></div>
   <div id="notes" class="section"></div>
   <div id="knowledge" class="section"></div>
+  <div id="tickets" class="section"></div>
 </div>
 
 <footer>Agora &mdash; Multi-agent shared context &amp; coordination server</footer>
@@ -163,11 +164,12 @@ footer a{color:var(--blue);text-decoration:none}
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const api=p=>fetch('/api/'+p).then(r=>r.json());
-const tabs=[['agents','Agents'],['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['knowledge','Knowledge']];
+const tabs=[['agents','Agents'],['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['knowledge','Knowledge'],['tickets','Tickets']];
 const PALETTE=['#3b82f6','#22c55e','#f59e0b','#a855f7','#06b6d4','#ec4899','#6366f1','#ef4444','#14b8a6','#f97316'];
 const TYPE_COLORS={decision:'#3b82f6',gotcha:'#f59e0b',pattern:'#a855f7',context:'#06b6d4',plan:'#ec4899',solution:'#22c55e',preference:'#6366f1',runbook:'#14b8a6'};
 const STATE_COLORS={proposed:'#f59e0b',validated:'#3b82f6',applied:'#22c55e',committed:'#22c55e',stale:'#ef4444',failed:'#ef4444'};
-let tabCounts={agents:0,logs:0,patches:0,notes:0,knowledge:0};
+const TICKET_STATUS_CLS={resolved:'success',closed:'success',in_progress:'blue',in_review:'blue',backlog:'orange',assigned:'orange',blocked:'red',wont_fix:'red'};
+let tabCounts={agents:0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
 
 /* ── SVG Chart: Donut ────────────────────────── */
 function makeDonut(data,size,thickness){
@@ -253,6 +255,7 @@ function showTab(id,btn){
   document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
   document.getElementById(id).classList.add('active');
   btn.classList.add('active');
+  refresh();
 }
 
 function updateCounts(){
@@ -391,9 +394,9 @@ async function refreshPresence(){
 async function refresh(){
   try{
     var results=await Promise.all([
-      api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence')
+      api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets')
     ]);
-    var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5],presence=results[6];
+    var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5],presence=results[6],tickets=results[7];
 
     /* Overview cards */
     var ov=document.getElementById('overview');
@@ -402,6 +405,7 @@ async function refresh(){
       makeCard('&#129302;','Agents',o.totalAgents),
       makeCard('&#9889;','Active Sessions',o.activeSessions),
       makeCard('&#128230;','Patches',o.totalPatches),
+      makeCard('&#127915;','Open Tickets',o.openTickets!=null?o.openTickets+'/'+o.totalTickets:'0'),
       makeCard('&#127793;','Indexed Commit',o.indexedCommit?o.indexedCommit.slice(0,7):'none'),
       makeCard('&#128279;','Topology',o.coordinationTopology));
 
@@ -412,7 +416,7 @@ async function refresh(){
     renderCharts(logs,patches,knowledge,agents);
 
     /* Tab counts */
-    tabCounts={agents:agents.length,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length};
+    tabCounts={agents:agents.length,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};
     updateCounts();
 
     /* Agents */
@@ -439,6 +443,11 @@ async function refresh(){
     document.getElementById('knowledge').replaceChildren(makeTable(
       ['Type','Title','Scope','Tags','Status','Agent','Updated'],
       knowledge.map(function(k){return[b(k.type,k.type),k.title,b(k.scope,k.scope),k.tags.join(', ')||'-',b(k.status,k.status==='active'?'active':'stale'),k.agentId||'-',new Date(k.updatedAt).toLocaleString()]})));
+
+    /* Tickets */
+    document.getElementById('tickets').replaceChildren(makeTable(
+      ['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'],
+      tickets.map(function(t){return[m(t.ticketId),esc(t.title).slice(0,60),b(t.status,TICKET_STATUS_CLS[t.status]||'blue'),b(t.severity,t.severity==='critical'?'red':t.severity==='high'?'orange':'blue'),t.priority,t.assignee||'-',t.creator||'-',new Date(t.updatedAt).toLocaleString()]})));
 
     document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
   }catch(e){

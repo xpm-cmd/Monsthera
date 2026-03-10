@@ -1,4 +1,4 @@
-import { eq, and, like, desc, sql } from "drizzle-orm";
+import { eq, and, like, desc, sql, notInArray } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "./schema.js";
 import * as tables from "./schema.js";
@@ -345,4 +345,157 @@ export function deleteKnowledge(db: DB, key: string) {
     .delete(tables.knowledge)
     .where(eq(tables.knowledge.key, key))
     .run();
+}
+
+// --- Tickets ---
+
+export function insertTicket(
+  db: DB,
+  ticket: typeof tables.tickets.$inferInsert,
+): typeof tables.tickets.$inferSelect {
+  return db.insert(tables.tickets).values(ticket).returning().get();
+}
+
+export function getTicketById(db: DB, id: number) {
+  return db.select().from(tables.tickets).where(eq(tables.tickets.id, id)).get();
+}
+
+export function getTicketByTicketId(db: DB, ticketId: string) {
+  return db.select().from(tables.tickets).where(eq(tables.tickets.ticketId, ticketId)).get();
+}
+
+export function updateTicket(
+  db: DB,
+  id: number,
+  updates: Partial<Pick<
+    typeof tables.tickets.$inferInsert,
+    "title" | "description" | "severity" | "priority" | "tagsJson" |
+    "affectedPathsJson" | "acceptanceCriteria" | "status" | "assigneeAgentId" |
+    "resolvedByAgentId"
+  >>,
+) {
+  return db
+    .update(tables.tickets)
+    .set({ ...updates, updatedAt: new Date().toISOString() })
+    .where(eq(tables.tickets.id, id))
+    .run();
+}
+
+export function getTicketsByRepo(
+  db: DB,
+  repoId: number,
+  opts?: {
+    status?: string;
+    assigneeAgentId?: string;
+    severity?: string;
+    creatorAgentId?: string;
+    limit?: number;
+  },
+) {
+  const conditions = [eq(tables.tickets.repoId, repoId)];
+
+  if (opts?.status) conditions.push(eq(tables.tickets.status, opts.status));
+  if (opts?.assigneeAgentId) conditions.push(eq(tables.tickets.assigneeAgentId, opts.assigneeAgentId));
+  if (opts?.severity) conditions.push(eq(tables.tickets.severity, opts.severity));
+  if (opts?.creatorAgentId) conditions.push(eq(tables.tickets.creatorAgentId, opts.creatorAgentId));
+
+  return db
+    .select()
+    .from(tables.tickets)
+    .where(and(...conditions))
+    .orderBy(desc(tables.tickets.priority), desc(tables.tickets.updatedAt))
+    .limit(opts?.limit ?? 50)
+    .all();
+}
+
+export function getTicketCountsByStatus(db: DB, repoId: number) {
+  const rows = db
+    .select({
+      status: tables.tickets.status,
+      count: sql<number>`count(*)`,
+    })
+    .from(tables.tickets)
+    .where(eq(tables.tickets.repoId, repoId))
+    .groupBy(tables.tickets.status)
+    .all();
+
+  const counts: Record<string, number> = {};
+  for (const r of rows) counts[r.status] = r.count;
+  return counts;
+}
+
+export function getOpenTicketCount(db: DB, repoId: number): number {
+  const result = db
+    .select({ count: sql<number>`count(*)` })
+    .from(tables.tickets)
+    .where(and(
+      eq(tables.tickets.repoId, repoId),
+      notInArray(tables.tickets.status, ["resolved", "closed", "wont_fix"]),
+    ))
+    .get();
+  return result?.count ?? 0;
+}
+
+export function getTotalTicketCount(db: DB, repoId: number): number {
+  const result = db
+    .select({ count: sql<number>`count(*)` })
+    .from(tables.tickets)
+    .where(eq(tables.tickets.repoId, repoId))
+    .get();
+  return result?.count ?? 0;
+}
+
+// --- Ticket History ---
+
+export function insertTicketHistory(
+  db: DB,
+  entry: typeof tables.ticketHistory.$inferInsert,
+): typeof tables.ticketHistory.$inferSelect {
+  return db.insert(tables.ticketHistory).values(entry).returning().get();
+}
+
+export function getTicketHistory(db: DB, ticketInternalId: number) {
+  return db
+    .select()
+    .from(tables.ticketHistory)
+    .where(eq(tables.ticketHistory.ticketId, ticketInternalId))
+    .orderBy(tables.ticketHistory.timestamp)
+    .all();
+}
+
+// --- Ticket Comments ---
+
+export function insertTicketComment(
+  db: DB,
+  comment: typeof tables.ticketComments.$inferInsert,
+): typeof tables.ticketComments.$inferSelect {
+  return db.insert(tables.ticketComments).values(comment).returning().get();
+}
+
+export function getTicketComments(db: DB, ticketInternalId: number) {
+  return db
+    .select()
+    .from(tables.ticketComments)
+    .where(eq(tables.ticketComments.ticketId, ticketInternalId))
+    .orderBy(tables.ticketComments.createdAt)
+    .all();
+}
+
+// --- Patch ↔ Ticket link ---
+
+export function linkPatchToTicket(db: DB, patchInternalId: number, ticketInternalId: number) {
+  return db
+    .update(tables.patches)
+    .set({ ticketId: ticketInternalId })
+    .where(eq(tables.patches.id, patchInternalId))
+    .run();
+}
+
+export function getPatchesByTicketId(db: DB, ticketInternalId: number) {
+  return db
+    .select()
+    .from(tables.patches)
+    .where(eq(tables.patches.ticketId, ticketInternalId))
+    .orderBy(desc(tables.patches.createdAt))
+    .all();
 }

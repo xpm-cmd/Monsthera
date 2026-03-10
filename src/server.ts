@@ -16,6 +16,7 @@ import { registerPatchTools } from "./tools/patch-tools.js";
 import { registerNoteTools } from "./tools/note-tools.js";
 import { registerCoordinationTools } from "./tools/coordination-tools.js";
 import { registerKnowledgeTools } from "./tools/knowledge-tools.js";
+import { registerTicketTools } from "./tools/ticket-tools.js";
 
 export function createAgoraServer(config: AgoraConfig) {
   const server = new McpServer({
@@ -87,6 +88,7 @@ export function createAgoraServer(config: AgoraConfig) {
   registerNoteTools(server, getContext);
   registerCoordinationTools(server, getContext);
   registerKnowledgeTools(server, getContext);
+  registerTicketTools(server, getContext);
 
   return server;
 }

@@ -22,6 +22,9 @@ export function getOverview(deps: DashboardDeps) {
   const activeSessions = queries.getActiveSessions(deps.db);
   const patches = queries.getPatchesByRepo(deps.db, deps.repoId);
 
+  const totalTickets = queries.getTotalTicketCount(deps.db, deps.repoId);
+  const openTickets = queries.getOpenTicketCount(deps.db, deps.repoId);
+
   return {
     version: VERSION,
     repoPath: deps.repoPath,
@@ -30,6 +33,8 @@ export function getOverview(deps: DashboardDeps) {
     totalAgents: agents.length,
     activeSessions: activeSessions.length,
     totalPatches: patches.length,
+    totalTickets,
+    openTickets,
     coordinationTopology: deps.bus.getTopology(),
   };
 }
@@ -129,6 +134,19 @@ export function getPresence(deps: DashboardDeps) {
       sessions,
     };
   });
+}
+
+export function getTicketsList(deps: DashboardDeps) {
+  return queries.getTicketsByRepo(deps.db, deps.repoId).map((t) => ({
+    ticketId: t.ticketId,
+    title: t.title,
+    status: t.status,
+    severity: t.severity,
+    priority: t.priority,
+    assignee: t.assigneeAgentId ?? null,
+    creator: t.creatorAgentId,
+    updatedAt: t.updatedAt,
+  }));
 }
 
 export function getKnowledgeList(deps: DashboardDeps) {

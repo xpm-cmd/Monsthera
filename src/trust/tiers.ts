@@ -45,6 +45,14 @@ export function checkToolAccess(
     return { allowed: false, reason: `Role ${roleId} cannot claim files` };
   }
 
+  if (tool === "create_ticket" && !permissions.canCreateTicket) {
+    return { allowed: false, reason: `Role ${roleId} cannot create tickets` };
+  }
+
+  if ((tool === "update_ticket_status" || tool === "assign_ticket") && !permissions.canTransitionTicket) {
+    return { allowed: false, reason: `Role ${roleId} cannot transition tickets` };
+  }
+
   return { allowed: true, reason: "ok" };
 }
 
