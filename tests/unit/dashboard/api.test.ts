@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
-import { getOverview, getAgentsList, getTicketsList, type DashboardDeps } from "../../../src/dashboard/api.js";
+import { getOverview, getAgentsList, getTicketsList, getTicketDetail, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -98,5 +98,49 @@ describe("Dashboard API", () => {
     }
 
     expect(getTicketsList(deps)).toHaveLength(60);
+  });
+
+  it("returns ticket detail with comments, history, and linked patches", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`
+      INSERT INTO tickets (
+        id, repo_id, ticket_id, title, description, status, severity, priority,
+        tags_json, affected_paths_json, acceptance_criteria, creator_agent_id, creator_session_id,
+        assignee_agent_id, resolved_by_agent_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      1, 1, "TKT-detail", "Detail Ticket", "Ticket detail body", "in_review", "high", 7,
+      JSON.stringify(["dashboard", "comments"]),
+      JSON.stringify(["src/dashboard/html.ts"]),
+      "Show comments",
+      "reviewer-1", "session-1", "developer-1", null, "abc1234", now, now,
+    );
+    sqlite.prepare(`
+      INSERT INTO ticket_comments (ticket_id, agent_id, session_id, content, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(1, "reviewer-1", "session-1", "Need dashboard visibility for comments.", now);
+    sqlite.prepare(`
+      INSERT INTO ticket_history (ticket_id, from_status, to_status, agent_id, session_id, comment, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(1, "in_progress", "in_review", "developer-1", "session-2", "Ready for review", now);
+    sqlite.prepare(`
+      INSERT INTO patches (
+        repo_id, proposal_id, base_commit, bundle_id, state, diff, message,
+        touched_paths_json, dry_run_result_json, agent_id, session_id, committed_sha, ticket_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(1, "patch-ticket", "abc1234", null, "validated", "---", "Wire dashboard ticket detail", "[]", "{}", "developer-1", "session-2", null, 1, now, now);
+
+    const detail = getTicketDetail(deps, "TKT-detail");
+
+    expect(detail?.ticketId).toBe("TKT-detail");
+    expect(detail?.comments).toHaveLength(1);
+    expect(detail?.comments[0]?.content).toContain("dashboard visibility");
+    expect(detail?.history).toHaveLength(1);
+    expect(detail?.linkedPatches).toHaveLength(1);
+    expect(detail?.linkedPatches[0]?.proposalId).toBe("patch-ticket");
+  });
+
+  it("returns null for a missing ticket detail", () => {
+    expect(getTicketDetail(deps, "TKT-missing")).toBeNull();
   });
 });

@@ -149,6 +149,52 @@ export function getTicketsList(deps: DashboardDeps) {
   }));
 }
 
+export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
+  const ticket = queries.getTicketByTicketId(deps.db, ticketId);
+  if (!ticket || ticket.repoId !== deps.repoId) return null;
+
+  const comments = queries.getTicketComments(deps.db, ticket.id);
+  const history = queries.getTicketHistory(deps.db, ticket.id);
+  const linkedPatches = queries.getPatchesByTicketId(deps.db, ticket.id);
+
+  return {
+    ticketId: ticket.ticketId,
+    title: ticket.title,
+    description: ticket.description,
+    status: ticket.status,
+    severity: ticket.severity,
+    priority: ticket.priority,
+    tags: ticket.tagsJson ? JSON.parse(ticket.tagsJson) : [],
+    affectedPaths: ticket.affectedPathsJson ? JSON.parse(ticket.affectedPathsJson) : [],
+    acceptanceCriteria: ticket.acceptanceCriteria,
+    creatorAgentId: ticket.creatorAgentId,
+    assigneeAgentId: ticket.assigneeAgentId,
+    resolvedByAgentId: ticket.resolvedByAgentId,
+    commitSha: ticket.commitSha,
+    createdAt: ticket.createdAt,
+    updatedAt: ticket.updatedAt,
+    comments: comments.map((comment) => ({
+      agentId: comment.agentId,
+      content: comment.content,
+      createdAt: comment.createdAt,
+    })),
+    history: history.map((entry) => ({
+      fromStatus: entry.fromStatus,
+      toStatus: entry.toStatus,
+      agentId: entry.agentId,
+      comment: entry.comment,
+      timestamp: entry.timestamp,
+    })),
+    linkedPatches: linkedPatches.map((patch) => ({
+      proposalId: patch.proposalId,
+      state: patch.state,
+      message: patch.message,
+      agentId: patch.agentId,
+      createdAt: patch.createdAt,
+    })),
+  };
+}
+
 export function getKnowledgeList(deps: DashboardDeps) {
   const repoEntries = queries.queryKnowledge(deps.db, {}).map((e) => ({
     ...e, scope: "repo" as string,

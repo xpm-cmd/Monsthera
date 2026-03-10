@@ -24,6 +24,7 @@ code,pre,.mono{font-family:'JetBrains Mono','Fira Code',monospace}
 .logo{font-size:1.25rem;font-weight:700;color:var(--text);letter-spacing:-.02em}
 .logo span{color:var(--blue)}
 .version{font-size:.7rem;color:var(--text3);background:var(--bg);padding:2px 8px;border-radius:20px;font-family:monospace}
+.repo-name{font-size:.72rem;color:var(--text2);padding:2px 8px;border:1px solid var(--border);border-radius:20px;background:rgba(255,255,255,.03);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
 .pulse.disconnected{background:var(--red);box-shadow:0 0 6px var(--red)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
@@ -82,6 +83,8 @@ td{padding:.55rem .75rem;border-bottom:1px solid rgba(28,36,51,.5);color:var(--t
 tr:hover td{background:rgba(255,255,255,.015);color:var(--text)}
 tr:nth-child(even) td{background:rgba(0,0,0,.1)}
 td.mono{font-family:monospace;font-size:.75rem;color:var(--text3)}
+tr.clickable{cursor:pointer}
+tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 
 /* ── Badges ─────────────────────────────────── */
 .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.7rem;font-weight:600;letter-spacing:.02em}
@@ -124,6 +127,23 @@ td.mono{font-family:monospace;font-size:.75rem;color:var(--text3)}
 .agent-time{font-size:.65rem;color:var(--text3);margin-top:4px;font-family:monospace}
 .agent-files{font-size:.65rem;color:var(--text3);margin-top:2px}
 
+/* ── Ticket detail ──────────────────────────── */
+.detail-card{margin-top:.9rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem}
+.detail-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:.85rem}
+.detail-title{font-size:1rem;font-weight:700;color:var(--text)}
+.detail-sub{font-size:.72rem;color:var(--text2);margin-top:.25rem;display:flex;gap:.45rem;flex-wrap:wrap}
+.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:.9rem}
+.detail-block{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);border-radius:8px;padding:.75rem}
+.detail-label{font-size:.64rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem}
+.detail-value{font-size:.8rem;color:var(--text2);line-height:1.5}
+.detail-section{margin-top:1rem}
+.detail-section h4{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.55rem}
+.comment-list,.history-list,.patch-list{display:flex;flex-direction:column;gap:.55rem}
+.comment-item,.history-item,.patch-item{border:1px solid rgba(255,255,255,.05);border-radius:8px;background:rgba(255,255,255,.02);padding:.7rem .8rem}
+.comment-meta,.history-meta,.patch-meta{font-size:.67rem;color:var(--text3);display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.35rem}
+.comment-content,.history-content,.patch-content{font-size:.78rem;color:var(--text2);line-height:1.5;white-space:pre-wrap}
+.ticket-help{font-size:.78rem;color:var(--text3);padding:1rem 0}
+
 /* ── Footer ─────────────────────────────────── */
 footer{text-align:center;font-size:.7rem;color:var(--text3);padding:1.5rem;border-top:1px solid var(--border);margin-top:1rem}
 footer a{color:var(--blue);text-decoration:none}
@@ -135,6 +155,7 @@ footer a{color:var(--blue);text-decoration:none}
   <div class="header-left">
     <div class="logo"><span>&#9670;</span> Agora</div>
     <span class="version">v${VERSION}</span>
+    <span class="repo-name" id="repo-name" title="Repository name">loading…</span>
     <div class="pulse" id="pulse" title="SSE connected"></div>
   </div>
   <div class="header-right">
@@ -170,6 +191,15 @@ const TYPE_COLORS={decision:'#3b82f6',gotcha:'#f59e0b',pattern:'#a855f7',context
 const STATE_COLORS={proposed:'#f59e0b',validated:'#3b82f6',applied:'#22c55e',committed:'#22c55e',stale:'#ef4444',failed:'#ef4444'};
 const TICKET_STATUS_CLS={resolved:'success',closed:'success',in_progress:'blue',in_review:'blue',backlog:'orange',assigned:'orange',blocked:'red',wont_fix:'red'};
 let tabCounts={agents:0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
+let selectedTicketId=null;
+let selectedTicketDetail=null;
+
+function repoBasename(repoPath){
+  if(!repoPath) return 'unknown repo';
+  var clean=String(repoPath).replace(/[\\\\/]+$/,'');
+  var parts=clean.split(/[\\\\/]/);
+  return parts[parts.length-1]||clean;
+}
 
 /* ── SVG Chart: Donut ────────────────────────── */
 function makeDonut(data,size,thickness){
@@ -294,6 +324,110 @@ function makeTable(headers,rows){
 function b(v,c){return{badge:v,cls:c}}
 function m(v){return{mono:v}}
 
+async function loadTicketDetail(ticketId){
+  try{
+    selectedTicketId=ticketId;
+    selectedTicketDetail=await api('tickets/'+encodeURIComponent(ticketId));
+    renderTicketDetail();
+  }catch(e){
+    console.error('Ticket detail load failed:',e);
+    selectedTicketDetail=null;
+    renderTicketDetail('Failed to load ticket details');
+  }
+}
+
+function renderTicketDetail(error){
+  var host=document.getElementById('ticket-detail');
+  if(!host) return;
+  if(error){
+    host.innerHTML='<div class="detail-card"><div class="ticket-help">'+esc(error)+'</div></div>';
+    return;
+  }
+  if(!selectedTicketId){
+    host.innerHTML='<div class="ticket-help">Select a ticket to view comments, history, and linked patches.</div>';
+    return;
+  }
+  if(!selectedTicketDetail){
+    host.innerHTML='<div class="detail-card"><div class="ticket-help">Loading ticket details…</div></div>';
+    return;
+  }
+  var t=selectedTicketDetail;
+  var comments=(t.comments||[]).map(function(c){
+    return '<div class="comment-item"><div class="comment-meta"><span>'+esc(c.agentId||'-')+'</span><span>'+esc(new Date(c.createdAt).toLocaleString())+'</span></div><div class="comment-content">'+esc(c.content||'')+'</div></div>';
+  }).join('')||'<div class="ticket-help">No comments yet.</div>';
+  var history=(t.history||[]).map(function(h){
+    var change=(h.fromStatus?h.fromStatus+' → ':'')+h.toStatus;
+    var note=h.comment?'<div class="history-content">'+esc(h.comment)+'</div>':'';
+    return '<div class="history-item"><div class="history-meta"><span>'+esc(change)+'</span><span>'+esc(h.agentId||'-')+'</span><span>'+esc(new Date(h.timestamp).toLocaleString())+'</span></div>'+note+'</div>';
+  }).join('')||'<div class="ticket-help">No history yet.</div>';
+  var patches=(t.linkedPatches||[]).map(function(p){
+    return '<div class="patch-item"><div class="patch-meta"><span>'+esc(p.proposalId)+'</span><span>'+esc(p.agentId||'-')+'</span><span>'+esc(new Date(p.createdAt).toLocaleString())+'</span></div><div class="patch-content">'+esc(p.message||'')+'</div></div>';
+  }).join('')||'<div class="ticket-help">No linked patches.</div>';
+  var tags=(t.tags||[]).length?(t.tags||[]).join(', '):'-';
+  var affectedPaths=(t.affectedPaths||[]).length?(t.affectedPaths||[]).join(', '):'-';
+  host.innerHTML='<div class="detail-card">'
+    +'<div class="detail-head"><div><div class="detail-title">'+esc(t.title||t.ticketId)+'</div><div class="detail-sub"><span>'+esc(t.ticketId)+'</span><span>'+esc(new Date(t.updatedAt).toLocaleString())+'</span></div></div><div><span class="badge badge-'+(TICKET_STATUS_CLS[t.status]||'blue')+'">'+esc(t.status)+'</span></div></div>'
+    +'<div class="detail-grid">'
+    +'<div class="detail-block"><div class="detail-label">Description</div><div class="detail-value">'+esc(t.description||'-')+'</div></div>'
+    +'<div class="detail-block"><div class="detail-label">Acceptance Criteria</div><div class="detail-value">'+esc(t.acceptanceCriteria||'-')+'</div></div>'
+    +'<div class="detail-block"><div class="detail-label">Ownership</div><div class="detail-value">Creator: '+esc(t.creatorAgentId||'-')+'<br>Assignee: '+esc(t.assigneeAgentId||'-')+'</div></div>'
+    +'<div class="detail-block"><div class="detail-label">Context</div><div class="detail-value">Severity: '+esc(t.severity||'-')+'<br>Priority: '+esc(String(t.priority??'-'))+'<br>Commit: '+esc((t.commitSha||'-').slice(0,7))+'</div></div>'
+    +'<div class="detail-block"><div class="detail-label">Tags</div><div class="detail-value">'+esc(tags)+'</div></div>'
+    +'<div class="detail-block"><div class="detail-label">Affected Paths</div><div class="detail-value">'+esc(affectedPaths)+'</div></div>'
+    +'</div>'
+    +'<div class="detail-section"><h4>Comments</h4><div class="comment-list">'+comments+'</div></div>'
+    +'<div class="detail-section"><h4>History</h4><div class="history-list">'+history+'</div></div>'
+    +'<div class="detail-section"><h4>Linked Patches</h4><div class="patch-list">'+patches+'</div></div>'
+    +'</div>';
+}
+
+function renderTicketsSection(tickets){
+  var section=document.getElementById('tickets');
+  section.innerHTML='';
+  if(!tickets.length){
+    section.appendChild(makeTable(['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'],[]));
+    return;
+  }
+  var wrap=document.createElement('div');
+  wrap.className='table-wrap';
+  var table=document.createElement('table');
+  var thead=document.createElement('thead');
+  var hr=document.createElement('tr');
+  ['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'].forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  var tbody=document.createElement('tbody');
+  tickets.forEach(function(t){
+    var tr=document.createElement('tr');
+    tr.className='clickable'+(selectedTicketId===t.ticketId?' active':'');
+    tr.addEventListener('click',function(){loadTicketDetail(t.ticketId)});
+    [
+      m(t.ticketId),
+      t.title.slice(0,60),
+      b(t.status,TICKET_STATUS_CLS[t.status]||'blue'),
+      b(t.severity,t.severity==='critical'?'red':t.severity==='high'?'orange':'blue'),
+      t.priority,
+      t.assignee||'-',
+      t.creator||'-',
+      new Date(t.updatedAt).toLocaleString(),
+    ].forEach(function(cell){
+      var td=document.createElement('td');
+      if(typeof cell==='object'&&cell&&cell.badge){var s=document.createElement('span');s.className='badge badge-'+cell.cls;s.textContent=cell.badge;td.appendChild(s);}
+      else if(typeof cell==='object'&&cell&&cell.mono){td.className='mono';td.textContent=cell.mono;}
+      else{td.textContent=String(cell);}
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  section.appendChild(wrap);
+  var detail=document.createElement('div');
+  detail.id='ticket-detail';
+  section.appendChild(detail);
+  renderTicketDetail();
+}
+
 /* ── Chart panels ────────────────────────────── */
 function renderCharts(logs,patches,knowledge,agents){
   var container=document.getElementById('charts');
@@ -400,6 +534,9 @@ async function refresh(){
 
     /* Overview cards */
     var ov=document.getElementById('overview');
+    var repoName=repoBasename(o.repoPath);
+    var repoEl=document.getElementById('repo-name');
+    if(repoEl){repoEl.textContent=repoName;repoEl.title=o.repoPath||repoName;}
     ov.replaceChildren(
       makeCard('&#128193;','Files Indexed',o.fileCount),
       makeCard('&#129302;','Agents',o.totalAgents),
@@ -445,9 +582,15 @@ async function refresh(){
       knowledge.map(function(k){return[b(k.type,k.type),k.title,b(k.scope,k.scope),k.tags.join(', ')||'-',b(k.status,k.status==='active'?'active':'stale'),k.agentId||'-',new Date(k.updatedAt).toLocaleString()]})));
 
     /* Tickets */
-    document.getElementById('tickets').replaceChildren(makeTable(
-      ['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'],
-      tickets.map(function(t){return[m(t.ticketId),esc(t.title).slice(0,60),b(t.status,TICKET_STATUS_CLS[t.status]||'blue'),b(t.severity,t.severity==='critical'?'red':t.severity==='high'?'orange':'blue'),t.priority,t.assignee||'-',t.creator||'-',new Date(t.updatedAt).toLocaleString()]})));
+    renderTicketsSection(tickets);
+    if(selectedTicketId && tickets.some(function(t){return t.ticketId===selectedTicketId})){
+      selectedTicketDetail=await api('tickets/'+encodeURIComponent(selectedTicketId));
+      renderTicketDetail();
+    }else if(selectedTicketId && !tickets.some(function(t){return t.ticketId===selectedTicketId})){
+      selectedTicketId=null;
+      selectedTicketDetail=null;
+      renderTicketDetail();
+    }
 
     document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
   }catch(e){
