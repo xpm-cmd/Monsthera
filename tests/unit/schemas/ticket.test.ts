@@ -6,7 +6,7 @@ import {
 
 describe("TicketStatus", () => {
   it("accepts all valid statuses", () => {
-    for (const s of ["backlog", "technical_analysis", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"]) {
+    for (const s of ["backlog", "technical_analysis", "approved", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"]) {
       expect(TicketStatus.parse(s)).toBe(s);
     }
   });

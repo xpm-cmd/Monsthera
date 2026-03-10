@@ -3,7 +3,7 @@ import { z } from "zod/v4";
 // --- Enums ---
 
 export const TicketStatus = z.enum([
-  "backlog", "technical_analysis", "assigned", "in_progress", "in_review",
+  "backlog", "technical_analysis", "approved", "assigned", "in_progress", "in_review",
   "blocked", "resolved", "closed", "wont_fix",
 ]);
 export type TicketStatus = z.infer<typeof TicketStatus>;
@@ -16,7 +16,8 @@ export type TicketSeverity = z.infer<typeof TicketSeverity>;
 /** Legal status transitions. Each key maps to the set of statuses it can transition TO. */
 export const VALID_TRANSITIONS: Record<TicketStatus, readonly TicketStatus[]> = {
   backlog:            ["technical_analysis", "assigned", "wont_fix"],
-  technical_analysis: ["backlog", "assigned", "wont_fix"],
+  technical_analysis: ["backlog", "approved", "assigned", "wont_fix"],
+  approved:           ["assigned", "backlog", "wont_fix"],
   assigned:           ["in_progress", "wont_fix"],
   in_progress:        ["in_review", "blocked", "wont_fix"],
   in_review:          ["in_progress", "resolved"],  // reject → in_progress
@@ -36,7 +37,11 @@ export const TRANSITION_ROLES: Record<string, readonly string[]> = {
   "backlog→wont_fix":       ["reviewer", "admin"],
   "technical_analysis→backlog": ["reviewer", "admin"],
   "technical_analysis→assigned": ["developer", "admin"],
+  "technical_analysis→approved": ["reviewer", "admin"],
   "technical_analysis→wont_fix": ["reviewer", "admin"],
+  "approved→assigned":      ["developer", "admin"],
+  "approved→backlog":       ["reviewer", "admin"],       // rework
+  "approved→wont_fix":      ["reviewer", "admin"],
   "assigned→in_progress":   ["developer", "admin"],
   "assigned→wont_fix":      ["reviewer", "admin"],
   "in_progress→in_review":  ["developer", "admin"],

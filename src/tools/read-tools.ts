@@ -49,7 +49,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         text: JSON.stringify({
           version: VERSION,
           tools: [...CAPABILITY_TOOL_NAMES],
-          ticketStatuses: ["backlog", "technical_analysis", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"],
+          ticketStatuses: ["backlog", "technical_analysis", "approved", "assigned", "in_progress", "in_review", "blocked", "resolved", "closed", "wont_fix"],
           ticketSeverities: ["critical", "high", "medium", "low"],
           languages: [...SUPPORTED_LANGUAGES],
           trustTiers: ["A", "B"],
