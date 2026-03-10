@@ -272,13 +272,23 @@ describe("ticket tools", () => {
     });
     await handler("update_ticket_status")({
       ticketId,
-      status: "resolved",
+      status: "ready_for_commit",
       agentId: "agent-review",
       sessionId: "session-review",
     });
 
     let ticket = queries.getTicketByTicketId(db, ticketId)!;
-    expect(ticket.resolvedByAgentId).toBe("agent-review");
+    expect(ticket.resolvedByAgentId).toBeNull();
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "resolved",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    ticket = queries.getTicketByTicketId(db, ticketId)!;
+    expect(ticket.resolvedByAgentId).toBe("agent-dev");
 
     await handler("update_ticket_status")({
       ticketId,
@@ -291,7 +301,7 @@ describe("ticket tools", () => {
     ticket = queries.getTicketByTicketId(db, ticketId)!;
     expect(ticket.status).toBe("in_progress");
     expect(ticket.resolvedByAgentId).toBeNull();
-    expect(queries.getTicketHistory(db, ticket.id)).toHaveLength(7);
+    expect(queries.getTicketHistory(db, ticket.id)).toHaveLength(8);
   });
 
   it("rejects invalid status transitions", async () => {
@@ -434,9 +444,15 @@ describe("ticket tools", () => {
     });
     await handler("update_ticket_status")({
       ticketId: closedTicketId,
-      status: "resolved",
+      status: "ready_for_commit",
       agentId: "agent-review",
       sessionId: "session-review",
+    });
+    await handler("update_ticket_status")({
+      ticketId: closedTicketId,
+      status: "resolved",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
     });
 
     const result = await handler("search_tickets")({

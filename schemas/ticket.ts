@@ -3,7 +3,7 @@ import { z } from "zod/v4";
 // --- Enums ---
 
 export const TicketStatus = z.enum([
-  "backlog", "technical_analysis", "approved", "in_progress", "in_review",
+  "backlog", "technical_analysis", "approved", "in_progress", "in_review", "ready_for_commit",
   "blocked", "resolved", "closed", "wont_fix",
 ]);
 export type TicketStatus = z.infer<typeof TicketStatus>;
@@ -19,7 +19,8 @@ export const VALID_TRANSITIONS: Record<TicketStatus, readonly TicketStatus[]> = 
   technical_analysis: ["backlog", "approved", "wont_fix"],
   approved:           ["in_progress", "backlog", "wont_fix"],
   in_progress:        ["in_review", "blocked", "wont_fix"],
-  in_review:          ["in_progress", "resolved"],  // reject → in_progress
+  in_review:          ["in_progress", "ready_for_commit"],  // reject → in_progress
+  ready_for_commit:   ["in_progress", "resolved"],          // late fix or post-commit resolution
   blocked:            ["in_progress"],               // unblock
   resolved:           ["in_progress", "closed"],     // reopen → in_progress
   closed:             [],
@@ -43,7 +44,9 @@ export const TRANSITION_ROLES: Record<string, readonly string[]> = {
   "in_progress→blocked":    ["developer", "admin"],
   "in_progress→wont_fix":   ["reviewer", "admin"],
   "in_review→in_progress":  ["reviewer", "admin"],     // reject
-  "in_review→resolved":     ["reviewer", "admin"],
+  "in_review→ready_for_commit": ["reviewer", "admin"],
+  "ready_for_commit→in_progress": ["developer", "reviewer", "admin"],
+  "ready_for_commit→resolved": ["developer", "admin"],
   "blocked→in_progress":    ["developer", "admin"],     // unblock
   "resolved→in_progress":   ["developer", "reviewer", "admin"],  // reopen
   "resolved→closed":        ["reviewer", "admin"],

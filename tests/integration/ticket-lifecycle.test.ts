@@ -207,9 +207,15 @@ describe("ticket lifecycle", () => {
     });
     await handler("update_ticket_status")({
       ticketId,
-      status: "resolved",
+      status: "ready_for_commit",
       agentId: "agent-review",
       sessionId: "session-review",
+    });
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "resolved",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
     });
 
     const detail = await handler("get_ticket")({
@@ -234,7 +240,7 @@ describe("ticket lifecycle", () => {
     const searchPayload = JSON.parse(search.content[0].text);
 
     expect(detailPayload.status).toBe("resolved");
-    expect(detailPayload.history).toHaveLength(6);
+    expect(detailPayload.history).toHaveLength(7);
     expect(detailPayload.comments).toHaveLength(2);
     expect(detailPayload.linkedPatches).toHaveLength(1);
     expect(detailPayload.linkedPatches[0].proposalId).toBe("patch-123");
