@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
+import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 import type { MessageType } from "../../schemas/coordination.js";
 
@@ -32,14 +33,25 @@ export function registerCoordinationTools(server: McpServer, getContext: GetCont
         };
       }
 
+      const access = checkToolAccess("send_coordination", resolved.role, resolved.trustTier);
+      if (!access.allowed) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ denied: true, reason: access.reason }),
+          }],
+          isError: true,
+        };
+      }
+
       const msg = c.bus.send({
-        from: agentId,
+        from: resolved.agentId,
         to,
         type: type as MessageType,
         payload,
       });
 
-      c.insight.debug(`[coord] ${type} from ${agentId} → ${to ?? "all"}`);
+      c.insight.debug(`[coord] ${type} from ${resolved.agentId} → ${to ?? "all"}`);
 
       return {
         content: [{
@@ -56,12 +68,21 @@ export function registerCoordinationTools(server: McpServer, getContext: GetCont
     "Poll coordination messages visible to this agent",
     {
       agentId: z.string().describe("Your agent ID"),
+      sessionId: z.string().describe("Active session ID"),
       since: z.string().optional().describe("ISO timestamp to get messages after"),
       limit: z.number().int().min(1).max(100).default(20).describe("Max messages"),
     },
-    async ({ agentId, since, limit }) => {
+    async ({ agentId, sessionId, since, limit }) => {
       const c = await getContext();
-      const messages = c.bus.getMessages(agentId, since, limit);
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved) {
+        return {
+          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          isError: true,
+        };
+      }
+
+      const messages = c.bus.getMessages(resolved.agentId, since, limit);
 
       return {
         content: [{

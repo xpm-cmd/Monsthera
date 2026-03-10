@@ -49,7 +49,9 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             "get_code_pack", "get_change_pack", "get_issue_pack",
             "propose_patch", "propose_note",
             "register_agent", "agent_status", "broadcast",
-            "claim_files", "request_reindex",
+            "send_coordination", "poll_coordination",
+            "claim_files", "end_session", "request_reindex",
+            "list_patches", "list_notes",
             "store_knowledge", "search_knowledge", "query_knowledge", "archive_knowledge", "delete_knowledge",
             "create_ticket", "assign_ticket", "update_ticket_status", "update_ticket",
             "list_tickets", "get_ticket", "comment_ticket",
@@ -102,8 +104,8 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           title: "string (1-200 chars)",
           content: "string (1-10000 chars)",
           tags: "string[] (optional)",
-          agentId: "string (optional)",
-          sessionId: "string (optional)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
         },
         search_knowledge: {
           query: "string (1-1000 chars)",
@@ -118,8 +120,18 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           status: "enum: active|archived (default active)",
           limit: "number 1-100 (default 20)",
         },
-        archive_knowledge: { key: "string", scope: "enum: repo|global" },
-        delete_knowledge: { key: "string", scope: "enum: repo|global" },
+        archive_knowledge: {
+          key: "string",
+          scope: "enum: repo|global",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        delete_knowledge: {
+          key: "string",
+          scope: "enum: repo|global",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
         // ── coordination tools ──
         send_coordination: {
           type: "enum: task_claim|task_release|patch_intent|conflict_alert|status_update|broadcast",
@@ -130,6 +142,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         poll_coordination: {
           agentId: "string (required)",
+          sessionId: "string (required)",
           since: "string ISO timestamp (optional)",
           limit: "number 1-100 (default 20)",
         },
@@ -143,11 +156,17 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         agent_status: { agentId: "string (optional, omit for all)" },
         broadcast: {
           message: "string (1-500 chars)",
-          agentId: "string (optional)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
         },
         claim_files: {
+          agentId: "string (required)",
           sessionId: "string (required)",
           paths: "string[] (1-50 paths, advisory lock)",
+        },
+        end_session: {
+          agentId: "string (required)",
+          sessionId: "string (required)",
         },
         // ── index tools ──
         request_reindex: { full: "boolean (default false)" },
@@ -167,7 +186,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         // ── note tools ──
         propose_note: {
-          type: "enum: issue|decision|change_note|rationale",
+          type: "enum: issue|decision|change_note|gotcha|runbook|repo_map|module_map|file_summary",
           content: "string (1-10000 chars)",
           linkedPaths: "string[] (optional)",
           metadata: "object (optional)",
@@ -175,7 +194,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           sessionId: "string (required)",
         },
         list_notes: {
-          type: "enum: issue|decision|change_note|rationale (optional)",
+          type: "enum: issue|decision|change_note|gotcha|runbook|repo_map|module_map|file_summary (optional)",
         },
         // ── ticket tools ──
         create_ticket: {

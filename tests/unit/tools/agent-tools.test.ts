@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as schema from "../../../src/db/schema.js";
+import * as queries from "../../../src/db/queries.js";
 import { registerAgentTools } from "../../../src/tools/agent-tools.js";
 
 class FakeServer {
@@ -70,6 +71,50 @@ describe("agent tools", () => {
       },
     } as any));
     return server.handlers.get("register_agent")!;
+  }
+
+  function insertAgentWithSession(
+    agentId: string,
+    sessionId: string,
+    roleId: "developer" | "reviewer" | "observer" | "admin",
+  ) {
+    const now = new Date().toISOString();
+    queries.upsertAgent(db, {
+      id: agentId,
+      name: agentId,
+      type: "test",
+      roleId,
+      trustTier: roleId === "observer" ? "B" : "A",
+      registeredAt: now,
+    });
+    queries.insertSession(db, {
+      id: sessionId,
+      agentId,
+      state: "active",
+      connectedAt: now,
+      lastActivity: now,
+    });
+  }
+
+  function setupActionServer() {
+    const server = new FakeServer();
+    const insight = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn(),
+    };
+    registerAgentTools(server as unknown as McpServer, async () => ({
+      db,
+      config: {
+        registrationAuth: {
+          enabled: false,
+          observerOpenRegistration: true,
+          roleTokens: {},
+        },
+      },
+      insight,
+    } as any));
+    return { handlers: server.handlers, insight };
   }
 
   it("keeps open registration behavior when registrationAuth is disabled", async () => {
@@ -145,5 +190,95 @@ describe("agent tools", () => {
     expect(allowed.isError).toBeUndefined();
     const payload = JSON.parse(allowed.content[0].text);
     expect(payload.role).toBe("observer");
+  });
+
+  it("denies observer broadcast and allows reviewer broadcast with a validated session", async () => {
+    insertAgentWithSession("agent-review", "session-review", "reviewer");
+    insertAgentWithSession("agent-obs", "session-obs", "observer");
+    const { handlers, insight } = setupActionServer();
+
+    const denied = await handlers.get("broadcast")!({
+      message: "Heads up",
+      agentId: "agent-obs",
+      sessionId: "session-obs",
+    });
+    expect(denied.isError).toBe(true);
+    expect(denied.content[0].text).toContain("does not have access to broadcast");
+
+    const allowed = await handlers.get("broadcast")!({
+      message: "Heads up",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    expect(allowed.isError).toBeUndefined();
+    expect(JSON.parse(allowed.content[0].text)).toMatchObject({
+      broadcasted: true,
+      sender: "agent-review",
+      message: "Heads up",
+    });
+    expect(insight.info).toHaveBeenCalled();
+  });
+
+  it("stores claims on the caller session and reports conflicting claims", async () => {
+    insertAgentWithSession("agent-dev", "session-dev", "developer");
+    insertAgentWithSession("agent-peer", "session-peer", "developer");
+    queries.updateSessionClaims(db, "session-peer", ["src/conflict.ts"]);
+    const { handlers } = setupActionServer();
+
+    const result = await handlers.get("claim_files")!({
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+      paths: ["src/conflict.ts", "src/owned.ts"],
+    });
+
+    expect(result.isError).toBeUndefined();
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.claimed).toEqual(["src/conflict.ts", "src/owned.ts"]);
+    expect(payload.conflicts).toEqual([{ path: "src/conflict.ts", claimedBy: "agent-peer" }]);
+
+    const session = queries.getSession(db, "session-dev");
+    expect(JSON.parse(session?.claimedFilesJson ?? "[]")).toEqual(["src/conflict.ts", "src/owned.ts"]);
+  });
+
+  it("rejects claim_files when the session does not belong to the caller", async () => {
+    insertAgentWithSession("agent-dev", "session-dev", "developer");
+    insertAgentWithSession("agent-peer", "session-peer", "developer");
+    const { handlers } = setupActionServer();
+
+    const result = await handlers.get("claim_files")!({
+      agentId: "agent-dev",
+      sessionId: "session-peer",
+      paths: ["src/file.ts"],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Agent or session not found / inactive");
+  });
+
+  it("ends only the caller-owned session and clears its claims", async () => {
+    insertAgentWithSession("agent-dev", "session-dev", "developer");
+    queries.updateSessionClaims(db, "session-dev", ["src/file.ts"]);
+    const { handlers } = setupActionServer();
+
+    const denied = await handlers.get("end_session")!({
+      agentId: "agent-other",
+      sessionId: "session-dev",
+    });
+    expect(denied.isError).toBe(true);
+
+    const ended = await handlers.get("end_session")!({
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(ended.isError).toBeUndefined();
+    expect(JSON.parse(ended.content[0].text)).toMatchObject({
+      ended: true,
+      sessionId: "session-dev",
+      agentId: "agent-dev",
+    });
+
+    const session = queries.getSession(db, "session-dev");
+    expect(session?.state).toBe("disconnected");
+    expect(JSON.parse(session?.claimedFilesJson ?? "[]")).toEqual([]);
   });
 });

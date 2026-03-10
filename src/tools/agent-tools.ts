@@ -1,8 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
-import { AgentRegistrationError, registerAgent, getAgentStatus, touchSession, reapStaleSessions, disconnectSession } from "../agents/registry.js";
+import { AgentRegistrationError, registerAgent, getAgentStatus, reapStaleSessions, disconnectSession } from "../agents/registry.js";
 import * as queries from "../db/queries.js";
+import { checkToolAccess } from "../trust/tiers.js";
+import { resolveAgent } from "./resolve-agent.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -125,19 +127,38 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
     "Send a coordination message to other agents via the Insight Stream",
     {
       message: z.string().min(1).max(500).describe("Message to broadcast"),
-      agentId: z.string().optional().describe("Sending agent ID"),
+      agentId: z.string().describe("Sending agent ID"),
+      sessionId: z.string().describe("Active session ID"),
     },
-    async ({ message, agentId }) => {
+    async ({ message, agentId, sessionId }) => {
       const c = await getContext();
-      const sender = agentId ?? "anonymous";
-      c.insight.info(`[broadcast from ${sender}] ${message}`);
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved) {
+        return {
+          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          isError: true,
+        };
+      }
+
+      const access = checkToolAccess("broadcast", resolved.role, resolved.trustTier);
+      if (!access.allowed) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ denied: true, reason: access.reason }),
+          }],
+          isError: true,
+        };
+      }
+
+      c.insight.info(`[broadcast from ${resolved.agentId}] ${message}`);
 
       return {
         content: [{
           type: "text" as const,
           text: JSON.stringify({
             broadcasted: true,
-            sender,
+            sender: resolved.agentId,
             message,
             timestamp: new Date().toISOString(),
           }, null, 2),
@@ -151,28 +172,37 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
     "claim_files",
     "Claim files to prevent double-work (advisory, not a hard lock)",
     {
+      agentId: z.string().describe("Your agent ID"),
       sessionId: z.string().describe("Your session ID"),
       paths: z.array(z.string().min(1)).min(1).max(50).describe("File paths to claim"),
     },
-    async ({ sessionId, paths }) => {
+    async ({ agentId, sessionId, paths }) => {
       const c = await getContext();
-      const session = queries.getSession(c.db, sessionId);
-
-      if (!session) {
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved) {
         return {
-          content: [{ type: "text" as const, text: `Session not found: ${sessionId}` }],
+          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
           isError: true,
         };
       }
 
-      touchSession(c.db, sessionId);
+      const access = checkToolAccess("claim_files", resolved.role, resolved.trustTier);
+      if (!access.allowed) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ denied: true, reason: access.reason }),
+          }],
+          isError: true,
+        };
+      }
 
       // Check for existing claims
       const activeSessions = queries.getActiveSessions(c.db);
       const conflicts: Array<{ path: string; claimedBy: string }> = [];
 
       for (const s of activeSessions) {
-        if (s.id === sessionId) continue;
+        if (s.id === resolved.sessionId) continue;
         const claimed = s.claimedFilesJson ? JSON.parse(s.claimedFilesJson) as string[] : [];
         for (const p of paths) {
           if (claimed.includes(p)) {
@@ -181,8 +211,8 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
         }
       }
 
-      queries.updateSessionClaims(c.db, sessionId, paths);
-      c.insight.debug(`Files claimed by ${session.agentId}: ${paths.join(", ")}`);
+      queries.updateSessionClaims(c.db, resolved.sessionId, paths);
+      c.insight.debug(`Files claimed by ${resolved.agentId}: ${paths.join(", ")}`);
 
       return {
         content: [{
@@ -202,15 +232,17 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
     "end_session",
     "End a session when an agent finishes its work. Releases file claims and marks session as disconnected.",
     {
+      agentId: z.string().describe("Agent ID"),
       sessionId: z.string().describe("Session ID to end"),
     },
-    async ({ sessionId }) => {
+    async ({ agentId, sessionId }) => {
       const c = await getContext();
+      const agent = queries.getAgent(c.db, agentId);
       const session = queries.getSession(c.db, sessionId);
 
-      if (!session) {
+      if (!agent || !session || session.agentId !== agentId) {
         return {
-          content: [{ type: "text" as const, text: `Session not found: ${sessionId}` }],
+          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
           isError: true,
         };
       }

@@ -3,7 +3,8 @@ import { z } from "zod/v4";
 import { createHash } from "node:crypto";
 import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
-import { touchSession } from "../agents/registry.js";
+import { checkToolAccess } from "../trust/tiers.js";
+import { resolveAgent } from "./resolve-agent.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -22,11 +23,29 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       title: z.string().min(1).max(200).describe("Short title"),
       content: z.string().min(1).max(10_000).describe("Knowledge content"),
       tags: z.array(z.string()).default([]).describe("Tags for filtering"),
-      agentId: z.string().optional().describe("Agent ID (optional)"),
-      sessionId: z.string().optional().describe("Session ID (optional)"),
+      agentId: z.string().describe("Agent ID"),
+      sessionId: z.string().describe("Active session ID"),
     },
     async ({ type, scope, title, content, tags, agentId, sessionId }) => {
       const c = await getContext();
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved) {
+        return {
+          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          isError: true,
+        };
+      }
+
+      const access = checkToolAccess("store_knowledge", resolved.role, resolved.trustTier);
+      if (!access.allowed) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ denied: true, reason: access.reason }),
+          }],
+          isError: true,
+        };
+      }
 
       const targetDb = scope === "global" ? c.globalDb : c.db;
       const targetSqlite = scope === "global" ? c.globalSqlite : c.sqlite;
@@ -38,9 +57,6 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
         };
       }
 
-      // Touch session for live presence tracking
-      if (sessionId) touchSession(c.db, sessionId);
-
       // Key based on title+type+scope so same-titled entries upsert instead of duplicating
       const keySource = `${type}:${scope}:${title}`;
       const keyHash = createHash("sha256").update(keySource).digest("hex").slice(0, 12);
@@ -51,8 +67,8 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
         key, type, scope, title, content,
         tagsJson: JSON.stringify(tags),
         status: "active",
-        agentId: agentId ?? null,
-        sessionId: sessionId ?? null,
+        agentId,
+        sessionId,
         createdAt: now,
         updatedAt: now,
       });
@@ -275,9 +291,30 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     {
       key: z.string().describe("Knowledge entry key"),
       scope: z.enum(["repo", "global"]).describe("Which scope the entry is in"),
+      agentId: z.string().describe("Agent ID"),
+      sessionId: z.string().describe("Active session ID"),
     },
-    async ({ key, scope }) => {
+    async ({ key, scope, agentId, sessionId }) => {
       const c = await getContext();
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved) {
+        return {
+          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          isError: true,
+        };
+      }
+
+      const access = checkToolAccess("archive_knowledge", resolved.role, resolved.trustTier);
+      if (!access.allowed) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ denied: true, reason: access.reason }),
+          }],
+          isError: true,
+        };
+      }
+
       const targetDb = scope === "global" ? c.globalDb : c.db;
 
       if (!targetDb) {
@@ -321,9 +358,30 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     {
       key: z.string().describe("Knowledge entry key"),
       scope: z.enum(["repo", "global"]).describe("Which scope the entry is in"),
+      agentId: z.string().describe("Agent ID"),
+      sessionId: z.string().describe("Active session ID"),
     },
-    async ({ key, scope }) => {
+    async ({ key, scope, agentId, sessionId }) => {
       const c = await getContext();
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved) {
+        return {
+          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          isError: true,
+        };
+      }
+
+      const access = checkToolAccess("delete_knowledge", resolved.role, resolved.trustTier);
+      if (!access.allowed) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ denied: true, reason: access.reason }),
+          }],
+          isError: true,
+        };
+      }
+
       const targetDb = scope === "global" ? c.globalDb : c.db;
 
       if (!targetDb) {
