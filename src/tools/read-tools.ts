@@ -244,6 +244,15 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           tags: "string[] (optional, AND logic filter)",
           limit: "number 1-100 (default 20)",
         },
+        search_tickets: {
+          query: "string (1-1000 chars)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+          status: "enum (optional)",
+          severity: "enum (optional)",
+          assigneeAgentId: "string (optional)",
+          limit: "number 1-50 (default 10)",
+        },
         get_ticket: {
           ticketId: "string (TKT-...)",
           agentId: "string (required)",

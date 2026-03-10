@@ -14,6 +14,7 @@ export interface DashboardDeps {
   repoPath: string;
   bus: CoordinationBus;
   globalDb: DB | null;
+  refreshTicketSearch?: () => void;
 }
 
 export function getOverview(deps: DashboardDeps) {
@@ -243,6 +244,80 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
   };
 }
 
+export function getTicketMetrics(deps: DashboardDeps) {
+  const now = Date.now();
+  const statusCounts = queries.getTicketCountsByStatus(deps.db, deps.repoId);
+  const severityCounts = queries.getTicketCountsBySeverity(deps.db, deps.repoId);
+  const openTickets = queries.getOpenTicketsByRepo(deps.db, deps.repoId);
+  const blockedTickets = queries.getBlockedTicketsByRepo(deps.db, deps.repoId);
+  const unassignedOpen = openTickets.filter((ticket) => !ticket.assigneeAgentId);
+
+  const agingBuckets = {
+    under1d: 0,
+    oneTo3d: 0,
+    threeTo7d: 0,
+    sevenTo14d: 0,
+    over14d: 0,
+  };
+  const assigneeCounts = new Map<string, number>();
+
+  for (const ticket of openTickets) {
+    const ageDays = ticketAgeDays(ticket.createdAt, now);
+    if (ageDays < 1) agingBuckets.under1d += 1;
+    else if (ageDays < 3) agingBuckets.oneTo3d += 1;
+    else if (ageDays < 7) agingBuckets.threeTo7d += 1;
+    else if (ageDays < 14) agingBuckets.sevenTo14d += 1;
+    else agingBuckets.over14d += 1;
+
+    const key = ticket.assigneeAgentId ?? "unassigned";
+    assigneeCounts.set(key, (assigneeCounts.get(key) ?? 0) + 1);
+  }
+
+  const assigneeLoad = Array.from(assigneeCounts.entries())
+    .map(([assigneeAgentId, count]) => ({
+      assigneeAgentId,
+      count,
+      label: assigneeAgentId === "unassigned"
+        ? "unassigned"
+        : queries.getAgent(deps.db, assigneeAgentId)?.name ?? assigneeAgentId,
+    }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+  const oldestOpen = openTickets
+    .slice(0, 5)
+    .map((ticket) => ({
+      ticketId: ticket.ticketId,
+      title: ticket.title,
+      status: ticket.status,
+      severity: ticket.severity,
+      assigneeAgentId: ticket.assigneeAgentId,
+      ageDays: ticketAgeDays(ticket.createdAt, now),
+    }));
+
+  return {
+    statusCounts,
+    severityCounts,
+    agingBuckets,
+    blockedCount: blockedTickets.length,
+    blockedTickets: blockedTickets.slice(0, 5).map((ticket) => ({
+      ticketId: ticket.ticketId,
+      title: ticket.title,
+      assigneeAgentId: ticket.assigneeAgentId,
+      ageDays: ticketAgeDays(ticket.createdAt, now),
+    })),
+    unassignedOpenCount: unassignedOpen.length,
+    unassignedOpen: unassignedOpen.slice(0, 5).map((ticket) => ({
+      ticketId: ticket.ticketId,
+      title: ticket.title,
+      status: ticket.status,
+      severity: ticket.severity,
+      ageDays: ticketAgeDays(ticket.createdAt, now),
+    })),
+    assigneeLoad: assigneeLoad.slice(0, 6),
+    oldestOpen,
+  };
+}
+
 export function getKnowledgeList(deps: DashboardDeps) {
   const repoEntries = queries.queryKnowledge(deps.db, {}).map((e) => ({
     ...e, scope: "repo" as string,
@@ -268,4 +343,10 @@ export function getKnowledgeList(deps: DashboardDeps) {
       agentId: k.agentId,
       updatedAt: k.updatedAt,
     }));
+}
+
+function ticketAgeDays(createdAt: string, now = Date.now()): number {
+  const createdMs = new Date(createdAt).getTime();
+  if (Number.isNaN(createdMs)) return 0;
+  return Math.max(0, Math.floor((now - createdMs) / (24 * 60 * 60 * 1000)));
 }

@@ -35,6 +35,7 @@ export const TOOL_ACCESS_POLICY: Record<CapabilityToolName, ToolAccessPolicyEntr
   update_ticket_status: { mode: "role" },
   update_ticket: { mode: "role" },
   list_tickets: { mode: "role" },
+  search_tickets: { mode: "role" },
   get_ticket: { mode: "role" },
   comment_ticket: { mode: "role" },
 };

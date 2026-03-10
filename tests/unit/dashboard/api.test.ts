@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
-import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, type DashboardDeps } from "../../../src/dashboard/api.js";
+import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -176,6 +176,52 @@ describe("Dashboard API", () => {
     }
 
     expect(getTicketsList(deps)).toHaveLength(60);
+  });
+
+  it("returns scoped ticket metrics for status, severity, aging, blocked, and assignee load", () => {
+    const now = Date.now();
+    const insert = sqlite.prepare(`
+      INSERT INTO tickets (
+        repo_id, ticket_id, title, description, status, severity, priority,
+        creator_agent_id, creator_session_id, assignee_agent_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insert.run(1, "TKT-new", "Fresh backlog", "Desc", "backlog", "medium", 5, "agent-1", "s-1", null, "abc1234", new Date(now - 6 * 60 * 60 * 1000).toISOString(), new Date(now).toISOString());
+    insert.run(1, "TKT-aging", "Old in progress", "Desc", "in_progress", "high", 7, "agent-1", "s-1", "agent-dev", "abc1234", new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString(), new Date(now).toISOString());
+    insert.run(1, "TKT-blocked", "Blocked item", "Desc", "blocked", "critical", 9, "agent-1", "s-1", "agent-dev", "abc1234", new Date(now - 16 * 24 * 60 * 60 * 1000).toISOString(), new Date(now).toISOString());
+    insert.run(1, "TKT-done", "Done item", "Desc", "resolved", "low", 3, "agent-1", "s-1", "agent-dev", "abc1234", new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(), new Date(now).toISOString());
+
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-dev", "Dev", "codex", "developer", "A", new Date(now).toISOString());
+
+    const metrics = getTicketMetrics(deps);
+
+    expect(metrics.statusCounts).toMatchObject({
+      backlog: 1,
+      in_progress: 1,
+      blocked: 1,
+      resolved: 1,
+    });
+    expect(metrics.severityCounts).toMatchObject({
+      medium: 1,
+      high: 1,
+      critical: 1,
+      low: 1,
+    });
+    expect(metrics.agingBuckets).toMatchObject({
+      under1d: 1,
+      oneTo3d: 0,
+      threeTo7d: 1,
+      sevenTo14d: 0,
+      over14d: 1,
+    });
+    expect(metrics.blockedCount).toBe(1);
+    expect(metrics.unassignedOpenCount).toBe(1);
+    expect(metrics.blockedTickets[0]).toMatchObject({ ticketId: "TKT-blocked" });
+    expect(metrics.unassignedOpen[0]).toMatchObject({ ticketId: "TKT-new" });
+    expect(metrics.assigneeLoad[0]).toMatchObject({ assigneeAgentId: "agent-dev", count: 2, label: "Dev" });
+    expect(metrics.oldestOpen[0]).toMatchObject({ ticketId: "TKT-blocked" });
   });
 
   it("returns ticket detail with comments, history, and linked patches", () => {

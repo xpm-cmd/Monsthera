@@ -63,6 +63,7 @@ describe("checkToolAccess", () => {
 
   it("allows observer to list and get tickets", () => {
     expect(checkToolAccess("list_tickets", "observer", "B").allowed).toBe(true);
+    expect(checkToolAccess("search_tickets", "observer", "B").allowed).toBe(true);
     expect(checkToolAccess("get_ticket", "observer", "B").allowed).toBe(true);
   });
 });

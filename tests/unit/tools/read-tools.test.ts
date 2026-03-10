@@ -44,6 +44,7 @@ describe("read tool discovery", () => {
       "list_patches",
       "list_notes",
       "end_session",
+      "search_tickets",
     ]));
   });
 
@@ -54,6 +55,7 @@ describe("read tool discovery", () => {
     const requestReindex = await handler("schema")({ toolName: "request_reindex" });
     const listPatches = await handler("schema")({ toolName: "list_patches" });
     const listNotes = await handler("schema")({ toolName: "list_notes" });
+    const searchTickets = await handler("schema")({ toolName: "search_tickets" });
 
     expect(JSON.parse(storeKnowledge.content[0].text).inputSchema).toMatchObject({
       agentId: "string (required)",
@@ -78,6 +80,11 @@ describe("read tool discovery", () => {
     expect(JSON.parse(listNotes.content[0].text).inputSchema).toMatchObject({
       agentId: "string (required)",
       sessionId: "string (required)",
+    });
+    expect(JSON.parse(searchTickets.content[0].text).inputSchema).toMatchObject({
+      agentId: "string (required)",
+      sessionId: "string (required)",
+      query: "string (1-1000 chars)",
     });
   });
 

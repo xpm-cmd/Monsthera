@@ -41,6 +41,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         bus: c.bus,
+        refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
         title,
         description,
@@ -74,6 +75,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         bus: c.bus,
+        refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
         ticketId,
         assigneeAgentId,
@@ -103,6 +105,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         bus: c.bus,
+        refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
         ticketId,
         status: targetStatus as TicketStatusType,
@@ -157,6 +160,11 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       if (Object.keys(updates).length === 0) return errText("No updates provided");
 
       queries.updateTicket(c.db, ticket.id, updates as Parameters<typeof queries.updateTicket>[2]);
+      try {
+        c.searchRouter?.rebuildTicketFts?.(c.repoId);
+      } catch (error) {
+        c.insight.warn(`Ticket search refresh failed: ${error}`);
+      }
       return okJson({ ticketId: input.ticketId, updated: Object.keys(updates) });
     },
   );
@@ -194,6 +202,58 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
           assigneeAgentId: t.assigneeAgentId, creatorAgentId: t.creatorAgentId,
           updatedAt: t.updatedAt,
         })),
+      });
+    },
+  );
+
+  // ─── search_tickets ───────────────────────────────────────
+  server.tool(
+    "search_tickets",
+    "Search tickets by title, description, tags, or ticket ID with optional structured filters.",
+    {
+      query: z.string().min(1).max(1000).describe("Search query"),
+      agentId: z.string().describe("Requesting agent ID"),
+      sessionId: z.string().describe("Active session ID"),
+      status: z.enum(TicketStatus.options).optional(),
+      severity: z.enum(TicketSeverity.options).optional(),
+      assigneeAgentId: z.string().optional(),
+      limit: z.number().int().min(1).max(50).default(10),
+    },
+    async ({ query, agentId, sessionId, status, severity, assigneeAgentId, limit }) => {
+      const c = await getContext();
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved) return errText("Agent or session not found / inactive");
+
+      const access = checkToolAccess("search_tickets", resolved.role, resolved.trustTier);
+      if (!access.allowed) return errJson({ denied: true, reason: access.reason });
+
+      const results = c.searchRouter.searchTickets(query, c.repoId, limit, {
+        status,
+        severity,
+        assigneeAgentId,
+      });
+
+      const tickets = results.flatMap((result) => {
+        const ticket = queries.getTicketById(c.db, result.ticketInternalId);
+        if (!ticket) return [];
+        return [{
+          ticketId: ticket.ticketId,
+          title: ticket.title,
+          status: ticket.status,
+          severity: ticket.severity,
+          priority: ticket.priority,
+          assigneeAgentId: ticket.assigneeAgentId,
+          creatorAgentId: ticket.creatorAgentId,
+          tags: ticket.tagsJson ? JSON.parse(ticket.tagsJson) : [],
+          updatedAt: ticket.updatedAt,
+          score: Math.round(result.score * 1000) / 1000,
+        }];
+      });
+
+      return okJson({
+        query,
+        count: tickets.length,
+        tickets,
       });
     },
   );
@@ -269,6 +329,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         bus: c.bus,
+        refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
         ticketId,
         content,

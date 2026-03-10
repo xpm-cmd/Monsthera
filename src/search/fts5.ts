@@ -7,10 +7,21 @@ import type { SearchBackend, SearchResult } from "./interface.js";
 
 const FTS_TABLE = "files_fts";
 const KNOWLEDGE_FTS_TABLE = "knowledge_fts";
+const TICKETS_FTS_TABLE = "tickets_fts";
 
 export interface KnowledgeFtsResult {
   knowledgeId: number;
   title: string;
+  score: number;
+}
+
+export interface TicketFtsResult {
+  ticketInternalId: number;
+  ticketId: string;
+  title: string;
+  status: string;
+  severity: string;
+  assigneeAgentId: string | null;
   score: number;
 }
 
@@ -112,6 +123,140 @@ export class FTS5Backend implements SearchBackend {
       }
     });
     batch();
+  }
+
+  // ─── Ticket FTS5 ───────────────────────────────────────────
+
+  initTicketFts(): void {
+    this.sqlite.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS ${TICKETS_FTS_TABLE} USING fts5(
+        ticket_internal_id UNINDEXED,
+        repo_id UNINDEXED,
+        ticket_id,
+        title,
+        description,
+        tags,
+        status UNINDEXED,
+        severity UNINDEXED,
+        assignee_agent_id UNINDEXED
+      );
+    `);
+  }
+
+  rebuildTicketFts(repoId: number): void {
+    this.sqlite.exec(`DELETE FROM ${TICKETS_FTS_TABLE} WHERE repo_id = ${repoId}`);
+
+    const tickets = this.db
+      .select()
+      .from(tables.tickets)
+      .where(eq(tables.tickets.repoId, repoId))
+      .all();
+
+    const insert = this.sqlite.prepare(`
+      INSERT INTO ${TICKETS_FTS_TABLE}(
+        ticket_internal_id,
+        repo_id,
+        ticket_id,
+        title,
+        description,
+        tags,
+        status,
+        severity,
+        assignee_agent_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const batch = this.sqlite.transaction(() => {
+      for (const ticket of tickets) {
+        let tags = "";
+        try {
+          tags = (JSON.parse(ticket.tagsJson ?? "[]") as string[]).join(" ");
+        } catch {
+          tags = ticket.tagsJson ?? "";
+        }
+
+        insert.run(
+          ticket.id,
+          ticket.repoId,
+          ticket.ticketId,
+          ticket.title,
+          ticket.description,
+          tags,
+          ticket.status,
+          ticket.severity,
+          ticket.assigneeAgentId ?? null,
+        );
+      }
+    });
+
+    batch();
+  }
+
+  searchTickets(
+    query: string,
+    repoId: number,
+    limit = 10,
+    opts?: {
+      status?: string;
+      severity?: string;
+      assigneeAgentId?: string;
+    },
+  ): TicketFtsResult[] {
+    const sanitized = sanitizeFts5Query(query);
+    if (!sanitized) return [];
+
+    try {
+      let sql = `
+        SELECT
+          ticket_internal_id,
+          ticket_id,
+          title,
+          status,
+          severity,
+          assignee_agent_id,
+          bm25(${TICKETS_FTS_TABLE}, 2.5, 3.0, 1.0, 2.0) AS rank
+        FROM ${TICKETS_FTS_TABLE}
+        WHERE ${TICKETS_FTS_TABLE} MATCH ? AND repo_id = ?`;
+      const params: unknown[] = [sanitized, repoId];
+
+      if (opts?.status) {
+        sql += " AND status = ?";
+        params.push(opts.status);
+      }
+      if (opts?.severity) {
+        sql += " AND severity = ?";
+        params.push(opts.severity);
+      }
+      if (opts?.assigneeAgentId) {
+        sql += " AND assignee_agent_id = ?";
+        params.push(opts.assigneeAgentId);
+      }
+
+      sql += " ORDER BY rank LIMIT ?";
+      params.push(limit);
+
+      const rows = this.sqlite.prepare(sql).all(...params) as Array<{
+        ticket_internal_id: number;
+        ticket_id: string;
+        title: string;
+        status: string;
+        severity: string;
+        assignee_agent_id: string | null;
+        rank: number;
+      }>;
+
+      return rows.map((row) => ({
+        ticketInternalId: row.ticket_internal_id,
+        ticketId: row.ticket_id,
+        title: row.title,
+        status: row.status,
+        severity: row.severity,
+        assigneeAgentId: row.assignee_agent_id,
+        score: Math.abs(row.rank),
+      }));
+    } catch {
+      return [];
+    }
   }
 
   /**

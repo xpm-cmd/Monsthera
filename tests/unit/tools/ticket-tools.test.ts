@@ -6,6 +6,7 @@ import * as schema from "../../../src/db/schema.js";
 import * as queries from "../../../src/db/queries.js";
 import { registerTicketTools } from "../../../src/tools/ticket-tools.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
+import { FTS5Backend } from "../../../src/search/fts5.js";
 
 vi.mock("../../../src/git/operations.js", () => ({
   getHead: vi.fn().mockResolvedValue("abc1234"),
@@ -43,12 +44,15 @@ describe("ticket tools", () => {
   let server: FakeServer;
   let repoId: number;
   let bus: CoordinationBus;
+  let fts5: FTS5Backend;
   const now = new Date().toISOString();
 
   beforeEach(() => {
     ({ db, sqlite } = createTestDb());
     repoId = queries.upsertRepo(db, "/test", "test").id;
     bus = new CoordinationBus("hub-spoke", 200, db, repoId);
+    fts5 = new FTS5Backend(sqlite, db);
+    fts5.initTicketFts();
 
     for (const agent of [
       { id: "agent-dev", name: "Dev", roleId: "developer", trustTier: "A" },
@@ -88,6 +92,14 @@ describe("ticket tools", () => {
       repoPath: "/test",
       insight: { info: () => undefined, warn: () => undefined },
       bus,
+      searchRouter: {
+        rebuildTicketFts: () => fts5.rebuildTicketFts(repoId),
+        searchTickets: (query: string, searchRepoId: number, limit?: number, opts?: {
+          status?: string;
+          severity?: string;
+          assigneeAgentId?: string;
+        }) => fts5.searchTickets(query, searchRepoId, limit, opts),
+      },
     } as any));
   });
 
@@ -338,6 +350,63 @@ describe("ticket tools", () => {
 
     expect(payload.comments).toHaveLength(1);
     expect(payload.linkedPatches).toHaveLength(1);
+  });
+
+  it("searches tickets via FTS with structured filters", async () => {
+    await createTicket({
+      title: "Dashboard repo name header",
+      description: "Need search to find this by title",
+      tags: ["dashboard", "search"],
+    });
+    const closed = await createTicket({
+      title: "Dashboard search follow-up",
+      description: "Same topic but resolved",
+      tags: ["dashboard", "search"],
+    });
+    const closedTicketId = JSON.parse(closed.content[0].text).ticketId;
+    await handler("update_ticket_status")({
+      ticketId: closedTicketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("assign_ticket")({
+      ticketId: closedTicketId,
+      assigneeAgentId: "agent-dev",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    await handler("update_ticket_status")({
+      ticketId: closedTicketId,
+      status: "in_progress",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    await handler("update_ticket_status")({
+      ticketId: closedTicketId,
+      status: "in_review",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    await handler("update_ticket_status")({
+      ticketId: closedTicketId,
+      status: "resolved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const result = await handler("search_tickets")({
+      query: "repo name header",
+      status: "backlog",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+      limit: 10,
+    });
+    const payload = JSON.parse(result.content[0].text);
+
+    expect(payload.count).toBe(1);
+    expect(payload.tickets[0].title).toContain("repo name header");
+    expect(payload.tickets[0].status).toBe("backlog");
   });
 
   it("allows reviewer comments and denies observer comments", async () => {

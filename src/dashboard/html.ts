@@ -157,6 +157,14 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .ticket-toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.75rem;margin-bottom:.9rem}
 .action-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem}
 .action-card h4{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem}
+.ticket-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem;margin-bottom:.9rem}
+.metric-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.05rem}
+.metric-card h4{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem}
+.metric-list{display:flex;flex-direction:column;gap:.45rem}
+.metric-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;font-size:.78rem;color:var(--text2)}
+.metric-row strong{color:var(--text);font-weight:600}
+.metric-row .badge{font-size:.62rem}
+.metric-empty{font-size:.76rem;color:var(--text3)}
 .ticket-toolbar-top{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin-bottom:.8rem}
 .ticket-toolbar-meta{font-size:.72rem;color:var(--text3)}
 .view-toggle{display:inline-flex;gap:.35rem;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);padding:.25rem;border-radius:999px}
@@ -544,6 +552,55 @@ function renderTicketToolbar(tickets,filteredTickets){
   +'</div>';
 }
 
+function renderTicketMetrics(metrics){
+  if(!metrics) return '';
+  var statusOrder=['backlog','technical_analysis','assigned','in_progress','in_review','blocked','resolved','closed','wont_fix'];
+  var severityOrder=['critical','high','medium','low'];
+  var agingLabels=[
+    ['under1d','< 1 day'],
+    ['oneTo3d','1-3 days'],
+    ['threeTo7d','3-7 days'],
+    ['sevenTo14d','7-14 days'],
+    ['over14d','> 14 days']
+  ];
+  function rows(entries){
+    if(!entries.length) return '<div class="metric-empty">No data yet.</div>';
+    return '<div class="metric-list">'+entries.join('')+'</div>';
+  }
+  var statusRows=statusOrder.map(function(status){
+    var count=(metrics.statusCounts&&metrics.statusCounts[status])||0;
+    if(!count) return '';
+    return '<div class="metric-row"><span><span class="badge badge-'+(TICKET_STATUS_CLS[status]||'blue')+'">'+esc(status)+'</span></span><strong>'+esc(String(count))+'</strong></div>';
+  }).filter(Boolean);
+  var severityRows=severityOrder.map(function(severity){
+    var count=(metrics.severityCounts&&metrics.severityCounts[severity])||0;
+    if(!count) return '';
+    var cls=severity==='critical'?'red':severity==='high'?'orange':'blue';
+    return '<div class="metric-row"><span><span class="badge badge-'+cls+'">'+esc(severity)+'</span></span><strong>'+esc(String(count))+'</strong></div>';
+  }).filter(Boolean);
+  var agingRows=agingLabels.map(function(entry){
+    var key=entry[0],label=entry[1];
+    return '<div class="metric-row"><span>'+esc(label)+'</span><strong>'+esc(String((metrics.agingBuckets&&metrics.agingBuckets[key])||0))+'</strong></div>';
+  });
+  var blockedRows=(metrics.blockedTickets||[]).map(function(ticket){
+    return '<div class="metric-row"><span>'+esc(ticket.ticketId)+' · '+esc(ticket.title.slice(0,28))+'</span><strong>'+esc(String(ticket.ageDays))+'d</strong></div>';
+  });
+  var unassignedRows=(metrics.unassignedOpen||[]).map(function(ticket){
+    return '<div class="metric-row"><span>'+esc(ticket.ticketId)+' · '+esc(ticket.title.slice(0,28))+'</span><strong>'+esc(String(ticket.ageDays))+'d</strong></div>';
+  });
+  var assigneeRows=(metrics.assigneeLoad||[]).map(function(entry){
+    return '<div class="metric-row"><span>'+esc(entry.label)+'</span><strong>'+esc(String(entry.count))+'</strong></div>';
+  });
+  return '<div class="ticket-metrics">'
+    +'<div class="metric-card"><h4>Status Mix</h4>'+rows(statusRows)+'</div>'
+    +'<div class="metric-card"><h4>Severity Mix</h4>'+rows(severityRows)+'</div>'
+    +'<div class="metric-card"><h4>Aging Buckets</h4>'+rows(agingRows)+'</div>'
+    +'<div class="metric-card"><h4>Blocked Tickets</h4><div class="metric-row"><span>Count</span><strong>'+esc(String(metrics.blockedCount||0))+'</strong></div>'+rows(blockedRows)+'</div>'
+    +'<div class="metric-card"><h4>Unassigned Open</h4><div class="metric-row"><span>Count</span><strong>'+esc(String(metrics.unassignedOpenCount||0))+'</strong></div>'+rows(unassignedRows)+'</div>'
+    +'<div class="metric-card"><h4>Assignee Load</h4>'+rows(assigneeRows)+'</div>'
+  +'</div>';
+}
+
 function attachTicketToolbarListeners(){
   document.querySelectorAll('[data-ticket-view]').forEach(function(button){
     button.addEventListener('click',function(){
@@ -705,11 +762,13 @@ function renderTicketDetail(error){
   attachTicketDetailListeners(t);
 }
 
-function renderTicketsSection(tickets){
+function renderTicketsSection(tickets,metrics){
   var section=document.getElementById('tickets');
   var filteredTickets=filterTicketList(tickets);
   window.__agoraTickets=tickets;
+  window.__agoraTicketMetrics=metrics||window.__agoraTicketMetrics||null;
   section.innerHTML='';
+  section.insertAdjacentHTML('beforeend',renderTicketMetrics(window.__agoraTicketMetrics));
   section.insertAdjacentHTML('beforeend',renderTicketToolbar(tickets,filteredTickets));
   if(!filteredTickets.some(function(ticket){return ticket.ticketId===selectedTicketId})){
     selectedTicketId=null;
@@ -1031,9 +1090,9 @@ async function refreshPresence(){
 async function refresh(){
   try{
     var results=await Promise.all([
-      api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets'),api('files')
+      api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets'),api('tickets/metrics'),api('files')
     ]);
-    var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5],presence=results[6],tickets=results[7],files=results[8];
+    var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5],presence=results[6],tickets=results[7],ticketMetrics=results[8],files=results[9];
     dashboardAgents=agents;
     ticketActors=[];
     presence.forEach(function(agent){
@@ -1097,7 +1156,7 @@ async function refresh(){
       knowledge.map(function(k){return[b(k.type,k.type),k.title,b(k.scope,k.scope),k.tags.join(', ')||'-',b(k.status,k.status==='active'?'active':'stale'),k.agentId||'-',new Date(k.updatedAt).toLocaleString()]})));
 
     /* Tickets */
-    var visibleTickets=renderTicketsSection(tickets);
+    var visibleTickets=renderTicketsSection(tickets,ticketMetrics);
     if(selectedTicketId && visibleTickets.some(function(t){return t.ticketId===selectedTicketId})){
       selectedTicketDetail=await api('tickets/'+encodeURIComponent(selectedTicketId));
       renderTicketDetail();

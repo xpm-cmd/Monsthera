@@ -8,6 +8,7 @@ import { registerTicketTools } from "../../src/tools/ticket-tools.js";
 import { registerPatchTools } from "../../src/tools/patch-tools.js";
 import { validatePatch } from "../../src/patches/validator.js";
 import { CoordinationBus } from "../../src/coordination/bus.js";
+import { FTS5Backend } from "../../src/search/fts5.js";
 
 vi.mock("../../src/git/operations.js", () => ({
   getHead: vi.fn().mockResolvedValue("abc1234"),
@@ -49,12 +50,15 @@ describe("ticket lifecycle", () => {
   let server: FakeServer;
   let repoId: number;
   let bus: CoordinationBus;
+  let fts5: FTS5Backend;
   const now = new Date().toISOString();
 
   beforeEach(() => {
     ({ db, sqlite } = createTestDb());
     repoId = queries.upsertRepo(db, "/test", "test").id;
     bus = new CoordinationBus("hub-spoke", 200, db, repoId);
+    fts5 = new FTS5Backend(sqlite, db);
+    fts5.initTicketFts();
 
     for (const agent of [
       { id: "agent-dev", name: "Dev", roleId: "developer", trustTier: "A" },
@@ -92,6 +96,14 @@ describe("ticket lifecycle", () => {
       repoPath: "/test",
       insight: { info: () => undefined, warn: () => undefined },
       bus,
+      searchRouter: {
+        rebuildTicketFts: () => fts5.rebuildTicketFts(repoId),
+        searchTickets: (query: string, searchRepoId: number, limit?: number, opts?: {
+          status?: string;
+          severity?: string;
+          assigneeAgentId?: string;
+        }) => fts5.searchTickets(query, searchRepoId, limit, opts),
+      },
     } as any));
     registerPatchTools(server as unknown as McpServer, async () => ({
       db,
@@ -197,9 +209,16 @@ describe("ticket lifecycle", () => {
       sessionId: "session-review",
       status: "resolved",
     });
+    const search = await handler("search_tickets")({
+      query: "dashboard comments",
+      agentId: "agent-review",
+      sessionId: "session-review",
+      status: "resolved",
+    });
 
     const detailPayload = JSON.parse(detail.content[0].text);
     const listPayload = JSON.parse(list.content[0].text);
+    const searchPayload = JSON.parse(search.content[0].text);
 
     expect(detailPayload.status).toBe("resolved");
     expect(detailPayload.history).toHaveLength(5);
@@ -207,6 +226,7 @@ describe("ticket lifecycle", () => {
     expect(detailPayload.linkedPatches).toHaveLength(1);
     expect(detailPayload.linkedPatches[0].proposalId).toBe("patch-123");
     expect(listPayload.tickets.map((ticket: { ticketId: string }) => ticket.ticketId)).toContain(ticketId);
+    expect(searchPayload.tickets.map((ticket: { ticketId: string }) => ticket.ticketId)).toContain(ticketId);
     expect(bus.getMessages("agent-review").some((message) => message.payload.domain === "ticket")).toBe(true);
   });
 });

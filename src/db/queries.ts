@@ -468,6 +468,46 @@ export function getTotalTicketCount(db: DB, repoId: number): number {
   return result?.count ?? 0;
 }
 
+export function getTicketCountsBySeverity(db: DB, repoId: number) {
+  const rows = db
+    .select({
+      severity: tables.tickets.severity,
+      count: sql<number>`count(*)`,
+    })
+    .from(tables.tickets)
+    .where(eq(tables.tickets.repoId, repoId))
+    .groupBy(tables.tickets.severity)
+    .all();
+
+  const counts: Record<string, number> = {};
+  for (const row of rows) counts[row.severity] = row.count;
+  return counts;
+}
+
+export function getOpenTicketsByRepo(db: DB, repoId: number) {
+  return db
+    .select()
+    .from(tables.tickets)
+    .where(and(
+      eq(tables.tickets.repoId, repoId),
+      notInArray(tables.tickets.status, ["resolved", "closed", "wont_fix"]),
+    ))
+    .orderBy(tables.tickets.createdAt)
+    .all();
+}
+
+export function getBlockedTicketsByRepo(db: DB, repoId: number) {
+  return db
+    .select()
+    .from(tables.tickets)
+    .where(and(
+      eq(tables.tickets.repoId, repoId),
+      eq(tables.tickets.status, "blocked"),
+    ))
+    .orderBy(tables.tickets.createdAt)
+    .all();
+}
+
 // --- Ticket History ---
 
 export function insertTicketHistory(

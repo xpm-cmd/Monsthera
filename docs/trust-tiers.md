@@ -23,4 +23,4 @@ Receives pointers and sanitized summaries only. No raw code outbound.
 
 ## Assignment
 
-Tier is configured per-agent in the `agents` table or defaulted by role in the `roles` table.
+Tier is configured per-agent in the `agents` table or defaulted by the built-in role definitions in code.

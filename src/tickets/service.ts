@@ -23,6 +23,7 @@ export interface TicketServiceContext {
   repoPath: string;
   insight: Pick<InsightStream, "info" | "warn">;
   bus?: CoordinationBus;
+  refreshTicketSearch?: () => void;
 }
 
 export interface TicketServiceError {
@@ -118,6 +119,7 @@ export async function createTicketRecord(
     comment: "Ticket created",
     timestamp: now,
   });
+  refreshTicketSearch(ctx);
 
   ctx.insight.info(`Ticket ${ticketId} created by ${input.agentId}`);
   recordDashboardEvent(ctx.db, ctx.repoId, {
@@ -188,6 +190,7 @@ export function assignTicketRecord(
     ticket.id,
     updates as Parameters<typeof queries.updateTicket>[2],
   );
+  refreshTicketSearch(ctx);
 
   ctx.insight.info(`Ticket ${input.ticketId} assigned to ${input.assigneeAgentId} by ${input.agentId}`);
   recordDashboardEvent(ctx.db, ctx.repoId, {
@@ -260,6 +263,7 @@ export function updateTicketStatusRecord(
     comment: input.comment ?? null,
     timestamp: now,
   });
+  refreshTicketSearch(ctx);
 
   ctx.insight.info(`Ticket ${input.ticketId}: ${current} → ${input.status} by ${input.agentId}`);
   recordDashboardEvent(ctx.db, ctx.repoId, {
@@ -362,6 +366,14 @@ function broadcastTicketRealtime(
       ...data,
     },
   });
+}
+
+function refreshTicketSearch(ctx: TicketServiceContext): void {
+  try {
+    ctx.refreshTicketSearch?.();
+  } catch (error) {
+    ctx.insight.warn(`Ticket search refresh failed: ${error}`);
+  }
 }
 
 function err(

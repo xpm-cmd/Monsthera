@@ -4,7 +4,7 @@ import { renderDashboard } from "./html.js";
 import { cleanupExpiredPayloads } from "../logging/event-logger.js";
 import {
   getOverview, getAgentsList, getEventLogsList,
-  getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence, getIndexedFilesMetrics, type DashboardDeps,
+  getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence, getIndexedFilesMetrics, getTicketMetrics, type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
 import { getDashboardEventsAfter, getLatestDashboardEventId, type DashboardEvent } from "./events.js";
@@ -131,6 +131,7 @@ export function startDashboard(
           repoPath: deps.repoPath,
           insight,
           bus: deps.bus,
+          refreshTicketSearch: deps.refreshTicketSearch,
         }, {
           title: String(body.title ?? ""),
           description: String(body.description ?? ""),
@@ -170,6 +171,7 @@ export function startDashboard(
             repoPath: deps.repoPath,
             insight,
             bus: deps.bus,
+            refreshTicketSearch: deps.refreshTicketSearch,
           }, {
             ticketId: decodeURIComponent(ticketId),
             content: String(body.content ?? ""),
@@ -193,6 +195,7 @@ export function startDashboard(
             repoPath: deps.repoPath,
             insight,
             bus: deps.bus,
+            refreshTicketSearch: deps.refreshTicketSearch,
           }, {
             ticketId: decodeURIComponent(ticketId),
             assigneeAgentId: String(body.assigneeAgentId ?? ""),
@@ -216,6 +219,7 @@ export function startDashboard(
             repoPath: deps.repoPath,
             insight,
             bus: deps.bus,
+            refreshTicketSearch: deps.refreshTicketSearch,
           }, {
             ticketId: decodeURIComponent(ticketId),
             status: String(body.status ?? "") as Parameters<typeof updateTicketStatusRecord>[1]["status"],
@@ -362,6 +366,9 @@ function ticketErrorStatus(error: TicketServiceError): number {
 
 function routeApi(route: string, deps: DashboardDeps): unknown {
   if (route.startsWith("tickets/")) {
+    if (route === "tickets/metrics") {
+      return getTicketMetrics(deps);
+    }
     return getTicketDetail(deps, decodeURIComponent(route.slice("tickets/".length)));
   }
 

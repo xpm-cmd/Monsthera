@@ -72,14 +72,26 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
       const repoRoot = await getRepoRoot({ cwd: config.repoPath });
       const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
       const repoName = basename(repoRoot);
-      const { db } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+      const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
       const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
       const { CoordinationBus } = await import("./coordination/bus.js");
+      const { FTS5Backend } = await import("./search/fts5.js");
       const { startDashboard } = await import("./dashboard/server.js");
       const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke", 200, db, repoId);
+      const fts5 = new FTS5Backend(sqlite, db);
       let globalDb = null;
       try { globalDb = initGlobalDatabase().globalDb; } catch { /* non-fatal */ }
-      startDashboard({ db, repoId, repoPath: repoRoot, bus, globalDb }, config.dashboardPort, insight);
+      startDashboard({
+        db,
+        repoId,
+        repoPath: repoRoot,
+        bus,
+        globalDb,
+        refreshTicketSearch: () => {
+          fts5.initTicketFts();
+          fts5.rebuildTicketFts(repoId);
+        },
+      }, config.dashboardPort, insight);
     }
   } catch (err) {
     insight.warn(`Dashboard failed to start: ${err}`);
@@ -295,6 +307,9 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
     // Rebuild knowledge FTS5 index
     fts5.initKnowledgeFts(sqlite);
     fts5.rebuildKnowledgeFts(sqlite);
+    // Rebuild ticket FTS5 index
+    fts5.initTicketFts();
+    fts5.rebuildTicketFts(repoId);
     // Also init for global DB if available
     try {
       const { globalSqlite } = initGlobalDatabase();

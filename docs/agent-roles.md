@@ -14,13 +14,16 @@ Read-only. Can retrieve code and changes, view status. Cannot propose patches or
 ### admin
 Full access to all tools including agent management, role assignment, and configuration.
 
-## Custom Roles
+## Custom Roles (Future)
 
-Custom roles can be defined via the dashboard or `agora` CLI. Each role specifies:
-- Allowed tools (list of MCP tool names)
-- Default trust tier (A or B)
-- Whether the role can broadcast
-- Whether the role can claim files
+Custom roles are not exposed as a product feature yet. The runtime currently supports only the built-in roles above:
+
+- `developer`
+- `reviewer`
+- `observer`
+- `admin`
+
+The `roles` table exists in the schema as future-facing groundwork, but there is no dashboard flow, CLI command, or MCP tool to define custom roles today.
 
 ## Registration
 
