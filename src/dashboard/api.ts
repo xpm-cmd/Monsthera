@@ -18,6 +18,7 @@ export interface DashboardDeps {
   db: DB;
   repoId: number;
   repoPath: string;
+  mainRepoPath?: string;
   bus: CoordinationBus;
   globalDb: DB | null;
   refreshTicketSearch?: () => void;
@@ -409,7 +410,7 @@ export function getTicketTemplates(deps: DashboardDeps): {
   error?: string;
   templates: TicketTemplate[];
 } {
-  return loadTicketTemplates(deps.repoPath);
+  return loadTicketTemplates(deps.mainRepoPath ?? deps.repoPath);
 }
 
 export async function getSearchDebug(

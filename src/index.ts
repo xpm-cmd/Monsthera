@@ -97,6 +97,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
         db,
         repoId,
         repoPath: repoRoot,
+        mainRepoPath: mainRepoRoot,
         bus,
         globalDb,
         refreshTicketSearch: () => searchRouter.rebuildTicketFts(repoId),
