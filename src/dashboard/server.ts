@@ -396,6 +396,17 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
       }
       return getSearchDebug(deps, query, { scope, limit });
     }
+    case "export/audit": {
+      const { exportAuditTrail } = await import("../export/audit.js");
+      const format = (url.searchParams.get("format") ?? "json") as "json" | "csv";
+      const agentId = url.searchParams.get("agentId") ?? undefined;
+      const sessionId = url.searchParams.get("sessionId") ?? undefined;
+      const since = url.searchParams.get("since") ?? undefined;
+      const until = url.searchParams.get("until") ?? undefined;
+      const limitRaw = Number(url.searchParams.get("limit") ?? "10000");
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(10000, Math.trunc(limitRaw))) : 10000;
+      return exportAuditTrail({ db: deps.db, format, agentId, sessionId, since, until, limit });
+    }
     default: return null;
   }
 }

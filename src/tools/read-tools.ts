@@ -4,6 +4,7 @@ import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPAN
 import type { AgoraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
+import { exportAuditTrail } from "../export/audit.js";
 import { getHead, getChangedFiles, getDiffStats, getPerFileDiffs, getRecentCommits, isValidCommit } from "../git/operations.js";
 import { getIndexedCommit, incrementalIndex } from "../indexing/indexer.js";
 import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
@@ -282,6 +283,15 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         lookup_dependencies: {
           filePath: "string (file path relative to repo root, required)",
         },
+        // ── export tools ──
+        export_audit: {
+          format: "enum: json|csv (required)",
+          agentId: "string (optional, filter by agent)",
+          sessionId: "string (optional, filter by session)",
+          since: "string ISO timestamp (optional)",
+          until: "string ISO timestamp (optional)",
+          limit: "number 1-10000 (default 10000)",
+        },
       };
 
       const s = schemas[toolName];
@@ -553,6 +563,41 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             forward,
             reverse,
           }, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── export_audit ────────────────────────────────────────
+  server.tool(
+    "export_audit",
+    "Export audit trail (event logs) as JSON or CSV. Metadata-only by default — no raw payloads.",
+    {
+      format: z.enum(["json", "csv"]).describe("Export format"),
+      agentId: z.string().optional().describe("Filter by agent ID"),
+      sessionId: z.string().optional().describe("Filter by session ID"),
+      since: z.string().optional().describe("ISO timestamp lower bound"),
+      until: z.string().optional().describe("ISO timestamp upper bound"),
+      limit: z.number().int().min(1).max(10000).default(10000).describe("Max rows"),
+    },
+    async ({ format, agentId, sessionId, since, until, limit }) => {
+      const c = await getContext();
+      const result = exportAuditTrail({
+        db: c.db,
+        format,
+        agentId,
+        sessionId,
+        since,
+        until,
+        limit,
+      });
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: format === "json"
+            ? result.content
+            : JSON.stringify({ format: "csv", rows: result.rows, csv: result.content }),
         }],
       };
     },
