@@ -1,26 +1,78 @@
 # Trust Tiers
 
-## Tier A: Trusted Local Worker
+Agora currently uses two trust tiers:
 
-Full access to bounded code spans. Subject to size limits and secret redaction.
+- Tier `A`
+- Tier `B`
 
-## Tier B: Restricted External Worker
+There is no runtime Tier `C` today.
 
-Receives pointers and sanitized summaries only. No raw code outbound.
+## Tier A
 
-## Permission Matrix
+Tier `A` is the trusted local worker tier.
 
-| Capability                      | Tier A              | Tier B                          |
-|---------------------------------|---------------------|---------------------------------|
-| Raw code in Evidence Bundles    | Yes (max 200 lines) | No — summaries + symbols only   |
-| Propose patches                 | Yes                 | No                              |
-| Propose notes                   | All types           | issue, decision only            |
-| Read notes                      | All types           | issue, decision, change_note    |
-| View event logs                 | Own + shared        | Own session only                |
-| Cross-agent broadcast           | Yes                 | Receive only                    |
-| File claims                     | Yes                 | No                              |
-| Dashboard access                | Full                | Read-only agents + own logs     |
+Typical roles:
 
-## Assignment
+- `developer`
+- `reviewer`
+- `admin`
 
-Tier is configured per-agent in the `agents` table or defaulted by the built-in role definitions in code.
+Capabilities:
+
+- full evidence bundles with bounded code spans
+- patch proposal
+- note proposal according to role policy
+- ticket mutations according to role policy
+
+## Tier B
+
+Tier `B` is the restricted or observer tier.
+
+Typical role:
+
+- `observer`
+
+Capabilities:
+
+- read-only access to the safe search and inspection surface
+- no patch proposal
+- no note proposal
+- no ticket mutation
+
+Evidence bundles for Tier `B` are redacted: code spans are stripped and only safe metadata remains.
+
+## What Tiers Actually Control
+
+Trust tier is only one part of authorization.
+
+The effective decision path is:
+
+1. tool access policy: public / session / role
+2. role permissions: allowed tools and role-specific capabilities
+3. trust tier: whether code and sensitive surfaces are available
+
+That means:
+
+- some tools are public regardless of tier
+- some tools require an active session
+- some tools require both an allowed role and an appropriate tier
+
+## Evidence Bundle Impact
+
+The most visible trust-tier difference is in evidence bundles:
+
+- Tier `A`: bounded code spans are returned
+- Tier `B`: code spans are removed and only summaries, symbols, and other safe metadata remain
+
+This keeps code search useful for observers without exposing raw source.
+
+## Current Product Boundary
+
+Tier semantics are stable, but the exact per-tool role matrix lives in code and should not be copied verbatim into this doc.
+
+Use this file for the conceptual model:
+
+- Tier `A` means trusted code-capable worker
+- Tier `B` means restricted read-only worker
+
+Use `schemas/agent.ts` and `src/trust/tool-policy.ts` as the canonical source for exact access behavior.

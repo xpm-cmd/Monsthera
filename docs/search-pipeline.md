@@ -1,117 +1,198 @@
 # Search Pipeline
 
-Agora uses two FTS5-backed search subsystems: one for **code files** and one for **knowledge entries**. Both operate locally via SQLite with no external dependencies. Semantic search enhances results when the ONNX model is available but is never required.
+Agora has three search paths built on the local repo database:
 
-## Code Search (`get_code_pack`)
+- code search for `get_code_pack`
+- knowledge search for `search_knowledge`
+- ticket search for `search_tickets`
 
-### Query Construction
+Only code and knowledge search use semantic reranking. Ticket search is lexical FTS5 today.
 
-Query semantics depend on term count:
+## 1. Code Search
 
-- **Short queries (1-3 terms)**: AND semantics — all terms must match. Precise, avoids false positives.
-- **Long queries (4+ terms)**: OR semantics — BM25 ranks multi-match documents higher. AND with many terms is too restrictive; test/config penalties handle noise.
+Code search is routed through `SearchRouter`.
 
-```
-"optimization node scipy"    →  "optimization" AND "node" AND "scipy"   (3 terms → AND)
-"React hooks state reducer"  →  "React" OR "hooks" OR "state" OR "reducer"  (4 terms → OR)
-```
+```mermaid
+flowchart LR
+    Q["get_code_pack(query, scope?)"]
+    R["SearchRouter"]
+    L["Lexical backend\nFTS5 or Zoekt"]
+    S["Semantic reranker\noptional"]
+    M["Hybrid merge"]
+    E["Evidence bundle"]
 
-Terms shorter than 2 characters or containing FTS5 operators are filtered out. The sanitizer strips punctuation and wraps each remaining token in double quotes.
-
-### FTS5 Table: `files_fts`
-
-Columns: `path`, `summary`, `symbols`
-
-BM25 column weights:
-
-| Column   | Weight | Rationale |
-|----------|--------|-----------|
-| path     | 1.5×   | File paths carry signal but shouldn't dominate |
-| summary  | 1.0×   | Natural-language description of the file |
-| symbols  | 2.0×   | Function/class names are high-value matches |
-
-### Score Penalties
-
-Two post-BM25 penalties demote low-value results:
-
-| Penalty | Factor | Applies to |
-|---------|--------|------------|
-| Test file | 0.7× | Files matching `test/`, `spec/`, `.test.`, `.spec.` when query doesn't contain "test" |
-| Config file | 0.5× | Files matching `tsconfig*`, `.eslintrc*`, `vite.config*`, `webpack*`, `jest.config*`, `package.json`, `.prettierrc*`, `.babelrc*`, `rollup.config*` |
-
-### Scope Filtering
-
-The `scope` parameter restricts results to a path prefix:
-
-- **FTS5**: `WHERE path LIKE 'prefix%'` in SQL
-- **Zoekt**: `f:^prefix` regex filter
-- **Vector search**: Post-filter on returned paths
-
-### Hybrid Merge (when semantic model available)
-
-```
-FTS5 results (keyword)  ─┐
-                          ├──► merge(alpha=0.5) ──► final ranking
-Vector results (semantic) ─┘
+    Q --> R
+    R --> L
+    R --> S
+    L --> M
+    S --> M
+    M --> E
 ```
 
-- Files found by **both** sources: `score = 0.5 × semanticScore + 0.5 × fts5Score`
-- Files found by **FTS5 only**: `score = fts5Score × 0.5` (penalized — no semantic signal)
-- Files found by **vector only**: `score = semanticScore × 0.5` (the hybrid win — discovered without keyword overlap)
+### Lexical layer
 
-## Knowledge Search (`search_knowledge`)
+Lexical candidates come from:
 
-### FTS5 Table: `knowledge_fts`
+- `FTS5Backend` by default
+- `ZoektBackend` when enabled and available
 
-Virtual table created at server startup for both repo and global databases. Rebuilt after every `store_knowledge`, `archive_knowledge`, and `delete_knowledge` call.
+`SearchRouter.searchLexical()` is the authoritative keyword stage. If Zoekt fails, the router falls back to FTS5.
 
-Columns: `knowledge_id` (UNINDEXED), `title`, `content`, `type` (UNINDEXED), `tags`
+### Semantic layer
 
-BM25 column weights:
+If semantic search is enabled and the MiniLM model loads successfully:
 
-| Column  | Weight | Rationale |
-|---------|--------|-----------|
-| title   | 3.0×   | Titles are concise identifiers — exact match is high signal |
-| content | 1.0×   | Full text body |
-| tags    | 2.0×   | Tag matches indicate topical relevance |
+- the reranker generates an embedding for the query
+- vector search runs against indexed file embeddings
+- lexical and vector results are merged with `alpha=0.5`
 
-### Search Strategy
+If semantic initialization fails, code search remains available via lexical search only.
 
+### Scope filtering
+
+The optional `scope` parameter narrows results to a path prefix.
+
+- lexical filtering happens at the backend query layer
+- semantic filtering is applied to vector results before merge
+
+### Evidence bundle expansion
+
+The merged candidate list feeds `buildEvidenceBundle()`:
+
+- stage A: candidate files with paths, summaries, symbols, and scores
+- stage B: top files expanded into code spans, related commits, and linked notes
+- secret redaction applied to code spans when needed
+
+## 2. Code Search Debugger
+
+The dashboard exposes `/api/search/debug`, which is a read-only inspection surface over code search.
+
+It shows:
+
+- runtime backend, e.g. `fts5`, `fts5+semantic`, `zoekt`, `zoekt+semantic`
+- lexical backend actually used for keyword candidates
+- sanitized FTS query when the lexical backend is FTS5
+- lexical results
+- semantic results
+- merged results
+
+This matters because runtime backend and lexical backend are not always the same conceptual thing once fallback paths exist.
+
+## 3. Knowledge Search
+
+Knowledge search uses its own FTS5 table, `knowledge_fts`, over repo-local and global knowledge stores.
+
+```mermaid
+flowchart LR
+    Q["search_knowledge(query)"]
+    F["knowledge_fts"]
+    V["Vector scan\noptional"]
+    M["Hybrid merge"]
+    O["Ranked knowledge results"]
+
+    Q --> F
+    Q --> V
+    F --> M
+    V --> M
+    M --> O
 ```
-Query ──► FTS5 knowledge_fts (always available)
-              │
-              ├── if semantic model loaded:
-              │       Independent vector scan (all embeddings, cosine ≥ 0.6)
-              │       FTS5 results ∪ vector-discovered entries
-              │       Hybrid merge (alpha=0.5): score = 0.5 × norm(fts5) + 0.5 × cosine
-              │       Type filter applied post-merge for vector-only entries
-              │
-              └── else: return FTS5 results ranked by BM25
-```
 
-**Key design decision**: FTS5 is the primary search path, not a fallback. This ensures `search_knowledge` returns results even when `semanticEnabled: false` in config. Semantic search enhances ranking when available but never gates result availability.
+### Lexical ranking
 
-### Type Filtering
+Knowledge BM25 weights are tuned toward concise identifiers:
 
-When `type` parameter is provided:
+- `title`: 3.0
+- `content`: 1.0
+- `tags`: 2.0
 
-- **FTS5 path**: filtered at query time (`WHERE ... AND type = ?`)
-- **Vector path**: filtered post-scan — the vector search scans all active embeddings, then filters by type after computing cosine similarity
+### Semantic behavior
 
-This means vector search can discover entries of any type during the scan phase; the type constraint is applied after scoring.
+If the semantic model is available:
 
-## Embedding Model
+- vector search scans active knowledge embeddings
+- vector-only discoveries are merged with FTS results
 
-- **Model**: Xenova/all-MiniLM-L6-v2 (ONNX quantized q8)
-- **Dimensions**: 384 float32
-- **Pooling**: Mean across sequence length, L2 normalized
-- **Storage**: BLOB column in SQLite (`files.embedding`, `knowledge.embedding`)
-- **Loading**: Lazy — initialized on first use, memoized
+If semantic search is unavailable:
 
-## Evidence Bundles
+- knowledge search still works through FTS5 only
 
-Search results feed into the evidence bundle pipeline:
+## 4. Ticket Search
 
-1. **Stage A** — Top 10 candidates: path + symbols + score + summary
-2. **Stage B** — Top 5 expanded with: code spans (200 lines max), related commits, linked notes, secret detection
-3. **Bundle ID** — SHA-256 of `query + commit + sorted paths` = deterministic, cacheable
+Ticket search uses `tickets_fts`.
+
+Indexed fields:
+
+- `ticket_id`
+- `title`
+- `description`
+- `tags`
+
+Filter-only fields:
+
+- `status`
+- `severity`
+- `assignee_agent_id`
+- `repo_id`
+
+BM25 weighting favors ticket identity and title:
+
+- `ticket_id`: 2.5
+- `title`: 3.0
+- `description`: 1.0
+- `tags`: 2.0
+
+`search_tickets` is lexical only today. It supports structured narrowing by:
+
+- `status`
+- `severity`
+- `assigneeAgentId`
+
+Ticket FTS is rebuilt:
+
+- during router initialization
+- on repo reindex
+- after ticket mutations that change searchable content
+
+## 5. Indexed Dependency Lookup
+
+`lookup_dependencies` is not a text search tool, but it reuses indexed structure from the repo database.
+
+It answers:
+
+- what a file directly imports
+- which indexed files import a given target path
+
+This is read-only and works from the normalized `imports` table, without invoking lexical or semantic ranking.
+
+## 6. Backend Selection Rules
+
+Current code-search backend behavior:
+
+- FTS5 is always available
+- Zoekt is optional
+- semantic reranking is optional
+
+This means runtime search can be:
+
+- `fts5`
+- `fts5+semantic`
+- `zoekt`
+- `zoekt+semantic`
+
+Ticket and knowledge FTS are SQLite-backed and do not depend on Zoekt.
+
+## 7. Operational Notes
+
+The search stack now interacts with more than retrieval:
+
+- ticket mutations can trigger `rebuildTicketFts()`
+- the dashboard search debugger depends on router wiring from `index.ts`
+- indexed file metrics can surface secret scan hits from the file index
+
+Search docs should therefore stay aligned with:
+
+- `src/search/router.ts`
+- `src/search/fts5.ts`
+- `src/search/debug.ts`
+- `src/retrieval/evidence-bundle.ts`
+- `src/index.ts`

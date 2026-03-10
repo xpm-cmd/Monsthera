@@ -1,36 +1,38 @@
 # Agent Roles
 
-## Built-in Roles
+## Built-in Roles Only
 
-### developer
-Can retrieve code, propose patches, propose all note types, claim files, broadcast.
-
-### reviewer
-Can retrieve code and changes, propose notes (issue, decision, change_note, gotcha). Cannot propose patches.
-
-### observer
-Read-only. Can retrieve code and changes, view status. Cannot propose patches or notes.
-
-### admin
-Full access to all tools including agent management, role assignment, and configuration.
-
-## Custom Roles (Future)
-
-Custom roles are not exposed as a product feature yet. The runtime currently supports only the built-in roles above:
+Agora currently supports only four runtime roles:
 
 - `developer`
 - `reviewer`
 - `observer`
 - `admin`
 
-The `roles` table exists in the schema as future-facing groundwork, but there is no dashboard flow, CLI command, or MCP tool to define custom roles today.
+The `roles` table exists as future-facing groundwork, but custom roles are not yet a supported product surface. Runtime policy comes from the built-in role definitions in `schemas/agent.ts`.
+
+## Role Shape
+
+High-level behavior:
+
+- `developer`: full code access, can propose patches, notes, and ticket mutations
+- `reviewer`: full code access, cannot propose patches, can review and transition tickets
+- `observer`: read-only and redacted where trust tier requires it
+- `admin`: wildcard access
+
+Avoid duplicating the full per-tool matrix in docs. The canonical source is the built-in role definition in code.
 
 ## Registration
 
-Agents self-register on first connection via `register_agent(name, type?, desiredRole?, authToken?)`.
+Agents self-register with:
 
-By default, registration is open and the requested built-in role is granted as before.
-To harden role assignment, configure `.agora/config.json`:
+```text
+register_agent(name, type?, desiredRole?, authToken?)
+```
+
+By default, registration is open and the requested built-in role is granted.
+
+To harden registration, configure `.agora/config.json`:
 
 ```json
 {
@@ -48,12 +50,12 @@ To harden role assignment, configure `.agora/config.json`:
 
 Behavior when `registrationAuth.enabled` is `true`:
 
-- `observer` remains open if `observerOpenRegistration` is `true`
+- `observer` can remain open if `observerOpenRegistration` is `true`
 - `developer`, `reviewer`, and `admin` require a matching `authToken`
-- roles without a configured token are not available for self-registration
-- failed registration returns an error instead of silently granting a weaker role
+- a role without a configured token is not self-registerable
+- invalid registration fails with an error; it is not silently downgraded
 
-The same settings can also be supplied via environment variables:
+Environment overrides:
 
 - `AGORA_REGISTRATION_AUTH=true|false`
 - `AGORA_OBSERVER_OPEN_REGISTRATION=true|false`
@@ -62,30 +64,75 @@ The same settings can also be supplied via environment variables:
 - `AGORA_ROLE_TOKEN_OBSERVER=...`
 - `AGORA_ROLE_TOKEN_ADMIN=...`
 
+## Trust Tiers
+
+Roles also imply trust tiers:
+
+- `developer`, `reviewer`, `admin` -> Tier `A`
+- `observer` -> Tier `B`
+
+Tier controls evidence-bundle redaction and some higher-risk actions. See [trust-tiers.md](trust-tiers.md).
+
 ## Session Lifecycle
 
-### Ending a Session
+Every successful `register_agent` call creates:
 
-Agents should call `end_session(sessionId)` when they finish their work. This:
-- Marks the session as `disconnected`
-- Releases all file claims held by the session
-- Makes the session visible as ended in `agent_status` responses
+- an `agents` row
+- a new active `sessions` row
 
-### Heartbeat and Stale Reaping
+Sessions are the real actor handle for most stateful actions.
 
-Sessions are kept alive implicitly by any tool call that touches the session (e.g., `claim_files`, `broadcast`). If an agent goes silent, the system reaps stale sessions automatically:
+### What keeps a session alive
 
-- **HEARTBEAT_TIMEOUT_MS**: 10 minutes (600,000 ms)
-- `reapStaleSessions()` runs during `agent_status` calls (list-all mode)
-- Stale sessions are disconnected and their file claims released
-- Agents can maintain presence by periodically calling `claim_files` or `broadcast`
+Any tool path that resolves an agent/session pair updates `lastActivity`.
 
-### Agent Tools
+In practice, that means actions like:
 
-| Tool | Description |
-|------|-------------|
-| `register_agent` | Register and create a session |
-| `agent_status` | Get agent/session status (also triggers stale reaping) |
-| `broadcast` | Send a message to other agents via Insight Stream |
-| `claim_files` | Claim files to prevent double-work (advisory) |
-| `end_session` | End a session, release claims |
+- patch proposal
+- note proposal
+- coordination calls
+- ticket mutations
+- file claims
+
+all refresh the active session clock when they pass through `resolveAgent()`.
+
+### Ending a session
+
+`end_session(sessionId)`:
+
+- marks the session as `disconnected`
+- clears file claims
+- removes it from active-session views
+
+### Stale reaping
+
+`HEARTBEAT_TIMEOUT_MS` is currently 10 minutes.
+
+Stale session reaping happens in two places:
+
+- `agent_status` list-all mode
+- the dashboard maintenance loop, which runs every 60 seconds while the dashboard server is active
+
+When a stale active session is reaped:
+
+- the session becomes `disconnected`
+- claimed files are released
+
+This is the current behavior. It is not only an `agent_status` side effect anymore.
+
+## Dashboard and Presence
+
+The dashboard presence panel is an operational view, not the source of truth.
+
+- source of truth: `sessions.state` + `lastActivity`
+- presentation layer: online / idle / offline derived from age since last activity
+
+The dashboard also hides sufficiently stale entries from the live-presence view to reduce noise.
+
+## Practical Guidance
+
+- use `observer` for safe read-only integrations
+- use `developer` for implementation agents
+- use `reviewer` for QA and workflow transitions
+- reserve `admin` for explicit operational control
+- if role hardening matters, do not leave `registrationAuth.enabled` off

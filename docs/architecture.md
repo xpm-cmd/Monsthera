@@ -4,219 +4,210 @@
 
 ```mermaid
 flowchart TB
-    subgraph CLI["🖥️ CLI Commands"]
-        init["⚡ agora init\nCreate .agora/ + config"]
-        index["📇 agora index\nFull repo index"]
-        serve["🚀 agora serve\nStart MCP + dashboard"]
-        status["📊 agora status\nIndex status"]
-        export["📤 agora export\nExport to Obsidian"]
-    end
+    CLI["CLI: init · index · status · serve · export"]
+    SERVE["agora serve"]
+    DASH["Dashboard server (:3141)"]
+    MCP["MCP server (stdio or HTTP)"]
+    CTX["AgoraContext\nconfig + repo DB + search router + coordination bus"]
+    TOOLS["34 MCP tools\nread · agents · coordination · patches · notes · knowledge · tickets · index"]
+    SEARCH["SearchRouter\nFTS5 / Zoekt + optional semantic reranking"]
+    TICKETS["Ticket service\nlifecycle + comments + dependencies + patch links"]
+    DASHRT["Dashboard runtime\nREST + SSE + ticket actions + timeline + search debug"]
+    REPO["Repo DB (.agora/agora.db)"]
+    GLOBAL["Global knowledge DB (~/.agora/knowledge.db)"]
 
-    serve --> SERVER
-    serve --> DASH
-
-    subgraph SERVER["🔌 MCP Server — stdio or HTTP"]
-        CTX["🧠 AgoraContext\nConfig + DB + SearchRouter\n+ CoordinationBus + InsightStream"]
-    end
-
+    CLI --> SERVE
+    SERVE --> MCP
+    SERVE --> DASH
+    MCP --> CTX
     CTX --> TOOLS
-
-    subgraph TOOLS["🛠️ 23 MCP Tools"]
-        read["📖 Read\nstatus · capabilities · schema\nget_code_pack · get_change_pack\nget_issue_pack"]
-        agent["🤖 Agents\nregister_agent · agent_status\nbroadcast · claim_files · end_session"]
-        coord["🔗 Coordination\nsend_coordination\npoll_coordination"]
-        patch["🩹 Patches\npropose_patch\nlist_patches"]
-        note["📝 Notes\npropose_note\nlist_notes"]
-        know["🧬 Knowledge\nstore · search · query\narchive · delete"]
-        reindex["🔄 request_reindex"]
-    end
-
-    TOOLS --> TRUST
-
-    subgraph TRUST["🛡️ Security Layer"]
-        tierA["🟢 Tier A — Full access\nSource code + code spans"]
-        tierB["🔴 Tier B — Redacted access\nNo source code"]
-        roles["👤 Roles\n🔧 developer — full access\n🔍 reviewer — limited notes\n👁️ observer — read-only\n⚙️ admin — full access"]
-        secrets["🔒 Secret Scanner\nDetects .env, .key, .pem\ncredentials, API keys"]
-    end
-
-    read --> SEARCH
-
-    subgraph SEARCH["🔍 Search System"]
-        router["🎯 SearchRouter\nOrchestrates backends"]
-        fts5["📚 FTS5 Backend — Code\nBM25: path=1.5× summary=1× symbols=2×\nAND semantics · scope filter\nTest penalty 0.7× · Config penalty 0.5×"]
-        kfts5["📚 FTS5 Backend — Knowledge\nknowledge_fts virtual table\nBM25: title=3× content=1× tags=2×\nAlways available (no model required)"]
-        zoekt["🔎 Zoekt Backend\nCode search engine\nOptional"]
-        semantic["🧠 Semantic Reranker\nONNX · MiniLM-L6-v2\n384 dimensions · cosine sim"]
-        hybrid["⚗️ Hybrid Search\nalpha=0.5 — FTS5 ∪ Vector\nBetter recall than FTS5 alone"]
-        router --> fts5
-        router --> kfts5
-        router --> zoekt
-        fts5 --> hybrid
-        semantic --> hybrid
-    end
-
-    SEARCH --> EVIDENCE
-
-    subgraph EVIDENCE["📦 Evidence Bundles — Context Packages"]
-        stageA["🅰️ Stage A — Candidates\nTop 10 search results\npath + symbols + score + summary"]
-        stageB["🅱️ Stage B — Expansion\nTop 5 expanded with:\n· Code spans up to 200 lines\n· Related commits\n· Linked notes\n· Secret detection"]
-        bid["🔑 Deterministic bundleId\nSHA-256 of query+commit+paths\nSame input = same bundle"]
-        stageA --> stageB --> bid
-    end
-
-    reindex --> INDEXING
-
-    subgraph INDEXING["📇 Indexing Pipeline"]
-        git["🌿 Git\nReads HEAD · lists files\nDetects incremental changes"]
-        parser["🌳 Tree-sitter Parser\nTypeScript · JavaScript\nPython · Go · Rust"]
-        syms["🏷️ Symbol Extraction\nfunction · class · method\ntype · variable · import/export"]
-        summ["📋 Summary Generator\nBrief description per file"]
-        emb["🧲 Embedding Generator\n384-dim float32 vectors\nFor semantic search"]
-
-        git --> parser
-        parser --> syms
-        parser --> summ
-        parser --> emb
-    end
-
-    coord --> BUS
-
-    subgraph BUS["📡 Coordination Bus"]
-        types["💬 6 Message Types\ntask_claim · task_release\npatch_intent · conflict_alert\nstatus_update · broadcast"]
-        topo["🌐 Topologies\nhub-spoke — central visibility\nhybrid — selective mesh\nmesh — all see all"]
-        cap["📝 200 messages max in memory\nNot persisted to DB"]
-    end
-
-    subgraph DATA["💾 Data Layer"]
-        repodb["📦 Repo DB — .agora/agora.db\n─────────────────────\n📁 files + imports\n🤖 agents + sessions\n📝 notes\n🩹 patches\n📊 event_logs + debug_payloads\n🧬 knowledge scope=repo\n🔍 files_fts FTS5 virtual table\n🔍 knowledge_fts FTS5 virtual table"]
-        globaldb["🌐 Global DB — ~/.agora/knowledge.db\n─────────────────────\n🧬 knowledge scope=global\n🔍 knowledge_fts FTS5 virtual table\nShared across projects\nCross-repo decisions"]
-    end
-
-    INDEXING --> repodb
-    TRUST --> DATA
-    know --> globaldb
-
-    subgraph DASH["📊 Dashboard Command Center — port 3141"]
-        html["🎨 Dark Theme UI\nLayered surfaces\nAnimated pulse SSE indicator"]
-        api["🔌 REST API\n/api/overview · /api/agents\n/api/logs · /api/patches\n/api/notes · /api/knowledge"]
-        sse["📡 Server-Sent Events\n7 real-time event types\nagent_registered · session_changed\npatch_proposed · note_added\nevent_logged · index_updated\nknowledge_stored"]
-        charts["📈 SVG Charts — Zero deps\n🍩 Donut: tool usage\n🍩 Donut: patch states\n📊 Bars: knowledge types\n📉 Sparkline: 24h activity"]
-        tabs["🗂️ 5 Tabs with counters\nAgents · Activity Log\nPatches · Notes · Knowledge"]
-    end
-
-    DASH --> DATA
-
-    subgraph OBSIDIAN["📓 Obsidian Export"]
-        vault["🗂️ Vault Structure\nAgora/decision/*.md\nAgora/gotcha/*.md\nAgora/pattern/*.md\nAgora/context/*.md\nAgora/plan/*.md\nAgora/solution/*.md"]
-        fm["📋 YAML Frontmatter\ntype · scope · key · status\ntags · agentId · dates"]
-        slug["🔤 Slugify\ntitle → file-name.md\nMax 100 chars, URL-safe"]
-    end
-
-    export --> OBSIDIAN
-    OBSIDIAN --> DATA
-
-    subgraph LOGGING["📊 Audit"]
-        events["📝 Event Log\neventId · agentId · tool\ntimestamp · durationMs · status\npayloadSize · redactedSummary"]
-        debug["🔬 Debug Payloads\nrawInput + rawOutput\nSecret-redacted · TTL 24h\nOnly with --debug-logging"]
-        insight["💡 InsightStream\nquiet · normal · verbose\nOutput to stderr"]
-    end
-
-    TOOLS --> LOGGING
-    LOGGING --> repodb
+    TOOLS --> SEARCH
+    TOOLS --> TICKETS
+    TOOLS --> REPO
+    SEARCH --> REPO
+    TICKETS --> REPO
+    DASH --> DASHRT
+    DASHRT --> REPO
+    DASHRT --> GLOBAL
 ```
 
-## Data Flow: Agent → Context → Action
+## Runtime Shape
+
+Agora runs as a local CLI with two main long-lived surfaces:
+
+- MCP server for agent tools, over `stdio` or HTTP (`/mcp`)
+- dashboard server for human visibility and local ticket actions
+
+When `agora serve --transport http` starts, it creates:
+
+- a repo-local SQLite database in `.agora/agora.db`
+- a `SearchRouter` with FTS5 always available, Zoekt optional, semantic reranking optional
+- a DB-backed `CoordinationBus`
+- a dashboard server with REST routes and `/api/events` SSE
+
+The dashboard is not a separate product tier. It is another local runtime surface over the same repo database.
+
+## Tool Surface
+
+The current tool surface is organized as:
+
+- Read: `status`, `capabilities`, `schema`, `get_code_pack`, `get_change_pack`, `get_issue_pack`, `lookup_dependencies`
+- Agents and coordination: `register_agent`, `agent_status`, `broadcast`, `send_coordination`, `poll_coordination`, `claim_files`, `end_session`
+- Patches and notes: `propose_patch`, `list_patches`, `propose_note`, `list_notes`
+- Knowledge: `store_knowledge`, `search_knowledge`, `query_knowledge`, `archive_knowledge`, `delete_knowledge`
+- Tickets: `create_ticket`, `assign_ticket`, `update_ticket_status`, `update_ticket`, `list_tickets`, `search_tickets`, `get_ticket`, `comment_ticket`, `link_tickets`, `unlink_tickets`
+- Index: `request_reindex`
+
+Role access and session requirements are policy-driven. Some tools are public, some require an active session, and some require both session ownership and role access.
+
+## Data Model
+
+### Repo DB
+
+The repo database holds operational state for the current repository:
+
+- source index: `files`, `imports`, `files_fts`
+- agents and sessions: `agents`, `sessions`
+- collaboration: `coordination_messages`, `event_logs`, `debug_payloads`
+- notes and patches: `notes`, `patches`
+- knowledge: `knowledge`, `knowledge_fts`
+- tickets: `tickets`, `ticket_history`, `ticket_comments`, `ticket_dependencies`, `tickets_fts`
+- dashboard event stream: `dashboard_events`
+
+### Global DB
+
+The global database is narrower:
+
+- cross-project `knowledge`
+- `knowledge_fts`
+
+It is used for global decisions, patterns, and other reusable knowledge outside a single repo.
+
+## Search Architecture
+
+```mermaid
+flowchart LR
+    QUERY["Query"]
+    ROUTER["SearchRouter"]
+    FTS5["FTS5 lexical search"]
+    ZOEKT["Zoekt lexical search\noptional"]
+    SEM["Semantic reranker\noptional"]
+    MERGE["Hybrid merge"]
+    BUNDLE["Evidence bundle / result payload"]
+    TICKETFTS["Ticket FTS"]
+    KNOWFTS["Knowledge FTS"]
+
+    QUERY --> ROUTER
+    ROUTER --> FTS5
+    ROUTER --> ZOEKT
+    ROUTER --> SEM
+    FTS5 --> MERGE
+    ZOEKT --> MERGE
+    SEM --> MERGE
+    MERGE --> BUNDLE
+    QUERY --> TICKETFTS
+    QUERY --> KNOWFTS
+```
+
+There are now three search subsystems:
+
+- code search: lexical backend plus optional semantic merge
+- knowledge search: FTS5 plus optional semantic merge
+- ticket search: FTS5 over ticket metadata
+
+The dashboard search debugger exposes the code-search runtime path and shows:
+
+- runtime backend
+- lexical backend actually used for keyword candidates
+- sanitized FTS query when lexical backend is FTS5
+- lexical, semantic, and merged result buckets
+
+## Ticket Runtime
+
+Tickets are first-class operational records, not knowledge entries.
+
+Core records:
+
+- `tickets`: current state and ownership
+- `ticket_history`: authoritative status transition log
+- `ticket_comments`: discussion and technical analysis
+- `ticket_dependencies`: `blocks` and `relates_to` edges
+
+Patch linkage is stored by `patches.ticket_id -> tickets.id`.
+
+Current workflow states:
+
+- `backlog`
+- `technical_analysis`
+- `approved`
+- `in_progress`
+- `in_review`
+- `ready_for_commit`
+- `blocked`
+- `resolved`
+- `closed`
+- `wont_fix`
+
+Assignment is ownership metadata, not its own workflow state.
+
+## Dashboard Runtime
 
 ```mermaid
 sequenceDiagram
-    participant A as 🤖 AI Agent
-    participant M as 🔌 MCP Server
-    participant T as 🛡️ Trust Layer
-    participant S as 🔍 Search
-    participant D as 💾 Database
-    participant B as 📡 Bus
+    participant UI as Browser
+    participant API as Dashboard HTTP server
+    participant DB as Repo DB
+    participant SSE as /api/events
 
-    A->>M: register_agent(name, role, authToken?)
-    M->>T: Apply registration policy → role + trust tier
-    T->>D: INSERT agent + session
-    D-->>A: agentId + sessionId + tier
+    UI->>API: GET /api/overview, /api/tickets, /api/agents, ...
+    API->>DB: Query current operational state
+    DB-->>API: Rows
+    API-->>UI: JSON + initial HTML
 
-    A->>M: get_code_pack(query)
-    M->>T: checkToolAccess(tier, role)
-    T->>S: search(query)
-    S->>S: FTS5 → candidates
-    S->>S: Semantic rerank (hybrid)
-    S->>D: Read file records
-    S-->>A: 📦 Evidence Bundle
+    UI->>API: POST /api/tickets/:id/comment|assign|status
+    API->>DB: Write ticket mutation + dashboard_events + event_logs
+    DB-->>API: Success / error
+    API-->>UI: JSON result
 
-    A->>M: store_knowledge(decision, title, content)
-    M->>T: checkToolAccess
-    T->>D: UPSERT knowledge + embedding
-    T->>D: Rebuild knowledge_fts
-    D-->>A: stored key
-
-    A->>M: search_knowledge(query)
-    M->>S: FTS5 knowledge_fts (primary)
-    S->>S: Independent vector scan (all embeddings, cosine ≥ 0.6)
-    S->>S: Hybrid merge: FTS5 ∪ vector (alpha=0.5)
-    S-->>A: ranked knowledge entries
-
-    A->>M: propose_patch(diff, baseCommit)
-    M->>T: checkToolAccess + canProposePatch
-    T->>D: Validate HEAD === baseCommit
-    T->>D: Check file claim conflicts
-    D-->>A: validation result
-
-    A->>M: send_coordination(broadcast, payload)
-    M->>B: bus.send(message)
-    B-->>A: messageId
-
-    A->>M: end_session(sessionId)
-    M->>D: SET state=disconnected, release claims
-    D-->>A: ended confirmation
-
-    Note over M,D: Lifecycle: reapStaleSessions() disconnects sessions<br/>inactive for > 10 min (HEARTBEAT_TIMEOUT_MS)
+    API->>DB: Poll dashboard_events
+    DB-->>SSE: New events after last seen id
+    SSE-->>UI: event: ticket_status_changed / ticket_commented / ...
 ```
 
-## Knowledge Model
+The dashboard currently exposes:
 
-```mermaid
-flowchart LR
-    subgraph TYPES["🧬 7 Knowledge Types"]
-        decision["🎯 decision\nArchitectural choices"]
-        gotcha["⚠️ gotcha\nCommon traps and pitfalls"]
-        pattern["🔄 pattern\nRecurring patterns"]
-        context["📖 context\nHow something works"]
-        plan["📋 plan\nImplementation plans"]
-        solution["✅ solution\nProblem solutions"]
-        preference["⭐ preference\nUser preferences"]
-    end
+- overview stats
+- live agents
+- activity charts
+- indexed-file metrics
+- agent timeline
+- search debugger
+- activity log
+- patches
+- notes
+- knowledge
+- tickets with table/board views, detail, comments, and local actions
 
-    subgraph SCOPE["🌍 2 Scopes"]
-        repo["📦 repo\n.agora/agora.db\nLocal to project"]
-        global["🌐 global\n~/.agora/knowledge.db\nShared cross-project"]
-    end
+Realtime updates are driven from persisted `dashboard_events`, not only in-memory broadcast.
 
-    subgraph OPS["⚡ 5 Operations"]
-        store["💾 store\nUpsert + embedding + rebuild FTS"]
-        search["🔍 search\nFTS5 + independent vector scan\nHybrid merge (alpha=0.5)"]
-        query["📋 query\nSQL: type, tags, status"]
-        archive["📦 archive\nSoft delete + rebuild FTS"]
-        delete["🗑️ delete\nHard delete + rebuild FTS"]
-    end
+## Coordination and Audit
 
-    TYPES --> SCOPE
-    SCOPE --> OPS
-```
+Coordination messages and dashboard events are persisted in the repo DB, which gives:
 
-## System Invariants
+- cross-session visibility
+- durable dashboard refresh sources
+- replayable operational history
 
-```mermaid
-flowchart LR
-    I1["🔑 Invariant 1\nEvidence Bundles\nare deterministic\nSame query+commit = same ID"]
-    I2["🚫 Invariant 2\nStale Rejection\nHEAD ≠ baseCommit\n→ patch rejected"]
-    I3["📝 Invariant 3\nIdempotent notes\nSame content = same key\n→ update, no duplicate"]
-    I4["🔒 Invariant 4\nTier B redacted\nNever sees source code\nCode spans = 0 lines"]
-    I5["🛡️ Invariant 5\nTrust enforcement\nEvery tool call validated\nrole + tier verified"]
-```
+Runtime event logging is separate from ticket history:
+
+- `event_logs` captures tool usage metadata and outcomes
+- `ticket_history` captures workflow transitions
+- `ticket_comments` captures analysis and human/agent discussion
+
+## Design Boundaries
+
+A few important product boundaries are intentional:
+
+- ticket progression should come from explicit agent actions and review, not board drag-and-drop
+- dashboard actions are local operational tools, not a replacement for MCP role semantics
+- repo-local ticketing is the primary model; multi-repo and cross-instance federation remain future work
