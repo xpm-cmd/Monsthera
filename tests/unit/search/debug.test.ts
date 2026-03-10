@@ -40,6 +40,8 @@ describe("buildCodeSearchDebug", () => {
       db,
       repoId: 1,
       runtimeBackend: "fts5",
+      lexicalBackend: "fts5",
+      lexicalSearch: (query, repoId, limit, scope) => fts5.search(query, repoId, limit, scope),
       semanticReranker: null,
     }, {
       query: "repository name header",
@@ -47,8 +49,9 @@ describe("buildCodeSearchDebug", () => {
     });
 
     expect(result.sanitizedQuery).toBe("\"repository\" OR \"name\" OR \"header\"");
+    expect(result.lexicalBackend).toBe("fts5");
     expect(result.semanticAvailable).toBe(false);
-    expect(result.fts5Results[0]?.path).toBe("src/dashboard/html.ts");
+    expect(result.lexicalResults[0]?.path).toBe("src/dashboard/html.ts");
     expect(result.vectorResults).toEqual([]);
     expect(result.mergedResults[0]?.source).toBe("fts5");
   });
@@ -59,6 +62,8 @@ describe("buildCodeSearchDebug", () => {
       db,
       repoId: 1,
       runtimeBackend: "fts5+semantic",
+      lexicalBackend: "fts5",
+      lexicalSearch: (query, repoId, limit, scope) => fts5.search(query, repoId, limit, scope),
       semanticReranker: {
         isAvailable: () => true,
         vectorSearch: async () => [
@@ -74,5 +79,33 @@ describe("buildCodeSearchDebug", () => {
     expect(result.semanticAvailable).toBe(true);
     expect(result.vectorResults).toHaveLength(2);
     expect(result.mergedResults.some((entry) => entry.source === "hybrid")).toBe(true);
+  });
+
+  it("reports zoekt as the lexical backend when runtime uses zoekt", async () => {
+    const result = await buildCodeSearchDebug({
+      sqlite,
+      db,
+      repoId: 1,
+      runtimeBackend: "zoekt+semantic",
+      lexicalBackend: "zoekt",
+      lexicalSearch: async () => [
+        { path: "src/dashboard/api.ts", score: 0.91 },
+        { path: "src/dashboard/html.ts", score: 0.67 },
+      ],
+      semanticReranker: {
+        isAvailable: () => true,
+        vectorSearch: async () => [
+          { path: "src/dashboard/html.ts", score: 0.88 },
+        ],
+      } as never,
+    }, {
+      query: "dashboard metrics",
+      limit: 5,
+    });
+
+    expect(result.lexicalBackend).toBe("zoekt");
+    expect(result.sanitizedQuery).toBeNull();
+    expect(result.lexicalResults[0]?.source).toBe("zoekt");
+    expect(result.mergedResults.length).toBeGreaterThan(0);
   });
 });

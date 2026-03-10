@@ -7,6 +7,7 @@ import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
 import { getHead, getChangedFiles, getDiffStats, getPerFileDiffs, getRecentCommits, isValidCommit } from "../git/operations.js";
 import { getIndexedCommit, incrementalIndex } from "../indexing/indexer.js";
 import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
+import { compileSecretPatterns } from "../trust/secret-patterns.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -333,6 +334,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             repoId: c.repoId,
             db: c.db,
             sensitiveFilePatterns: c.config.sensitiveFilePatterns,
+            secretPatterns: compileSecretPatterns(c.config.secretPatterns),
             excludePatterns: c.config.excludePatterns,
             onProgress: (msg) => c.insight.detail(msg),
             semanticReranker: c.searchRouter.getSemanticReranker(),
@@ -363,6 +365,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         searchResults,
         db: c.db,
         expand,
+        secretPatterns: compileSecretPatterns(c.config.secretPatterns),
       });
 
       return {

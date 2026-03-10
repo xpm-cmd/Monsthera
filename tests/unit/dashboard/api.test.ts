@@ -195,6 +195,9 @@ describe("Dashboard API", () => {
       INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(1, "Dockerfile", null, "h4", "summary", "[]", now, "abc1234");
+    sqlite.prepare(`
+      UPDATE files SET has_secrets = 1, secret_line_ranges = ? WHERE path = ?
+    `).run(JSON.stringify([{ line: 3, pattern: "github_token" }, { line: 5, pattern: "github_token" }, { line: 7, pattern: "aws_access_key" }]), "src/dashboard/api.ts");
 
     const files = getIndexedFilesMetrics(deps);
 
@@ -203,6 +206,8 @@ describe("Dashboard API", () => {
     expect(files.topLanguages[0]).toEqual({ label: "typescript", count: 2 });
     expect(files.topLanguages[1]).toEqual({ label: ".md", count: 1 });
     expect(files.unknownFiles).toBe(1);
+    expect(files.secretFiles).toBe(1);
+    expect(files.topSecretPatterns[0]).toEqual({ label: "github_token", count: 2 });
   });
 
   it("returns all tickets for the dashboard, not just the first 50", () => {

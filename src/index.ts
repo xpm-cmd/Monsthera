@@ -9,6 +9,7 @@ import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
 import * as queries from "./db/queries.js";
 import { basename, join } from "node:path";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { compileSecretPatterns } from "./trust/secret-patterns.js";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -105,6 +106,9 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
             db,
             repoId,
             runtimeBackend: searchRouter.getActiveBackendName(),
+            lexicalBackend: searchRouter.getLexicalBackendName(),
+            lexicalSearch: (query, targetRepoId, limit, scope) =>
+              searchRouter.searchLexical(query, targetRepoId, limit, scope),
             semanticReranker: searchRouter.getSemanticReranker(),
           }, params),
         },
@@ -233,6 +237,7 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
       semanticEnabled: true,
       coordinationTopology: "hub-spoke",
       sensitiveFilePatterns: [".env", ".env.*", "*.key", "*.pem", "credentials.*", "secrets.*"],
+      secretPatterns: [],
       registrationAuth: {
         enabled: false,
         observerOpenRegistration: true,
@@ -309,6 +314,7 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
     repoId,
     db,
     sensitiveFilePatterns: config.sensitiveFilePatterns,
+    secretPatterns: compileSecretPatterns(config.secretPatterns),
     excludePatterns: config.excludePatterns,
     onProgress: (msg) => insight.detail(msg),
     semanticReranker,

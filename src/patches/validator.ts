@@ -3,7 +3,7 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
-import { scanForSecrets } from "../trust/secret-patterns.js";
+import { scanForSecrets, type SecretPattern } from "../trust/secret-patterns.js";
 
 export interface DryRunResult {
   feasible: boolean;
@@ -25,7 +25,7 @@ export async function validatePatch(
   db: BetterSQLite3Database<typeof schema>,
   repoPath: string,
   repoId: number,
-  input: { diff: string; message: string; baseCommit: string; bundleId?: string },
+  input: { diff: string; message: string; baseCommit: string; bundleId?: string; secretPatterns?: SecretPattern[] },
 ): Promise<PatchValidation> {
   const currentHead = await getHead({ cwd: repoPath });
   const proposalId = `patch-${randomUUID().slice(0, 12)}`;
@@ -38,7 +38,7 @@ export async function validatePatch(
 
   // Check for secrets in diff
   const secretWarnings: string[] = [];
-  const secretHits = scanForSecrets(input.diff);
+  const secretHits = scanForSecrets(input.diff, input.secretPatterns);
   if (secretHits.length > 0) {
     for (const hit of secretHits) {
       secretWarnings.push(`${hit.pattern} detected at diff line ${hit.line}`);

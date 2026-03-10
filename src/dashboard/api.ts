@@ -134,20 +134,40 @@ function classifyIndexedFile(language: string | null, path: string): string {
 export function getIndexedFilesMetrics(deps: DashboardDeps) {
   const files = queries.getAllFiles(deps.db, deps.repoId);
   const counts = new Map<string, number>();
+  const secretPatternCounts = new Map<string, number>();
+  const secretFiles = files.filter((file) => file.hasSecrets);
 
   for (const file of files) {
     const bucket = classifyIndexedFile(file.language, file.path);
     counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
+
+    if (file.secretLineRanges) {
+      try {
+        const hits = JSON.parse(file.secretLineRanges) as Array<{ pattern?: string }>;
+        for (const hit of hits) {
+          if (!hit?.pattern) continue;
+          secretPatternCounts.set(hit.pattern, (secretPatternCounts.get(hit.pattern) ?? 0) + 1);
+        }
+      } catch {
+        // Ignore malformed legacy blobs in dashboard metrics.
+      }
+    }
   }
 
   const byLanguage = [...counts.entries()]
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const topSecretPatterns = [...secretPatternCounts.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, 4);
 
   return {
     totalFiles: files.length,
     uniqueBuckets: byLanguage.length,
     unknownFiles: byLanguage.find((entry) => entry.label === "unknown")?.count ?? 0,
+    secretFiles: secretFiles.length,
+    topSecretPatterns,
     topLanguages: byLanguage.slice(0, 6),
   };
 }

@@ -1,3 +1,5 @@
+import type { SecretPatternRule } from "../core/config.js";
+
 export interface SecretPattern {
   name: string;
   pattern: RegExp;
@@ -42,6 +44,22 @@ export const DEFAULT_SENSITIVE_FILE_PATTERNS = [
   "*secret*",
   "*.keystore",
 ];
+
+export function compileSecretPatterns(
+  customRules: SecretPatternRule[] = [],
+): SecretPattern[] {
+  const defaults = DEFAULT_SECRET_PATTERNS.map(({ name, pattern }) => ({
+    name,
+    pattern: new RegExp(pattern.source, pattern.flags),
+  }));
+
+  const compiledCustom = customRules.map((rule) => ({
+    name: rule.name,
+    pattern: new RegExp(rule.pattern, normalizeFlags(rule.flags)),
+  }));
+
+  return [...defaults, ...compiledCustom];
+}
 
 export function scanForSecrets(
   content: string,
@@ -93,4 +111,10 @@ export function isSensitiveFile(filePath: string, patterns: string[] = DEFAULT_S
     }
     return fileName === pattern || filePath.endsWith("/" + pattern);
   });
+}
+
+function normalizeFlags(flags?: string): string {
+  const unique = new Set((flags ?? "").split("").filter(Boolean));
+  unique.add("g");
+  return [...unique].join("");
 }

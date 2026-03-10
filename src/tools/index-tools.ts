@@ -4,6 +4,7 @@ import type { AgoraContext } from "../core/context.js";
 import { fullIndex, incrementalIndex, getIndexedCommit } from "../indexing/indexer.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
+import { compileSecretPatterns } from "../trust/secret-patterns.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -48,6 +49,7 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
           repoId: c.repoId,
           db: c.db,
           sensitiveFilePatterns: c.config.sensitiveFilePatterns,
+          secretPatterns: compileSecretPatterns(c.config.secretPatterns),
           excludePatterns: c.config.excludePatterns,
           onProgress: (msg) => c.insight.detail(msg),
           semanticReranker: c.searchRouter.getSemanticReranker(),
@@ -58,6 +60,7 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
           repoId: c.repoId,
           db: c.db,
           sensitiveFilePatterns: c.config.sensitiveFilePatterns,
+          secretPatterns: compileSecretPatterns(c.config.secretPatterns),
           excludePatterns: c.config.excludePatterns,
           onProgress: (msg) => c.insight.detail(msg),
           semanticReranker: c.searchRouter.getSemanticReranker(),

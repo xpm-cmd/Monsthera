@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scanForSecrets, redactSecrets, isSensitiveFile } from "../../../src/trust/secret-patterns.js";
+import { compileSecretPatterns, scanForSecrets, redactSecrets, isSensitiveFile } from "../../../src/trust/secret-patterns.js";
 
 describe("scanForSecrets", () => {
   it("detects API keys", () => {
@@ -50,6 +50,15 @@ describe("scanForSecrets", () => {
     const results = scanForSecrets(content);
     expect(results).toHaveLength(0);
   });
+
+  it("detects custom configured patterns", () => {
+    const content = 'const token = "corp_ABC123XYZ456";';
+    const patterns = compileSecretPatterns([
+      { name: "corp_token", pattern: "corp_[A-Z0-9]{12}" },
+    ]);
+    const results = scanForSecrets(content, patterns);
+    expect(results.some((r) => r.pattern === "corp_token")).toBe(true);
+  });
 });
 
 describe("redactSecrets", () => {
@@ -58,6 +67,16 @@ describe("redactSecrets", () => {
     const redacted = redactSecrets(content);
     expect(redacted).toContain("[REDACTED]");
     expect(redacted).not.toContain("sk_live_abcdefghijklmnopqrstuvwxyz");
+  });
+
+  it("redacts custom configured secrets", () => {
+    const content = 'const token = "corp_ABC123XYZ456";';
+    const patterns = compileSecretPatterns([
+      { name: "corp_token", pattern: "corp_[A-Z0-9]{12}" },
+    ]);
+    const redacted = redactSecrets(content, patterns);
+    expect(redacted).toContain("[REDACTED]");
+    expect(redacted).not.toContain("corp_ABC123XYZ456");
   });
 });
 

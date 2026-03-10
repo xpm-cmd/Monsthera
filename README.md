@@ -25,21 +25,23 @@
 
 ---
 
-Agora is an [MCP server](https://modelcontextprotocol.io/) that gives AI coding agents a shared brain.
+Agora is an [MCP server](https://modelcontextprotocol.io/) for local-first shared context, ticketing,
+and multi-agent coordination during software work.
 It indexes your repository with Git-aware parsing, provides hybrid semantic search,
-coordinates multiple agents through trust-enforced tools, and persists knowledge across sessions.
+coordinates multiple agents through trust-enforced tools, persists knowledge across sessions,
+and ships with a dashboard for presence, tickets, patches, notes, and search debugging.
 
-Everything runs locally. No cloud. No API keys. One binary, zero runtime config.
+Everything runs locally. No cloud. No API keys. Configuration lives in `.agora/config.json`.
 
 ## Features
 
-- **Git-aware indexing** &mdash; Tree-sitter parsing for TS, JS, Python, Go, Rust. Symbols, summaries, and 384-dim embeddings per file. Binary assets auto-excluded via configurable `excludePatterns`.
-- **Hybrid search** &mdash; FTS5 full-text + semantic vector search merged with tuned alpha weights. AND semantics for precision, BM25 column weights (path 1.5×, summary 1×, symbols 2×), test/config-file penalties, and **scope filtering** to restrict results by path prefix.
-- **Evidence Bundles** &mdash; Deterministic, reproducible context packages with code spans, related commits, and linked notes.
-- **Multi-agent coordination** &mdash; Agent registry, session management, file claims, patch proposals with stale-rejection. Live presence tracking with online/idle/offline status.
-- **Trust & security** &mdash; Two-tier access (A/B), four roles (developer, reviewer, observer, admin), secret scanning.
-- **Knowledge Store** &mdash; Two-scope architecture (repo-local + global cross-project). Seven types: decision, gotcha, pattern, context, plan, solution, preference. Dedicated `knowledge_fts` FTS5 table for fast search without requiring the semantic model.
-- **Real-time dashboard** &mdash; Command center with live agents panel, SVG charts, SSE updates, tabbed data views. Configurable port via `--dashboard-port`.
+- **Git-aware indexing** &mdash; Tree-sitter parsing for TS, JS, Python, Go, Rust. Symbols, summaries, secret detection, and 384-dim embeddings per file. Binary assets auto-excluded via configurable `excludePatterns`.
+- **Hybrid search** &mdash; FTS5 full-text + semantic vector search merged with tuned alpha weights. Scope filtering, test/config-file penalties, evidence bundles, and a search debugger UI for ranking internals.
+- **Ticketing and backlog** &mdash; Structured tickets with workflow states, comments, linked patches, dependency links, search, and dashboard actions for create, assign, and transition.
+- **Multi-agent coordination** &mdash; Agent registry, session management, file claims, coordination messages, patch proposals with stale-rejection, and shared presence tracking.
+- **Trust & security** &mdash; Two-tier access (A/B), four roles (developer, reviewer, observer, admin), optional registration auth, and configurable secret scanning rules.
+- **Knowledge Store** &mdash; Two-scope architecture (repo-local + global cross-project). Seven knowledge types with FTS5-backed search and semantic reranking when available.
+- **Dashboard** &mdash; Command center with live agents, activity charts, agent timeline, search debugger, tickets board/table, knowledge views, and read/write ticket actions on the local server.
 - **Obsidian export** &mdash; One-click button in dashboard or CLI command to export all knowledge as Markdown with YAML frontmatter.
 
 ## Install
@@ -71,11 +73,15 @@ pnpm build
 
 ```bash
 cd your-project
-agora init                    # Create .agora/ with config
-agora index                   # Parse all tracked files
-agora serve                   # Start MCP server (stdio)
-agora serve --transport http  # Or HTTP mode + dashboard
+agora init                    # Create .agora/config.json and local DB
+agora index                   # Parse tracked files into the local index
+agora serve                   # Start MCP server over stdio
+agora serve --transport http  # Start HTTP MCP + dashboard
+agora status                  # Check index status, backend, and live sessions
 ```
+
+In HTTP mode, MCP is exposed at `http://localhost:3000/mcp` and the dashboard runs at
+`http://localhost:3141` by default.
 
 Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 
@@ -92,7 +98,7 @@ Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 
 ## Tools
 
-23 MCP tools organized by domain:
+33 MCP tools organized by domain:
 
 | Domain | Tools |
 |--------|-------|
@@ -102,6 +108,7 @@ Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 | **Patches** | `propose_patch`, `list_patches` |
 | **Notes** | `propose_note`, `list_notes` |
 | **Knowledge** | `store_knowledge`, `search_knowledge`, `query_knowledge`, `archive_knowledge`, `delete_knowledge` |
+| **Tickets** | `create_ticket`, `assign_ticket`, `update_ticket_status`, `update_ticket`, `list_tickets`, `search_tickets`, `get_ticket`, `comment_ticket`, `link_tickets`, `unlink_tickets` |
 | **Index** | `request_reindex` |
 
 ## Architecture
@@ -111,18 +118,19 @@ agora serve
     |
     +---> MCP Server (stdio | HTTP)
     |        |
-    |        +---> 23 Tools ---> Trust Layer (Tier A/B + Roles)
+    |        +---> 33 Tools ---> Trust Layer (Tier A/B + Roles)
     |        |                      |
     |        |       Search --------+---> FTS5 + Semantic Hybrid + Scope Filter
     |        |       Evidence Bundles ---> Stage A (top 10) + Stage B (expand 5)
-    |        |       Coordination Bus --> hub-spoke | hybrid | mesh
+    |        |       Coordination Bus --> shared DB-backed coordination
     |        |       Knowledge Store --> repo (.agora/) + global (~/.agora/)
+    |        |       Ticketing -------> lifecycle + comments + patch linkage + dependencies
     |        |
     |        +---> Repo DB (.agora/agora.db)
     |        +---> Global DB (~/.agora/knowledge.db)
     |
     +---> Dashboard (http://localhost:3141)
-             +---> Live Agents + REST API + SSE + SVG Charts
+             +---> Live Agents + Timeline + Search Debug + Tickets + Charts
 ```
 
 ### Search Pipeline
@@ -164,11 +172,13 @@ Knowledge Search (search_knowledge):
 
 Built-in command center (default port 3141, configurable via `--dashboard-port`) with:
 
-- **Live Agents panel** &mdash; Online/idle/offline status dots, role badges, claimed files, 10s cross-process polling
-- **SVG Charts** &mdash; Activity sparkline, tool usage donut, knowledge type bars, patch state ring
-- **Tabbed data views** &mdash; Agents, Activity Log, Patches, Notes, Knowledge (with live counters)
-- **SSE real-time updates** &mdash; 7 event types streamed to connected browsers
-- **One-click Obsidian export** &mdash; Button in the dashboard UI
+- **Live Agents** &mdash; Presence cards, roles, claimed files, stale-agent hiding, and repo name in the header
+- **Activity and operations charts** &mdash; Activity, tool usage, indexed files, knowledge types, and patch states
+- **Agent Timeline** &mdash; Per-agent recent activity from runtime event logs
+- **Search Debugger** &mdash; Inspect runtime backend, lexical backend, and result buckets for code search
+- **Tickets** &mdash; Table and kanban views, filters, comments, history, linked patches, dependencies, templates, and local actions
+- **Knowledge, patches, notes, and agents** &mdash; Tabbed operational views with live counts
+- **Obsidian export** &mdash; Button in the dashboard UI
 
 ## Obsidian Export
 
@@ -205,7 +215,7 @@ Options:
 ```bash
 pnpm build        # Build with tsup
 pnpm typecheck    # TypeScript strict
-pnpm test         # 222 tests (vitest)
+pnpm test         # Run the Vitest suite
 pnpm dev          # Watch mode
 ```
 
@@ -222,7 +232,10 @@ For security vulnerabilities, see [SECURITY.md](SECURITY.md).
 ## Getting Help
 
 - [GitHub Issues](https://github.com/xpm-cmd/Agora/issues) &mdash; bug reports, feature requests
-- [Docs](docs/) &mdash; architecture, search pipeline, trust model, agent roles
+- [docs/architecture.md](docs/architecture.md) &mdash; runtime and storage architecture
+- [docs/search-pipeline.md](docs/search-pipeline.md) &mdash; indexing and retrieval details
+- [docs/agent-roles.md](docs/agent-roles.md) &mdash; roles, registration auth, and sessions
+- [docs/patch-lifecycle.md](docs/patch-lifecycle.md) &mdash; patch validation and lifecycle
 
 ## License
 

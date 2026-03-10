@@ -92,6 +92,19 @@ describe("validatePatch", () => {
     expect(result.dryRunResult.secretWarnings.length).toBeGreaterThan(0);
   });
 
+  it("detects custom secrets in diff content", async () => {
+    const secretDiff = `--- a/config.ts\n+++ b/config.ts\n@@ -1 +1 @@\n-old\n+const token = "corp_ABC123XYZ456"`;
+
+    const result = await validatePatch(db, "/repo", 1, {
+      diff: secretDiff,
+      message: "add config",
+      baseCommit: "abc1234def5678",
+      secretPatterns: [{ name: "corp_token", pattern: /corp_[A-Z0-9]{12}/g }],
+    });
+
+    expect(result.dryRunResult.secretWarnings).toContain("corp_token detected at diff line 5");
+  });
+
   it("extracts multiple touched paths", async () => {
     const multiDiff = [
       "--- a/src/a.ts", "+++ b/src/a.ts",

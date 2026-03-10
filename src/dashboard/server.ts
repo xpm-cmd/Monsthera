@@ -301,7 +301,7 @@ async function logDashboardMutation(
 ): Promise<void> {
   const output = JSON.stringify(args.result.ok ? args.result.data : { error: args.result.message, ...args.result.data });
   await recordRuntimeEventWithContext({
-    config: { debugLogging: false },
+    config: { debugLogging: false, secretPatterns: [] },
     db: deps.db,
     repoId: deps.repoId,
     repoPath: deps.repoPath,

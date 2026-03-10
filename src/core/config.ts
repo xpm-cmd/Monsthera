@@ -16,6 +16,12 @@ export const RegistrationAuthSchema = z.object({
   roleTokens: RegistrationRoleTokensSchema.default({}),
 });
 
+export const SecretPatternRuleSchema = z.object({
+  name: z.string().min(1),
+  pattern: z.string().min(1),
+  flags: z.string().regex(/^[dgimsuvy]*$/).optional(),
+});
+
 export const AgoraConfigSchema = z.object({
   repoPath: z.string(),
   agoraDir: z.string().default(DEFAULT_AGORA_DIR),
@@ -27,6 +33,9 @@ export const AgoraConfigSchema = z.object({
   sensitiveFilePatterns: z
     .array(z.string())
     .default([".env", ".env.*", "*.key", "*.pem", "credentials.*", "secrets.*"]),
+  secretPatterns: z
+    .array(SecretPatternRuleSchema)
+    .default([]),
   excludePatterns: z
     .array(z.string())
     .default([
@@ -54,6 +63,7 @@ export const AgoraConfigSchema = z.object({
 
 export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
 export type RegistrationAuth = z.infer<typeof RegistrationAuthSchema>;
+export type SecretPatternRule = z.infer<typeof SecretPatternRuleSchema>;
 
 export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
   return AgoraConfigSchema.parse(partial);

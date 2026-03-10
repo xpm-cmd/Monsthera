@@ -68,18 +68,7 @@ export class SearchRouter {
     const backend = this.activeBackend ?? this.fts5;
     const effectiveLimit = limit ?? 10;
 
-    // FTS5/Zoekt keyword search (scope filtering handled at SQL level)
-    let fts5Results: SearchResult[];
-    try {
-      fts5Results = await backend.search(query, repoId, effectiveLimit, scope);
-    } catch {
-      if (backend !== this.fts5) {
-        this.opts.onFallback?.(`${backend.name} search failed, falling back to FTS5`);
-        fts5Results = await this.fts5.search(query, repoId, effectiveLimit, scope);
-      } else {
-        return [];
-      }
-    }
+    const fts5Results = await this.searchLexical(query, repoId, effectiveLimit, scope);
 
     // Hybrid: run vector search in parallel and merge with FTS5 results
     if (this.semantic?.isAvailable()) {
@@ -93,6 +82,21 @@ export class SearchRouter {
     }
 
     return fts5Results;
+  }
+
+  async searchLexical(query: string, repoId: number, limit?: number, scope?: string): Promise<SearchResult[]> {
+    const backend = this.activeBackend ?? this.fts5;
+    const effectiveLimit = limit ?? 10;
+
+    try {
+      return await backend.search(query, repoId, effectiveLimit, scope);
+    } catch {
+      if (backend !== this.fts5) {
+        this.opts.onFallback?.(`${backend.name} search failed, falling back to FTS5`);
+        return this.fts5.search(query, repoId, effectiveLimit, scope);
+      }
+      return [];
+    }
   }
 
   async rebuildIndex(repoId: number): Promise<void> {
@@ -113,6 +117,10 @@ export class SearchRouter {
 
   getSemanticReranker(): SemanticReranker | null {
     return this.semantic;
+  }
+
+  getLexicalBackendName(): "fts5" | "zoekt" {
+    return (this.activeBackend?.name ?? "fts5") as "fts5" | "zoekt";
   }
 
   // ─── Knowledge FTS5 pass-through ──────────────────────────

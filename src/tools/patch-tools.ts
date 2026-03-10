@@ -5,6 +5,7 @@ import { validatePatch } from "../patches/validator.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import * as queries from "../db/queries.js";
 import { resolveAgent } from "./resolve-agent.js";
+import { compileSecretPatterns } from "../trust/secret-patterns.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -48,6 +49,7 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
 
       const validation = await validatePatch(c.db, c.repoPath, c.repoId, {
         diff, message, baseCommit, bundleId,
+        secretPatterns: compileSecretPatterns(c.config.secretPatterns),
       });
 
       // Validate ticket exists BEFORE persisting anything

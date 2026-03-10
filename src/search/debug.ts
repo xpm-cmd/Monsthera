@@ -1,24 +1,25 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
-import type { SearchBackendName } from "./interface.js";
-import { FTS5Backend, sanitizeFts5Query } from "./fts5.js";
+import type { SearchBackendName, SearchResult } from "./interface.js";
+import { sanitizeFts5Query } from "./fts5.js";
 import { mergeResults, type SemanticReranker } from "./semantic.js";
 
 export interface SearchDebugResultItem {
   path: string;
   score: number;
-  source: "fts5" | "semantic" | "hybrid";
+  source: "fts5" | "zoekt" | "semantic" | "hybrid";
 }
 
 export interface CodeSearchDebugResult {
   query: string;
-  sanitizedQuery: string;
+  sanitizedQuery: string | null;
   scope: string | null;
   limit: number;
   runtimeBackend: SearchBackendName;
+  lexicalBackend: "fts5" | "zoekt";
   semanticAvailable: boolean;
-  fts5Results: SearchDebugResultItem[];
+  lexicalResults: SearchDebugResultItem[];
   vectorResults: SearchDebugResultItem[];
   mergedResults: SearchDebugResultItem[];
 }
@@ -29,6 +30,8 @@ export async function buildCodeSearchDebug(
     db: BetterSQLite3Database<typeof schema>;
     repoId: number;
     runtimeBackend: SearchBackendName;
+    lexicalBackend: "fts5" | "zoekt";
+    lexicalSearch: (query: string, repoId: number, limit?: number, scope?: string) => Promise<SearchResult[]>;
     semanticReranker: SemanticReranker | null;
   },
   params: {
@@ -39,13 +42,12 @@ export async function buildCodeSearchDebug(
 ): Promise<CodeSearchDebugResult> {
   const limit = params.limit ?? 10;
   const scope = params.scope?.trim() ? params.scope.trim() : undefined;
-  const sanitizedQuery = sanitizeFts5Query(params.query);
-  const fts5 = new FTS5Backend(args.sqlite, args.db);
-  const fts5Results = (await fts5.search(params.query, args.repoId, limit, scope))
+  const sanitizedQuery = args.lexicalBackend === "fts5" ? sanitizeFts5Query(params.query) : null;
+  const lexicalResults = (await args.lexicalSearch(params.query, args.repoId, limit, scope))
     .map((result) => ({
       path: result.path,
       score: roundScore(result.score),
-      source: "fts5" as const,
+      source: args.lexicalBackend,
     }));
 
   const semanticAvailable = args.semanticReranker?.isAvailable() ?? false;
@@ -60,15 +62,15 @@ export async function buildCodeSearchDebug(
 
   const mergedBase = semanticAvailable
     ? mergeResults(
-      fts5Results.map(({ path, score }) => ({ path, score })),
+      lexicalResults.map(({ path, score }) => ({ path, score })),
       vectorResults.map(({ path, score }) => ({ path, score })),
       limit,
       0.5,
       !!scope,
     )
-    : fts5Results.map(({ path, score }) => ({ path, score }));
+    : lexicalResults.map(({ path, score }) => ({ path, score }));
 
-  const mergedSet = new Set(fts5Results.map((result) => result.path));
+  const mergedSet = new Set(lexicalResults.map((result) => result.path));
   const vectorSet = new Set(vectorResults.map((result) => result.path));
 
   return {
@@ -77,8 +79,9 @@ export async function buildCodeSearchDebug(
     scope: scope ?? null,
     limit,
     runtimeBackend: args.runtimeBackend,
+    lexicalBackend: args.lexicalBackend,
     semanticAvailable,
-    fts5Results,
+    lexicalResults,
     vectorResults,
     mergedResults: mergedBase.map((result) => ({
       path: result.path,

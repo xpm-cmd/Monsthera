@@ -4,7 +4,7 @@ import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
 import type { SearchBackendName, SearchResult } from "../search/interface.js";
 import { getFileContent } from "../git/operations.js";
-import { scanForSecrets } from "../trust/secret-patterns.js";
+import { scanForSecrets, type SecretPattern } from "../trust/secret-patterns.js";
 import { STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MAX_CODE_SPAN_LINES } from "../core/constants.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
 
@@ -18,6 +18,7 @@ export interface BundleBuildOptions {
   searchResults: SearchResult[];
   db: BetterSQLite3Database<typeof schema>;
   expand: boolean;
+  secretPatterns?: SecretPattern[];
 }
 
 export interface BundleCandidate {
@@ -129,7 +130,7 @@ async function expandCandidates(
         let span = lines.slice(0, end).join("\n");
 
         // Check for secrets and redact secret lines
-        const secretHits = scanForSecrets(span);
+        const secretHits = scanForSecrets(span, opts.secretPatterns);
         if (secretHits.length > 0) {
           const secretLineNumbers = new Set(secretHits.map((h) => h.line));
           const redactedLines = lines.slice(0, end).map((line, i) => {

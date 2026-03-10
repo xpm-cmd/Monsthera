@@ -1116,6 +1116,9 @@ function renderCharts(overview,logs,patches,knowledge,presence,indexedFiles){
   var fileData=(indexedFiles.topLanguages||[]).map(function(entry,i){
     return {label:entry.label,value:entry.count,color:PALETTE[i%PALETTE.length]};
   });
+  var secretPatternData=(indexedFiles.topSecretPatterns||[]).map(function(entry,i){
+    return {label:entry.label,value:entry.count,color:PALETTE[(i+3)%PALETTE.length]};
+  });
   var topBucket=fileData.length?fileData[0].label:'none';
   var filesPanel=makeChartPanel(
     'Indexed Files',
@@ -1123,10 +1126,14 @@ function renderCharts(overview,logs,patches,knowledge,presence,indexedFiles){
     colorMap,
     '<div class="chart-stack">'
       +(fileData.length?makeBarChart(fileData,240,18,5):mkEmpty('No indexed files'))
+      +(indexedFiles.secretFiles
+        ?'<div class="chart-legend">'+(secretPatternData.length?makeLegend(secretPatternData):'<div class="item">Secret hits detected but patterns were not parsed.</div>')+'</div>'
+        :'<div class="chart-empty">No indexed secret hits</div>')
       +makeIndicators([
         {label:'Indexed',value:indexedFiles.totalFiles||overview.fileCount||0},
         {label:'Buckets',value:indexedFiles.uniqueBuckets||0},
         {label:'Top',value:topBucket},
+        {label:'Secrets',value:indexedFiles.secretFiles||0},
         {label:'Unknown',value:indexedFiles.unknownFiles||0},
       ])
     +'</div>'
@@ -1240,6 +1247,8 @@ function renderSearchDebugSection(){
   }else if(data.unavailable){
     resultsHtml='<div class="search-debug-hint">'+esc(data.reason||'Search debug unavailable.')+'</div>';
   }else{
+    var lexicalLabel=data.lexicalBackend==='zoekt'?'Zoekt':'FTS5';
+    var queryLabel=data.lexicalBackend==='fts5'?'Sanitized FTS query':'FTS fallback query';
     var renderColumn=function(title,items){
       return '<div class="search-debug-column"><h5>'+esc(title)+'</h5>'
         +(items.length
@@ -1252,12 +1261,13 @@ function renderSearchDebugSection(){
     resultsHtml=''
       +'<div class="search-debug-meta">'
         +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(data.runtimeBackend)+'</span><span class="chart-indicator-label">Runtime backend</span></div>'
+        +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(lexicalLabel)+'</span><span class="chart-indicator-label">Lexical backend</span></div>'
         +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(data.semanticAvailable?'on':'off')+'</span><span class="chart-indicator-label">Semantic</span></div>'
-        +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(data.sanitizedQuery||'∅')+'</span><span class="chart-indicator-label">Sanitized FTS query</span></div>'
+        +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(data.sanitizedQuery||'n/a')+'</span><span class="chart-indicator-label">'+esc(queryLabel)+'</span></div>'
         +'<div class="chart-indicator"><span class="chart-indicator-value">'+esc(String((data.mergedResults||[]).length))+'</span><span class="chart-indicator-label">Merged results</span></div>'
       +'</div>'
       +'<div class="search-debug-results">'
-        +renderColumn('FTS5',data.fts5Results||[])
+        +renderColumn(lexicalLabel,data.lexicalResults||[])
         +renderColumn('Semantic',data.vectorResults||[])
         +renderColumn('Merged',data.mergedResults||[])
       +'</div>';
@@ -1272,7 +1282,7 @@ function renderSearchDebugSection(){
           +'<div class="field"><label for="search-debug-limit">Limit</label><input id="search-debug-limit" type="number" min="1" max="20" value="'+esc(String(searchDebugState.limit||10))+'"></div>'
           +'<button class="action-submit" type="submit">'+(searchDebugState.loading?'Running...':'Run Debug Search')+'</button>'
         +'</form>'
-        +'<div class="template-hint" style="margin-top:.8rem">This is a read-only diagnostic for code search. It shows the runtime backend, the sanitized FTS query, and how lexical plus semantic candidates merge.</div>'
+        +'<div class="template-hint" style="margin-top:.8rem">This is a read-only diagnostic for code search. It shows the runtime backend, the lexical backend actually used for keyword candidates, any FTS fallback query, and how lexical plus semantic candidates merge.</div>'
       +'</div>'
       +'<div class="search-debug-panel"><h4>Results</h4>'+resultsHtml+'</div>'
     +'</div>';

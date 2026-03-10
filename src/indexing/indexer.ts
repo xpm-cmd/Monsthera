@@ -7,7 +7,7 @@ import { getHead, getAllTrackedFiles, getFileContent, getChangedFilesSinceCommit
 import { detectLanguage } from "../git/language.js";
 import { parseFile, isParserAvailable } from "./parser.js";
 import { generateSummary, generateRawSummary, generateMarkdownSummary } from "./summary.js";
-import { scanForSecrets, isSensitiveFile } from "../trust/secret-patterns.js";
+import { scanForSecrets, isSensitiveFile, type SecretPattern } from "../trust/secret-patterns.js";
 import { IndexError } from "../core/errors.js";
 import type { SemanticReranker } from "../search/semantic.js";
 import { buildEmbeddingText, type EmbeddingTextOptions } from "../search/semantic.js";
@@ -17,6 +17,7 @@ export interface IndexOptions {
   repoId: number;
   db: BetterSQLite3Database<typeof schema>;
   sensitiveFilePatterns?: string[];
+  secretPatterns?: SecretPattern[];
   excludePatterns?: string[];
   onProgress?: (msg: string) => void;
   semanticReranker?: SemanticReranker | null;
@@ -205,7 +206,7 @@ async function indexSingleFile(
   const language = detectLanguage(filePath);
 
   // Scan for secrets
-  const secretHits = scanForSecrets(content);
+  const secretHits = scanForSecrets(content, opts.secretPatterns);
   const hasSecrets = secretHits.length > 0;
   const secretLineRanges = hasSecrets
     ? JSON.stringify(secretHits.map((h) => ({ line: h.line, pattern: h.pattern })))

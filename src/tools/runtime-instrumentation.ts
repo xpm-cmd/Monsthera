@@ -28,7 +28,7 @@ const PUBLIC_SESSION_ID = "session-public";
 
 type LoggingContext = Pick<AgoraContext, "config" | "db" | "repoId" | "repoPath">;
 type MinimalLoggingContext = {
-  config: Pick<AgoraConfig, "debugLogging">;
+  config: Pick<AgoraConfig, "debugLogging" | "secretPatterns">;
   db: AgoraContext["db"];
   repoId: number;
   repoPath: string;
@@ -112,7 +112,7 @@ export async function recordRuntimeEventWithContext(
     status: event.status,
     durationMs: event.durationMs,
     denialReason: event.denialReason,
-  }, ctx.config.debugLogging);
+  }, ctx.config.debugLogging, ctx.config.secretPatterns);
 }
 
 function extractActor(input: unknown): { agentId?: string; sessionId?: string } {
