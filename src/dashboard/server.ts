@@ -128,14 +128,17 @@ export function startDashboard(
       if (path === "/api/tickets/create" && req.method === "POST") {
         const body = await readJsonBody(req);
         const startedAt = Date.now();
-        const result = await createTicketRecord({
+        const humanName = typeof body.humanName === "string" ? body.humanName.trim() : "";
+        const ticketContext = {
           db: deps.db,
           repoId: deps.repoId,
           repoPath: deps.repoPath,
           insight,
           bus: deps.bus,
           refreshTicketSearch: deps.refreshTicketSearch,
-        }, {
+          ...(humanName ? { system: true as const, actorLabel: `human ${humanName}` } : {}),
+        };
+        const ticketInput = {
           title: String(body.title ?? ""),
           description: String(body.description ?? ""),
           severity: String(body.severity ?? "medium"),
@@ -143,9 +146,14 @@ export function startDashboard(
           tags: toStringArray(body.tags),
           affectedPaths: toStringArray(body.affectedPaths),
           acceptanceCriteria: body.acceptanceCriteria ? String(body.acceptanceCriteria) : null,
-          agentId: String(body.agentId ?? ""),
-          sessionId: String(body.sessionId ?? ""),
-        });
+          ...(humanName
+            ? { actorLabel: `human ${humanName}` }
+            : {
+                agentId: String(body.agentId ?? ""),
+                sessionId: String(body.sessionId ?? ""),
+              }),
+        };
+        const result = await createTicketRecord(ticketContext, ticketInput);
         await logDashboardMutation(deps, {
           tool: "dashboard.create_ticket",
           input: body,

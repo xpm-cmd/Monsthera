@@ -319,6 +319,7 @@ let selectedActorSessionId=null;
 let ticketActors=[];
 let dashboardAgents=[];
 let ticketViewMode='table';
+let ticketCreateMode='agent';
 let ticketFilters={search:'',status:'all',severity:'all',assignee:'all',hideDone:true};
 let selectedTicketTemplateId='';
 let searchDebugState={query:'',scope:'',limit:10,loading:false,error:'',data:null};
@@ -614,6 +615,13 @@ function renderTicketToolbar(tickets,filteredTickets){
   if(hideDoneTicketsActive()){
     toolbarMeta+=' · done hidden';
   }
+  var effectiveCreateMode=ticketActors.length?(ticketCreateMode==='human'?'human':'agent'):'human';
+  var createModeOptions=ticketActors.length
+    ?'<option value="agent"'+(effectiveCreateMode==='agent'?' selected':'')+'>Active agent session</option><option value="human"'+(effectiveCreateMode==='human'?' selected':'')+'>Human operator</option>'
+    :'<option value="human" selected>Human operator</option>';
+  var createModeHint=effectiveCreateMode==='human'
+    ?'Creates the ticket as a human operator via system context. Use this when no agent session should own authorship.'
+    :'Uses the selected active agent session as the ticket creator.';
   return '<div class="ticket-toolbar-top">'
     +'<div class="ticket-toolbar-meta">'+toolbarMeta+'</div>'
     +'<div class="view-toggle">'
@@ -625,7 +633,7 @@ function renderTicketToolbar(tickets,filteredTickets){
     +'<div class="action-card"><h4>Active Session</h4>'
     +(ticketActors.length
       ?'<div class="field"><label for="ticket-actor-select">Act as</label><select id="ticket-actor-select">'+actorOptions+'</select></div><div class="actor-chip">Using '+esc(actorLabel(actor))+'</div>'
-      :'<div class="ticket-help">No active agent sessions available. Register an agent first to create or update tickets.</div>')
+      :'<div class="ticket-help">No active agent sessions available. Human ticket creation still works below. Agent sessions are still required to comment or move tickets.</div>')
     +'</div>'
     +'<div class="action-card"><h4>Filters</h4>'
       +'<div class="filters-grid">'
@@ -637,12 +645,16 @@ function renderTicketToolbar(tickets,filteredTickets){
       +'</div>'
     +'</div>'
     +'<div class="action-card"><h4>Create Ticket</h4>'
-    +(ticketActors.length
-      ?'<form id="create-ticket-form">'
+      +'<form id="create-ticket-form">'
         +'<div class="field-row">'
           +'<div class="field"><label for="create-ticket-template">Template</label><select id="create-ticket-template">'+templateOptions+'</select></div>'
           +'<div class="field"><label>&nbsp;</label><button class="btn" id="apply-ticket-template" type="button">Apply Template</button><div class="template-hint">'+esc(templateHint)+'</div></div>'
         +'</div>'
+        +'<div class="field-row">'
+          +'<div class="field"><label for="create-ticket-mode">Author</label><select id="create-ticket-mode"'+(ticketActors.length?'':' disabled')+'>'+createModeOptions+'</select></div>'
+          +'<div class="field"><label for="create-ticket-human-name">Human Name</label><input id="create-ticket-human-name" maxlength="80" placeholder="Product Owner"'+(effectiveCreateMode==='human'?'':' disabled')+'></div>'
+        +'</div>'
+        +'<div class="template-hint" id="create-ticket-mode-hint">'+esc(createModeHint)+'</div>'
         +'<div class="field"><label for="create-ticket-title">Title</label><input id="create-ticket-title" name="title" maxlength="200" required></div>'
         +'<div class="field"><label for="create-ticket-description">Description</label><textarea id="create-ticket-description" name="description" maxlength="5000" required></textarea></div>'
         +'<div class="field-row">'
@@ -656,7 +668,6 @@ function renderTicketToolbar(tickets,filteredTickets){
         +'<div class="field"><label for="create-ticket-criteria">Acceptance Criteria</label><textarea id="create-ticket-criteria" name="criteria" maxlength="2000"></textarea></div>'
         +'<button class="action-submit" type="submit">Create Ticket</button>'
       +'</form>'
-      :'<div class="ticket-help">Ticket creation is unavailable until there is an active developer, reviewer, or admin session.</div>')
     +'</div>'
   +'</div>';
 }
@@ -773,10 +784,47 @@ function attachTicketToolbarListeners(){
 
   var createForm=document.getElementById('create-ticket-form');
   if(createForm){
+    var syncCreateTicketMode=function(){
+      var modeSelect=document.getElementById('create-ticket-mode');
+      var humanInput=document.getElementById('create-ticket-human-name');
+      var hint=document.getElementById('create-ticket-mode-hint');
+      var mode=modeSelect?modeSelect.value:(ticketActors.length?'agent':'human');
+      if(!ticketActors.length) mode='human';
+      ticketCreateMode=mode;
+      if(humanInput){
+        var humanMode=mode==='human';
+        humanInput.disabled=!humanMode;
+        humanInput.required=humanMode;
+        if(!humanMode) humanInput.value='';
+      }
+      if(hint){
+        hint.textContent=mode==='human'
+          ?'Creates the ticket as a human operator via system context. Use this when no agent session should own authorship.'
+          :'Uses the selected active agent session as the ticket creator.';
+      }
+    };
+    var createModeSelect=document.getElementById('create-ticket-mode');
+    if(createModeSelect){
+      createModeSelect.addEventListener('change',function(e){
+        ticketCreateMode=e.target.value||'agent';
+        syncCreateTicketMode();
+      });
+    }
+    syncCreateTicketMode();
+
     createForm.addEventListener('submit',async function(e){
       e.preventDefault();
+      var modeSelect=document.getElementById('create-ticket-mode');
+      var mode=modeSelect?modeSelect.value:(ticketActors.length?'agent':'human');
       var actor=getSelectedActor();
-      if(!actor){
+      var humanNameInput=document.getElementById('create-ticket-human-name');
+      var humanName=humanNameInput?humanNameInput.value.trim():'';
+      var humanMode=!ticketActors.length||mode==='human';
+      if(humanMode && !humanName){
+        showToast('Enter a human name for the ticket creator','error');
+        return;
+      }
+      if(!humanMode && !actor){
         showToast('No active session selected','error');
         return;
       }
@@ -799,15 +847,18 @@ function attachTicketToolbarListeners(){
           tags:tags,
           affectedPaths:affectedPaths,
           acceptanceCriteria:acceptanceCriteria||null,
-          agentId:actor.agentId,
-          sessionId:actor.sessionId,
+          ...(humanMode
+            ?{humanName:humanName}
+            :{agentId:actor.agentId,sessionId:actor.sessionId}),
         });
         selectedTicketId=created.ticketId;
         selectedTicketDetail=null;
         createForm.reset();
         selectedTicketTemplateId='';
+        ticketCreateMode=ticketActors.length?'agent':'human';
         document.getElementById('create-ticket-severity').value='medium';
         document.getElementById('create-ticket-priority').value='5';
+        syncCreateTicketMode();
         showToast('Created '+created.ticketId,'success');
         await refresh();
       }catch(err){

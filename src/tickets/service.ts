@@ -17,7 +17,7 @@ import type { CoordinationBus } from "../coordination/bus.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
-export interface TicketServiceContext {
+interface TicketServiceBaseContext {
   db: DB;
   repoId: number;
   repoPath: string;
@@ -25,6 +25,15 @@ export interface TicketServiceContext {
   bus?: CoordinationBus;
   refreshTicketSearch?: () => void;
 }
+
+export interface TicketServiceContext extends TicketServiceBaseContext {}
+
+export interface TicketSystemContext extends TicketServiceBaseContext {
+  system: true;
+  actorLabel?: string;
+}
+
+export type TicketContext = TicketServiceContext | TicketSystemContext;
 
 export interface TicketServiceError {
   ok: false;
@@ -47,12 +56,25 @@ interface ResolvedTicketActor {
   trustTier: TrustTier;
 }
 
-interface TicketActorInput {
+interface TicketAgentInput {
   agentId: string;
   sessionId: string;
 }
 
-export interface CreateTicketInput extends TicketActorInput {
+interface TicketSystemInput {
+  actorLabel?: string;
+}
+
+type TicketActorInput = TicketAgentInput | TicketSystemInput;
+type TicketToolName =
+  | "create_ticket"
+  | "assign_ticket"
+  | "update_ticket_status"
+  | "comment_ticket"
+  | "link_tickets"
+  | "unlink_tickets";
+
+interface CreateTicketFields {
   title: string;
   description: string;
   severity: string;
@@ -62,31 +84,66 @@ export interface CreateTicketInput extends TicketActorInput {
   acceptanceCriteria?: string | null;
 }
 
-export interface AssignTicketInput extends TicketActorInput {
+export type CreateTicketInput = CreateTicketFields & TicketActorInput;
+
+interface AssignTicketFields {
   ticketId: string;
   assigneeAgentId: string;
 }
 
-export interface UpdateTicketStatusInput extends TicketActorInput {
+export type AssignTicketInput = AssignTicketFields & TicketActorInput;
+
+interface UpdateTicketStatusFields {
   ticketId: string;
   status: TicketStatusType;
   comment?: string | null;
 }
 
-export interface CommentTicketInput extends TicketActorInput {
+export type UpdateTicketStatusInput = UpdateTicketStatusFields & TicketActorInput;
+
+interface CommentTicketFields {
   ticketId: string;
   content: string;
 }
 
+export type CommentTicketInput = CommentTicketFields & TicketActorInput;
+
+interface BatchTransitionTicketsFields {
+  ticketIds: string[];
+  toStatus: TicketStatusType;
+  comment?: string | null;
+}
+
+export type BatchTransitionTicketsInput = BatchTransitionTicketsFields & TicketActorInput;
+
+interface BatchCommentTicketsFields {
+  ticketIds: string[];
+  content: string;
+}
+
+export type BatchCommentTicketsInput = BatchCommentTicketsFields & TicketActorInput;
+
+export interface BatchItemResult {
+  ticketId: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface BatchResult {
+  ok: boolean;
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BatchItemResult[];
+}
+
 export async function createTicketRecord(
-  ctx: TicketServiceContext,
+  ctx: TicketContext,
   input: CreateTicketInput,
 ): Promise<TicketServiceResult<Record<string, unknown>>> {
-  const resolved = resolveTicketActor(ctx.db, input.agentId, input.sessionId);
-  if (!resolved) return err("invalid_actor", "Agent or session not found / inactive");
-
-  const access = checkToolAccess("create_ticket", resolved.role, resolved.trustTier);
-  if (!access.allowed) return err("denied", access.reason, { denied: true });
+  const auth = authorizeTicketActor(ctx, input, "create_ticket");
+  if (!auth.ok) return auth;
+  const resolved = auth.data;
 
   const now = new Date().toISOString();
   const ticketId = `TKT-${randomUUID().slice(0, 8)}`;
@@ -103,8 +160,8 @@ export async function createTicketRecord(
     tagsJson: JSON.stringify(input.tags),
     affectedPathsJson: JSON.stringify(input.affectedPaths),
     acceptanceCriteria: input.acceptanceCriteria ?? null,
-    creatorAgentId: input.agentId,
-    creatorSessionId: input.sessionId,
+    creatorAgentId: resolved.agentId,
+    creatorSessionId: resolved.sessionId,
     commitSha,
     createdAt: now,
     updatedAt: now,
@@ -114,23 +171,23 @@ export async function createTicketRecord(
     ticketId: ticket.id,
     fromStatus: null,
     toStatus: "backlog",
-    agentId: input.agentId,
-    sessionId: input.sessionId,
+    agentId: resolved.agentId,
+    sessionId: resolved.sessionId,
     comment: "Ticket created",
     timestamp: now,
   });
   refreshTicketSearch(ctx);
 
-  ctx.insight.info(`Ticket ${ticketId} created by ${input.agentId}`);
+  ctx.insight.info(`Ticket ${ticketId} created by ${resolved.agentId}`);
   recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_created",
-    data: { ticketId, status: "backlog", severity: input.severity, creatorAgentId: input.agentId },
+    data: { ticketId, status: "backlog", severity: input.severity, creatorAgentId: resolved.agentId },
   });
-  broadcastTicketRealtime(ctx, input.agentId, "ticket_created", {
+  broadcastTicketRealtime(ctx, resolved.agentId, "ticket_created", {
     ticketId,
     status: "backlog",
     severity: input.severity,
-    creatorAgentId: input.agentId,
+    creatorAgentId: resolved.agentId,
   });
 
   return ok({
@@ -144,20 +201,18 @@ export async function createTicketRecord(
 }
 
 export function assignTicketRecord(
-  ctx: TicketServiceContext,
+  ctx: TicketContext,
   input: AssignTicketInput,
 ): TicketServiceResult<Record<string, unknown>> {
-  const resolved = resolveTicketActor(ctx.db, input.agentId, input.sessionId);
-  if (!resolved) return err("invalid_actor", "Agent or session not found / inactive");
-
-  const access = checkToolAccess("assign_ticket", resolved.role, resolved.trustTier);
-  if (!access.allowed) return err("denied", access.reason, { denied: true });
+  const auth = authorizeTicketActor(ctx, input, "assign_ticket");
+  if (!auth.ok) return auth;
+  const resolved = auth.data;
 
   const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId);
   if (!ticket) return err("not_found", `Ticket not found: ${input.ticketId}`);
 
   if (resolved.role === "developer") {
-    if (input.assigneeAgentId !== input.agentId) {
+    if (input.assigneeAgentId !== resolved.agentId) {
       return err("denied", "Developers can only self-assign tickets");
     }
     if (!["backlog", "technical_analysis", "approved"].includes(ticket.status)) {
@@ -179,17 +234,17 @@ export function assignTicketRecord(
   );
   refreshTicketSearch(ctx);
 
-  ctx.insight.info(`Ticket ${input.ticketId} assigned to ${input.assigneeAgentId} by ${input.agentId}`);
+  ctx.insight.info(`Ticket ${input.ticketId} assigned to ${input.assigneeAgentId} by ${resolved.agentId}`);
   recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_assigned",
     data: {
       ticketId: input.ticketId,
       assigneeAgentId: input.assigneeAgentId,
       status: ticket.status,
-      agentId: input.agentId,
+      agentId: resolved.agentId,
     },
   });
-  broadcastTicketRealtime(ctx, input.agentId, "ticket_assigned", {
+  broadcastTicketRealtime(ctx, resolved.agentId, "ticket_assigned", {
     ticketId: input.ticketId,
     assigneeAgentId: input.assigneeAgentId,
     status: ticket.status,
@@ -203,14 +258,12 @@ export function assignTicketRecord(
 }
 
 export function updateTicketStatusRecord(
-  ctx: TicketServiceContext,
+  ctx: TicketContext,
   input: UpdateTicketStatusInput,
 ): TicketServiceResult<Record<string, unknown>> {
-  const resolved = resolveTicketActor(ctx.db, input.agentId, input.sessionId);
-  if (!resolved) return err("invalid_actor", "Agent or session not found / inactive");
-
-  const access = checkToolAccess("update_ticket_status", resolved.role, resolved.trustTier);
-  if (!access.allowed) return err("denied", access.reason, { denied: true });
+  const auth = authorizeTicketActor(ctx, input, "update_ticket_status");
+  if (!auth.ok) return auth;
+  const resolved = auth.data;
 
   const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId);
   if (!ticket) return err("not_found", `Ticket not found: ${input.ticketId}`);
@@ -233,7 +286,7 @@ export function updateTicketStatusRecord(
 
   const now = new Date().toISOString();
   const updates: Record<string, unknown> = { status: input.status };
-  if (input.status === "resolved") updates.resolvedByAgentId = input.agentId;
+  if (input.status === "resolved") updates.resolvedByAgentId = resolved.agentId;
   if (current === "resolved" && input.status === "in_progress") updates.resolvedByAgentId = null;
 
   queries.updateTicket(
@@ -245,24 +298,24 @@ export function updateTicketStatusRecord(
     ticketId: ticket.id,
     fromStatus: current,
     toStatus: input.status,
-    agentId: input.agentId,
-    sessionId: input.sessionId,
+    agentId: resolved.agentId,
+    sessionId: resolved.sessionId,
     comment: input.comment ?? null,
     timestamp: now,
   });
   refreshTicketSearch(ctx);
 
-  ctx.insight.info(`Ticket ${input.ticketId}: ${current} → ${input.status} by ${input.agentId}`);
+  ctx.insight.info(`Ticket ${input.ticketId}: ${current} → ${input.status} by ${resolved.agentId}`);
   recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_status_changed",
     data: {
       ticketId: input.ticketId,
       previousStatus: current,
       status: input.status,
-      agentId: input.agentId,
+      agentId: resolved.agentId,
     },
   });
-  broadcastTicketRealtime(ctx, input.agentId, "ticket_status_changed", {
+  broadcastTicketRealtime(ctx, resolved.agentId, "ticket_status_changed", {
     ticketId: input.ticketId,
     previousStatus: current,
     status: input.status,
@@ -276,14 +329,12 @@ export function updateTicketStatusRecord(
 }
 
 export function commentTicketRecord(
-  ctx: TicketServiceContext,
+  ctx: TicketContext,
   input: CommentTicketInput,
 ): TicketServiceResult<Record<string, unknown>> {
-  const resolved = resolveTicketActor(ctx.db, input.agentId, input.sessionId);
-  if (!resolved) return err("invalid_actor", "Agent or session not found / inactive");
-
-  const access = checkToolAccess("comment_ticket", resolved.role, resolved.trustTier);
-  if (!access.allowed) return err("denied", access.reason, { denied: true });
+  const auth = authorizeTicketActor(ctx, input, "comment_ticket");
+  if (!auth.ok) return auth;
+  const resolved = auth.data;
 
   const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId);
   if (!ticket) return err("not_found", `Ticket not found: ${input.ticketId}`);
@@ -291,50 +342,117 @@ export function commentTicketRecord(
   const now = new Date().toISOString();
   const comment = queries.insertTicketComment(ctx.db, {
     ticketId: ticket.id,
-    agentId: input.agentId,
-    sessionId: input.sessionId,
+    agentId: resolved.agentId,
+    sessionId: resolved.sessionId,
     content: input.content,
     createdAt: now,
   });
 
   recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_commented",
-    data: { ticketId: input.ticketId, commentId: comment.id, agentId: input.agentId },
+    data: { ticketId: input.ticketId, commentId: comment.id, agentId: resolved.agentId },
   });
-  broadcastTicketRealtime(ctx, input.agentId, "ticket_commented", {
+  broadcastTicketRealtime(ctx, resolved.agentId, "ticket_commented", {
     ticketId: input.ticketId,
     commentId: comment.id,
-    agentId: input.agentId,
+    agentId: resolved.agentId,
   });
 
   return ok({
     ticketId: input.ticketId,
     commentId: comment.id,
-    agentId: input.agentId,
+    agentId: resolved.agentId,
     content: input.content,
     createdAt: now,
   });
 }
 
+// --- Batch Operations ---
+
+export function batchTransitionTickets(
+  ctx: TicketContext,
+  input: BatchTransitionTicketsInput,
+): TicketServiceResult<BatchResult> {
+  const ticketIds = normalizeBatchTicketIds(input.ticketIds);
+  if (ticketIds.length === 0) {
+    return err("invalid_request", "At least one ticketId is required");
+  }
+
+  const results: BatchItemResult[] = [];
+  for (const ticketId of ticketIds) {
+    const update = updateTicketStatusRecord(ctx, {
+      ...copyTicketActorInput(input),
+      ticketId,
+      status: input.toStatus,
+      comment: input.comment,
+    });
+    if (update.ok) {
+      results.push({ ticketId, ok: true });
+    } else {
+      results.push({ ticketId, ok: false, error: update.message });
+    }
+  }
+
+  const succeeded = results.filter((r) => r.ok).length;
+  return ok({
+    ok: succeeded === results.length,
+    total: results.length,
+    succeeded,
+    failed: results.length - succeeded,
+    results,
+  });
+}
+
+export function batchCommentTickets(
+  ctx: TicketContext,
+  input: BatchCommentTicketsInput,
+): TicketServiceResult<BatchResult> {
+  const ticketIds = normalizeBatchTicketIds(input.ticketIds);
+  if (ticketIds.length === 0) {
+    return err("invalid_request", "At least one ticketId is required");
+  }
+
+  const results: BatchItemResult[] = [];
+  for (const ticketId of ticketIds) {
+    const comment = commentTicketRecord(ctx, {
+      ...copyTicketActorInput(input),
+      ticketId,
+      content: input.content,
+    });
+    if (comment.ok) {
+      results.push({ ticketId, ok: true });
+    } else {
+      results.push({ ticketId, ok: false, error: comment.message });
+    }
+  }
+
+  const succeeded = results.filter((r) => r.ok).length;
+  return ok({
+    ok: succeeded === results.length,
+    total: results.length,
+    succeeded,
+    failed: results.length - succeeded,
+    results,
+  });
+}
+
 // --- Ticket Dependencies ---
 
-interface LinkTicketsInput {
+interface LinkTicketsFields {
   fromTicketId: string; // TKT-... (the blocker)
   toTicketId: string;   // TKT-... (the blocked)
   relationType: "blocks" | "relates_to";
-  agentId: string;
-  sessionId: string;
 }
 
+type LinkTicketsInput = LinkTicketsFields & TicketActorInput;
+
 export function linkTicketsRecord(
-  ctx: TicketServiceContext,
+  ctx: TicketContext,
   input: LinkTicketsInput,
 ): TicketServiceResult<Record<string, unknown>> {
-  const resolved = resolveTicketActor(ctx.db, input.agentId, input.sessionId);
-  if (!resolved) return err("invalid_actor", "Agent or session not found / inactive");
-
-  const access = checkToolAccess("link_tickets", resolved.role, resolved.trustTier);
-  if (!access.allowed) return err("denied", access.reason, { denied: true });
+  const auth = authorizeTicketActor(ctx, input, "link_tickets");
+  if (!auth.ok) return auth;
+  const resolved = auth.data;
 
   const fromTicket = queries.getTicketByTicketId(ctx.db, input.fromTicketId);
   if (!fromTicket) return err("not_found", `Ticket not found: ${input.fromTicketId}`);
@@ -359,7 +477,7 @@ export function linkTicketsRecord(
     fromTicketId: fromTicket.id,
     toTicketId: toTicket.id,
     relationType: input.relationType,
-    createdByAgentId: input.agentId,
+    createdByAgentId: resolved.agentId,
     createdAt: now,
   });
 
@@ -376,22 +494,19 @@ export function linkTicketsRecord(
   });
 }
 
-interface UnlinkTicketsInput {
+interface UnlinkTicketsFields {
   fromTicketId: string;
   toTicketId: string;
-  agentId: string;
-  sessionId: string;
 }
 
+type UnlinkTicketsInput = UnlinkTicketsFields & TicketActorInput;
+
 export function unlinkTicketsRecord(
-  ctx: TicketServiceContext,
+  ctx: TicketContext,
   input: UnlinkTicketsInput,
 ): TicketServiceResult<Record<string, unknown>> {
-  const resolved = resolveTicketActor(ctx.db, input.agentId, input.sessionId);
-  if (!resolved) return err("invalid_actor", "Agent or session not found / inactive");
-
-  const access = checkToolAccess("unlink_tickets", resolved.role, resolved.trustTier);
-  if (!access.allowed) return err("denied", access.reason, { denied: true });
+  const auth = authorizeTicketActor(ctx, input, "unlink_tickets");
+  if (!auth.ok) return auth;
 
   const fromTicket = queries.getTicketByTicketId(ctx.db, input.fromTicketId);
   if (!fromTicket) return err("not_found", `Ticket not found: ${input.fromTicketId}`);
@@ -440,7 +555,40 @@ function wouldCreateCycle(
   return false;
 }
 
-function resolveTicketActor(db: DB, agentId: string, sessionId: string): ResolvedTicketActor | null {
+function isSystemContext(ctx: TicketContext): ctx is TicketSystemContext {
+  return "system" in ctx && ctx.system === true;
+}
+
+function authorizeTicketActor(
+  ctx: TicketContext,
+  input: TicketActorInput,
+  tool: TicketToolName,
+): TicketServiceResult<ResolvedTicketActor> {
+  const resolved = isSystemContext(ctx)
+    ? resolveSystemTicketActor(ctx, input)
+    : resolveRegisteredTicketActor(
+        ctx.db,
+        "agentId" in input ? input.agentId : undefined,
+        "sessionId" in input ? input.sessionId : undefined,
+      );
+
+  if (!resolved) {
+    return err("invalid_actor", "Agent or session not found / inactive");
+  }
+
+  const access = checkToolAccess(tool, resolved.role, resolved.trustTier);
+  if (!access.allowed) return err("denied", access.reason, { denied: true });
+
+  return ok(resolved);
+}
+
+function resolveRegisteredTicketActor(
+  db: DB,
+  agentId?: string,
+  sessionId?: string,
+): ResolvedTicketActor | null {
+  if (!agentId || !sessionId) return null;
+
   const agent = queries.getAgent(db, agentId);
   if (!agent) return null;
 
@@ -457,12 +605,41 @@ function resolveTicketActor(db: DB, agentId: string, sessionId: string): Resolve
   };
 }
 
+function resolveSystemTicketActor(
+  ctx: TicketSystemContext,
+  input: TicketActorInput,
+): ResolvedTicketActor {
+  const rawLabel = ("actorLabel" in input ? input.actorLabel : undefined) ?? ctx.actorLabel ?? "service";
+  const label = normalizeSystemActorLabel(rawLabel);
+  return {
+    agentId: `system:${label}`,
+    sessionId: "system",
+    role: "admin",
+    trustTier: "A",
+  };
+}
+
+function normalizeSystemActorLabel(label: string): string {
+  const normalized = label.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || "service";
+}
+
+function copyTicketActorInput(input: TicketActorInput): TicketActorInput {
+  return "agentId" in input
+    ? { agentId: input.agentId, sessionId: input.sessionId }
+    : { actorLabel: input.actorLabel };
+}
+
+function normalizeBatchTicketIds(ticketIds: string[]): string[] {
+  return [...new Set(ticketIds.map((ticketId) => ticketId.trim()).filter(Boolean))];
+}
+
 function ok<T>(data: T): TicketServiceSuccess<T> {
   return { ok: true, data };
 }
 
 function broadcastTicketRealtime(
-  ctx: TicketServiceContext,
+  ctx: TicketContext,
   agentId: string,
   eventType: "ticket_created" | "ticket_assigned" | "ticket_status_changed" | "ticket_commented" | "ticket_linked",
   data: Record<string, unknown>,
@@ -479,7 +656,7 @@ function broadcastTicketRealtime(
   });
 }
 
-function refreshTicketSearch(ctx: TicketServiceContext): void {
+function refreshTicketSearch(ctx: TicketContext): void {
   try {
     ctx.refreshTicketSearch?.();
   } catch (error) {
