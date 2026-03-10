@@ -1350,7 +1350,7 @@ async function runSearchDebug(){
 }
 
 /* ── Dependency Graph ────────────────────────── */
-var depGraphState={scope:'',nodes:[],edges:[],cycleCount:0,loaded:false};
+var depGraphState={scope:'',nodes:[],edges:[],cycleCount:0,loaded:false,catalogPaths:[]};
 
 var LANG_COLORS_MAP={typescript:'#3178c6',javascript:'#f7df1e',python:'#3776ab',go:'#00add8',rust:'#dea584',java:'#b07219',ruby:'#cc342d',php:'#4f5d95'};
 
@@ -1362,36 +1362,64 @@ function langColor(lang){
 
 function renderDepGraphSection(){
   var el=document.getElementById('dependencies');
-  if(!depGraphState.loaded){
-    el.textContent='Loading dependency graph\u2026';
-    return;
-  }
-  if(!depGraphState.nodes.length){
-    el.textContent='No indexed files with imports found'+(depGraphState.scope?' in scope "'+depGraphState.scope+'"':'')+'.';
-    return;
-  }
-
-  var info=String(depGraphState.nodes.length)+' files, '+String(depGraphState.edges.length)+' imports';
-  if(depGraphState.cycleCount>0) info+=', '+String(depGraphState.cycleCount)+' in cycles';
-
-  // Build DOM
   while(el.firstChild) el.removeChild(el.firstChild);
 
   // Toolbar
   var toolbar=document.createElement('div');toolbar.className='dep-graph-toolbar';
   var scopeInput=document.createElement('input');scopeInput.id='dep-scope';scopeInput.type='text';scopeInput.placeholder='Scope prefix (e.g. src/)';scopeInput.value=depGraphState.scope;
+  var fileSelect=document.createElement('select');fileSelect.id='dep-file-select';
+  var placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose indexed file…';
+  fileSelect.appendChild(placeholder);
+  depGraphState.catalogPaths.forEach(function(path){
+    var option=document.createElement('option');
+    option.value=path;
+    option.textContent=path;
+    if(depGraphState.scope===path) option.selected=true;
+    fileSelect.appendChild(option);
+  });
   var loadBtn=document.createElement('button');loadBtn.className='action-submit';loadBtn.textContent='Load Graph';
-  var infoSpan=document.createElement('div');infoSpan.className='dep-graph-info';infoSpan.textContent=info;
-  toolbar.appendChild(scopeInput);toolbar.appendChild(loadBtn);toolbar.appendChild(infoSpan);
+  var showAllBtn=document.createElement('button');showAllBtn.className='action-submit';showAllBtn.textContent='Show All';showAllBtn.type='button';
+  var infoSpan=document.createElement('div');infoSpan.className='dep-graph-info';
+  toolbar.appendChild(scopeInput);toolbar.appendChild(fileSelect);toolbar.appendChild(loadBtn);toolbar.appendChild(showAllBtn);toolbar.appendChild(infoSpan);
   el.appendChild(toolbar);
 
   loadBtn.addEventListener('click',function(){
     depGraphState.scope=(scopeInput.value||'').trim();
     loadDepGraph();
   });
+  fileSelect.addEventListener('change',function(){
+    if(!this.value) return;
+    scopeInput.value=this.value;
+    depGraphState.scope=this.value;
+    loadDepGraph();
+  });
+  showAllBtn.addEventListener('click',function(){
+    scopeInput.value='';
+    fileSelect.value='';
+    depGraphState.scope='';
+    loadDepGraph();
+  });
   scopeInput.addEventListener('keydown',function(e){
     if(e.key==='Enter'){depGraphState.scope=this.value.trim();loadDepGraph();}
   });
+
+  if(!depGraphState.loaded){
+    infoSpan.textContent='Loading\u2026';
+    var loading=document.createElement('div');loading.className='dep-graph-empty';loading.textContent='Loading dependency graph\u2026';
+    el.appendChild(loading);
+    return;
+  }
+  if(!depGraphState.nodes.length){
+    infoSpan.textContent='0 files';
+    var empty=document.createElement('div');empty.className='dep-graph-empty';
+    empty.textContent='No indexed files with imports found'+(depGraphState.scope?' in scope "'+depGraphState.scope+'"':'')+'. Choose an indexed file from the list above or click Show All.';
+    el.appendChild(empty);
+    return;
+  }
+
+  var info=String(depGraphState.nodes.length)+' files, '+String(depGraphState.edges.length)+' imports';
+  if(depGraphState.cycleCount>0) info+=', '+String(depGraphState.cycleCount)+' in cycles';
+  infoSpan.textContent=info;
 
   // Canvas wrap
   var wrap=document.createElement('div');wrap.className='dep-graph-wrap';
@@ -1624,6 +1652,9 @@ async function loadDepGraph(){
     depGraphState.nodes=data.nodes||[];
     depGraphState.edges=data.edges||[];
     depGraphState.cycleCount=data.cycleCount||0;
+    if(!depGraphState.scope || !depGraphState.catalogPaths.length){
+      depGraphState.catalogPaths=(data.nodes||[]).map(function(node){return node.path}).sort();
+    }
     depGraphState.loaded=true;
   }catch(e){
     depGraphState.nodes=[];depGraphState.edges=[];depGraphState.cycleCount=0;

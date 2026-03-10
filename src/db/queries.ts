@@ -1,5 +1,6 @@
 import { eq, and, like, desc, or, sql, notInArray } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { posix as pathPosix } from "node:path";
 import type * as schema from "./schema.js";
 import * as tables from "./schema.js";
 
@@ -84,41 +85,143 @@ export function getFilesImporting(db: DB, targetPath: string) {
     .all();
 }
 
-export function getImportGraph(db: DB, repoId: number, scope?: string) {
-  let fileFilter = eq(tables.files.repoId, repoId);
-  if (scope) {
-    fileFilter = and(fileFilter, like(tables.files.path, `${scope}%`))!;
-  }
+type ImportGraphNode = {
+  id: number;
+  path: string;
+  language: string | null;
+};
 
-  const files = db.select({
+type ImportGraphEdge = {
+  source: number;
+  target: number;
+  kind: string;
+};
+
+const RESOLVABLE_IMPORT_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".rs"] as const;
+
+export function getImportGraph(
+  db: DB,
+  repoId: number,
+  opts?: { scope?: string; focusFilePath?: string },
+) {
+  const allFiles = db.select({
     id: tables.files.id,
     path: tables.files.path,
     language: tables.files.language,
-  }).from(tables.files).where(fileFilter).all();
+  }).from(tables.files).where(eq(tables.files.repoId, repoId)).all();
 
-  if (files.length === 0) return { files, edges: [] as Array<{ source: number; target: number; kind: string }> };
-
-  const pathToId = new Map(files.map((f) => [f.path, f.id]));
-
-  // Join imports with scoped files to filter at the SQL level
-  const scopedImports = db.select({
+  const pathToNode = new Map(allFiles.map((file) => [file.path, file] as const));
+  const allPaths = new Set(pathToNode.keys());
+  const allImports = db.select({
     sourceFileId: tables.imports.sourceFileId,
     targetPath: tables.imports.targetPath,
     kind: tables.imports.kind,
+    sourcePath: tables.files.path,
   }).from(tables.imports)
     .innerJoin(tables.files, eq(tables.imports.sourceFileId, tables.files.id))
-    .where(fileFilter)
+    .where(eq(tables.files.repoId, repoId))
     .all();
 
-  const edges: Array<{ source: number; target: number; kind: string }> = [];
-  for (const imp of scopedImports) {
-    const targetId = pathToId.get(imp.targetPath);
-    if (targetId !== undefined) {
-      edges.push({ source: imp.sourceFileId, target: targetId, kind: imp.kind });
+  if (allFiles.length === 0) {
+    return { files: [] as ImportGraphNode[], edges: [] as ImportGraphEdge[] };
+  }
+
+  const focusPath = opts?.focusFilePath?.trim();
+  if (focusPath && pathToNode.has(focusPath)) {
+    const nodePaths = new Set<string>([focusPath]);
+
+    for (const imp of allImports) {
+      if (imp.sourcePath === focusPath) {
+        const resolved = resolveIndexedImportTarget(imp.sourcePath, imp.targetPath, allPaths);
+        if (resolved) nodePaths.add(resolved);
+      }
+    }
+
+    for (const imp of allImports) {
+      const resolved = resolveIndexedImportTarget(imp.sourcePath, imp.targetPath, allPaths);
+      if (resolved === focusPath) nodePaths.add(imp.sourcePath);
+    }
+
+    return buildImportGraphSubset(allImports, pathToNode, allPaths, nodePaths);
+  }
+
+  const scope = opts?.scope?.trim();
+  const scopedPaths = scope
+    ? new Set(allFiles.filter((file) => file.path.startsWith(scope)).map((file) => file.path))
+    : new Set(allPaths);
+
+  return buildImportGraphSubset(allImports, pathToNode, allPaths, scopedPaths);
+}
+
+function buildImportGraphSubset(
+  allImports: Array<{ sourceFileId: number; targetPath: string; kind: string; sourcePath: string }>,
+  pathToNode: Map<string, ImportGraphNode>,
+  allPaths: Set<string>,
+  allowedPaths: Set<string>,
+) {
+  const files = Array.from(allowedPaths)
+    .map((path) => pathToNode.get(path))
+    .filter((file): file is ImportGraphNode => Boolean(file))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  const pathToId = new Map(files.map((file) => [file.path, file.id] as const));
+  const edges: ImportGraphEdge[] = [];
+
+  for (const imp of allImports) {
+    if (!allowedPaths.has(imp.sourcePath)) continue;
+    const resolvedTarget = resolveIndexedImportTarget(imp.sourcePath, imp.targetPath, allPaths);
+    if (!resolvedTarget || !allowedPaths.has(resolvedTarget)) continue;
+    const sourceId = pathToId.get(imp.sourcePath);
+    const targetId = pathToId.get(resolvedTarget);
+    if (sourceId !== undefined && targetId !== undefined) {
+      edges.push({ source: sourceId, target: targetId, kind: imp.kind });
     }
   }
 
   return { files, edges };
+}
+
+function resolveIndexedImportTarget(
+  sourcePath: string,
+  importPath: string,
+  indexedPaths: Set<string>,
+): string | null {
+  if (!importPath) return null;
+  if (indexedPaths.has(importPath)) return importPath;
+
+  const candidates = new Set<string>();
+  const addCandidates = (basePath: string) => {
+    const normalized = pathPosix.normalize(basePath).replace(/^\.\/+/, "");
+    if (!normalized || normalized === ".") return;
+    candidates.add(normalized);
+
+    const ext = pathPosix.extname(normalized);
+    const withoutExt = ext ? normalized.slice(0, -ext.length) : normalized;
+    if (ext) {
+      for (const candidateExt of RESOLVABLE_IMPORT_EXTENSIONS) {
+        candidates.add(`${withoutExt}${candidateExt}`);
+        candidates.add(pathPosix.join(withoutExt, `index${candidateExt}`));
+      }
+    } else {
+      for (const candidateExt of RESOLVABLE_IMPORT_EXTENSIONS) {
+        candidates.add(`${normalized}${candidateExt}`);
+        candidates.add(pathPosix.join(normalized, `index${candidateExt}`));
+      }
+    }
+  };
+
+  if (importPath.startsWith(".")) {
+    addCandidates(pathPosix.join(pathPosix.dirname(sourcePath), importPath));
+  } else if (importPath.startsWith("/")) {
+    addCandidates(importPath.slice(1));
+  } else {
+    addCandidates(importPath);
+  }
+
+  for (const candidate of candidates) {
+    if (indexedPaths.has(candidate)) return candidate;
+  }
+
+  return null;
 }
 
 // --- Index State ---

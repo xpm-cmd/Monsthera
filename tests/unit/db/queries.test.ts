@@ -10,6 +10,8 @@ function createTestDb() {
   sqlite.pragma("foreign_keys = ON");
   sqlite.exec(`
     CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), path TEXT NOT NULL, language TEXT, content_hash TEXT, summary TEXT, symbols_json TEXT, has_secrets INTEGER DEFAULT 0, secret_line_ranges TEXT, indexed_at TEXT, commit_sha TEXT, embedding BLOB);
+    CREATE TABLE imports (id INTEGER PRIMARY KEY AUTOINCREMENT, source_file_id INTEGER NOT NULL REFERENCES files(id), target_path TEXT NOT NULL, kind TEXT NOT NULL);
     CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL);
     CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT);
     CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), type TEXT NOT NULL, key TEXT NOT NULL UNIQUE, content TEXT NOT NULL, metadata_json TEXT, linked_paths_json TEXT, agent_id TEXT, session_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -83,5 +85,33 @@ describe("queries", () => {
     queries.insertEventLog(db, { eventId: "e1", agentId: "a1", sessionId: "s1", tool: "get_code_pack", timestamp: now, durationMs: 150, status: "success", repoId: "r1", commitScope: "abc", payloadSizeIn: 100, payloadSizeOut: 2000, inputHash: "hi", outputHash: "ho", redactedSummary: "ok", errorCode: null, errorDetail: null });
     expect(queries.getEventLogs(db, 10).length).toBe(1);
     expect(queries.getEventLogsByAgent(db, "a1").length).toBe(1);
+  });
+
+  it("builds import graphs with resolved internal edges and focused neighborhoods", () => {
+    const { id: repoId } = queries.upsertRepo(db, "/r", "r");
+    const now = new Date().toISOString();
+    const insertFile = sqlite.prepare(`
+      INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertFile.run(repoId, "src/a.ts", "typescript", "h1", "summary", "[]", now, "abc");
+    insertFile.run(repoId, "src/b.ts", "typescript", "h2", "summary", "[]", now, "abc");
+    insertFile.run(repoId, "src/c.ts", "typescript", "h3", "summary", "[]", now, "abc");
+
+    const aId = queries.getFileByPath(db, repoId, "src/a.ts")!.id;
+    const cId = queries.getFileByPath(db, repoId, "src/c.ts")!.id;
+    sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`).run(aId, "./b.js", "import");
+    sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`).run(cId, "./a.js", "import");
+
+    const full = queries.getImportGraph(db, repoId, { scope: "src/" });
+    expect(full.files).toHaveLength(3);
+    expect(full.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: aId, target: queries.getFileByPath(db, repoId, "src/b.ts")!.id }),
+      expect.objectContaining({ source: cId, target: aId }),
+    ]));
+
+    const focused = queries.getImportGraph(db, repoId, { focusFilePath: "src/a.ts" });
+    expect(focused.files.map((file) => file.path)).toEqual(["src/a.ts", "src/b.ts", "src/c.ts"]);
+    expect(focused.edges).toHaveLength(2);
   });
 });

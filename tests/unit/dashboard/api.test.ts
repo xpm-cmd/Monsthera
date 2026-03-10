@@ -340,14 +340,14 @@ describe("Dashboard API", () => {
     expect(getTicketDetail(deps, "TKT-missing")).toBeNull();
   });
 
-  it("returns dependency graph with nodes and edges", () => {
+  it("returns dependency graph with resolved internal edges", () => {
     const now = new Date().toISOString();
     sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(1, "src/index.ts", "typescript", "h1", "entry", "[]", now, "abc");
     sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(1, "src/utils.ts", "typescript", "h2", "utils", "[]", now, "abc");
     sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`)
-      .run(1, "src/utils.ts", "import");
+      .run(1, "./utils.js", "import");
 
     const result = getDependencyGraph(deps);
     expect(result.nodes).toHaveLength(2);
@@ -382,5 +382,23 @@ describe("Dashboard API", () => {
     const scoped = getDependencyGraph(deps, "src/");
     expect(scoped.nodes).toHaveLength(1);
     expect(scoped.nodes[0]?.path).toBe("src/app.ts");
+  });
+
+  it("expands a focused file into its direct dependency neighborhood", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/a.ts", "typescript", "h1", "a", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/b.ts", "typescript", "h2", "b", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/c.ts", "typescript", "h3", "c", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`)
+      .run(1, "./b.js", "import");
+    sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`)
+      .run(3, "./a.js", "import");
+
+    const focused = getDependencyGraph(deps, "src/a.ts");
+    expect(focused.nodes.map((node) => node.path)).toEqual(["src/a.ts", "src/b.ts", "src/c.ts"]);
+    expect(focused.edges).toHaveLength(2);
   });
 });

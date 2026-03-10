@@ -464,7 +464,11 @@ export function getKnowledgeList(deps: DashboardDeps) {
 }
 
 export function getDependencyGraph(deps: DashboardDeps, scope?: string) {
-  const { files, edges } = queries.getImportGraph(deps.db, deps.repoId, scope);
+  const focusFilePath = scope ? queries.getFileByPath(deps.db, deps.repoId, scope)?.path : undefined;
+  const { files, edges } = queries.getImportGraph(deps.db, deps.repoId, {
+    scope: focusFilePath ? undefined : scope,
+    focusFilePath,
+  });
 
   // Detect cycles via DFS
   const adj = new Map<number, number[]>();
