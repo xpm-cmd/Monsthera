@@ -138,6 +138,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           name: "string (1-100 chars)",
           type: "string (default unknown)",
           desiredRole: "enum: developer|reviewer|observer|admin (default observer)",
+          authToken: "string (optional, required when registrationAuth is enabled for the requested role)",
         },
         agent_status: { agentId: "string (optional, omit for all)" },
         broadcast: {

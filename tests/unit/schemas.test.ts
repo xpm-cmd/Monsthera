@@ -142,7 +142,7 @@ describe("Patch schema", () => {
 
 describe("Agent schema", () => {
   it("validates RegisterAgentInput", () => {
-    const valid = { name: "claude-code-1", type: "claude-code", desiredRole: "developer" };
+    const valid = { name: "claude-code-1", type: "claude-code", desiredRole: "developer", authToken: "dev-secret" };
     expect(RegisterAgentInput.safeParse(valid).success).toBe(true);
   });
 
@@ -154,6 +154,11 @@ describe("Agent schema", () => {
 
   it("rejects invalid role", () => {
     const invalid = { name: "test", desiredRole: "superadmin" };
+    expect(RegisterAgentInput.safeParse(invalid).success).toBe(false);
+  });
+
+  it("rejects empty authToken", () => {
+    const invalid = { name: "test", desiredRole: "developer", authToken: "" };
     expect(RegisterAgentInput.safeParse(invalid).success).toBe(false);
   });
 

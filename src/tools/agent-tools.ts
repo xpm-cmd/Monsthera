@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
-import { registerAgent, getAgentStatus, touchSession, reapStaleSessions, disconnectSession } from "../agents/registry.js";
+import { AgentRegistrationError, registerAgent, getAgentStatus, touchSession, reapStaleSessions, disconnectSession } from "../agents/registry.js";
 import * as queries from "../db/queries.js";
 
 type GetContext = () => Promise<AgoraContext>;
@@ -15,24 +15,40 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
       name: z.string().min(1).max(100).describe("Agent display name"),
       type: z.string().max(50).default("unknown").describe("Agent type (e.g. claude-code)"),
       desiredRole: z.enum(["developer", "reviewer", "observer", "admin"]).default("observer").describe("Requested role"),
+      authToken: z.string().min(1).max(200).optional().describe("Optional registration token for privileged roles"),
     },
-    async ({ name, type, desiredRole }) => {
+    async ({ name, type, desiredRole, authToken }) => {
       const c = await getContext();
-      const result = registerAgent(c.db, { name, type, desiredRole });
-      c.insight.info(`Agent registered: ${name} (${result.agentId}) as ${result.role}`);
+      try {
+        const result = registerAgent(
+          c.db,
+          { name, type, desiredRole, authToken },
+          { registrationAuth: c.config.registrationAuth },
+        );
+        c.insight.info(`Agent registered: ${name} (${result.agentId}) as ${result.role}`);
 
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify({
-            agentId: result.agentId,
-            sessionId: result.sessionId,
-            role: result.role,
-            trustTier: result.trustTier,
-            message: `Registered as ${result.role} with trust tier ${result.trustTier}`,
-          }, null, 2),
-        }],
-      };
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              agentId: result.agentId,
+              sessionId: result.sessionId,
+              role: result.role,
+              trustTier: result.trustTier,
+              message: `Registered as ${result.role} with trust tier ${result.trustTier}`,
+            }, null, 2),
+          }],
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (error instanceof AgentRegistrationError) {
+          c.insight.warn(`Agent registration denied for ${name}: ${message}`);
+        }
+        return {
+          content: [{ type: "text" as const, text: message }],
+          isError: true,
+        };
+      }
     },
   );
 

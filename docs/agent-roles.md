@@ -24,9 +24,40 @@ Custom roles can be defined via the dashboard or `agora` CLI. Each role specifie
 
 ## Registration
 
-Agents self-register on first connection via `register_agent(name, type?, desired_role?)`.
-The system assigns the role based on configuration or defaults to `observer`.
-Pre-registered agents (via config or dashboard) get their assigned role automatically.
+Agents self-register on first connection via `register_agent(name, type?, desiredRole?, authToken?)`.
+
+By default, registration is open and the requested built-in role is granted as before.
+To harden role assignment, configure `.agora/config.json`:
+
+```json
+{
+  "registrationAuth": {
+    "enabled": true,
+    "observerOpenRegistration": true,
+    "roleTokens": {
+      "developer": "dev-secret",
+      "reviewer": "review-secret",
+      "admin": "admin-secret"
+    }
+  }
+}
+```
+
+Behavior when `registrationAuth.enabled` is `true`:
+
+- `observer` remains open if `observerOpenRegistration` is `true`
+- `developer`, `reviewer`, and `admin` require a matching `authToken`
+- roles without a configured token are not available for self-registration
+- failed registration returns an error instead of silently granting a weaker role
+
+The same settings can also be supplied via environment variables:
+
+- `AGORA_REGISTRATION_AUTH=true|false`
+- `AGORA_OBSERVER_OPEN_REGISTRATION=true|false`
+- `AGORA_ROLE_TOKEN_DEVELOPER=...`
+- `AGORA_ROLE_TOKEN_REVIEWER=...`
+- `AGORA_ROLE_TOKEN_OBSERVER=...`
+- `AGORA_ROLE_TOKEN_ADMIN=...`
 
 ## Session Lifecycle
 

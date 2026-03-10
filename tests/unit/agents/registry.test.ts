@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
-import { registerAgent, getAgentStatus, disconnectSession } from "../../../src/agents/registry.js";
+import { AgentRegistrationError, registerAgent, getAgentStatus, disconnectSession } from "../../../src/agents/registry.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -39,6 +39,68 @@ describe("Agent Registry", () => {
 
   it("assigns Tier B to observers", () => {
     const result = registerAgent(db, { name: "Obs", type: "unknown", desiredRole: "observer" });
+    expect(result.trustTier).toBe("B");
+  });
+
+  it("requires a matching auth token for privileged roles when registrationAuth is enabled", () => {
+    expect(() => registerAgent(
+      db,
+      { name: "Dev", type: "test", desiredRole: "developer" },
+      {
+        registrationAuth: {
+          enabled: true,
+          observerOpenRegistration: true,
+          roleTokens: { developer: "dev-secret" },
+        },
+      },
+    )).toThrowError(AgentRegistrationError);
+  });
+
+  it("allows privileged registration with a valid role token", () => {
+    const result = registerAgent(
+      db,
+      { name: "Dev", type: "test", desiredRole: "developer", authToken: "dev-secret" },
+      {
+        registrationAuth: {
+          enabled: true,
+          observerOpenRegistration: true,
+          roleTokens: { developer: "dev-secret" },
+        },
+      },
+    );
+
+    expect(result.role).toBe("developer");
+    expect(result.trustTier).toBe("A");
+  });
+
+  it("blocks observer registration when open registration is disabled", () => {
+    expect(() => registerAgent(
+      db,
+      { name: "Obs", type: "test", desiredRole: "observer" },
+      {
+        registrationAuth: {
+          enabled: true,
+          observerOpenRegistration: false,
+          roleTokens: {},
+        },
+      },
+    )).toThrowError("Observer registration is closed");
+  });
+
+  it("allows observer registration with observer token when open registration is disabled", () => {
+    const result = registerAgent(
+      db,
+      { name: "Obs", type: "test", desiredRole: "observer", authToken: "observer-secret" },
+      {
+        registrationAuth: {
+          enabled: true,
+          observerOpenRegistration: false,
+          roleTokens: { observer: "observer-secret" },
+        },
+      },
+    );
+
+    expect(result.role).toBe("observer");
     expect(result.trustTier).toBe("B");
   });
 

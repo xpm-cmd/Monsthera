@@ -152,5 +152,6 @@ export const RegisterAgentInput = z.object({
   name: z.string().min(1).max(100),
   type: z.string().max(50).default("unknown"),
   desiredRole: RoleId.default("observer"),
+  authToken: z.string().min(1).max(200).optional(),
 });
 export type RegisterAgentInput = z.infer<typeof RegisterAgentInput>;

@@ -1,6 +1,6 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createAgoraServer } from "./server.js";
-import { resolveConfig } from "./core/config.js";
+import { loadConfigFile, mergeConfigSources, resolveConfig, type AgoraConfig } from "./core/config.js";
 import { VERSION } from "./core/constants.js";
 import { initDatabase, initGlobalDatabase } from "./db/init.js";
 import { InsightStream } from "./core/insight-stream.js";
@@ -8,7 +8,7 @@ import { fullIndex, getIndexedCommit } from "./indexing/indexer.js";
 import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
 import * as queries from "./db/queries.js";
 import { basename, join } from "node:path";
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -16,29 +16,9 @@ async function main() {
 
   // Precedence: CLI flags > env vars > config file > Zod defaults
   const repoPath = getArg(args, "--repo-path") ?? process.env.AGORA_REPO_PATH ?? process.cwd();
-  const verbosity = (getArg(args, "--verbosity") ?? process.env.AGORA_VERBOSITY ?? "normal") as "quiet" | "normal" | "verbose";
-  const debugLogging = args.includes("--debug-logging") || process.env.AGORA_DEBUG_LOGGING === "true";
-  const transport = (getArg(args, "--transport") ?? process.env.AGORA_TRANSPORT ?? "stdio") as "stdio" | "http";
-  const httpPort = parseInt(getArg(args, "--http-port") ?? process.env.AGORA_HTTP_PORT ?? "3000", 10);
-  const noDashboard = args.includes("--no-dashboard") || process.env.AGORA_NO_DASHBOARD === "true";
-  const dashboardPort = parseInt(getArg(args, "--dashboard-port") ?? process.env.AGORA_DASHBOARD_PORT ?? "3141", 10);
-  // Semantic search: CLI flags > env vars > config file > Zod default (false)
-  let fileConfigSemantic: boolean | undefined;
-  try {
-    const cfgPath = join(repoPath, ".agora", "config.json");
-    if (existsSync(cfgPath)) {
-      const parsed = JSON.parse(readFileSync(cfgPath, "utf-8"));
-      if (typeof parsed.semanticEnabled === "boolean") {
-        fileConfigSemantic = parsed.semanticEnabled;
-      }
-    }
-  } catch { /* non-fatal: config file may not exist or be invalid */ }
-
-  const semanticEnabled = args.includes("--no-semantic") ? false
-    : args.includes("--semantic") ? true
-    : process.env.AGORA_SEMANTIC === "true" ? true
-    : process.env.AGORA_SEMANTIC === "false" ? false
-    : fileConfigSemantic;
+  const fileConfig = loadConfigFile(repoPath);
+  const envConfig = buildEnvConfig();
+  const cliConfig = buildCliConfig(args);
 
   if (args.includes("--version") || args.includes("-v")) {
     console.error(`agora v${VERSION}`);
@@ -50,7 +30,10 @@ async function main() {
     process.exit(0);
   }
 
-  const config = resolveConfig({ repoPath, verbosity, debugLogging, transport, httpPort, noDashboard, dashboardPort, semanticEnabled });
+  const config = resolveConfig({
+    ...mergeConfigSources(fileConfig, envConfig, cliConfig),
+    repoPath,
+  });
   const insight = new InsightStream(config.verbosity);
 
   switch (command) {
@@ -221,6 +204,11 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
       semanticEnabled: true,
       coordinationTopology: "hub-spoke",
       sensitiveFilePatterns: [".env", ".env.*", "*.key", "*.pem", "credentials.*", "secrets.*"],
+      registrationAuth: {
+        enabled: false,
+        observerOpenRegistration: true,
+        roleTokens: {},
+      },
     }, null, 2) + "\n");
     insight.info(`Created ${configPath}`);
   }
@@ -407,12 +395,124 @@ function printHelp() {
   console.error("  AGORA_SEMANTIC        true | false");
   console.error("  AGORA_DEBUG_LOGGING   true | false");
   console.error("  AGORA_NO_DASHBOARD    true | false");
+  console.error("  AGORA_REGISTRATION_AUTH        true | false");
+  console.error("  AGORA_OBSERVER_OPEN_REGISTRATION true | false");
+  console.error("  AGORA_ROLE_TOKEN_DEVELOPER     Registration token for developer");
+  console.error("  AGORA_ROLE_TOKEN_REVIEWER      Registration token for reviewer");
+  console.error("  AGORA_ROLE_TOKEN_OBSERVER      Registration token for observer");
+  console.error("  AGORA_ROLE_TOKEN_ADMIN         Registration token for admin");
 }
 
 function getArg(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
   if (idx === -1 || idx + 1 >= args.length) return undefined;
   return args[idx + 1];
+}
+
+function buildEnvConfig(): Partial<AgoraConfig> {
+  const envConfig: Partial<AgoraConfig> = {};
+
+  if (process.env.AGORA_VERBOSITY) {
+    envConfig.verbosity = process.env.AGORA_VERBOSITY as AgoraConfig["verbosity"];
+  }
+  if (process.env.AGORA_TRANSPORT) {
+    envConfig.transport = process.env.AGORA_TRANSPORT as AgoraConfig["transport"];
+  }
+  if (process.env.AGORA_HTTP_PORT) {
+    envConfig.httpPort = parseInt(process.env.AGORA_HTTP_PORT, 10);
+  }
+  if (process.env.AGORA_DASHBOARD_PORT) {
+    envConfig.dashboardPort = parseInt(process.env.AGORA_DASHBOARD_PORT, 10);
+  }
+
+  const debugLogging = parseBooleanEnv("AGORA_DEBUG_LOGGING");
+  if (debugLogging !== undefined) {
+    envConfig.debugLogging = debugLogging;
+  }
+
+  const noDashboard = parseBooleanEnv("AGORA_NO_DASHBOARD");
+  if (noDashboard !== undefined) {
+    envConfig.noDashboard = noDashboard;
+  }
+
+  const semanticEnabled = parseBooleanEnv("AGORA_SEMANTIC");
+  if (semanticEnabled !== undefined) {
+    envConfig.semanticEnabled = semanticEnabled;
+  }
+
+  const registrationAuthEnabled = parseBooleanEnv("AGORA_REGISTRATION_AUTH");
+  const observerOpenRegistration = parseBooleanEnv("AGORA_OBSERVER_OPEN_REGISTRATION");
+  const roleTokens = {
+    ...(process.env.AGORA_ROLE_TOKEN_DEVELOPER ? { developer: process.env.AGORA_ROLE_TOKEN_DEVELOPER } : {}),
+    ...(process.env.AGORA_ROLE_TOKEN_REVIEWER ? { reviewer: process.env.AGORA_ROLE_TOKEN_REVIEWER } : {}),
+    ...(process.env.AGORA_ROLE_TOKEN_OBSERVER ? { observer: process.env.AGORA_ROLE_TOKEN_OBSERVER } : {}),
+    ...(process.env.AGORA_ROLE_TOKEN_ADMIN ? { admin: process.env.AGORA_ROLE_TOKEN_ADMIN } : {}),
+  };
+  if (
+    registrationAuthEnabled !== undefined
+    || observerOpenRegistration !== undefined
+    || Object.keys(roleTokens).length > 0
+  ) {
+    const registrationAuth: Partial<AgoraConfig["registrationAuth"]> = {};
+    if (registrationAuthEnabled !== undefined) {
+      registrationAuth.enabled = registrationAuthEnabled;
+    }
+    if (observerOpenRegistration !== undefined) {
+      registrationAuth.observerOpenRegistration = observerOpenRegistration;
+    }
+    if (Object.keys(roleTokens).length > 0) {
+      registrationAuth.roleTokens = roleTokens;
+    }
+    envConfig.registrationAuth = registrationAuth as AgoraConfig["registrationAuth"];
+  }
+
+  return envConfig;
+}
+
+function buildCliConfig(args: string[]): Partial<AgoraConfig> {
+  const cliConfig: Partial<AgoraConfig> = {};
+
+  const verbosity = getArg(args, "--verbosity");
+  if (verbosity) {
+    cliConfig.verbosity = verbosity as AgoraConfig["verbosity"];
+  }
+
+  const transport = getArg(args, "--transport");
+  if (transport) {
+    cliConfig.transport = transport as AgoraConfig["transport"];
+  }
+
+  const httpPort = getArg(args, "--http-port");
+  if (httpPort) {
+    cliConfig.httpPort = parseInt(httpPort, 10);
+  }
+
+  const dashboardPort = getArg(args, "--dashboard-port");
+  if (dashboardPort) {
+    cliConfig.dashboardPort = parseInt(dashboardPort, 10);
+  }
+
+  if (args.includes("--debug-logging")) {
+    cliConfig.debugLogging = true;
+  }
+  if (args.includes("--no-dashboard")) {
+    cliConfig.noDashboard = true;
+  }
+  if (args.includes("--semantic")) {
+    cliConfig.semanticEnabled = true;
+  }
+  if (args.includes("--no-semantic")) {
+    cliConfig.semanticEnabled = false;
+  }
+
+  return cliConfig;
+}
+
+function parseBooleanEnv(name: string): boolean | undefined {
+  const value = process.env[name];
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
 }
 
 main().catch((err) => {

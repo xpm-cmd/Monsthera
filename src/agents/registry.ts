@@ -7,6 +7,7 @@ import * as queries from "../db/queries.js";
 import { BUILT_IN_ROLES, type RoleId } from "../../schemas/agent.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
+import type { RegistrationAuth } from "../core/config.js";
 
 export interface RegisterResult {
   agentId: string;
@@ -15,22 +16,26 @@ export interface RegisterResult {
   trustTier: TrustTier;
 }
 
+export class AgentRegistrationError extends Error {}
+
 export function registerAgent(
   db: BetterSQLite3Database<typeof schema>,
-  input: { name: string; type: string; desiredRole: RoleId },
+  input: { name: string; type: string; desiredRole: RoleId; authToken?: string },
+  opts?: { registrationAuth?: RegistrationAuth },
 ): RegisterResult {
   const now = new Date().toISOString();
   const agentId = `agent-${randomUUID().slice(0, 8)}`;
   const sessionId = `session-${randomUUID().slice(0, 8)}`;
 
-  const role = BUILT_IN_ROLES[input.desiredRole] ?? BUILT_IN_ROLES.observer;
+  const effectiveRoleId = resolveRegistrationRole(input.desiredRole, input.authToken, opts?.registrationAuth);
+  const role = BUILT_IN_ROLES[effectiveRoleId] ?? BUILT_IN_ROLES.observer;
   const trustTier = role.permissions.trustTier;
 
   queries.upsertAgent(db, {
     id: agentId,
     name: input.name,
     type: input.type,
-    roleId: input.desiredRole,
+    roleId: effectiveRoleId,
     trustTier,
     registeredAt: now,
   });
@@ -43,7 +48,39 @@ export function registerAgent(
     lastActivity: now,
   });
 
-  return { agentId, sessionId, role: input.desiredRole, trustTier };
+  return { agentId, sessionId, role: effectiveRoleId, trustTier };
+}
+
+function resolveRegistrationRole(
+  desiredRole: RoleId,
+  authToken: string | undefined,
+  registrationAuth: RegistrationAuth | undefined,
+): RoleId {
+  if (!registrationAuth?.enabled) {
+    return desiredRole;
+  }
+
+  const expectedToken = registrationAuth.roleTokens[desiredRole];
+
+  if (desiredRole === "observer") {
+    if (registrationAuth.observerOpenRegistration) {
+      return "observer";
+    }
+    if (expectedToken && authToken === expectedToken) {
+      return "observer";
+    }
+    throw new AgentRegistrationError("Observer registration is closed and requires a valid authToken");
+  }
+
+  if (!expectedToken) {
+    throw new AgentRegistrationError(`Role ${desiredRole} is not configured for self-registration`);
+  }
+
+  if (authToken !== expectedToken) {
+    throw new AgentRegistrationError(`Invalid authToken for role ${desiredRole}`);
+  }
+
+  return desiredRole;
 }
 
 export function getAgentStatus(

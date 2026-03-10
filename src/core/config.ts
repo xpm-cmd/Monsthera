@@ -1,5 +1,20 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "zod/v4";
 import { DEFAULT_AGORA_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_DB_NAME } from "./constants.js";
+
+export const RegistrationRoleTokensSchema = z.object({
+  developer: z.string().min(1).optional(),
+  reviewer: z.string().min(1).optional(),
+  observer: z.string().min(1).optional(),
+  admin: z.string().min(1).optional(),
+});
+
+export const RegistrationAuthSchema = z.object({
+  enabled: z.boolean().default(false),
+  observerOpenRegistration: z.boolean().default(true),
+  roleTokens: RegistrationRoleTokensSchema.default({}),
+});
 
 export const AgoraConfigSchema = z.object({
   repoPath: z.string(),
@@ -30,10 +45,56 @@ export const AgoraConfigSchema = z.object({
   httpPort: z.number().int().min(1024).max(65535).default(3000),
   noDashboard: z.boolean().default(false),
   semanticEnabled: z.boolean().default(false),
+  registrationAuth: RegistrationAuthSchema.default({
+    enabled: false,
+    observerOpenRegistration: true,
+    roleTokens: {},
+  }),
 });
 
 export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
+export type RegistrationAuth = z.infer<typeof RegistrationAuthSchema>;
 
 export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
   return AgoraConfigSchema.parse(partial);
+}
+
+export function loadConfigFile(repoPath: string, agoraDir = DEFAULT_AGORA_DIR): Partial<AgoraConfig> {
+  const configPath = join(repoPath, agoraDir, "config.json");
+  if (!existsSync(configPath)) {
+    return {};
+  }
+
+  const parsed = JSON.parse(readFileSync(configPath, "utf-8")) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid Agora config at ${configPath}: expected an object`);
+  }
+
+  return parsed as Partial<AgoraConfig>;
+}
+
+export function mergeConfigSources(
+  ...sources: Array<Partial<AgoraConfig> | undefined>
+): Partial<AgoraConfig> {
+  const merged: Partial<AgoraConfig> = {};
+
+  for (const source of sources) {
+    if (!source) continue;
+
+    const { registrationAuth, ...rest } = source;
+    Object.assign(merged, rest);
+
+    if (registrationAuth) {
+      merged.registrationAuth = {
+        ...(merged.registrationAuth ?? {}),
+        ...registrationAuth,
+        roleTokens: {
+          ...(merged.registrationAuth?.roleTokens ?? {}),
+          ...(registrationAuth.roleTokens ?? {}),
+        },
+      };
+    }
+  }
+
+  return merged;
 }

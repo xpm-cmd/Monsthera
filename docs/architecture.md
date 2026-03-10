@@ -137,8 +137,8 @@ sequenceDiagram
     participant D as 💾 Database
     participant B as 📡 Bus
 
-    A->>M: register_agent(name, role)
-    M->>T: Validate role → trust tier
+    A->>M: register_agent(name, role, authToken?)
+    M->>T: Apply registration policy → role + trust tier
     T->>D: INSERT agent + session
     D-->>A: agentId + sessionId + tier
 
