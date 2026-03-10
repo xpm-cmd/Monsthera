@@ -98,7 +98,7 @@ Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 
 ## Tools
 
-33 MCP tools organized by domain:
+34 MCP tools organized by domain:
 
 | Domain | Tools |
 |--------|-------|
@@ -109,6 +109,7 @@ Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 | **Notes** | `propose_note`, `list_notes` |
 | **Knowledge** | `store_knowledge`, `search_knowledge`, `query_knowledge`, `archive_knowledge`, `delete_knowledge` |
 | **Tickets** | `create_ticket`, `assign_ticket`, `update_ticket_status`, `update_ticket`, `list_tickets`, `search_tickets`, `get_ticket`, `comment_ticket`, `link_tickets`, `unlink_tickets` |
+| **Analysis** | `lookup_dependencies` |
 | **Index** | `request_reindex` |
 
 ## Architecture
@@ -118,7 +119,7 @@ agora serve
     |
     +---> MCP Server (stdio | HTTP)
     |        |
-    |        +---> 33 Tools ---> Trust Layer (Tier A/B + Roles)
+    |        +---> 34 Tools ---> Trust Layer (Tier A/B + Roles)
     |        |                      |
     |        |       Search --------+---> FTS5 + Semantic Hybrid + Scope Filter
     |        |       Evidence Bundles ---> Stage A (top 10) + Stage B (expand 5)
@@ -236,6 +237,7 @@ For security vulnerabilities, see [SECURITY.md](SECURITY.md).
 - [docs/search-pipeline.md](docs/search-pipeline.md) &mdash; indexing and retrieval details
 - [docs/agent-roles.md](docs/agent-roles.md) &mdash; roles, registration auth, and sessions
 - [docs/patch-lifecycle.md](docs/patch-lifecycle.md) &mdash; patch validation and lifecycle
+- [docs/ticket-workflow.md](docs/ticket-workflow.md) &mdash; ticket states, QA conventions, and dependencies
 
 ## License
 
