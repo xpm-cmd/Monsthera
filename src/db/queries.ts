@@ -389,6 +389,7 @@ export function getTicketsByRepo(
     assigneeAgentId?: string;
     severity?: string;
     creatorAgentId?: string;
+    tags?: string[];
     limit?: number;
   },
 ) {
@@ -399,13 +400,24 @@ export function getTicketsByRepo(
   if (opts?.severity) conditions.push(eq(tables.tickets.severity, opts.severity));
   if (opts?.creatorAgentId) conditions.push(eq(tables.tickets.creatorAgentId, opts.creatorAgentId));
 
-  return db
+  const query = db
     .select()
     .from(tables.tickets)
     .where(and(...conditions))
-    .orderBy(desc(tables.tickets.priority), desc(tables.tickets.updatedAt))
-    .limit(opts?.limit ?? 50)
-    .all();
+    .orderBy(desc(tables.tickets.priority), desc(tables.tickets.updatedAt));
+
+  const rows = (opts?.tags && opts.tags.length > 0) || opts?.limit === undefined
+    ? query.all()
+    : query.limit(opts.limit).all();
+
+  const filtered = opts?.tags && opts.tags.length > 0
+    ? rows.filter((ticket) => {
+      const ticketTags: string[] = ticket.tagsJson ? JSON.parse(ticket.tagsJson) : [];
+      return opts.tags!.every((tag) => ticketTags.includes(tag));
+    })
+    : rows;
+
+  return opts?.limit !== undefined ? filtered.slice(0, opts.limit) : filtered;
 }
 
 export function getTicketCountsByStatus(db: DB, repoId: number) {

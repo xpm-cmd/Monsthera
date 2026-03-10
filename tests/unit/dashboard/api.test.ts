@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
-import { getOverview, getAgentsList, type DashboardDeps } from "../../../src/dashboard/api.js";
+import { getOverview, getAgentsList, getTicketsList, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -82,5 +82,21 @@ describe("Dashboard API", () => {
     expect(overview.totalAgents).toBe(0);
     expect(overview.totalPatches).toBe(0);
     expect(overview.fileCount).toBe(0);
+  });
+
+  it("returns all tickets for the dashboard, not just the first 50", () => {
+    const stmt = sqlite.prepare(`
+      INSERT INTO tickets (
+        repo_id, ticket_id, title, description, status, severity, priority,
+        creator_agent_id, creator_session_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const now = new Date().toISOString();
+
+    for (let i = 0; i < 60; i++) {
+      stmt.run(1, `TKT-${i}`, `Ticket ${i}`, "Desc", "backlog", "medium", 5, "agent-1", "s-1", "abc1234", now, now);
+    }
+
+    expect(getTicketsList(deps)).toHaveLength(60);
   });
 });

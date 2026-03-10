@@ -155,6 +155,29 @@ describe("ticket queries", () => {
     expect(result).toHaveLength(1);
   });
 
+  it("filters by tags with AND logic", () => {
+    makeTicket({ ticketId: "TKT-a", tagsJson: JSON.stringify(["bug", "ui"]) });
+    makeTicket({ ticketId: "TKT-b", tagsJson: JSON.stringify(["bug"]) });
+    makeTicket({ ticketId: "TKT-c", tagsJson: JSON.stringify(["ui", "backend"]) });
+
+    const result = queries.getTicketsByRepo(db, repoId, { tags: ["bug", "ui"] });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.ticketId).toBe("TKT-a");
+  });
+
+  it("applies limit after tag filtering", () => {
+    makeTicket({ ticketId: "TKT-other-1", priority: 10, tagsJson: JSON.stringify(["other"]) });
+    makeTicket({ ticketId: "TKT-other-2", priority: 9, tagsJson: JSON.stringify(["other"]) });
+    makeTicket({ ticketId: "TKT-bug-1", priority: 8, tagsJson: JSON.stringify(["bug"]) });
+    makeTicket({ ticketId: "TKT-bug-2", priority: 7, tagsJson: JSON.stringify(["bug"]) });
+
+    const result = queries.getTicketsByRepo(db, repoId, { tags: ["bug"], limit: 2 });
+
+    expect(result).toHaveLength(2);
+    expect(result.map((ticket) => ticket.ticketId)).toEqual(["TKT-bug-1", "TKT-bug-2"]);
+  });
+
   it("respects limit", () => {
     for (let i = 0; i < 5; i++) makeTicket();
     const result = queries.getTicketsByRepo(db, repoId, { limit: 3 });

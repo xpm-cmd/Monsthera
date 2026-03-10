@@ -219,15 +219,9 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     },
     async ({ status, assigneeAgentId, severity, creatorAgentId, tags, limit }) => {
       const c = await getContext();
-      let tickets = queries.getTicketsByRepo(c.db, c.repoId, {
-        status, assigneeAgentId, severity, creatorAgentId, limit,
+      const tickets = queries.getTicketsByRepo(c.db, c.repoId, {
+        status, assigneeAgentId, severity, creatorAgentId, tags, limit,
       });
-      if (tags && tags.length > 0) {
-        tickets = tickets.filter((t) => {
-          const ticketTags: string[] = t.tagsJson ? JSON.parse(t.tagsJson) : [];
-          return tags.every((tag) => ticketTags.includes(tag));
-        });
-      }
       return okJson({
         count: tickets.length,
         tickets: tickets.map((t) => ({

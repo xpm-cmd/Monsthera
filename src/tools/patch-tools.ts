@@ -50,6 +50,19 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
         diff, message, baseCommit, bundleId,
       });
 
+      // Validate ticket exists BEFORE persisting anything
+      let resolvedTicket: { id: number } | null = null;
+      if (ticketId) {
+        const ticket = queries.getTicketByTicketId(c.db, ticketId);
+        if (!ticket) {
+          return {
+            content: [{ type: "text" as const, text: `Ticket not found: ${ticketId}` }],
+            isError: true,
+          };
+        }
+        resolvedTicket = ticket;
+      }
+
       if (dryRun) {
         return {
           content: [{
@@ -78,18 +91,9 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
         createdAt: now, updatedAt: now,
       });
 
-      // Link patch to ticket if provided
-      let linkedTicketId: string | null = null;
-      if (ticketId) {
-        const ticket = queries.getTicketByTicketId(c.db, ticketId);
-        if (!ticket) {
-          return {
-            content: [{ type: "text" as const, text: `Ticket not found: ${ticketId}. Patch was created but not linked.` }],
-            isError: true,
-          };
-        }
-        queries.linkPatchToTicket(c.db, patch.id, ticket.id);
-        linkedTicketId = ticketId;
+      // Link patch to ticket (already validated above)
+      if (resolvedTicket) {
+        queries.linkPatchToTicket(c.db, patch.id, resolvedTicket.id);
       }
 
       c.insight.info(`Patch ${validation.proposalId} by ${agentId}: ${state}`);
@@ -97,7 +101,7 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ ...validationSummary(validation), state, ...(linkedTicketId && { linkedTicketId }) }, null, 2),
+          text: JSON.stringify({ ...validationSummary(validation), state, ...(ticketId && { linkedTicketId: ticketId }) }, null, 2),
         }],
       };
     },
