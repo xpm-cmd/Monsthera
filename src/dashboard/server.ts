@@ -1,4 +1,4 @@
-import { createServer, type Server, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { InsightStream } from "../core/insight-stream.js";
 import { renderDashboard } from "./html.js";
 import {
@@ -6,11 +6,14 @@ import {
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence, type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
-
-export interface DashboardEvent {
-  type: "agent_registered" | "session_changed" | "patch_proposed" | "note_added" | "event_logged" | "index_updated" | "knowledge_stored";
-  data: Record<string, unknown>;
-}
+import { type DashboardEvent, subscribeDashboardEvents } from "./events.js";
+import {
+  assignTicketRecord,
+  commentTicketRecord,
+  createTicketRecord,
+  updateTicketStatusRecord,
+  type TicketServiceError,
+} from "../tickets/service.js";
 
 export class DashboardSSE {
   private clients = new Set<ServerResponse>();
@@ -53,8 +56,9 @@ export function startDashboard(
   insight: InsightStream,
 ): Server & { sse: DashboardSSE } {
   const sse = new DashboardSSE();
+  const unsubscribe = subscribeDashboardEvents((event) => sse.broadcast(event));
 
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${port}`);
     const path = url.pathname;
 
@@ -94,6 +98,85 @@ export function startDashboard(
           res.end(JSON.stringify({ error: String(err) }));
         }
         return;
+      }
+
+      if (path === "/api/tickets/create" && req.method === "POST") {
+        const body = await readJsonBody(req);
+        const result = await createTicketRecord({
+          db: deps.db,
+          repoId: deps.repoId,
+          repoPath: deps.repoPath,
+          insight,
+        }, {
+          title: String(body.title ?? ""),
+          description: String(body.description ?? ""),
+          severity: String(body.severity ?? "medium"),
+          priority: Number(body.priority ?? 5),
+          tags: toStringArray(body.tags),
+          affectedPaths: toStringArray(body.affectedPaths),
+          acceptanceCriteria: body.acceptanceCriteria ? String(body.acceptanceCriteria) : null,
+          agentId: String(body.agentId ?? ""),
+          sessionId: String(body.sessionId ?? ""),
+        });
+        return writeTicketMutationResult(res, result);
+      }
+
+      if (path.startsWith("/api/tickets/") && req.method === "POST") {
+        const parts = path.slice("/api/tickets/".length).split("/");
+        const [ticketId, action] = parts;
+        if (!ticketId || !action) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Not found" }));
+          return;
+        }
+
+        const body = await readJsonBody(req);
+
+        if (action === "comment") {
+          const result = commentTicketRecord({
+            db: deps.db,
+            repoId: deps.repoId,
+            repoPath: deps.repoPath,
+            insight,
+          }, {
+            ticketId: decodeURIComponent(ticketId),
+            content: String(body.content ?? ""),
+            agentId: String(body.agentId ?? ""),
+            sessionId: String(body.sessionId ?? ""),
+          });
+          return writeTicketMutationResult(res, result);
+        }
+
+        if (action === "assign") {
+          const result = assignTicketRecord({
+            db: deps.db,
+            repoId: deps.repoId,
+            repoPath: deps.repoPath,
+            insight,
+          }, {
+            ticketId: decodeURIComponent(ticketId),
+            assigneeAgentId: String(body.assigneeAgentId ?? ""),
+            agentId: String(body.agentId ?? ""),
+            sessionId: String(body.sessionId ?? ""),
+          });
+          return writeTicketMutationResult(res, result);
+        }
+
+        if (action === "status") {
+          const result = updateTicketStatusRecord({
+            db: deps.db,
+            repoId: deps.repoId,
+            repoPath: deps.repoPath,
+            insight,
+          }, {
+            ticketId: decodeURIComponent(ticketId),
+            status: String(body.status ?? "") as Parameters<typeof updateTicketStatusRecord>[1]["status"],
+            comment: body.comment ? String(body.comment) : null,
+            agentId: String(body.agentId ?? ""),
+            sessionId: String(body.sessionId ?? ""),
+          });
+          return writeTicketMutationResult(res, result);
+        }
       }
 
       if (path.startsWith("/api/")) {
@@ -136,10 +219,61 @@ export function startDashboard(
     insight.info(`Dashboard: http://localhost:${port}`);
   });
 
+  server.on("close", () => {
+    unsubscribe();
+  });
+
   // Attach SSE broadcaster to the server for external access
   const enhanced = server as Server & { sse: DashboardSSE };
   enhanced.sse = sse;
   return enhanced;
+}
+
+async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    if (chunks.reduce((size, item) => size + item.length, 0) > 1024 * 1024) {
+      throw new Error("Request body too large");
+    }
+  }
+
+  if (chunks.length === 0) return {};
+  return JSON.parse(Buffer.concat(chunks).toString("utf-8")) as Record<string, unknown>;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item)).filter(Boolean);
+}
+
+function writeTicketMutationResult(
+  res: ServerResponse,
+  result: Awaited<ReturnType<typeof createTicketRecord>> | ReturnType<typeof assignTicketRecord> | ReturnType<typeof commentTicketRecord> | ReturnType<typeof updateTicketStatusRecord>,
+): void {
+  if (result.ok) {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(result.data));
+    return;
+  }
+
+  const statusCode = ticketErrorStatus(result);
+  const payload = result.data ? { error: result.message, ...result.data } : { error: result.message };
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(payload));
+}
+
+function ticketErrorStatus(error: TicketServiceError): number {
+  switch (error.code) {
+    case "denied":
+      return 403;
+    case "not_found":
+      return 404;
+    case "invalid_actor":
+    case "invalid_request":
+    default:
+      return 400;
+  }
 }
 
 function routeApi(route: string, deps: DashboardDeps): unknown {

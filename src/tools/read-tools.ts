@@ -214,6 +214,8 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           sessionId: "string (required)",
         },
         list_tickets: {
+          agentId: "string (required)",
+          sessionId: "string (required)",
           status: "enum (optional)",
           assigneeAgentId: "string (optional)",
           severity: "enum (optional)",
@@ -223,6 +225,8 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         get_ticket: {
           ticketId: "string (TKT-...)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
         },
         comment_ticket: {
           ticketId: "string (TKT-...)",

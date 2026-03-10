@@ -143,6 +143,19 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .comment-meta,.history-meta,.patch-meta{font-size:.67rem;color:var(--text3);display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.35rem}
 .comment-content,.history-content,.patch-content{font-size:.78rem;color:var(--text2);line-height:1.5;white-space:pre-wrap}
 .ticket-help{font-size:.78rem;color:var(--text3);padding:1rem 0}
+.ticket-toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.75rem;margin-bottom:.9rem}
+.action-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem}
+.action-card h4{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem}
+.field{display:flex;flex-direction:column;gap:.35rem;margin-bottom:.7rem}
+.field label{font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.field input,.field textarea,.field select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:.6rem .7rem;font-size:.8rem}
+.field textarea{min-height:88px;resize:vertical}
+.field-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.65rem}
+.action-submit{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.3);color:var(--text);padding:.55rem .9rem;border-radius:8px;cursor:pointer;font-size:.78rem}
+.action-submit:hover{background:rgba(59,130,246,.18)}
+.action-submit:disabled{opacity:.55;cursor:not-allowed}
+.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
+.actor-chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--text2);padding:.25rem .55rem;border-radius:20px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05)}
 
 /* ── Footer ─────────────────────────────────── */
 footer{text-align:center;font-size:.7rem;color:var(--text3);padding:1.5rem;border-top:1px solid var(--border);margin-top:1rem}
@@ -190,15 +203,40 @@ const PALETTE=['#3b82f6','#22c55e','#f59e0b','#a855f7','#06b6d4','#ec4899','#636
 const TYPE_COLORS={decision:'#3b82f6',gotcha:'#f59e0b',pattern:'#a855f7',context:'#06b6d4',plan:'#ec4899',solution:'#22c55e',preference:'#6366f1',runbook:'#14b8a6'};
 const STATE_COLORS={proposed:'#f59e0b',validated:'#3b82f6',applied:'#22c55e',committed:'#22c55e',stale:'#ef4444',failed:'#ef4444'};
 const TICKET_STATUS_CLS={resolved:'success',closed:'success',in_progress:'blue',in_review:'blue',backlog:'orange',assigned:'orange',blocked:'red',wont_fix:'red'};
+const TICKET_TRANSITIONS={backlog:['assigned','wont_fix'],assigned:['in_progress','wont_fix'],in_progress:['in_review','blocked','wont_fix'],in_review:['in_progress','resolved'],blocked:['in_progress'],resolved:['in_progress','closed'],closed:[],wont_fix:[]};
 let tabCounts={agents:0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
 let selectedTicketId=null;
 let selectedTicketDetail=null;
+let selectedActorSessionId=null;
+let ticketActors=[];
+let dashboardAgents=[];
 
 function repoBasename(repoPath){
   if(!repoPath) return 'unknown repo';
   var clean=String(repoPath).replace(/[\\\\/]+$/,'');
   var parts=clean.split(/[\\\\/]/);
   return parts[parts.length-1]||clean;
+}
+
+function actorLabel(actor){
+  return actor.name+' ('+actor.role+') · '+actor.sessionId.slice(0,12);
+}
+
+function getSelectedActor(){
+  if(!ticketActors.length) return null;
+  var found=ticketActors.find(function(actor){return actor.sessionId===selectedActorSessionId});
+  if(found) return found;
+  selectedActorSessionId=ticketActors[0].sessionId;
+  return ticketActors[0];
+}
+
+async function apiPost(path,body){
+  var res=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  var data=await res.json().catch(function(){return {}});
+  if(!res.ok){
+    throw new Error(data.error||'Request failed');
+  }
+  return data;
 }
 
 /* ── SVG Chart: Donut ────────────────────────── */
@@ -324,6 +362,95 @@ function makeTable(headers,rows){
 function b(v,c){return{badge:v,cls:c}}
 function m(v){return{mono:v}}
 
+function renderTicketToolbar(){
+  var actor=getSelectedActor();
+  var actorOptions=ticketActors.map(function(option){
+    return '<option value="'+esc(option.sessionId)+'"'+(actor&&actor.sessionId===option.sessionId?' selected':'')+'>'+esc(actorLabel(option))+'</option>';
+  }).join('');
+  return '<div class="ticket-toolbar">'
+    +'<div class="action-card"><h4>Active Session</h4>'
+    +(ticketActors.length
+      ?'<div class="field"><label for="ticket-actor-select">Act as</label><select id="ticket-actor-select">'+actorOptions+'</select></div><div class="actor-chip">Using '+esc(actorLabel(actor))+'</div>'
+      :'<div class="ticket-help">No active agent sessions available. Register an agent first to create or update tickets.</div>')
+    +'</div>'
+    +'<div class="action-card"><h4>Create Ticket</h4>'
+    +(ticketActors.length
+      ?'<form id="create-ticket-form">'
+        +'<div class="field"><label for="create-ticket-title">Title</label><input id="create-ticket-title" name="title" maxlength="200" required></div>'
+        +'<div class="field"><label for="create-ticket-description">Description</label><textarea id="create-ticket-description" name="description" maxlength="5000" required></textarea></div>'
+        +'<div class="field-row">'
+          +'<div class="field"><label for="create-ticket-severity">Severity</label><select id="create-ticket-severity" name="severity"><option value="medium">medium</option><option value="high">high</option><option value="critical">critical</option><option value="low">low</option></select></div>'
+          +'<div class="field"><label for="create-ticket-priority">Priority</label><input id="create-ticket-priority" name="priority" type="number" min="0" max="10" value="5"></div>'
+        +'</div>'
+        +'<div class="field-row">'
+          +'<div class="field"><label for="create-ticket-tags">Tags</label><input id="create-ticket-tags" name="tags" placeholder="dashboard, ui"></div>'
+          +'<div class="field"><label for="create-ticket-paths">Affected Paths</label><input id="create-ticket-paths" name="paths" placeholder="src/dashboard/html.ts"></div>'
+        +'</div>'
+        +'<div class="field"><label for="create-ticket-criteria">Acceptance Criteria</label><textarea id="create-ticket-criteria" name="criteria" maxlength="2000"></textarea></div>'
+        +'<button class="action-submit" type="submit">Create Ticket</button>'
+      +'</form>'
+      :'<div class="ticket-help">Ticket creation is unavailable until there is an active developer, reviewer, or admin session.</div>')
+    +'</div>'
+  +'</div>';
+}
+
+function attachTicketToolbarListeners(){
+  var actorSelect=document.getElementById('ticket-actor-select');
+  if(actorSelect){
+    actorSelect.addEventListener('change',function(e){
+      selectedActorSessionId=e.target.value||null;
+      renderTicketsSection(window.__agoraTickets||[]);
+    });
+  }
+
+  var createForm=document.getElementById('create-ticket-form');
+  if(createForm){
+    createForm.addEventListener('submit',async function(e){
+      e.preventDefault();
+      var actor=getSelectedActor();
+      if(!actor){
+        showToast('No active session selected','error');
+        return;
+      }
+      var submit=createForm.querySelector('button[type="submit"]');
+      submit.disabled=true;
+      submit.textContent='Creating...';
+      try{
+        var title=document.getElementById('create-ticket-title').value.trim();
+        var description=document.getElementById('create-ticket-description').value.trim();
+        var severity=document.getElementById('create-ticket-severity').value;
+        var priority=parseInt(document.getElementById('create-ticket-priority').value||'5',10);
+        var tags=document.getElementById('create-ticket-tags').value.split(',').map(function(item){return item.trim()}).filter(Boolean);
+        var affectedPaths=document.getElementById('create-ticket-paths').value.split(',').map(function(item){return item.trim()}).filter(Boolean);
+        var acceptanceCriteria=document.getElementById('create-ticket-criteria').value.trim();
+        var created=await apiPost('tickets/create',{
+          title:title,
+          description:description,
+          severity:severity,
+          priority:isNaN(priority)?5:priority,
+          tags:tags,
+          affectedPaths:affectedPaths,
+          acceptanceCriteria:acceptanceCriteria||null,
+          agentId:actor.agentId,
+          sessionId:actor.sessionId,
+        });
+        selectedTicketId=created.ticketId;
+        selectedTicketDetail=null;
+        createForm.reset();
+        document.getElementById('create-ticket-severity').value='medium';
+        document.getElementById('create-ticket-priority').value='5';
+        showToast('Created '+created.ticketId,'success');
+        await refresh();
+      }catch(err){
+        showToast('Create failed: '+String(err.message||err),'error');
+      }finally{
+        submit.disabled=false;
+        submit.textContent='Create Ticket';
+      }
+    });
+  }
+}
+
 async function loadTicketDetail(ticketId){
   try{
     selectedTicketId=ticketId;
@@ -365,6 +492,20 @@ function renderTicketDetail(error){
   }).join('')||'<div class="ticket-help">No linked patches.</div>';
   var tags=(t.tags||[]).length?(t.tags||[]).join(', '):'-';
   var affectedPaths=(t.affectedPaths||[]).length?(t.affectedPaths||[]).join(', '):'-';
+  var actor=getSelectedActor();
+  var assigneeOptions=dashboardAgents.map(function(agent){
+    return '<option value="'+esc(agent.id)+'"'+(t.assigneeAgentId===agent.id?' selected':'')+'>'+esc(agent.name+' ('+agent.role+')')+'</option>';
+  }).join('');
+  var statusOptions=(TICKET_TRANSITIONS[t.status]||[]).map(function(status){
+    return '<option value="'+esc(status)+'">'+esc(status)+'</option>';
+  }).join('');
+  var actionsHtml=actor
+    ?'<div class="action-grid">'
+      +'<form class="action-card" id="assign-ticket-form"><h4>Assign</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-assignee-select">Assignee</label><select id="ticket-assignee-select">'+assigneeOptions+'</select></div><button class="action-submit" type="submit">Assign Ticket</button></form>'
+      +'<form class="action-card" id="status-ticket-form"><h4>Transition</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-status-select">Next Status</label><select id="ticket-status-select"'+(statusOptions?'':' disabled')+'>'+(statusOptions||'<option value="">No transitions available</option>')+'</select></div><div class="field"><label for="ticket-status-comment">Comment</label><textarea id="ticket-status-comment" maxlength="500" placeholder="Optional transition note"></textarea></div><button class="action-submit" type="submit"'+(statusOptions?'':' disabled')+'>Update Status</button></form>'
+      +'<form class="action-card" id="comment-ticket-form"><h4>Add Comment</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-comment-content">Comment</label><textarea id="ticket-comment-content" maxlength="2000" placeholder="Provide context for the next agent"></textarea></div><button class="action-submit" type="submit">Post Comment</button></form>'
+    +'</div>'
+    :'<div class="ticket-help">No active session selected. Register an agent to comment or move tickets.</div>';
   host.innerHTML='<div class="detail-card">'
     +'<div class="detail-head"><div><div class="detail-title">'+esc(t.title||t.ticketId)+'</div><div class="detail-sub"><span>'+esc(t.ticketId)+'</span><span>'+esc(new Date(t.updatedAt).toLocaleString())+'</span></div></div><div><span class="badge badge-'+(TICKET_STATUS_CLS[t.status]||'blue')+'">'+esc(t.status)+'</span></div></div>'
     +'<div class="detail-grid">'
@@ -375,17 +516,22 @@ function renderTicketDetail(error){
     +'<div class="detail-block"><div class="detail-label">Tags</div><div class="detail-value">'+esc(tags)+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Affected Paths</div><div class="detail-value">'+esc(affectedPaths)+'</div></div>'
     +'</div>'
+    +'<div class="detail-section"><h4>Actions</h4>'+actionsHtml+'</div>'
     +'<div class="detail-section"><h4>Comments</h4><div class="comment-list">'+comments+'</div></div>'
     +'<div class="detail-section"><h4>History</h4><div class="history-list">'+history+'</div></div>'
     +'<div class="detail-section"><h4>Linked Patches</h4><div class="patch-list">'+patches+'</div></div>'
     +'</div>';
+  attachTicketDetailListeners(t);
 }
 
 function renderTicketsSection(tickets){
   var section=document.getElementById('tickets');
+  window.__agoraTickets=tickets;
   section.innerHTML='';
+  section.insertAdjacentHTML('beforeend',renderTicketToolbar());
   if(!tickets.length){
     section.appendChild(makeTable(['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'],[]));
+    attachTicketToolbarListeners();
     return;
   }
   var wrap=document.createElement('div');
@@ -425,7 +571,91 @@ function renderTicketsSection(tickets){
   var detail=document.createElement('div');
   detail.id='ticket-detail';
   section.appendChild(detail);
+  attachTicketToolbarListeners();
   renderTicketDetail();
+}
+
+function attachTicketDetailListeners(ticket){
+  var actor=getSelectedActor();
+  if(!actor) return;
+
+  var assignForm=document.getElementById('assign-ticket-form');
+  if(assignForm){
+    assignForm.addEventListener('submit',async function(e){
+      e.preventDefault();
+      var submit=assignForm.querySelector('button[type="submit"]');
+      submit.disabled=true;
+      submit.textContent='Assigning...';
+      try{
+        var assigneeAgentId=document.getElementById('ticket-assignee-select').value;
+        await apiPost('tickets/'+encodeURIComponent(ticket.ticketId)+'/assign',{
+          assigneeAgentId:assigneeAgentId,
+          agentId:actor.agentId,
+          sessionId:actor.sessionId,
+        });
+        showToast('Assigned '+ticket.ticketId,'success');
+        await refresh();
+      }catch(err){
+        showToast('Assign failed: '+String(err.message||err),'error');
+      }finally{
+        submit.disabled=false;
+        submit.textContent='Assign Ticket';
+      }
+    });
+  }
+
+  var statusForm=document.getElementById('status-ticket-form');
+  if(statusForm){
+    statusForm.addEventListener('submit',async function(e){
+      e.preventDefault();
+      var submit=statusForm.querySelector('button[type="submit"]');
+      submit.disabled=true;
+      submit.textContent='Updating...';
+      try{
+        var status=document.getElementById('ticket-status-select').value;
+        var comment=document.getElementById('ticket-status-comment').value.trim();
+        await apiPost('tickets/'+encodeURIComponent(ticket.ticketId)+'/status',{
+          status:status,
+          comment:comment||null,
+          agentId:actor.agentId,
+          sessionId:actor.sessionId,
+        });
+        showToast('Updated '+ticket.ticketId+' to '+status,'success');
+        await refresh();
+      }catch(err){
+        showToast('Status update failed: '+String(err.message||err),'error');
+      }finally{
+        submit.disabled=false;
+        submit.textContent='Update Status';
+      }
+    });
+  }
+
+  var commentForm=document.getElementById('comment-ticket-form');
+  if(commentForm){
+    commentForm.addEventListener('submit',async function(e){
+      e.preventDefault();
+      var submit=commentForm.querySelector('button[type="submit"]');
+      submit.disabled=true;
+      submit.textContent='Posting...';
+      try{
+        var content=document.getElementById('ticket-comment-content').value.trim();
+        await apiPost('tickets/'+encodeURIComponent(ticket.ticketId)+'/comment',{
+          content:content,
+          agentId:actor.agentId,
+          sessionId:actor.sessionId,
+        });
+        document.getElementById('ticket-comment-content').value='';
+        showToast('Comment added to '+ticket.ticketId,'success');
+        await refresh();
+      }catch(err){
+        showToast('Comment failed: '+String(err.message||err),'error');
+      }finally{
+        submit.disabled=false;
+        submit.textContent='Post Comment';
+      }
+    });
+  }
 }
 
 /* ── Chart panels ────────────────────────────── */
@@ -531,6 +761,18 @@ async function refresh(){
       api('overview'),api('agents'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets')
     ]);
     var o=results[0],agents=results[1],logs=results[2],patches=results[3],notes=results[4],knowledge=results[5],presence=results[6],tickets=results[7];
+    dashboardAgents=agents;
+    ticketActors=[];
+    presence.forEach(function(agent){
+      (agent.sessions||[]).forEach(function(session){
+        if(session.state==='active'){
+          ticketActors.push({sessionId:session.id,agentId:agent.id,name:agent.name,role:agent.role});
+        }
+      });
+    });
+    if(!ticketActors.some(function(actor){return actor.sessionId===selectedActorSessionId})){
+      selectedActorSessionId=ticketActors.length?ticketActors[0].sessionId:null;
+    }
 
     /* Overview cards */
     var ov=document.getElementById('overview');
@@ -610,6 +852,10 @@ function connectSSE(){
   es.addEventListener('event_logged',function(){refresh()});
   es.addEventListener('index_updated',function(){refresh()});
   es.addEventListener('knowledge_stored',function(){refresh()});
+  es.addEventListener('ticket_created',function(){refresh()});
+  es.addEventListener('ticket_assigned',function(){refresh()});
+  es.addEventListener('ticket_status_changed',function(){refresh()});
+  es.addEventListener('ticket_commented',function(){refresh()});
   es.onerror=function(){
     pulse.classList.add('disconnected');pulse.title='SSE disconnected';
     es.close();setTimeout(connectSSE,5000);
