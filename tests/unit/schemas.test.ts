@@ -3,6 +3,7 @@ import { EvidenceBundle, TrustTier, Candidate, ExpandedCandidate } from "../../s
 import { Note, NoteType, ProposeNoteInput } from "../../schemas/notes.js";
 import { PatchProposal, ProposePatchInput, PatchState } from "../../schemas/patch.js";
 import { Agent, RegisterAgentInput, RoleId, BUILT_IN_ROLES } from "../../schemas/agent.js";
+import { CouncilSpecializationId } from "../../schemas/council.js";
 import { EventLog, EventStatus } from "../../schemas/interaction-log.js";
 import { CoordinationMessage, BroadcastInput } from "../../schemas/coordination.js";
 
@@ -160,6 +161,13 @@ describe("Agent schema", () => {
   it("rejects empty authToken", () => {
     const invalid = { name: "test", desiredRole: "developer", authToken: "" };
     expect(RegisterAgentInput.safeParse(invalid).success).toBe(false);
+  });
+
+  it("accepts only the agreed council specialization taxonomy", () => {
+    expect(CouncilSpecializationId.safeParse("architect").success).toBe(true);
+    expect(CouncilSpecializationId.safeParse("patterns").success).toBe(true);
+    expect(CouncilSpecializationId.safeParse("dx").success).toBe(false);
+    expect(CouncilSpecializationId.safeParse("simplicity").success).toBe(false);
   });
 
   it("has correct built-in role permissions", () => {

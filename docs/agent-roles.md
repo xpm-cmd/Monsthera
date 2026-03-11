@@ -2,10 +2,11 @@
 
 ## Built-in Roles Only
 
-Agora currently supports only four runtime roles:
+Agora currently supports only five runtime roles:
 
 - `developer`
 - `reviewer`
+- `facilitator`
 - `observer`
 - `admin`
 
@@ -17,6 +18,7 @@ High-level behavior:
 
 - `developer`: full code access, can propose patches, notes, and ticket mutations
 - `reviewer`: full code access, cannot propose patches, can review and transition tickets
+- `facilitator`: convergence/governance role, can synthesize discussion and drive ticket state changes without patch rights
 - `observer`: read-only and redacted where trust tier requires it
 - `admin`: wildcard access
 
@@ -68,8 +70,20 @@ Environment overrides:
 
 Roles also imply trust tiers:
 
-- `developer`, `reviewer`, `admin` -> Tier `A`
+- `developer`, `reviewer`, `facilitator`, `admin` -> Tier `A`
 - `observer` -> Tier `B`
+
+## Repo Agent Manifests
+
+Repos may also declare read-only agent manifests under `.agora/agents/*.md`.
+
+- these files are metadata and prompt artifacts, not live registrations
+- frontmatter may declare `name`, `description`, `role`, `reviewRole`, and `tags`
+- `role` is descriptive metadata only and must stay within the built-in runtime role enum
+- `reviewRole` uses the council taxonomy: `architect`, `simplifier`, `security`, `performance`, `patterns`
+- manifests are surfaced via `capabilities`, and the files themselves remain searchable through normal repo indexing
+
+This does **not** grant runtime permissions, auto-register agents, or change trust tiers.
 
 Tier controls evidence-bundle redaction and some higher-risk actions. See [trust-tiers.md](trust-tiers.md).
 
@@ -134,5 +148,6 @@ The dashboard also hides sufficiently stale entries from the live-presence view 
 - use `observer` for safe read-only integrations
 - use `developer` for implementation agents
 - use `reviewer` for QA and workflow transitions
+- use `facilitator` for synthesis, quorum/governance coordination, and decision flow
 - reserve `admin` for explicit operational control
 - if role hardening matters, do not leave `registrationAuth.enabled` off

@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerReadTools } from "../../../src/tools/read-tools.js";
 
@@ -12,6 +15,7 @@ class FakeServer {
 
 describe("read tool discovery", () => {
   let server: FakeServer;
+  const tempDirs: string[] = [];
 
   beforeEach(() => {
     server = new FakeServer();
@@ -26,6 +30,11 @@ describe("read tool discovery", () => {
         getSemanticReranker: () => null,
       },
     } as any));
+  });
+
+  afterEach(async () => {
+    await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+    tempDirs.length = 0;
   });
 
   function handler(name: string) {
@@ -49,6 +58,14 @@ describe("read tool discovery", () => {
       "analyze_test_coverage",
       "lookup_dependencies",
     ]));
+    expect(payload.repoAgents).toEqual([]);
+    expect(payload.availableReviewRoles).toEqual({
+      architect: [],
+      simplifier: [],
+      security: [],
+      performance: [],
+      patterns: [],
+    });
   });
 
   it("describes required actor fields for protected knowledge and coordination tools", async () => {
@@ -106,5 +123,55 @@ describe("read tool discovery", () => {
     expect(JSON.parse(proposeNote.content[0].text).inputSchema.type).toContain("runbook");
     expect(JSON.parse(proposeNote.content[0].text).inputSchema.type).toContain("file_summary");
     expect(JSON.parse(listNotes.content[0].text).inputSchema.type).not.toContain("rationale");
+  });
+
+  it("surfaces repo agent manifests in capabilities output", async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), "agora-read-tools-"));
+    tempDirs.push(repoPath);
+    const agentDir = join(repoPath, ".agora", "agents");
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(
+      join(agentDir, "security.md"),
+      `---
+name: Security Reviewer
+description: Reviews trust boundaries and auth flows
+role: reviewer
+reviewRole: security
+tags:
+  - auth
+---
+Inspect auth and trust surfaces.
+`,
+      "utf-8",
+    );
+
+    const scopedServer = new FakeServer();
+    registerReadTools(scopedServer as unknown as McpServer, async () => ({
+      repoId: 1,
+      repoPath,
+      config: {
+        coordinationTopology: "hub-spoke",
+        debugLogging: false,
+      },
+      searchRouter: {
+        getSemanticReranker: () => null,
+      },
+    } as any));
+
+    const result = await scopedServer.handlers.get("capabilities")!({});
+    const payload = JSON.parse(result.content[0].text);
+
+    expect(payload.repoAgents).toEqual([
+      {
+        name: "Security Reviewer",
+        description: "Reviews trust boundaries and auth flows",
+        filePath: ".agora/agents/security.md",
+        role: "reviewer",
+        reviewRole: "security",
+        tags: ["auth"],
+      },
+    ]);
+    expect(payload.availableReviewRoles.security).toEqual(["Security Reviewer"]);
+    expect(payload.repoAgentWarnings).toEqual([]);
   });
 });

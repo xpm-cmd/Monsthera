@@ -11,6 +11,12 @@ import { scanForSecrets, isSensitiveFile, type SecretPattern } from "../trust/se
 import { IndexError } from "../core/errors.js";
 import type { SemanticReranker } from "../search/semantic.js";
 import { buildEmbeddingText, type EmbeddingTextOptions } from "../search/semantic.js";
+import {
+  buildRepoAgentSearchSummary,
+  buildRepoAgentSymbols,
+  isRepoAgentManifestPath,
+  parseRepoAgentManifest,
+} from "../repo-agents/catalog.js";
 
 export interface IndexOptions {
   repoPath: string;
@@ -269,7 +275,25 @@ async function indexSingleFile(
   } else {
     // Markdown-specific summary: extract headings + body text for FTS5
     const ext = filePath.slice(filePath.lastIndexOf("."));
-    if (ext === ".md" || ext === ".mdx") {
+    if (ext === ".md" && isRepoAgentManifestPath(filePath)) {
+      const parsedManifest = parseRepoAgentManifest(filePath, content);
+      for (const warning of parsedManifest.warnings) {
+        opts.onProgress?.(`⚠ Repo agent manifest ${warning.filePath}: ${warning.message}`);
+      }
+
+      if (parsedManifest.agent) {
+        summary = buildRepoAgentSearchSummary(parsedManifest.agent);
+        symbolsJson = JSON.stringify(buildRepoAgentSymbols(parsedManifest.agent));
+      } else {
+        const mdResult = generateMarkdownSummary(filePath, content);
+        summary = mdResult.summary;
+        if (mdResult.headings.length > 0) {
+          symbolsJson = JSON.stringify(
+            mdResult.headings.map((h) => ({ name: h, kind: "heading" })),
+          );
+        }
+      }
+    } else if (ext === ".md" || ext === ".mdx") {
       const mdResult = generateMarkdownSummary(filePath, content);
       summary = mdResult.summary;
       // Treat headings as "symbols" — they get BM25 weight 2.0 (highest priority)

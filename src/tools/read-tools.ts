@@ -12,6 +12,7 @@ import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
 import { analyzeFileComplexity } from "../analysis/complexity.js";
 import { analyzeTestCoverage } from "../analysis/test-coverage.js";
+import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import {
   CrossInstanceSearchSurfaceSchema,
   searchAcrossRemoteInstances,
@@ -52,6 +53,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
   // ─── capabilities ─────────────────────────────────────────
   server.tool("capabilities", "List Agora capabilities and supported features", {}, async () => {
     const c = await getContext();
+    const repoAgentCatalog = await loadRepoAgentCatalog(c.repoPath);
     return {
       content: [{
         type: "text" as const,
@@ -72,6 +74,16 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             model: "all-MiniLM-L6-v2",
             embeddingDim: 384,
           },
+          repoAgents: repoAgentCatalog.repoAgents.map((agent) => ({
+            name: agent.name,
+            description: agent.description,
+            filePath: agent.filePath,
+            role: agent.role,
+            reviewRole: agent.reviewRole,
+            tags: agent.tags,
+          })),
+          availableReviewRoles: repoAgentCatalog.availableReviewRoles,
+          repoAgentWarnings: repoAgentCatalog.warnings,
         }, null, 2),
       }],
     };
