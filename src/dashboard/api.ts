@@ -607,7 +607,7 @@ function getNextActionHint(
     : (lastHistory?.agentId ?? null);
   const assigneeName = ticket.assigneeAgentId ? queries.getAgent(deps.db, ticket.assigneeAgentId)?.name ?? null : null;
 
-  if (ticket.status === "in_review" || ticket.status === "ready_for_commit") {
+  if (ticket.status === "in_review") {
     if (ticket.assigneeAgentId && lastActorId && lastActorId !== ticket.assigneeAgentId) {
       return {
         kind: "assignee",
@@ -623,6 +623,25 @@ function getNextActionHint(
       agentId: null,
       agentName: null,
       reason: "This workflow state usually waits on review-side validation or approval.",
+    };
+  }
+
+  if (ticket.status === "ready_for_commit") {
+    if (ticket.assigneeAgentId) {
+      return {
+        kind: "assignee",
+        label: "Assignee likely next",
+        agentId: ticket.assigneeAgentId,
+        agentName: assigneeName,
+        reason: "Review is complete, so the assignee likely commits or resolves the ticket next.",
+      };
+    }
+    return {
+      kind: "operator",
+      label: "Operator likely next",
+      agentId: null,
+      agentName: null,
+      reason: "The ticket is ready to commit but unassigned, so an operator likely needs to route or land it.",
     };
   }
 

@@ -99,7 +99,7 @@ If Agora is already running as an HTTP server (e.g. `agora serve --transport htt
   "mcp": {
     "agora": {
       "type": "remote",
-      "url": "http://localhost:3000",
+      "url": "http://localhost:3000/mcp",
       "enabled": true
     }
   }

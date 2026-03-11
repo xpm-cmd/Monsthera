@@ -519,6 +519,42 @@ describe("Dashboard API", () => {
     expect(getTicketDetail(deps, "TKT-missing")).toBeNull();
   });
 
+  it("treats ready_for_commit tickets as assignee- or operator-next work", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("developer-1", "Dev One", "codex", "developer", "A", now);
+    sqlite.prepare(`
+      INSERT INTO tickets (
+        id, repo_id, ticket_id, title, description, status, severity, priority,
+        creator_agent_id, creator_session_id, assignee_agent_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      11, 1, "TKT-ready-assigned", "Ready Assigned", "Desc", "ready_for_commit", "high", 7,
+      "reviewer-1", "session-1", "developer-1", "abc1234", now, now,
+    );
+    sqlite.prepare(`
+      INSERT INTO tickets (
+        id, repo_id, ticket_id, title, description, status, severity, priority,
+        creator_agent_id, creator_session_id, assignee_agent_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      12, 1, "TKT-ready-unassigned", "Ready Unassigned", "Desc", "ready_for_commit", "medium", 5,
+      "reviewer-1", "session-1", null, "abc1234", now, now,
+    );
+
+    expect(getTicketDetail(deps, "TKT-ready-assigned")?.nextActionHint).toMatchObject({
+      kind: "assignee",
+      label: "Assignee likely next",
+      agentId: "developer-1",
+      agentName: "Dev One",
+    });
+    expect(getTicketDetail(deps, "TKT-ready-unassigned")?.nextActionHint).toMatchObject({
+      kind: "operator",
+      label: "Operator likely next",
+      agentId: null,
+    });
+  });
+
   it("returns dependency graph with resolved internal edges", () => {
     const now = new Date().toISOString();
     sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)

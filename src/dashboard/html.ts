@@ -422,6 +422,22 @@ function formatStatusAge(days,hours){
   return formatDayShort(days);
 }
 
+function ticketAgeCell(ticket){
+  var statusLabel=ticketStatusLabel(ticket.status)+' '+formatStatusAge(ticket.statusAgeDays,ticket.statusAgeHours);
+  if(!ticket.inReviewStale){
+    return statusLabel;
+  }
+  var idleLabel=formatIdleLabel(ticket.inReviewIdleDays,ticket.inReviewIdleHours);
+  return {
+    badge:'Review stale',
+    cls:'red',
+    text: idleLabel?statusLabel+' · '+idleLabel:statusLabel,
+    title: ticket.lastReviewActivityAt
+      ?'Last review activity '+formatTicketConversationTime(ticket.lastReviewActivityAt).title
+      :'No recent review activity',
+  };
+}
+
 function formatTicketConversationTime(value){
   var date=parseDashboardDate(value);
   if(!date){
@@ -1192,13 +1208,11 @@ function renderTicketsSection(tickets,metrics){
         t.priority,
         t.assignee||'-',
         t.creator||'-',
-        (t.inReviewStale
-          ?b('Review stale','red')
-          :ticketStatusLabel(t.status)+' '+formatStatusAge(t.statusAgeDays,t.statusAgeHours)),
+        ticketAgeCell(t),
         new Date(t.updatedAt).toLocaleString(),
       ].forEach(function(cell){
         var td=document.createElement('td');
-        if(typeof cell==='object'&&cell&&cell.badge){var s=document.createElement('span');s.className='badge badge-'+cell.cls;s.textContent=cell.badge;td.appendChild(s);}
+        if(typeof cell==='object'&&cell&&cell.badge){var s=document.createElement('span');s.className='badge badge-'+cell.cls;s.textContent=cell.badge;td.appendChild(s);if(cell.text){td.appendChild(document.createTextNode(' '+String(cell.text)));}if(cell.title){td.title=String(cell.title);}}
         else if(typeof cell==='object'&&cell&&cell.mono){td.className='mono';td.textContent=cell.mono;}
         else{td.textContent=String(cell);}
         tr.appendChild(td);
