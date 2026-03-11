@@ -9,6 +9,7 @@ import type { CoordinationBus } from "../coordination/bus.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import { loadTicketTemplates, type TicketTemplate } from "../tickets/templates.js";
 import type { CodeSearchDebugResult } from "../search/debug.js";
+import type { KnowledgeScope, SearchKnowledgeOptions, KnowledgeSearchEntry } from "../knowledge/search.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 const SecretLineHitsSchema = z.array(z.object({ pattern: z.string().min(1).optional() }));
@@ -26,6 +27,7 @@ export interface DashboardDeps {
   globalDb: DB | null;
   refreshTicketSearch?: () => void;
   searchDebug?: DashboardSearchDebugProvider;
+  knowledgeSearch?: (params: SearchKnowledgeOptions) => Promise<KnowledgeSearchEntry[]>;
 }
 
 const IN_REVIEW_STALE_HOURS = 72;
@@ -464,34 +466,64 @@ export async function getSearchDebug(
   });
 }
 
-export function getKnowledgeList(deps: DashboardDeps) {
-  const repoEntries = queries.queryKnowledge(deps.db, {}).map((e) => ({
-    ...e, scope: "repo" as string,
-  }));
+export async function getKnowledgeList(
+  deps: DashboardDeps,
+  opts?: { query?: string; scope?: KnowledgeScope; type?: string; limit?: number },
+) {
+  const scope = opts?.scope ?? "all";
+  const type = opts?.type;
+  const query = opts?.query?.trim() ?? "";
 
-  let globalEntries: typeof repoEntries = [];
-  if (deps.globalDb) {
-    globalEntries = queries.queryKnowledge(deps.globalDb, {}).map((e) => ({
-      ...e, scope: "global" as string,
+  if (query && deps.knowledgeSearch) {
+    const results = await deps.knowledgeSearch({
+      query,
+      scope,
+      type,
+      limit: opts?.limit ?? 20,
+    });
+    return results.map((entry) => ({
+      key: entry.key,
+      type: entry.type,
+      scope: entry.scope,
+      title: entry.title,
+      contentPreview: entry.content.slice(0, 200),
+      tags: entry.tags,
+      status: entry.status,
+      agentId: entry.agentId,
+      updatedAt: entry.updatedAt,
+      score: Math.round(entry.score * 1000) / 1000,
     }));
   }
 
-  return [...repoEntries, ...globalEntries]
+  const repoEntries = (scope === "repo" || scope === "all")
+    ? queries.queryKnowledge(deps.db, { type }).map((entry) => ({ ...entry, scope: "repo" as const }))
+    : [];
+
+  const globalEntries = (scope === "global" || scope === "all") && deps.globalDb
+    ? queries.queryKnowledge(deps.globalDb, { type }).map((entry) => ({ ...entry, scope: "global" as const }))
+    : [];
+
+  const combined = [...repoEntries, ...globalEntries]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .map((k) => ({
-      key: k.key,
-      type: k.type,
-      scope: k.scope,
-      title: k.title,
-      contentPreview: k.content.slice(0, 200),
-      tags: parseStringArrayJson(k.tagsJson, {
+    .map((entry) => ({
+      key: entry.key,
+      type: entry.type,
+      scope: entry.scope,
+      title: entry.title,
+      contentPreview: entry.content.slice(0, 200),
+      tags: parseStringArrayJson(entry.tagsJson, {
         maxItems: 25,
         maxItemLength: 64,
       }),
-      status: k.status,
-      agentId: k.agentId,
-      updatedAt: k.updatedAt,
+      status: entry.status,
+      agentId: entry.agentId,
+      updatedAt: entry.updatedAt,
     }));
+
+  if (opts?.limit) {
+    return combined.slice(0, opts.limit);
+  }
+  return combined;
 }
 
 export function getDependencyGraph(deps: DashboardDeps, scope?: string) {

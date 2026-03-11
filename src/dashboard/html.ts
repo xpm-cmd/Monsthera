@@ -304,6 +304,7 @@ const COMMENT_TONES=[
 const COMMENT_EMOJIS=['🤖','🧠','🧪','🛠️','📡','🛰️','🔎','⚙️','🧭','📝'];
 const TYPE_COLORS={decision:'#3b82f6',gotcha:'#f59e0b',pattern:'#a855f7',context:'#06b6d4',plan:'#ec4899',solution:'#22c55e',preference:'#6366f1',runbook:'#14b8a6'};
 const STATE_COLORS={proposed:'#f59e0b',validated:'#3b82f6',applied:'#22c55e',committed:'#22c55e',stale:'#ef4444',failed:'#ef4444'};
+const KNOWLEDGE_TYPES=['decision','gotcha','pattern','context','plan','solution','preference'];
 const TICKET_STATUS_CLS={resolved:'success',closed:'success',technical_analysis:'purple',approved:'success',in_progress:'blue',in_review:'blue',ready_for_commit:'cyan',backlog:'orange',blocked:'red',wont_fix:'red'};
 const TICKET_TRANSITIONS={backlog:['technical_analysis','wont_fix'],technical_analysis:['backlog','approved','wont_fix'],approved:['in_progress','backlog','wont_fix'],in_progress:['in_review','blocked','wont_fix'],in_review:['in_progress','ready_for_commit'],ready_for_commit:['in_progress','resolved'],blocked:['in_progress'],resolved:['in_progress','closed'],closed:[],wont_fix:[]};
 const DONE_TICKET_STATUSES=['resolved','closed','wont_fix'];
@@ -329,6 +330,8 @@ let ticketCreateMode='agent';
 let ticketFilters={search:'',status:'all',severity:'all',assignee:'all',hideDone:true};
 let selectedTicketTemplateId='';
 let searchDebugState={query:'',scope:'',limit:10,loading:false,error:'',data:null};
+let knowledgeCatalog=[];
+let knowledgeViewState={query:'',scope:'all',type:'',limit:20,loading:false,error:'',results:[]};
 const DASHBOARD_LOCALE='en-US';
 const COMMENT_RELATIVE_TIME_FORMATTER=typeof Intl!=='undefined'&&Intl.RelativeTimeFormat
   ?new Intl.RelativeTimeFormat(DASHBOARD_LOCALE,{numeric:'auto'})
@@ -1566,6 +1569,131 @@ async function runSearchDebug(){
   }
 }
 
+function knowledgeFiltersActive(){
+  return !!knowledgeViewState.query || knowledgeViewState.scope!=='all' || !!knowledgeViewState.type;
+}
+
+async function refreshKnowledgeViewData(showLoading){
+  if(!knowledgeFiltersActive()){
+    knowledgeViewState.results=knowledgeCatalog.slice();
+    knowledgeViewState.loading=false;
+    knowledgeViewState.error='';
+    return;
+  }
+
+  knowledgeViewState.loading=true;
+  knowledgeViewState.error='';
+  if(showLoading) renderKnowledgeSection();
+
+  try{
+    var params=new URLSearchParams();
+    if(knowledgeViewState.query) params.set('query',knowledgeViewState.query);
+    if(knowledgeViewState.scope) params.set('scope',knowledgeViewState.scope);
+    if(knowledgeViewState.type) params.set('type',knowledgeViewState.type);
+    params.set('limit',String(knowledgeViewState.limit||20));
+    knowledgeViewState.results=await api('knowledge?'+params.toString());
+  }catch(err){
+    knowledgeViewState.results=[];
+    knowledgeViewState.error=String(err&&err.message?err.message:err);
+  }finally{
+    knowledgeViewState.loading=false;
+  }
+}
+
+async function runKnowledgeSearch(reset){
+  if(reset){
+    knowledgeViewState.query='';
+    knowledgeViewState.scope='all';
+    knowledgeViewState.type='';
+    knowledgeViewState.limit=20;
+  }else{
+    var queryEl=document.getElementById('knowledge-search-query');
+    var scopeEl=document.getElementById('knowledge-search-scope');
+    var typeEl=document.getElementById('knowledge-search-type');
+    var limitEl=document.getElementById('knowledge-search-limit');
+    knowledgeViewState.query=queryEl?queryEl.value.trim():knowledgeViewState.query;
+    knowledgeViewState.scope=scopeEl?scopeEl.value:'all';
+    knowledgeViewState.type=typeEl?typeEl.value:'';
+    var parsedLimit=parseInt(limitEl?limitEl.value:'20',10);
+    knowledgeViewState.limit=isNaN(parsedLimit)?20:Math.max(1,Math.min(50,parsedLimit));
+  }
+
+  await refreshKnowledgeViewData(true);
+  renderKnowledgeSection();
+}
+
+function renderKnowledgeSection(){
+  var section=document.getElementById('knowledge');
+  var entries=knowledgeFiltersActive()?knowledgeViewState.results:knowledgeCatalog;
+  var summary='Showing '+esc(String(entries.length))+' knowledge entr'+(entries.length===1?'y':'ies');
+  if(knowledgeFiltersActive()){
+    summary+=' · filtered by backend search semantics';
+  }else{
+    summary+=' · full repo + global catalog';
+  }
+
+  section.innerHTML=''
+    +'<div class="ticket-toolbar">'
+      +'<div class="action-card"><h4>Knowledge Search</h4>'
+        +'<form id="knowledge-search-form">'
+          +'<div class="field"><label for="knowledge-search-query">Query</label><input id="knowledge-search-query" value="'+esc(knowledgeViewState.query||'')+'" placeholder="auth pattern decision"></div>'
+          +'<div class="field-row">'
+            +'<div class="field"><label for="knowledge-search-scope">Scope</label><select id="knowledge-search-scope"><option value="all"'+(knowledgeViewState.scope==='all'?' selected':'')+'>all</option><option value="repo"'+(knowledgeViewState.scope==='repo'?' selected':'')+'>repo</option><option value="global"'+(knowledgeViewState.scope==='global'?' selected':'')+'>global</option></select></div>'
+            +'<div class="field"><label for="knowledge-search-type">Type</label><select id="knowledge-search-type"><option value=""'+(!knowledgeViewState.type?' selected':'')+'>all types</option>'+KNOWLEDGE_TYPES.map(function(type){return '<option value="'+esc(type)+'"'+(knowledgeViewState.type===type?' selected':'')+'>'+esc(type)+'</option>';}).join('')+'</select></div>'
+            +'<div class="field"><label for="knowledge-search-limit">Limit</label><input id="knowledge-search-limit" type="number" min="1" max="50" value="'+esc(String(knowledgeViewState.limit||20))+'"></div>'
+          +'</div>'
+          +'<div class="field-row">'
+            +'<button class="action-submit" type="submit">'+(knowledgeViewState.loading?'Searching...':'Run Knowledge Search')+'</button>'
+            +'<button class="btn" id="knowledge-search-reset" type="button">Reset</button>'
+          +'</div>'
+        +'</form>'
+        +'<div class="template-hint" style="margin-top:.8rem">Use <code>repo</code> for this repository, <code>global</code> for shared <code>~/.agora</code> knowledge, or <code>all</code> for combined results. When a query is present, the dashboard calls the same backend search semantics as <code>search_knowledge</code>.</div>'
+      +'</div>'
+    +'</div>';
+
+  var resultsCard=document.createElement('div');
+  resultsCard.className='detail-card';
+  var helper='<div class="ticket-help">Knowledge discovery now surfaces repo, global, and combined scope explicitly in the dashboard.</div>';
+  if(knowledgeViewState.loading){
+    helper='<div class="ticket-help">Searching knowledge…</div>';
+  }else if(knowledgeViewState.error){
+    helper='<div class="ticket-help">'+esc(knowledgeViewState.error)+'</div>';
+  }
+  resultsCard.innerHTML='<div class="ticket-toolbar-top"><div class="ticket-toolbar-meta">'+summary+'</div></div>'+helper;
+
+  var headers=['Type','Title','Scope','Tags','Status','Agent','Updated'];
+  if(knowledgeViewState.query) headers.push('Score');
+  var rows=entries.map(function(entry){
+    var row=[
+      b(entry.type,entry.type),
+      entry.title,
+      b(entry.scope,entry.scope),
+      (entry.tags||[]).join(', ')||'-',
+      b(entry.status,entry.status==='active'?'active':'stale'),
+      entry.agentId||'-',
+      new Date(entry.updatedAt).toLocaleString(),
+    ];
+    if(knowledgeViewState.query){
+      row.push(entry.score!=null?m(String(entry.score)):'-');
+    }
+    return row;
+  });
+  resultsCard.appendChild(makeTable(headers,rows));
+  section.appendChild(resultsCard);
+
+  var form=document.getElementById('knowledge-search-form');
+  if(form){
+    form.addEventListener('submit',function(e){
+      e.preventDefault();
+      runKnowledgeSearch(false);
+    });
+  }
+  var resetBtn=document.getElementById('knowledge-search-reset');
+  if(resetBtn){
+    resetBtn.addEventListener('click',function(){runKnowledgeSearch(true)});
+  }
+}
+
 /* ── Dependency Graph ────────────────────────── */
 var depGraphState={scope:'',nodes:[],edges:[],cycleCount:0,loaded:false,catalogPaths:[]};
 
@@ -1895,6 +2023,8 @@ async function refresh(){
       api('overview'),api('agents'),api('agent-timeline'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets'),api('tickets/metrics'),api('files'),api('ticket-templates')
     ]);
     var o=results[0],agents=results[1],timeline=results[2],logs=results[3],patches=results[4],notes=results[5],knowledge=results[6],presence=results[7],tickets=results[8],ticketMetrics=results[9],files=results[10],ticketTemplates=results[11];
+    knowledgeCatalog=knowledge;
+    await refreshKnowledgeViewData(false);
     dashboardAgents=agents;
     window.__agoraTicketTemplates=ticketTemplates;
     ticketActors=[];
@@ -1974,9 +2104,7 @@ async function refresh(){
       notes.map(function(n){return[m(n.key),b(n.type,n.type),n.contentPreview.slice(0,80),n.agentId||'-',m(n.commitSha.slice(0,7)),new Date(n.updatedAt).toLocaleString()]})));
 
     /* Knowledge */
-    document.getElementById('knowledge').replaceChildren(makeTable(
-      ['Type','Title','Scope','Tags','Status','Agent','Updated'],
-      knowledge.map(function(k){return[b(k.type,k.type),k.title,b(k.scope,k.scope),k.tags.join(', ')||'-',b(k.status,k.status==='active'?'active':'stale'),k.agentId||'-',new Date(k.updatedAt).toLocaleString()]})));
+    renderKnowledgeSection();
 
     /* Tickets */
     var visibleTickets=renderTicketsSection(tickets,ticketMetrics);

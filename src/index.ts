@@ -78,6 +78,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
       const { CoordinationBus } = await import("./coordination/bus.js");
       const { SearchRouter } = await import("./search/router.js");
       const { buildCodeSearchDebug } = await import("./search/debug.js");
+      const { searchKnowledgeEntries } = await import("./knowledge/search.js");
       const { startDashboard } = await import("./dashboard/server.js");
       const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke", 200, db, repoId);
       const searchRouter = new SearchRouter({
@@ -92,7 +93,12 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
       });
       await searchRouter.initialize();
       let globalDb = null;
-      try { globalDb = initGlobalDatabase().globalDb; } catch { /* non-fatal */ }
+      let globalSqlite = null;
+      try {
+        const globalResult = initGlobalDatabase();
+        globalDb = globalResult.globalDb;
+        globalSqlite = globalResult.globalSqlite;
+      } catch { /* non-fatal */ }
       startDashboard({
         db,
         repoId,
@@ -100,6 +106,13 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
         mainRepoPath: mainRepoRoot,
         bus,
         globalDb,
+        knowledgeSearch: (params) => searchKnowledgeEntries({
+          db,
+          sqlite,
+          globalDb,
+          globalSqlite,
+          searchRouter,
+        }, params),
         refreshTicketSearch: () => searchRouter.rebuildTicketFts(repoId),
         searchDebug: {
           searchCode: (params) => buildCodeSearchDebug({

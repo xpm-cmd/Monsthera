@@ -125,6 +125,10 @@ Once connected, OpenCode has access to all 23 Agora MCP tools:
 | **Tickets** | `create_ticket`, `assign_ticket`, `update_ticket_status`, `update_ticket`, `list_tickets`, `get_ticket`, `comment_ticket` |
 | **Index** | `request_reindex` |
 
+Knowledge scope notes:
+- `search_knowledge` supports `scope: repo | global | all` and defaults to `all`
+- `query_knowledge` supports the same scope options for structured listing
+
 ## Context Window Considerations
 
 Agora exposes 23 tools. Each tool schema consumes prompt tokens. If your model has a small context window:

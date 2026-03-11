@@ -59,10 +59,20 @@ describe("knowledge tools", () => {
   let db: ReturnType<typeof createTestDb>["db"];
   let server: FakeServer;
   let rebuildKnowledgeFts: ReturnType<typeof vi.fn>;
+  let searchKnowledge: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     ({ db, sqlite } = createTestDb());
     rebuildKnowledgeFts = vi.fn();
+    searchKnowledge = vi.fn((_sqlite, _query, _limit, _type) => {
+      const rows = sqlite.prepare(`
+        SELECT id, title
+        FROM knowledge
+        WHERE status = 'active'
+        ORDER BY updated_at DESC
+      `).all() as Array<{ id: number; title: string }>;
+      return rows.map((row) => ({ knowledgeId: row.id, title: row.title, score: 0.8 }));
+    });
 
     const now = new Date().toISOString();
     for (const agent of [
@@ -94,6 +104,7 @@ describe("knowledge tools", () => {
       globalDb: null,
       globalSqlite: null,
       searchRouter: {
+        searchKnowledge,
         getSemanticReranker: () => null,
         rebuildKnowledgeFts,
       },
@@ -206,6 +217,24 @@ describe("knowledge tools", () => {
     expect(JSON.parse(result.content[0].text)).toMatchObject({
       count: 1,
       entries: [expect.objectContaining({ key: payload.key, tags: [] })],
+    });
+  });
+
+  it("reuses backend knowledge search semantics for repo-scoped search", async () => {
+    const payload = await storeAsDeveloper();
+
+    const result = await handler("search_knowledge")({
+      query: "shared auth",
+      scope: "repo",
+      limit: 10,
+    });
+
+    expect(searchKnowledge).toHaveBeenCalledWith(sqlite, "shared auth", 10, undefined);
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      query: "shared auth",
+      scope: "repo",
+      count: 1,
+      results: [expect.objectContaining({ key: payload.key, scope: "repo" })],
     });
   });
 });

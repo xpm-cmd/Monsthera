@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
@@ -231,7 +231,7 @@ describe("Dashboard API", () => {
     expect(files.topSecretPatterns[0]).toEqual({ label: "github_token", count: 2 });
   });
 
-  it("falls back safely for malformed dashboard JSON payloads", () => {
+  it("falls back safely for malformed dashboard JSON payloads", async () => {
     const now = new Date().toISOString();
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run("agent-1", "Dev", "test", "developer", "A", now);
@@ -258,7 +258,82 @@ describe("Dashboard API", () => {
     expect(getIndexedFilesMetrics(deps).topSecretPatterns).toEqual([]);
     expect(getTicketDetail(deps, "TKT-1")?.tags).toEqual([]);
     expect(getTicketDetail(deps, "TKT-1")?.affectedPaths).toEqual([]);
-    expect(getKnowledgeList(deps)[0]?.tags).toEqual([]);
+    await expect(getKnowledgeList(deps)).resolves.toMatchObject([
+      expect.objectContaining({ tags: [] }),
+    ]);
+  });
+
+  it("filters knowledge listing by explicit scope without a query", async () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`
+      INSERT INTO knowledge (
+        key, type, scope, title, content, tags_json, status, agent_id, session_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("pattern:repo", "pattern", "repo", "Repo Pattern", "Repo content", JSON.stringify(["repo"]), "active", "agent-1", "s-1", now, now);
+
+    const globalResult = createTestDb();
+    try {
+      globalResult.sqlite.prepare(`
+        INSERT INTO knowledge (
+          key, type, scope, title, content, tags_json, status, agent_id, session_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run("decision:global", "decision", "global", "Global Decision", "Global content", JSON.stringify(["global"]), "active", "agent-2", "s-2", now, now);
+
+      const scopedDeps = {
+        ...deps,
+        globalDb: globalResult.db,
+      };
+
+      await expect(getKnowledgeList(scopedDeps, { scope: "repo" })).resolves.toMatchObject([
+        expect.objectContaining({ key: "pattern:repo", scope: "repo" }),
+      ]);
+      await expect(getKnowledgeList(scopedDeps, { scope: "global" })).resolves.toMatchObject([
+        expect.objectContaining({ key: "decision:global", scope: "global" }),
+      ]);
+      await expect(getKnowledgeList(scopedDeps, { scope: "all" })).resolves.toHaveLength(2);
+    } finally {
+      globalResult.sqlite.close();
+    }
+  });
+
+  it("delegates queried knowledge search to the shared backend provider", async () => {
+    const knowledgeSearch = vi.fn().mockResolvedValue([
+      {
+        key: "pattern:shared",
+        type: "pattern",
+        scope: "global",
+        title: "Shared Auth Guard",
+        content: "Shared search result content",
+        tags: ["auth", "shared"],
+        status: "active",
+        agentId: "agent-1",
+        updatedAt: "2026-03-11T12:00:00.000Z",
+        score: 0.9123,
+      },
+    ]);
+
+    const results = await getKnowledgeList({
+      ...deps,
+      knowledgeSearch,
+    }, {
+      query: "shared auth",
+      scope: "global",
+      limit: 5,
+    });
+
+    expect(knowledgeSearch).toHaveBeenCalledWith({
+      query: "shared auth",
+      scope: "global",
+      type: undefined,
+      limit: 5,
+    });
+    expect(results).toEqual([
+      expect.objectContaining({
+        key: "pattern:shared",
+        scope: "global",
+        score: 0.912,
+      }),
+    ]);
   });
 
   it("returns all tickets for the dashboard, not just the first 50", () => {

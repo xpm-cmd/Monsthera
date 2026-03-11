@@ -543,7 +543,17 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
     case "logs": return getEventLogsList(deps);
     case "patches": return getPatchesList(deps);
     case "notes": return getNotesList(deps);
-    case "knowledge": return getKnowledgeList(deps);
+    case "knowledge": {
+      const query = url.searchParams.get("query")?.trim() ?? undefined;
+      const scopeValue = url.searchParams.get("scope")?.trim();
+      const scope = scopeValue === "repo" || scopeValue === "global" || scopeValue === "all"
+        ? scopeValue
+        : undefined;
+      const type = url.searchParams.get("type")?.trim() ?? undefined;
+      const limitRaw = Number(url.searchParams.get("limit") ?? "");
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(50, Math.trunc(limitRaw))) : undefined;
+      return getKnowledgeList(deps, { query, scope, type, limit });
+    }
     case "tickets": return getTicketsList(deps);
     case "ticket-templates": return getTicketTemplates(deps);
     case "files": return getIndexedFilesMetrics(deps);

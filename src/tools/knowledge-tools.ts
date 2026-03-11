@@ -10,7 +10,7 @@ import {
   parseStringArrayJson,
 } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
-import { blendScores, DEFAULT_SEMANTIC_BLEND_ALPHA } from "../search/semantic.js";
+import { searchKnowledgeEntries } from "../knowledge/search.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 
@@ -120,95 +120,18 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     },
     async ({ query, scope, type, limit }) => {
       const c = await getContext();
-
-      type ScoredEntry = { key: string; type: string; scope: string; title: string; content: string; tags: string[]; score: number };
-      let results: ScoredEntry[] = [];
-
-      // Primary: FTS5 search (always available, no model dependency)
-      const searchFts5 = (sqlite: typeof c.sqlite, scopeLabel: string): ScoredEntry[] => {
-        const ftsResults = c.searchRouter.searchKnowledge(sqlite, query, limit, type);
-        // Enrich with full content from DB
-        return ftsResults.map((r) => {
-          const entry = queries.getKnowledgeById(
-            scopeLabel === "global" ? c.globalDb! : c.db,
-            r.knowledgeId,
-          );
-          return {
-            key: entry?.key ?? `id:${r.knowledgeId}`,
-            type: entry?.type ?? "unknown",
-            scope: scopeLabel,
-            title: r.title,
-            content: entry?.content ?? "",
-            tags: parseStringArrayJson(entry?.tagsJson, {
-              maxItems: 25,
-              maxItemLength: 64,
-            }),
-            score: r.score,
-          };
-        }).filter((r) => r.content); // skip orphaned FTS entries
-      };
-
-      if (scope === "repo" || scope === "all") {
-        results.push(...searchFts5(c.sqlite, "repo"));
-      }
-      if ((scope === "global" || scope === "all") && c.globalSqlite) {
-        results.push(...searchFts5(c.globalSqlite, "global"));
-      }
-
-      // Hybrid: if semantic model available, do independent vector search + blend with FTS5
-      const reranker = c.searchRouter.getSemanticReranker();
-      if (reranker?.isAvailable()) {
-        const queryEmbedding = await reranker.embed(query);
-        if (queryEmbedding) {
-          const makeResultKey = (scopeLabel: string, key: string) => `${scopeLabel}:${key}`;
-          const ftsScores = new Map(results.map((r) => [makeResultKey(r.scope, r.key), r.score]));
-          const maxFts5 = Math.max(...results.map((r) => r.score), 1);
-          const existingKeys = new Set(results.map((r) => makeResultKey(r.scope, r.key)));
-
-          const targets: Array<{ sqlite: typeof c.sqlite; db: typeof c.db; scopeLabel: string }> = [];
-          if (scope === "repo" || scope === "all") targets.push({ sqlite: c.sqlite, db: c.db, scopeLabel: "repo" });
-          if ((scope === "global" || scope === "all") && c.globalSqlite) targets.push({ sqlite: c.globalSqlite!, db: c.globalDb!, scopeLabel: "global" });
-
-          for (const t of targets) {
-            const vectorResults = reranker.searchKnowledgeByVector(t.sqlite, queryEmbedding, limit * 3);
-
-            for (const entry of vectorResults) {
-              if (type && entry.type !== type) continue;
-              if (entry.score < 0.6) continue;
-
-              const resultKey = makeResultKey(t.scopeLabel, entry.key);
-              const mergedScore = ftsScores.has(resultKey)
-                ? blendScores((ftsScores.get(resultKey) ?? 0) / maxFts5, entry.score, DEFAULT_SEMANTIC_BLEND_ALPHA)
-                : entry.score;
-
-              if (!existingKeys.has(resultKey)) {
-                existingKeys.add(resultKey);
-                results.push({
-                  key: entry.key,
-                  type: entry.type,
-                  scope: t.scopeLabel,
-                  title: entry.title,
-                  content: entry.content,
-                  tags: parseStringArrayJson(entry.tagsJson, {
-                    maxItems: 25,
-                    maxItemLength: 64,
-                  }),
-                  score: mergedScore,
-                });
-                continue;
-              }
-
-              const existing = results.find((result) => makeResultKey(result.scope, result.key) === resultKey);
-              if (existing) {
-                existing.score = mergedScore;
-              }
-            }
-          }
-        }
-      }
-
-      results.sort((a, b) => b.score - a.score);
-      results = results.slice(0, limit);
+      const results = await searchKnowledgeEntries({
+        db: c.db,
+        sqlite: c.sqlite,
+        globalDb: c.globalDb,
+        globalSqlite: c.globalSqlite,
+        searchRouter: c.searchRouter,
+      }, {
+        query,
+        scope,
+        type,
+        limit,
+      });
 
       return {
         content: [{
