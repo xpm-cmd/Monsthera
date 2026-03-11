@@ -244,6 +244,10 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
         observerOpenRegistration: true,
         roleTokens: {},
       },
+      crossInstance: {
+        enabled: false,
+        peers: [],
+      },
     }, null, 2) + "\n");
     insight.info(`Created ${configPath}`);
   }

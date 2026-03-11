@@ -27,6 +27,67 @@ export const ToolRateLimitConfigSchema = z.object({
   overrides: z.record(z.string().min(1), z.number().int().min(1).max(1_000)).default({}),
 });
 
+export const CrossInstanceCapabilitySchema = z.enum([
+  "read_code",
+  "read_knowledge",
+  "read_tickets",
+]);
+
+export const CrossInstanceInstanceIdSchema = z
+  .string()
+  .min(3)
+  .max(64)
+  .regex(/^[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?$/, "instanceId must be a stable lowercase slug");
+
+export const CrossInstancePeerSchema = z.object({
+  instanceId: CrossInstanceInstanceIdSchema,
+  baseUrl: z.string().url().refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  }, "baseUrl must use http or https"),
+  enabled: z.boolean().default(true),
+  sharedSecret: z.string().min(16),
+  nextSharedSecret: z.string().min(16).optional(),
+  allowedCapabilities: z.array(CrossInstanceCapabilitySchema).default([]),
+});
+
+export const CrossInstanceConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    instanceId: CrossInstanceInstanceIdSchema.optional(),
+    timestampSkewSeconds: z.number().int().min(1).max(600).default(120),
+    nonceTtlSeconds: z.number().int().min(60).max(3600).default(600),
+    peers: z.array(CrossInstancePeerSchema).default([]),
+  })
+  .superRefine((value, ctx) => {
+    if (value.enabled && !value.instanceId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["instanceId"],
+        message: "instanceId is required when crossInstance.enabled is true",
+      });
+    }
+
+    const peerIds = new Set<string>();
+    for (const peer of value.peers) {
+      if (value.instanceId && peer.instanceId === value.instanceId) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["peers"],
+          message: "peer instanceId cannot match the local instanceId",
+        });
+      }
+      if (peerIds.has(peer.instanceId)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["peers"],
+          message: `duplicate peer instanceId: ${peer.instanceId}`,
+        });
+      }
+      peerIds.add(peer.instanceId);
+    }
+  });
+
 export const AgoraConfigSchema = z.object({
   repoPath: z.string(),
   agoraDir: z.string().default(DEFAULT_AGORA_DIR),
@@ -64,6 +125,12 @@ export const AgoraConfigSchema = z.object({
     observerOpenRegistration: true,
     roleTokens: {},
   }),
+  crossInstance: CrossInstanceConfigSchema.default({
+    enabled: false,
+    timestampSkewSeconds: 120,
+    nonceTtlSeconds: 600,
+    peers: [],
+  }),
   toolRateLimits: ToolRateLimitConfigSchema.default({
     defaultPerMinute: 10,
     overrides: {},
@@ -74,6 +141,9 @@ export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
 export type RegistrationAuth = z.infer<typeof RegistrationAuthSchema>;
 export type SecretPatternRule = z.infer<typeof SecretPatternRuleSchema>;
 export type ToolRateLimitConfig = z.infer<typeof ToolRateLimitConfigSchema>;
+export type CrossInstanceCapability = z.infer<typeof CrossInstanceCapabilitySchema>;
+export type CrossInstancePeer = z.infer<typeof CrossInstancePeerSchema>;
+export type CrossInstanceConfig = z.infer<typeof CrossInstanceConfigSchema>;
 
 export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
   return AgoraConfigSchema.parse(partial);
@@ -101,7 +171,7 @@ export function mergeConfigSources(
   for (const source of sources) {
     if (!source) continue;
 
-    const { registrationAuth, toolRateLimits, ...rest } = source;
+    const { registrationAuth, crossInstance, toolRateLimits, ...rest } = source;
     Object.assign(merged, rest);
 
     if (registrationAuth) {
@@ -112,6 +182,14 @@ export function mergeConfigSources(
           ...(merged.registrationAuth?.roleTokens ?? {}),
           ...(registrationAuth.roleTokens ?? {}),
         },
+      };
+    }
+
+    if (crossInstance) {
+      merged.crossInstance = {
+        ...(merged.crossInstance ?? {}),
+        ...crossInstance,
+        peers: crossInstance.peers ?? merged.crossInstance?.peers ?? [],
       };
     }
 

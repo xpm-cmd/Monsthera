@@ -1,9 +1,22 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   AgoraConfigSchema,
   resolveConfig,
   mergeConfigSources,
+  loadConfigFile,
 } from "../../../src/core/config.js";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  tempDirs.length = 0;
+});
 
 describe("AgoraConfigSchema", () => {
   it("parses valid config with only repoPath", () => {
@@ -29,6 +42,8 @@ describe("AgoraConfigSchema", () => {
     expect(result.excludePatterns.length).toBeGreaterThan(0);
     expect(result.sensitiveFilePatterns).toContain(".env");
     expect(result.secretPatterns).toEqual([]);
+    expect(result.crossInstance.enabled).toBe(false);
+    expect(result.crossInstance.peers).toEqual([]);
   });
 
   it("rejects missing repoPath", () => {
@@ -78,6 +93,60 @@ describe("AgoraConfigSchema", () => {
     expect(result.toolRateLimits.defaultPerMinute).toBe(20);
     expect(result.toolRateLimits.overrides.get_code_pack).toBe(5);
     expect(result.toolRateLimits.overrides.status).toBe(100);
+  });
+
+  it("accepts valid crossInstance config", () => {
+    const result = AgoraConfigSchema.parse({
+      repoPath: "/r",
+      crossInstance: {
+        enabled: true,
+        instanceId: "agora-main",
+        peers: [
+          {
+            instanceId: "agora-docs",
+            baseUrl: "https://agora.example.test",
+            sharedSecret: "1234567890abcdef",
+            allowedCapabilities: ["read_code", "read_knowledge"],
+          },
+        ],
+      },
+    });
+
+    expect(result.crossInstance.enabled).toBe(true);
+    expect(result.crossInstance.instanceId).toBe("agora-main");
+    expect(result.crossInstance.peers).toHaveLength(1);
+    expect(result.crossInstance.peers[0]?.allowedCapabilities).toEqual(["read_code", "read_knowledge"]);
+  });
+
+  it("rejects crossInstance enabled without instanceId", () => {
+    expect(() => AgoraConfigSchema.parse({
+      repoPath: "/r",
+      crossInstance: {
+        enabled: true,
+      },
+    })).toThrow(/instanceId is required/i);
+  });
+
+  it("rejects duplicate crossInstance peer ids", () => {
+    expect(() => AgoraConfigSchema.parse({
+      repoPath: "/r",
+      crossInstance: {
+        enabled: true,
+        instanceId: "agora-main",
+        peers: [
+          {
+            instanceId: "agora-peer",
+            baseUrl: "https://one.example.test",
+            sharedSecret: "1234567890abcdef",
+          },
+          {
+            instanceId: "agora-peer",
+            baseUrl: "https://two.example.test",
+            sharedSecret: "abcdef1234567890",
+          },
+        ],
+      },
+    })).toThrow(/duplicate peer instanceId/i);
   });
 
   it("rejects toolRateLimits with rate below 1", () => {
@@ -170,6 +239,38 @@ describe("mergeConfigSources", () => {
     });
   });
 
+  it("deep-merges crossInstance and preserves peers when later source omits them", () => {
+    const result = mergeConfigSources(
+      {
+        crossInstance: {
+          enabled: true,
+          instanceId: "agora-main",
+          peers: [{
+            instanceId: "agora-peer",
+            baseUrl: "https://peer.example.test",
+            sharedSecret: "1234567890abcdef",
+          }],
+        },
+      } as Partial<any>,
+      {
+        crossInstance: {
+          nonceTtlSeconds: 900,
+        },
+      } as Partial<any>,
+    );
+
+    expect(result.crossInstance).toEqual({
+      enabled: true,
+      instanceId: "agora-main",
+      nonceTtlSeconds: 900,
+      peers: [{
+        instanceId: "agora-peer",
+        baseUrl: "https://peer.example.test",
+        sharedSecret: "1234567890abcdef",
+      }],
+    });
+  });
+
   it("does not clobber existing registrationAuth when source has no registrationAuth", () => {
     const result = mergeConfigSources(
       { registrationAuth: { enabled: true, roleTokens: { developer: "tok" } } } as Partial<any>,
@@ -180,5 +281,62 @@ describe("mergeConfigSources", () => {
       enabled: true,
       roleTokens: { developer: "tok" },
     });
+  });
+});
+
+describe("loadConfigFile", () => {
+  it("returns empty config when the file does not exist", () => {
+    const repoPath = mkdtempSync(join(tmpdir(), "agora-config-missing-"));
+    tempDirs.push(repoPath);
+
+    expect(loadConfigFile(repoPath)).toEqual({});
+  });
+
+  it("loads a valid config object from disk", () => {
+    const repoPath = mkdtempSync(join(tmpdir(), "agora-config-valid-"));
+    tempDirs.push(repoPath);
+    mkdirSync(join(repoPath, ".agora"), { recursive: true });
+
+    writeFileSync(
+      join(repoPath, ".agora", "config.json"),
+      JSON.stringify({
+        verbosity: "verbose",
+        registrationAuth: {
+          enabled: true,
+          roleTokens: { developer: "secret-123" },
+        },
+      }),
+      { encoding: "utf-8" },
+    );
+
+    expect(loadConfigFile(repoPath)).toEqual({
+      verbosity: "verbose",
+      registrationAuth: {
+        enabled: true,
+        roleTokens: { developer: "secret-123" },
+      },
+    });
+  });
+
+  it("throws when config contains invalid JSON", () => {
+    const repoPath = mkdtempSync(join(tmpdir(), "agora-config-json-"));
+    tempDirs.push(repoPath);
+    mkdirSync(join(repoPath, ".agora"), { recursive: true });
+
+    writeFileSync(join(repoPath, ".agora", "config.json"), "{bad json", { encoding: "utf-8" });
+
+    expect(() => loadConfigFile(repoPath)).toThrow();
+  });
+
+  it("throws when config is not an object", () => {
+    const repoPath = mkdtempSync(join(tmpdir(), "agora-config-shape-"));
+    tempDirs.push(repoPath);
+    mkdirSync(join(repoPath, ".agora"), { recursive: true });
+
+    writeFileSync(join(repoPath, ".agora", "config.json"), JSON.stringify(["not", "an", "object"]), {
+      encoding: "utf-8",
+    });
+
+    expect(() => loadConfigFile(repoPath)).toThrow(/expected an object/i);
   });
 });
