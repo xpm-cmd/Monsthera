@@ -27,6 +27,9 @@ interface RuntimeEventInput {
 
 const PUBLIC_AGENT_ID = "public";
 const PUBLIC_SESSION_ID = "session-public";
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const DEFAULT_TOOL_LIMIT_PER_MINUTE = 10;
+const toolRateWindows = new Map<string, number[]>();
 
 type LoggingContext = Pick<AgoraContext, "config" | "db" | "repoId" | "repoPath">;
 type MinimalLoggingContext = {
@@ -58,26 +61,48 @@ export function instrumentToolHandler(
 ): ToolHandler {
   return async (input: unknown) => {
     const startedAt = Date.now();
+    let ctx: Awaited<ReturnType<GetContext>> | null = null;
+    const actor = extractActor(input);
+
+    try {
+      ctx = await getContext();
+    } catch {
+      ctx = null;
+    }
+
+    const rateLimit = ctx ? consumeToolRateLimit(ctx.config, tool, actor, startedAt) : null;
+    if (rateLimit && !rateLimit.allowed) {
+      const limitedResult = buildRateLimitedResult(tool, rateLimit);
+      await recordRuntimeEventFromSource(ctx, getContext, {
+        tool,
+        input,
+        output: serializeResult(limitedResult),
+        ...classifyResult(limitedResult),
+        durationMs: Date.now() - startedAt,
+        ...actor,
+      });
+      return limitedResult;
+    }
 
     try {
       const result = await handler(input);
-      await recordRuntimeEvent(getContext, {
+      await recordRuntimeEventFromSource(ctx, getContext, {
         tool,
         input,
         output: serializeResult(result),
         ...classifyResult(result),
         durationMs: Date.now() - startedAt,
-        ...extractActor(input),
+        ...actor,
       });
       return result;
     } catch (error) {
-      await recordRuntimeEvent(getContext, {
+      await recordRuntimeEventFromSource(ctx, getContext, {
         tool,
         input,
         output: error instanceof Error ? error.message : String(error),
         ...classifyThrownError(error),
         durationMs: Date.now() - startedAt,
-        ...extractActor(input),
+        ...actor,
       });
       throw error;
     }
@@ -117,6 +142,10 @@ export async function recordRuntimeEventWithContext(
     errorCode: event.errorCode,
     errorDetail: event.errorDetail,
   }, ctx.config.debugLogging, ctx.config.secretPatterns);
+}
+
+export function resetToolRateLimitState(): void {
+  toolRateWindows.clear();
 }
 
 function extractActor(input: unknown): { agentId?: string; sessionId?: string } {
@@ -245,4 +274,70 @@ function safeStringify(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+async function recordRuntimeEventFromSource(
+  ctx: Awaited<ReturnType<GetContext>> | null,
+  getContext: GetContext,
+  event: RuntimeEventInput,
+): Promise<void> {
+  if (ctx) {
+    await recordRuntimeEventWithContext(ctx, event);
+    return;
+  }
+  await recordRuntimeEvent(getContext, event);
+}
+
+function consumeToolRateLimit(
+  config: Partial<AgoraConfig>,
+  tool: string,
+  actor: { agentId?: string; sessionId?: string },
+  now: number,
+): { allowed: boolean; limit: number; retryAfterSeconds?: number } {
+  const limit = resolveToolRateLimit(config, tool);
+  const key = `${tool}:${actor.agentId ?? PUBLIC_AGENT_ID}:${actor.sessionId ?? PUBLIC_SESSION_ID}`;
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const retained = (toolRateWindows.get(key) ?? []).filter((timestamp) => timestamp > windowStart);
+
+  if (retained.length >= limit) {
+    if (retained.length > 0) {
+      toolRateWindows.set(key, retained);
+    } else {
+      toolRateWindows.delete(key);
+    }
+    return {
+      allowed: false,
+      limit,
+      retryAfterSeconds: Math.max(1, Math.ceil((retained[0]! + RATE_LIMIT_WINDOW_MS - now) / 1000)),
+    };
+  }
+
+  retained.push(now);
+  toolRateWindows.set(key, retained);
+  return { allowed: true, limit };
+}
+
+function resolveToolRateLimit(config: Partial<AgoraConfig>, tool: string): number {
+  return config.toolRateLimits?.overrides?.[tool]
+    ?? config.toolRateLimits?.defaultPerMinute
+    ?? DEFAULT_TOOL_LIMIT_PER_MINUTE;
+}
+
+function buildRateLimitedResult(
+  tool: string,
+  rateLimit: { limit: number; retryAfterSeconds?: number },
+): ToolResult {
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify({
+        denied: true,
+        reason: `Rate limit exceeded for ${tool}`,
+        errorCode: "rate_limited",
+        limitPerMinute: rateLimit.limit,
+        retryAfterSeconds: rateLimit.retryAfterSeconds ?? 1,
+      }),
+    }],
+    isError: true,
+  };
 }

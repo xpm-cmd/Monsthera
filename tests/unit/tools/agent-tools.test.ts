@@ -255,6 +255,25 @@ describe("agent tools", () => {
     expect(result.content[0].text).toContain("Agent or session not found / inactive");
   });
 
+  it("ignores malformed stored claim JSON when checking conflicts", async () => {
+    insertAgentWithSession("agent-dev", "session-dev", "developer");
+    insertAgentWithSession("agent-peer", "session-peer", "developer");
+    sqlite.prepare("UPDATE sessions SET claimed_files_json = ? WHERE id = ?").run("{bad json", "session-peer");
+    const { handlers } = setupActionServer();
+
+    const result = await handlers.get("claim_files")!({
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+      paths: ["src/owned.ts"],
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      claimed: ["src/owned.ts"],
+      conflicts: [],
+    });
+  });
+
   it("ends only the caller-owned session and clears its claims", async () => {
     insertAgentWithSession("agent-dev", "session-dev", "developer");
     queries.updateSessionClaims(db, "session-dev", ["src/file.ts"]);

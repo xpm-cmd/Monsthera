@@ -1,14 +1,17 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { z } from "zod/v4";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
 import { getIndexedCommit } from "../indexing/indexer.js";
 import { VERSION } from "../core/constants.js";
+import { parseJsonWithSchema, parseStringArrayJson } from "../core/input-hardening.js";
 import type { CoordinationBus } from "../coordination/bus.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import { loadTicketTemplates, type TicketTemplate } from "../tickets/templates.js";
 import type { CodeSearchDebugResult } from "../search/debug.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
+const SecretLineHitsSchema = z.array(z.object({ pattern: z.string().min(1).optional() }));
 
 export interface DashboardSearchDebugProvider {
   searchCode: (params: { query: string; scope?: string; limit?: number }) => Promise<CodeSearchDebugResult>;
@@ -147,14 +150,10 @@ export function getIndexedFilesMetrics(deps: DashboardDeps) {
     counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
 
     if (file.secretLineRanges) {
-      try {
-        const hits = JSON.parse(file.secretLineRanges) as Array<{ pattern?: string }>;
-        for (const hit of hits) {
-          if (!hit?.pattern) continue;
-          secretPatternCounts.set(hit.pattern, (secretPatternCounts.get(hit.pattern) ?? 0) + 1);
-        }
-      } catch {
-        // Ignore malformed legacy blobs in dashboard metrics.
+      const hits = parseJsonWithSchema(file.secretLineRanges, SecretLineHitsSchema, []);
+      for (const hit of hits) {
+        if (!hit.pattern) continue;
+        secretPatternCounts.set(hit.pattern, (secretPatternCounts.get(hit.pattern) ?? 0) + 1);
       }
     }
   }
@@ -225,7 +224,10 @@ export function getPresence(deps: DashboardDeps) {
         connectedAt: s.connectedAt,
         lastActivity: s.lastActivity,
         status: computeStatus(s.lastActivity, s.state),
-        claimedFiles: s.claimedFilesJson ? JSON.parse(s.claimedFilesJson) as string[] : [],
+        claimedFiles: parseStringArrayJson(s.claimedFilesJson, {
+          maxItems: 50,
+          maxItemLength: 500,
+        }),
       }));
 
     const bestStatus = sessions.some((s) => s.status === "online")
@@ -300,8 +302,14 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
     status: ticket.status,
     severity: ticket.severity,
     priority: ticket.priority,
-    tags: ticket.tagsJson ? JSON.parse(ticket.tagsJson) : [],
-    affectedPaths: ticket.affectedPathsJson ? JSON.parse(ticket.affectedPathsJson) : [],
+    tags: parseStringArrayJson(ticket.tagsJson, {
+      maxItems: 25,
+      maxItemLength: 64,
+    }),
+    affectedPaths: parseStringArrayJson(ticket.affectedPathsJson, {
+      maxItems: 100,
+      maxItemLength: 500,
+    }),
     acceptanceCriteria: ticket.acceptanceCriteria,
     creatorAgentId: ticket.creatorAgentId,
     assigneeAgentId: ticket.assigneeAgentId,
@@ -456,7 +464,10 @@ export function getKnowledgeList(deps: DashboardDeps) {
       scope: k.scope,
       title: k.title,
       contentPreview: k.content.slice(0, 200),
-      tags: k.tagsJson ? JSON.parse(k.tagsJson) : [],
+      tags: parseStringArrayJson(k.tagsJson, {
+        maxItems: 25,
+        maxItemLength: 64,
+      }),
       status: k.status,
       agentId: k.agentId,
       updatedAt: k.updatedAt,

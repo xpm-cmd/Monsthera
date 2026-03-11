@@ -80,6 +80,24 @@ describe("validatePatch", () => {
     expect(result.dryRunResult.feasible).toBe(false);
   });
 
+  it("ignores malformed stored claim JSON when checking conflicts", async () => {
+    sqlite.prepare(
+      `INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run("agent-1", "Dev", "test", "developer", "A", new Date().toISOString());
+    sqlite.prepare(
+      `INSERT INTO sessions (id, agent_id, state, connected_at, last_activity, claimed_files_json) VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run("session-1", "agent-1", "active", new Date().toISOString(), new Date().toISOString(), "{bad json");
+
+    const result = await validatePatch(db, "/repo", 1, {
+      diff,
+      message: "fix foo",
+      baseCommit: "abc1234def5678",
+    });
+
+    expect(result.dryRunResult.policyViolations).toEqual([]);
+    expect(result.dryRunResult.feasible).toBe(true);
+  });
+
   it("detects secrets in diff content", async () => {
     const secretDiff = `--- a/config.ts\n+++ b/config.ts\n@@ -1 +1 @@\n-old\n+const key = "sk_live_abcdefghijklmnopqrstuvwx"`;
 

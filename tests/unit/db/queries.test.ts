@@ -114,4 +114,20 @@ describe("queries", () => {
     expect(focused.files.map((file) => file.path)).toEqual(["src/a.ts", "src/b.ts", "src/c.ts"]);
     expect(focused.edges).toHaveLength(2);
   });
+
+  it("rejects import candidates that still escape the repo after normalization", () => {
+    const { id: repoId } = queries.upsertRepo(db, "/r", "r");
+    const now = new Date().toISOString();
+    sqlite.prepare(`
+      INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(repoId, "src/a.ts", "typescript", "h1", "summary", "[]", now, "abc");
+
+    const aId = queries.getFileByPath(db, repoId, "src/a.ts")!.id;
+    sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`)
+      .run(aId, "../../../outside.js", "import");
+
+    const graph = queries.getImportGraph(db, repoId, { scope: "src/" });
+    expect(graph.edges).toEqual([]);
+  });
 });

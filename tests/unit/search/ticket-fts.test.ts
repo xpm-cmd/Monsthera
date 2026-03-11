@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
@@ -145,5 +145,23 @@ describe("ticket FTS", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]?.ticketId).toBe("TKT-startup");
+  });
+
+  it("logs warnings and falls back when stored ticket tag JSON is malformed", () => {
+    const warn = vi.fn();
+    insertTicket({
+      ticketId: "TKT-bad-tags",
+      title: "Broken tag payload",
+      description: "Should still index title and description",
+    });
+    sqlite.prepare("UPDATE tickets SET tags_json = ? WHERE ticket_id = ?").run("{bad json", "TKT-bad-tags");
+
+    const warnedFts5 = new FTS5Backend(sqlite, db, warn);
+    warnedFts5.initTicketFts();
+    warnedFts5.rebuildTicketFts(1);
+
+    const results = warnedFts5.searchTickets("broken tag payload", 1, 10);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("FTS5 ticket tag parse failed for TKT-bad-tags"));
+    expect(results[0]?.ticketId).toBe("TKT-bad-tags");
   });
 });

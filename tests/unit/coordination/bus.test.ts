@@ -105,4 +105,28 @@ describe("CoordinationBus", () => {
     sqliteA.close();
     sqliteB.close();
   });
+
+  it("falls back to an empty payload when persisted coordination JSON is malformed", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "agora-bus-"));
+    const dbPath = join(tempDir, "agora.db");
+
+    const sqliteA = new Database(dbPath);
+    sqliteA.pragma("journal_mode = WAL");
+    sqliteA.exec(`
+      CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE coordination_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, message_id TEXT NOT NULL UNIQUE, from_agent_id TEXT NOT NULL, to_agent_id TEXT, type TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp TEXT NOT NULL);
+    `);
+
+    const dbA = drizzle(sqliteA, { schema });
+    const repoId = queries.upsertRepo(dbA, "/test", "test").id;
+    sqliteA.prepare(`
+      INSERT INTO coordination_messages (repo_id, message_id, from_agent_id, to_agent_id, type, payload_json, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(repoId, "msg-1", "agent-1", null, "broadcast", "{bad json", new Date().toISOString());
+
+    const shared = new CoordinationBus("hub-spoke", 200, dbA, repoId);
+    expect(shared.getMessages("agent-2")[0]?.payload).toEqual({});
+
+    sqliteA.close();
+  });
 });

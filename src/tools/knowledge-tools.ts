@@ -2,6 +2,13 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { createHash } from "node:crypto";
 import type { AgoraContext } from "../core/context.js";
+import {
+  AgentIdSchema,
+  KnowledgeKeySchema,
+  SessionIdSchema,
+  TagsSchema,
+  parseStringArrayJson,
+} from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
@@ -22,9 +29,9 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       scope: z.enum(["repo", "global"]).default("repo").describe("repo = this project, global = cross-project"),
       title: z.string().min(1).max(200).describe("Short title"),
       content: z.string().min(1).max(10_000).describe("Knowledge content"),
-      tags: z.array(z.string()).default([]).describe("Tags for filtering"),
-      agentId: z.string().describe("Agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      tags: TagsSchema.default([]).describe("Tags for filtering"),
+      agentId: AgentIdSchema.describe("Agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ type, scope, title, content, tags, agentId, sessionId }) => {
       const c = await getContext();
@@ -131,7 +138,10 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
             scope: scopeLabel,
             title: r.title,
             content: entry?.content ?? "",
-            tags: entry?.tagsJson ? JSON.parse(entry.tagsJson) : [],
+            tags: parseStringArrayJson(entry?.tagsJson, {
+              maxItems: 25,
+              maxItemLength: 64,
+            }),
             score: r.score,
           };
         }).filter((r) => r.content); // skip orphaned FTS entries
@@ -189,7 +199,10 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
                   scope: t.scopeLabel,
                   title: entry.key,
                   content: entry.content,
-                  tags: entry.tagsJson ? JSON.parse(entry.tagsJson) : [],
+                  tags: parseStringArrayJson(entry.tagsJson, {
+                    maxItems: 25,
+                    maxItemLength: 64,
+                  }),
                   score: sim, // semantic-only score
                 });
               }
@@ -243,7 +256,7 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     {
       scope: z.enum(["repo", "global", "all"]).default("all").describe("Which scope"),
       type: z.enum(KNOWLEDGE_TYPES).optional().describe("Filter by type"),
-      tags: z.array(z.string()).optional().describe("Filter by tags (AND logic)"),
+      tags: TagsSchema.optional().describe("Filter by tags (AND logic)"),
       status: z.enum(["active", "archived"]).default("active").describe("Filter by status"),
       limit: z.number().int().min(1).max(100).default(20).describe("Max results"),
     },
@@ -274,7 +287,10 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
             entries: results.map((e) => ({
               key: e.key, type: e.type, scope: e.scope, title: e.title,
               content: e.content.slice(0, 200) + (e.content.length > 200 ? "..." : ""),
-              tags: e.tagsJson ? JSON.parse(e.tagsJson) : [],
+              tags: parseStringArrayJson(e.tagsJson, {
+                maxItems: 25,
+                maxItemLength: 64,
+              }),
               status: e.status,
               updatedAt: e.updatedAt,
             })),
@@ -289,10 +305,10 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     "archive_knowledge",
     "Soft-delete: mark a knowledge entry as archived. Still queryable with status='archived'.",
     {
-      key: z.string().describe("Knowledge entry key"),
+      key: KnowledgeKeySchema.describe("Knowledge entry key"),
       scope: z.enum(["repo", "global"]).describe("Which scope the entry is in"),
-      agentId: z.string().describe("Agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ key, scope, agentId, sessionId }) => {
       const c = await getContext();
@@ -356,10 +372,10 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     "delete_knowledge",
     "Hard-delete: permanently remove a knowledge entry. Use for completed plans, obsolete gotchas.",
     {
-      key: z.string().describe("Knowledge entry key"),
+      key: KnowledgeKeySchema.describe("Knowledge entry key"),
       scope: z.enum(["repo", "global"]).describe("Which scope the entry is in"),
-      agentId: z.string().describe("Agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ key, scope, agentId, sessionId }) => {
       const c = await getContext();

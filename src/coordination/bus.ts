@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { MessageType } from "../../schemas/coordination.js";
+import { parseFlatPrimitiveRecordJson } from "../core/input-hardening.js";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
 
@@ -72,7 +73,7 @@ export class CoordinationBus {
         from: m.fromAgentId,
         to: m.toAgentId,
         type: m.type as MessageType,
-        payload: JSON.parse(m.payloadJson) as Record<string, unknown>,
+        payload: parseFlatPrimitiveRecordJson(m.payloadJson),
         timestamp: m.timestamp,
       }))
       : this.messages;

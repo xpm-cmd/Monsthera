@@ -1,6 +1,7 @@
 import { eq, and, like, desc, or, sql, notInArray } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { posix as pathPosix } from "node:path";
+import { parseStringArrayJson } from "../core/input-hardening.js";
 import type * as schema from "./schema.js";
 import * as tables from "./schema.js";
 
@@ -191,7 +192,11 @@ function resolveIndexedImportTarget(
   const candidates = new Set<string>();
   const addCandidates = (basePath: string) => {
     const normalized = pathPosix.normalize(basePath).replace(/^\.\/+/, "");
-    if (!normalized || normalized === ".") return;
+    // Invariant: resolved import targets must stay inside the repo-relative namespace.
+    // If normalization still contains parent traversal, reject the candidate entirely.
+    if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.includes("/../")) {
+      return;
+    }
     candidates.add(normalized);
 
     const ext = pathPosix.extname(normalized);
@@ -475,7 +480,10 @@ export function queryKnowledge(
   // Post-filter by tags (AND logic)
   if (opts.tags && opts.tags.length > 0) {
     return results.filter((r) => {
-      const entryTags: string[] = r.tagsJson ? JSON.parse(r.tagsJson) : [];
+      const entryTags = parseStringArrayJson(r.tagsJson, {
+        maxItems: 25,
+        maxItemLength: 64,
+      });
       return opts.tags!.every((t) => entryTags.includes(t));
     });
   }
@@ -563,7 +571,10 @@ export function getTicketsByRepo(
 
   const filtered = opts?.tags && opts.tags.length > 0
     ? rows.filter((ticket) => {
-      const ticketTags: string[] = ticket.tagsJson ? JSON.parse(ticket.tagsJson) : [];
+      const ticketTags = parseStringArrayJson(ticket.tagsJson, {
+        maxItems: 25,
+        maxItemLength: 64,
+      });
       return opts.tags!.every((tag) => ticketTags.includes(tag));
     })
     : rows;

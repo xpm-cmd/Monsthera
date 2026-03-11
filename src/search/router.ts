@@ -29,7 +29,7 @@ export class SearchRouter {
   private activeBackend: SearchBackend | null = null;
 
   constructor(private opts: SearchRouterOptions) {
-    this.fts5 = new FTS5Backend(opts.sqlite, opts.db);
+    this.fts5 = new FTS5Backend(opts.sqlite, opts.db, (reason) => opts.onFallback?.(reason));
     this.zoekt = opts.zoektEnabled ? new ZoektBackend(opts.repoPath, opts.indexDir) : null;
     this.semantic = opts.semanticEnabled
       ? new SemanticReranker({ sqlite: opts.sqlite, db: opts.db, onFallback: opts.onFallback })

@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
+import { AgentIdSchema, FlatMetadataSchema, SessionIdSchema } from "../core/input-hardening.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 import type { MessageType } from "../../schemas/coordination.js";
@@ -17,10 +18,10 @@ export function registerCoordinationTools(server: McpServer, getContext: GetCont
         "task_claim", "task_release", "patch_intent",
         "conflict_alert", "status_update", "broadcast",
       ]).describe("Message type"),
-      payload: z.record(z.string(), z.unknown()).describe("Message payload"),
-      to: z.string().nullable().default(null).describe("Target agent ID (null=broadcast)"),
-      agentId: z.string().describe("Sending agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      payload: FlatMetadataSchema.describe("Message payload"),
+      to: AgentIdSchema.nullable().default(null).describe("Target agent ID (null=broadcast)"),
+      agentId: AgentIdSchema.describe("Sending agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ type, payload, to, agentId, sessionId }) => {
       const c = await getContext();
@@ -67,8 +68,8 @@ export function registerCoordinationTools(server: McpServer, getContext: GetCont
     "poll_coordination",
     "Poll coordination messages visible to this agent",
     {
-      agentId: z.string().describe("Your agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Your agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
       since: z.string().optional().describe("ISO timestamp to get messages after"),
       limit: z.number().int().min(1).max(100).default(20).describe("Max messages"),
     },

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
+import { parseStringArrayJson } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
 import { scanForSecrets, type SecretPattern } from "../trust/secret-patterns.js";
@@ -51,9 +52,10 @@ export async function validatePatch(
   // Check file claim conflicts
   const activeSessions = queries.getActiveSessions(db);
   for (const session of activeSessions) {
-    const claimed = session.claimedFilesJson
-      ? (JSON.parse(session.claimedFilesJson) as string[])
-      : [];
+    const claimed = parseStringArrayJson(session.claimedFilesJson, {
+      maxItems: 50,
+      maxItemLength: 500,
+    });
     for (const path of touchedPaths) {
       if (claimed.includes(path)) {
         policyViolations.push(`File ${path} claimed by agent ${session.agentId}`);

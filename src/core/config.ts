@@ -22,6 +22,11 @@ export const SecretPatternRuleSchema = z.object({
   flags: z.string().regex(/^[dgimsuvy]*$/).optional(),
 });
 
+export const ToolRateLimitConfigSchema = z.object({
+  defaultPerMinute: z.number().int().min(1).max(1_000).default(10),
+  overrides: z.record(z.string().min(1), z.number().int().min(1).max(1_000)).default({}),
+});
+
 export const AgoraConfigSchema = z.object({
   repoPath: z.string(),
   agoraDir: z.string().default(DEFAULT_AGORA_DIR),
@@ -59,11 +64,16 @@ export const AgoraConfigSchema = z.object({
     observerOpenRegistration: true,
     roleTokens: {},
   }),
+  toolRateLimits: ToolRateLimitConfigSchema.default({
+    defaultPerMinute: 10,
+    overrides: {},
+  }),
 });
 
 export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
 export type RegistrationAuth = z.infer<typeof RegistrationAuthSchema>;
 export type SecretPatternRule = z.infer<typeof SecretPatternRuleSchema>;
+export type ToolRateLimitConfig = z.infer<typeof ToolRateLimitConfigSchema>;
 
 export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
   return AgoraConfigSchema.parse(partial);
@@ -91,7 +101,7 @@ export function mergeConfigSources(
   for (const source of sources) {
     if (!source) continue;
 
-    const { registrationAuth, ...rest } = source;
+    const { registrationAuth, toolRateLimits, ...rest } = source;
     Object.assign(merged, rest);
 
     if (registrationAuth) {
@@ -101,6 +111,17 @@ export function mergeConfigSources(
         roleTokens: {
           ...(merged.registrationAuth?.roleTokens ?? {}),
           ...(registrationAuth.roleTokens ?? {}),
+        },
+      };
+    }
+
+    if (toolRateLimits) {
+      merged.toolRateLimits = {
+        ...(merged.toolRateLimits ?? {}),
+        ...toolRateLimits,
+        overrides: {
+          ...(merged.toolRateLimits?.overrides ?? {}),
+          ...(toolRateLimits.overrides ?? {}),
         },
       };
     }

@@ -1,6 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
+import {
+  AgentIdSchema,
+  AffectedPathsSchema,
+  SessionIdSchema,
+  TagsSchema,
+  TicketIdSchema,
+  parseStringArrayJson,
+} from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
@@ -29,11 +37,11 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       description: z.string().min(1).max(5000).describe("Ticket description"),
       severity: z.enum(TicketSeverity.options).default("medium"),
       priority: z.number().int().min(0).max(10).default(5),
-      tags: z.array(z.string()).default([]),
-      affectedPaths: z.array(z.string()).default([]),
+      tags: TagsSchema.default([]),
+      affectedPaths: AffectedPathsSchema.default([]),
       acceptanceCriteria: z.string().max(2000).optional(),
-      agentId: z.string().describe("Creator agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Creator agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ title, description, severity, priority, tags, affectedPaths, acceptanceCriteria, agentId, sessionId }) => {
       const c = await getContext();
@@ -64,10 +72,10 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "assign_ticket",
     "Assign a ticket owner. Developers self-assign from backlog, technical_analysis, or approved; admins reassign at any status.",
     {
-      ticketId: z.string().describe("Ticket ID (TKT-...)"),
-      assigneeAgentId: z.string().describe("Agent to assign"),
-      agentId: z.string().describe("Requesting agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
+      assigneeAgentId: AgentIdSchema.describe("Agent to assign"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ ticketId, assigneeAgentId, agentId, sessionId }) => {
       const c = await getContext();
@@ -93,11 +101,11 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "update_ticket_status",
     "Transition a ticket's status. Validates against the state machine.",
     {
-      ticketId: z.string().describe("Ticket ID (TKT-...)"),
+      ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
       status: z.enum(TicketStatus.options).describe("Target status"),
       comment: z.string().max(500).optional(),
-      agentId: z.string().describe("Requesting agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ ticketId, status: targetStatus, comment, agentId, sessionId }) => {
       const c = await getContext();
@@ -124,16 +132,16 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "update_ticket",
     "Update ticket metadata. Creator or admin only.",
     {
-      ticketId: z.string().describe("Ticket ID (TKT-...)"),
+      ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
       title: z.string().min(1).max(200).optional(),
       description: z.string().min(1).max(5000).optional(),
       severity: z.enum(TicketSeverity.options).optional(),
       priority: z.number().int().min(0).max(10).optional(),
-      tags: z.array(z.string()).optional(),
-      affectedPaths: z.array(z.string()).optional(),
+      tags: TagsSchema.optional(),
+      affectedPaths: AffectedPathsSchema.optional(),
       acceptanceCriteria: z.string().max(2000).optional(),
-      agentId: z.string().describe("Requesting agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async (input) => {
       const c = await getContext();
@@ -176,13 +184,13 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "list_tickets",
     "List tickets with optional filters",
     {
-      agentId: z.string().describe("Requesting agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
       status: z.enum(TicketStatus.options).optional(),
-      assigneeAgentId: z.string().optional(),
+      assigneeAgentId: AgentIdSchema.optional(),
       severity: z.enum(TicketSeverity.options).optional(),
-      creatorAgentId: z.string().optional(),
-      tags: z.array(z.string()).optional().describe("Filter by tags (AND logic)"),
+      creatorAgentId: AgentIdSchema.optional(),
+      tags: TagsSchema.optional().describe("Filter by tags (AND logic)"),
       limit: z.number().int().min(1).max(100).default(20),
     },
     async ({ agentId, sessionId, status, assigneeAgentId, severity, creatorAgentId, tags, limit }) => {
@@ -214,11 +222,11 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "Search tickets by title, description, tags, or ticket ID with optional structured filters.",
     {
       query: z.string().min(1).max(1000).describe("Search query"),
-      agentId: z.string().describe("Requesting agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
       status: z.enum(TicketStatus.options).optional(),
       severity: z.enum(TicketSeverity.options).optional(),
-      assigneeAgentId: z.string().optional(),
+      assigneeAgentId: AgentIdSchema.optional(),
       limit: z.number().int().min(1).max(50).default(10),
     },
     async ({ query, agentId, sessionId, status, severity, assigneeAgentId, limit }) => {
@@ -246,7 +254,10 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
           priority: ticket.priority,
           assigneeAgentId: ticket.assigneeAgentId,
           creatorAgentId: ticket.creatorAgentId,
-          tags: ticket.tagsJson ? JSON.parse(ticket.tagsJson) : [],
+          tags: parseStringArrayJson(ticket.tagsJson, {
+            maxItems: 25,
+            maxItemLength: 64,
+          }),
           updatedAt: ticket.updatedAt,
           score: Math.round(result.score * 1000) / 1000,
         }];
@@ -265,9 +276,9 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "get_ticket",
     "Get full ticket details with history, comments, and linked patches",
     {
-      ticketId: z.string().describe("Ticket ID (TKT-...)"),
-      agentId: z.string().describe("Requesting agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ ticketId, agentId, sessionId }) => {
       const c = await getContext();
@@ -312,8 +323,14 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         ticketId: ticket.ticketId, title: ticket.title,
         description: ticket.description, status: ticket.status,
         severity: ticket.severity, priority: ticket.priority,
-        tags: ticket.tagsJson ? JSON.parse(ticket.tagsJson) : [],
-        affectedPaths: ticket.affectedPathsJson ? JSON.parse(ticket.affectedPathsJson) : [],
+        tags: parseStringArrayJson(ticket.tagsJson, {
+          maxItems: 25,
+          maxItemLength: 64,
+        }),
+        affectedPaths: parseStringArrayJson(ticket.affectedPathsJson, {
+          maxItems: 100,
+          maxItemLength: 500,
+        }),
         acceptanceCriteria: ticket.acceptanceCriteria,
         creatorAgentId: ticket.creatorAgentId,
         assigneeAgentId: ticket.assigneeAgentId,
@@ -341,10 +358,10 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "comment_ticket",
     "Add a comment to a ticket",
     {
-      ticketId: z.string().describe("Ticket ID (TKT-...)"),
+      ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
       content: z.string().min(1).max(2000).describe("Comment content"),
-      agentId: z.string().describe("Commenting agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Commenting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ ticketId, content, agentId, sessionId }) => {
       const c = await getContext();
@@ -370,11 +387,11 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "link_tickets",
     "Create a dependency between two tickets. Types: 'blocks' (A blocks B) or 'relates_to' (symmetric).",
     {
-      fromTicketId: z.string().describe("Source ticket ID (TKT-...)"),
-      toTicketId: z.string().describe("Target ticket ID (TKT-...)"),
+      fromTicketId: TicketIdSchema.describe("Source ticket ID (TKT-...)"),
+      toTicketId: TicketIdSchema.describe("Target ticket ID (TKT-...)"),
       relationType: z.enum(["blocks", "relates_to"]).describe("Relationship type"),
-      agentId: z.string().describe("Requesting agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ fromTicketId, toTicketId, relationType, agentId, sessionId }) => {
       const c = await getContext();
@@ -401,10 +418,10 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "unlink_tickets",
     "Remove a dependency between two tickets",
     {
-      fromTicketId: z.string().describe("Source ticket ID (TKT-...)"),
-      toTicketId: z.string().describe("Target ticket ID (TKT-...)"),
-      agentId: z.string().describe("Requesting agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      fromTicketId: TicketIdSchema.describe("Source ticket ID (TKT-...)"),
+      toTicketId: TicketIdSchema.describe("Target ticket ID (TKT-...)"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ fromTicketId, toTicketId, agentId, sessionId }) => {
       const c = await getContext();

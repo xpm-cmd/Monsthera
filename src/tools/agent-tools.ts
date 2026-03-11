@@ -1,6 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
+import {
+  AgentIdSchema,
+  ClaimPathsSchema,
+  SessionIdSchema,
+  parseStringArrayJson,
+} from "../core/input-hardening.js";
 import { AgentRegistrationError, registerAgent, getAgentStatus, reapStaleSessions, disconnectSession } from "../agents/registry.js";
 import * as queries from "../db/queries.js";
 import { checkToolAccess } from "../trust/tiers.js";
@@ -60,7 +66,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
     "agent_status",
     "Get status of a specific agent or list all agents",
     {
-      agentId: z.string().optional().describe("Agent ID (omit for all agents)"),
+      agentId: AgentIdSchema.optional().describe("Agent ID (omit for all agents)"),
     },
     async ({ agentId }) => {
       const c = await getContext();
@@ -128,8 +134,8 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
     "Send a coordination message to other agents via the Insight Stream",
     {
       message: z.string().min(1).max(500).describe("Message to broadcast"),
-      agentId: z.string().describe("Sending agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Sending agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ message, agentId, sessionId }) => {
       const c = await getContext();
@@ -173,9 +179,9 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
     "claim_files",
     "Claim files to prevent double-work (advisory, not a hard lock)",
     {
-      agentId: z.string().describe("Your agent ID"),
-      sessionId: z.string().describe("Your session ID"),
-      paths: z.array(z.string().min(1)).min(1).max(50).describe("File paths to claim"),
+      agentId: AgentIdSchema.describe("Your agent ID"),
+      sessionId: SessionIdSchema.describe("Your session ID"),
+      paths: ClaimPathsSchema.describe("File paths to claim"),
     },
     async ({ agentId, sessionId, paths }) => {
       const c = await getContext();
@@ -207,7 +213,10 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
 
       for (const s of activeSessions) {
         if (s.id === resolved.sessionId) continue;
-        const claimed = s.claimedFilesJson ? JSON.parse(s.claimedFilesJson) as string[] : [];
+        const claimed = parseStringArrayJson(s.claimedFilesJson, {
+          maxItems: 50,
+          maxItemLength: 500,
+        });
         for (const p of paths) {
           if (claimed.includes(p)) {
             conflicts.push({ path: p, claimedBy: s.agentId });
@@ -236,8 +245,8 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
     "end_session",
     "End a session when an agent finishes its work. Releases file claims and marks session as disconnected.",
     {
-      agentId: z.string().describe("Agent ID"),
-      sessionId: z.string().describe("Session ID to end"),
+      agentId: AgentIdSchema.describe("Agent ID"),
+      sessionId: SessionIdSchema.describe("Session ID to end"),
     },
     async ({ agentId, sessionId }) => {
       const c = await getContext();

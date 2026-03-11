@@ -3,7 +3,10 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as schema from "../../../src/db/schema.js";
-import { installToolRuntimeInstrumentation } from "../../../src/tools/runtime-instrumentation.js";
+import {
+  installToolRuntimeInstrumentation,
+  resetToolRateLimitState,
+} from "../../../src/tools/runtime-instrumentation.js";
 
 class FakeServer {
   handlers = new Map<string, (input: unknown) => Promise<any>>();
@@ -32,16 +35,26 @@ describe("runtime instrumentation", () => {
 
   beforeEach(() => {
     ({ db, sqlite } = createTestDb());
+    resetToolRateLimitState();
     server = new FakeServer();
     installToolRuntimeInstrumentation(server as unknown as McpServer, async () => ({
-      config: { debugLogging: false },
+      config: {
+        debugLogging: false,
+        toolRateLimits: {
+          defaultPerMinute: 1,
+          overrides: { schema: 2 },
+        },
+      },
       db,
       repoId: 1,
       repoPath: "/test",
     } as any));
   });
 
-  afterEach(() => sqlite.close());
+  afterEach(() => {
+    resetToolRateLimitState();
+    sqlite.close();
+  });
 
   it("logs successful public tool calls with fallback actor metadata", async () => {
     server.tool("status", "status", {}, async () => ({
@@ -94,5 +107,48 @@ describe("runtime instrumentation", () => {
     expect(row.status).toBe("error");
     expect(row.error_code).toBe("sqlite_busy");
     expect(row.error_detail).toBe("sqlite busy");
+  });
+
+  it("rate limits repeated calls per tool and logs them as denied", async () => {
+    server.tool("status", "status", {}, async () => ({
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+    }));
+
+    const first = await server.handlers.get("status")!({});
+    const second = await server.handlers.get("status")!({});
+
+    expect(first.isError).toBeUndefined();
+    expect(second.isError).toBe(true);
+    expect(JSON.parse(second.content[0].text)).toMatchObject({
+      denied: true,
+      errorCode: "rate_limited",
+      limitPerMinute: 1,
+    });
+
+    const rows = sqlite.prepare("SELECT status, error_code, denial_reason FROM event_logs ORDER BY id").all() as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toMatchObject({
+      status: "denied",
+      error_code: "rate_limited",
+      denial_reason: "Rate limit exceeded for status",
+    });
+  });
+
+  it("supports per-tool rate limit overrides", async () => {
+    server.tool("schema", "schema", {}, async () => ({
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+    }));
+
+    const first = await server.handlers.get("schema")!({});
+    const second = await server.handlers.get("schema")!({});
+    const third = await server.handlers.get("schema")!({});
+
+    expect(first.isError).toBeUndefined();
+    expect(second.isError).toBeUndefined();
+    expect(third.isError).toBe(true);
+    expect(JSON.parse(third.content[0].text)).toMatchObject({
+      errorCode: "rate_limited",
+      limitPerMinute: 2,
+    });
   });
 });

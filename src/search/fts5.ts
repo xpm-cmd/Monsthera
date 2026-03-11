@@ -1,13 +1,16 @@
 import type { Database as DatabaseType } from "better-sqlite3";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq } from "drizzle-orm";
+import { z } from "zod/v4";
 import type * as schema from "../db/schema.js";
+import { TagsSchema } from "../core/input-hardening.js";
 import * as tables from "../db/schema.js";
 import type { SearchBackend, SearchResult } from "./interface.js";
 
 const FTS_TABLE = "files_fts";
 const KNOWLEDGE_FTS_TABLE = "knowledge_fts";
 const TICKETS_FTS_TABLE = "tickets_fts";
+const FileSymbolsSchema = z.array(z.object({ name: z.string().min(1).max(200) }));
 
 export interface KnowledgeFtsResult {
   knowledgeId: number;
@@ -35,6 +38,7 @@ export class FTS5Backend implements SearchBackend {
   constructor(
     private sqlite: DatabaseType,
     private db: BetterSQLite3Database<typeof schema>,
+    private onWarning: (message: string) => void = () => undefined,
   ) {}
 
   async isAvailable(): Promise<boolean> {
@@ -61,7 +65,7 @@ export class FTS5Backend implements SearchBackend {
    * Rebuild the FTS index from the files table.
    */
   rebuildIndex(repoId: number): void {
-    this.sqlite.exec(`DELETE FROM ${FTS_TABLE} WHERE repo_id = ${repoId}`);
+    this.sqlite.prepare(`DELETE FROM ${FTS_TABLE} WHERE repo_id = ?`).run(repoId);
 
     const files = this.db.select().from(tables.files).where(eq(tables.files.repoId, repoId)).all();
 
@@ -71,13 +75,13 @@ export class FTS5Backend implements SearchBackend {
 
     const batch = this.sqlite.transaction(() => {
       for (const file of files) {
-        let symbolNames = "";
-        try {
-          const symbols = JSON.parse(file.symbolsJson ?? "[]") as Array<{ name: string }>;
-          symbolNames = symbols.map((s) => expandCamelCase(s.name)).join(" ");
-        } catch {
-          // ignore parse errors
-        }
+        const symbols = parseJsonWithWarning(
+          file.symbolsJson,
+          FileSymbolsSchema,
+          [],
+          (reason) => this.onWarning(`FTS5 file symbol parse failed for ${file.path}: ${reason}`),
+        );
+        const symbolNames = symbols.map((s) => expandCamelCase(s.name)).join(" ");
 
         insert.run(file.id, file.repoId, file.path, file.summary ?? "", symbolNames, file.language ?? "");
       }
@@ -144,7 +148,7 @@ export class FTS5Backend implements SearchBackend {
   }
 
   rebuildTicketFts(repoId: number): void {
-    this.sqlite.exec(`DELETE FROM ${TICKETS_FTS_TABLE} WHERE repo_id = ${repoId}`);
+    this.sqlite.prepare(`DELETE FROM ${TICKETS_FTS_TABLE} WHERE repo_id = ?`).run(repoId);
 
     const tickets = this.db
       .select()
@@ -168,12 +172,12 @@ export class FTS5Backend implements SearchBackend {
 
     const batch = this.sqlite.transaction(() => {
       for (const ticket of tickets) {
-        let tags = "";
-        try {
-          tags = (JSON.parse(ticket.tagsJson ?? "[]") as string[]).join(" ");
-        } catch {
-          tags = ticket.tagsJson ?? "";
-        }
+        const tags = parseJsonWithWarning(
+          ticket.tagsJson,
+          TagsSchema,
+          [],
+          (reason) => this.onWarning(`FTS5 ticket tag parse failed for ${ticket.ticketId}: ${reason}`),
+        ).join(" ");
 
         insert.run(
           ticket.id,
@@ -421,6 +425,25 @@ const CONFIG_FILE_PATTERN = /\/(tsconfig[^/]*|\.eslintrc[^/]*|vite\.config[^/]*|
 
 export function isConfigFile(path: string): boolean {
   return CONFIG_FILE_PATTERN.test(path);
+}
+
+function parseJsonWithWarning<T>(
+  raw: string | null | undefined,
+  schema: z.ZodType<T>,
+  fallback: T,
+  onWarning: (reason: string) => void,
+): T {
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const result = schema.safeParse(parsed);
+    if (result.success) return result.data;
+    onWarning(result.error.issues.map((issue) => issue.message).join("; "));
+    return fallback;
+  } catch (error) {
+    onWarning(error instanceof Error ? error.message : String(error));
+    return fallback;
+  }
 }
 
 /**

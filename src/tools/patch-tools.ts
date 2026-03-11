@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
+import { AgentIdSchema, SessionIdSchema, TicketIdSchema } from "../core/input-hardening.js";
 import { validatePatch } from "../patches/validator.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import * as queries from "../db/queries.js";
@@ -19,10 +20,10 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
       message: z.string().min(1).max(1000).describe("Commit message"),
       baseCommit: z.string().min(7).describe("Base commit SHA"),
       bundleId: z.string().optional().describe("Evidence Bundle ID for provenance"),
-      agentId: z.string().describe("Proposing agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Proposing agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
       dryRun: z.boolean().default(false).describe("Validate only, don't persist"),
-      ticketId: z.string().optional().describe("Link patch to a ticket (TKT-...)"),
+      ticketId: TicketIdSchema.optional().describe("Link patch to a ticket (TKT-...)"),
     },
     async ({ diff, message, baseCommit, bundleId, agentId, sessionId, dryRun, ticketId }) => {
       const c = await getContext();
@@ -116,8 +117,8 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
     {
       state: z.enum(["proposed", "validated", "applied", "committed", "stale", "failed"])
         .optional().describe("Filter by patch state"),
-      agentId: z.string().describe("Agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ state, agentId, sessionId }) => {
       const c = await getContext();

@@ -2,6 +2,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { createHash } from "node:crypto";
 import type { AgoraContext } from "../core/context.js";
+import {
+  AgentIdSchema,
+  FlatMetadataSchema,
+  LinkedPathsSchema,
+  SessionIdSchema,
+} from "../core/input-hardening.js";
 import { checkToolAccess, canReadNoteType, canWriteNoteType } from "../trust/tiers.js";
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
@@ -22,10 +28,10 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
     {
       type: z.enum(NOTE_TYPES).describe("Note type"),
       content: z.string().min(1).max(10_000).describe("Note content"),
-      linkedPaths: z.array(z.string()).default([]).describe("Related file paths"),
-      metadata: z.record(z.string(), z.unknown()).default({}).describe("Optional metadata"),
-      agentId: z.string().describe("Proposing agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      linkedPaths: LinkedPathsSchema.default([]).describe("Related file paths"),
+      metadata: FlatMetadataSchema.default({}).describe("Optional metadata"),
+      agentId: AgentIdSchema.describe("Proposing agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ type, content, linkedPaths, metadata, agentId, sessionId }) => {
       const c = await getContext();
@@ -110,8 +116,8 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
     "List notes, optionally filtered by type",
     {
       type: z.enum(NOTE_TYPES).optional().describe("Filter by note type"),
-      agentId: z.string().describe("Agent ID"),
-      sessionId: z.string().describe("Active session ID"),
+      agentId: AgentIdSchema.describe("Agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
     },
     async ({ type, agentId, sessionId }) => {
       const c = await getContext();

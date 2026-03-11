@@ -406,6 +406,25 @@ describe("ticket tools", () => {
     expect(payload.linkedPatches).toHaveLength(1);
   });
 
+  it("falls back safely when stored ticket tag or path JSON is malformed", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    sqlite.prepare(
+      "UPDATE tickets SET tags_json = ?, affected_paths_json = ? WHERE ticket_id = ?",
+    ).run("{bad json", "{bad json", ticketId);
+
+    const result = await handler("get_ticket")({
+      ticketId,
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    const payload = JSON.parse(result.content[0].text);
+
+    expect(payload.tags).toEqual([]);
+    expect(payload.affectedPaths).toEqual([]);
+  });
+
   it("searches tickets via FTS with structured filters", async () => {
     await createTicket({
       title: "Dashboard repo name header",

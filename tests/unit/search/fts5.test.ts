@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
@@ -74,5 +74,20 @@ describe("FTS5Backend", () => {
   it("respects limit", async () => {
     const results = await fts5.search("src", 1, 1);
     expect(results.length).toBeLessThanOrEqual(1);
+  });
+
+  it("logs warnings and falls back when file symbol JSON is malformed", () => {
+    const warn = vi.fn();
+    sqlite.prepare("UPDATE files SET symbols_json = ? WHERE path = ?").run("{bad json", "src/server.ts");
+
+    const warnedFts5 = new FTS5Backend(sqlite, db, warn);
+    warnedFts5.initFtsTable();
+    warnedFts5.rebuildIndex(1);
+
+    const results = warnedFts5.search("server", 1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("FTS5 file symbol parse failed for src/server.ts"));
+    return expect(results).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "src/server.ts" }),
+    ]));
   });
 });

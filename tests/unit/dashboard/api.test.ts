@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
-import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, getAgentTimeline, getEventLogsList, getDependencyGraph, type DashboardDeps } from "../../../src/dashboard/api.js";
+import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, getAgentTimeline, getEventLogsList, getDependencyGraph, getKnowledgeList, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -22,6 +22,7 @@ function createTestDb() {
     `CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL)`,
     `CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL, to_ticket_id INTEGER NOT NULL, relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL)`,
     `CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, type TEXT NOT NULL, key TEXT NOT NULL UNIQUE, content TEXT NOT NULL, metadata_json TEXT, linked_paths_json TEXT, agent_id TEXT, session_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+    `CREATE TABLE knowledge (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, type TEXT NOT NULL, scope TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, tags_json TEXT, status TEXT NOT NULL DEFAULT 'active', agent_id TEXT, session_id TEXT, embedding BLOB, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
     `CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, tool TEXT NOT NULL, timestamp TEXT NOT NULL, duration_ms REAL NOT NULL, status TEXT NOT NULL, repo_id TEXT NOT NULL, commit_scope TEXT NOT NULL, payload_size_in INTEGER NOT NULL, payload_size_out INTEGER NOT NULL, input_hash TEXT NOT NULL, output_hash TEXT NOT NULL, redacted_summary TEXT NOT NULL, error_code TEXT, error_detail TEXT, denial_reason TEXT)`,
   ]) {
     sqlite.prepare(stmt).run();
@@ -228,6 +229,36 @@ describe("Dashboard API", () => {
     expect(files.unknownFiles).toBe(1);
     expect(files.secretFiles).toBe(1);
     expect(files.topSecretPatterns[0]).toEqual({ label: "github_token", count: 2 });
+  });
+
+  it("falls back safely for malformed dashboard JSON payloads", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-1", "Dev", "test", "developer", "A", now);
+    sqlite.prepare(`INSERT INTO sessions (id, agent_id, state, connected_at, last_activity, claimed_files_json) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("s-1", "agent-1", "active", now, now, "{bad json");
+    sqlite.prepare(`
+      INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, secret_line_ranges, indexed_at, commit_sha)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(1, "src/dashboard/api.ts", "typescript", "h1", "summary", "[]", "{bad json", now, "abc1234");
+    sqlite.prepare(`
+      INSERT INTO tickets (
+        repo_id, ticket_id, title, description, status, severity, priority,
+        tags_json, affected_paths_json, creator_agent_id, creator_session_id,
+        commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(1, "TKT-1", "Broken JSON", "Desc", "backlog", "medium", 5, "{bad json", "{bad json", "agent-1", "s-1", "abc1234", now, now);
+    sqlite.prepare(`
+      INSERT INTO knowledge (
+        key, type, scope, title, content, tags_json, status, agent_id, session_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run("pattern:1", "pattern", "repo", "Pattern", "Content", "{bad json", "active", "agent-1", "s-1", now, now);
+
+    expect(getPresence(deps)[0]?.sessions[0]?.claimedFiles).toEqual([]);
+    expect(getIndexedFilesMetrics(deps).topSecretPatterns).toEqual([]);
+    expect(getTicketDetail(deps, "TKT-1")?.tags).toEqual([]);
+    expect(getTicketDetail(deps, "TKT-1")?.affectedPaths).toEqual([]);
+    expect(getKnowledgeList(deps)[0]?.tags).toEqual([]);
   });
 
   it("returns all tickets for the dashboard, not just the first 50", () => {

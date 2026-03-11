@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MIN_RELEVANCE_SCORE, MIN_RELEVANCE_SCORE_SCOPED, MAX_DIFF_LINES_PER_FILE, HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
+import { AgentIdSchema, SessionIdSchema, parseStringArrayJson } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
 import { exportAuditTrail } from "../export/audit.js";
@@ -496,7 +497,10 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             scope: scopeLabel,
             title: entry.title,
             content: entry.content.slice(0, 500) + (entry.content.length > 500 ? "..." : ""),
-            tags: entry.tagsJson ? JSON.parse(entry.tagsJson) : [],
+            tags: parseStringArrayJson(entry.tagsJson, {
+              maxItems: 25,
+              maxItemLength: 64,
+            }),
             updatedAt: entry.updatedAt,
           };
         }).filter(Boolean);
@@ -517,7 +521,10 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
               key: n.key,
               type: n.type,
               content: n.content,
-              linkedPaths: n.linkedPathsJson ? JSON.parse(n.linkedPathsJson) : [],
+              linkedPaths: parseStringArrayJson(n.linkedPathsJson, {
+                maxItems: 50,
+                maxItemLength: 500,
+              }),
               agentId: n.agentId,
               commitSha: n.commitSha,
               updatedAt: n.updatedAt,
@@ -574,8 +581,8 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     "Export audit trail (event logs) as JSON or CSV. Metadata-only by default — no raw payloads.",
     {
       format: z.enum(["json", "csv"]).describe("Export format"),
-      agentId: z.string().optional().describe("Filter by agent ID"),
-      sessionId: z.string().optional().describe("Filter by session ID"),
+      agentId: AgentIdSchema.optional().describe("Filter by agent ID"),
+      sessionId: SessionIdSchema.optional().describe("Filter by session ID"),
       since: z.string().optional().describe("ISO timestamp lower bound"),
       until: z.string().optional().describe("ISO timestamp upper bound"),
       limit: z.number().int().min(1).max(10000).default(10000).describe("Max rows"),

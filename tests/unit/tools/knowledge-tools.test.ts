@@ -191,4 +191,21 @@ describe("knowledge tools", () => {
     expect(result.content[0].text).toContain("does not have access to delete_knowledge");
     expect(queries.getKnowledgeByKey(db, payload.key)).toBeTruthy();
   });
+
+  it("falls back to empty tags when stored knowledge JSON is malformed", async () => {
+    const payload = await storeAsDeveloper();
+    sqlite.prepare("UPDATE knowledge SET tags_json = ? WHERE key = ?").run("{bad json", payload.key);
+
+    const result = await handler("query_knowledge")({
+      scope: "repo",
+      status: "active",
+      limit: 10,
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      count: 1,
+      entries: [expect.objectContaining({ key: payload.key, tags: [] })],
+    });
+  });
 });
