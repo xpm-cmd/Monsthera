@@ -28,6 +28,9 @@ export interface DashboardDeps {
   searchDebug?: DashboardSearchDebugProvider;
 }
 
+const IN_REVIEW_STALE_HOURS = 72;
+const HIGH_PRIORITY_THRESHOLD = 7;
+
 export function getOverview(deps: DashboardDeps) {
   const indexedCommit = getIndexedCommit(deps.db, deps.repoId);
   const fileCount = queries.getFileCount(deps.db, deps.repoId);
@@ -258,16 +261,31 @@ export function getPresence(deps: DashboardDeps) {
 }
 
 export function getTicketsList(deps: DashboardDeps) {
-  return queries.getTicketsByRepo(deps.db, deps.repoId).map((t) => ({
-    ticketId: t.ticketId,
-    title: t.title,
-    status: t.status,
-    severity: t.severity,
-    priority: t.priority,
-    assignee: t.assigneeAgentId ?? null,
-    creator: t.creatorAgentId,
-    updatedAt: t.updatedAt,
-  }));
+  const now = Date.now();
+  return queries.getTicketsByRepo(deps.db, deps.repoId).map((ticket) => {
+    const visibility = getTicketVisibilitySignals(deps, ticket, now);
+
+    return {
+      ticketId: ticket.ticketId,
+      title: ticket.title,
+      status: ticket.status,
+      severity: ticket.severity,
+      priority: ticket.priority,
+      assignee: ticket.assigneeAgentId ?? null,
+      creator: ticket.creatorAgentId,
+      createdAt: ticket.createdAt,
+      updatedAt: ticket.updatedAt,
+      ageDays: ticketAgeDays(ticket.createdAt, now),
+      statusAgeHours: visibility.statusAgeHours,
+      statusAgeDays: visibility.statusAgeDays,
+      lastStatusChangeAt: visibility.lastStatusChangeAt,
+      isHighPriority: ticket.priority >= HIGH_PRIORITY_THRESHOLD,
+      inReviewStale: visibility.inReviewStale,
+      inReviewIdleHours: visibility.inReviewIdleHours,
+      inReviewIdleDays: visibility.inReviewIdleDays,
+      lastReviewActivityAt: visibility.lastReviewActivityAt,
+    };
+  });
 }
 
 export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
@@ -294,6 +312,7 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
     ...ticketDeps.outgoing.filter((d) => d.relationType === "relates_to").map((d) => resolvePublicId(d.toTicketId)),
     ...ticketDeps.incoming.filter((d) => d.relationType === "relates_to").map((d) => resolvePublicId(d.fromTicketId)),
   ];
+  const nextActionHint = getNextActionHint(deps, ticket, history, comments);
 
   return {
     ticketId: ticket.ticketId,
@@ -317,6 +336,7 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
     commitSha: ticket.commitSha,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
+    nextActionHint,
     dependencies: { blocking, blockedBy, relatedTo },
     comments: comments.map((comment) => ({
       agentId: comment.agentId,
@@ -532,4 +552,150 @@ function ticketAgeDays(createdAt: string, now = Date.now()): number {
   const createdMs = new Date(createdAt).getTime();
   if (Number.isNaN(createdMs)) return 0;
   return Math.max(0, Math.floor((now - createdMs) / (24 * 60 * 60 * 1000)));
+}
+
+function getNextActionHint(
+  deps: DashboardDeps,
+  ticket: typeof schema.tickets.$inferSelect,
+  history: Array<typeof schema.ticketHistory.$inferSelect>,
+  comments: Array<typeof schema.ticketComments.$inferSelect>,
+): {
+  kind: "reviewer" | "assignee" | "operator";
+  label: string;
+  agentId: string | null;
+  agentName: string | null;
+  reason: string;
+} {
+  const lastHistory = history.at(-1);
+  const lastComment = comments.at(-1);
+  const lastHistoryMs = lastHistory ? new Date(lastHistory.timestamp).getTime() : Number.NEGATIVE_INFINITY;
+  const lastCommentMs = lastComment ? new Date(lastComment.createdAt).getTime() : Number.NEGATIVE_INFINITY;
+  const lastActorId = lastCommentMs >= lastHistoryMs
+    ? (lastComment?.agentId ?? null)
+    : (lastHistory?.agentId ?? null);
+  const assigneeName = ticket.assigneeAgentId ? queries.getAgent(deps.db, ticket.assigneeAgentId)?.name ?? null : null;
+
+  if (ticket.status === "in_review" || ticket.status === "ready_for_commit") {
+    if (ticket.assigneeAgentId && lastActorId && lastActorId !== ticket.assigneeAgentId) {
+      return {
+        kind: "assignee",
+        label: "Assignee likely next",
+        agentId: ticket.assigneeAgentId,
+        agentName: assigneeName,
+        reason: "Recent review-side activity suggests the assignee should respond or update the ticket.",
+      };
+    }
+    return {
+      kind: "reviewer",
+      label: "Reviewer likely next",
+      agentId: null,
+      agentName: null,
+      reason: "This workflow state usually waits on review-side validation or approval.",
+    };
+  }
+
+  if (ticket.status === "approved" || ticket.status === "in_progress" || ticket.status === "blocked") {
+    if (ticket.assigneeAgentId) {
+      return {
+        kind: "assignee",
+        label: "Assignee likely next",
+        agentId: ticket.assigneeAgentId,
+        agentName: assigneeName,
+        reason: "The ticket is in an execution state and already has an assignee.",
+      };
+    }
+    return {
+      kind: "operator",
+      label: "Operator likely next",
+      agentId: null,
+      agentName: null,
+      reason: "The ticket is active but unassigned, so a human needs to route or assign it.",
+    };
+  }
+
+  if (ticket.status === "technical_analysis" || ticket.status === "backlog") {
+    return {
+      kind: "reviewer",
+      label: "Reviewer likely next",
+      agentId: null,
+      agentName: null,
+      reason: "Planning and approval states usually need reviewer or operator attention next.",
+    };
+  }
+
+  return {
+    kind: "operator",
+    label: "No immediate action expected",
+    agentId: null,
+    agentName: null,
+    reason: "This ticket is not currently in an active workflow state.",
+  };
+}
+
+function getTicketVisibilitySignals(
+  deps: DashboardDeps,
+  ticket: typeof schema.tickets.$inferSelect,
+  now = Date.now(),
+): {
+  statusAgeHours: number;
+  statusAgeDays: number;
+  lastStatusChangeAt: string | null;
+  inReviewStale: boolean;
+  inReviewIdleHours: number | null;
+  inReviewIdleDays: number | null;
+  lastReviewActivityAt: string | null;
+} {
+  const history = queries.getTicketHistory(deps.db, ticket.id);
+  const comments = queries.getTicketComments(deps.db, ticket.id);
+  const lastStatusTransition = history
+    .filter((entry) => entry.toStatus === ticket.status)
+    .at(-1);
+  const statusAnchor = lastStatusTransition?.timestamp ?? ticket.createdAt;
+  const statusAnchorMs = new Date(statusAnchor).getTime();
+  const statusAgeHours = Math.max(0, Math.floor((now - (Number.isNaN(statusAnchorMs) ? now : statusAnchorMs)) / (60 * 60 * 1000)));
+  const statusAgeDays = Math.floor(statusAgeHours / 24);
+
+  if (ticket.status !== "in_review") {
+    return {
+      statusAgeHours,
+      statusAgeDays,
+      lastStatusChangeAt: statusAnchor,
+      inReviewStale: false,
+      inReviewIdleHours: null,
+      inReviewIdleDays: null,
+      lastReviewActivityAt: null,
+    };
+  }
+
+  const lastInReviewTransition = history
+    .filter((entry) => entry.toStatus === "in_review")
+    .at(-1);
+
+  const anchor = lastInReviewTransition?.timestamp ?? ticket.updatedAt;
+  const anchorMs = new Date(anchor).getTime();
+  let latestMs = Number.isNaN(anchorMs) ? now : anchorMs;
+  let latestAt = anchor;
+
+  for (const comment of comments) {
+    const commentMs = new Date(comment.createdAt).getTime();
+    if (Number.isNaN(commentMs)) continue;
+    if (!Number.isNaN(anchorMs) && commentMs < anchorMs) continue;
+    if (commentMs > latestMs) {
+      latestMs = commentMs;
+      latestAt = comment.createdAt;
+    }
+  }
+
+  const idleHours = Math.max(0, Math.floor((now - latestMs) / (60 * 60 * 1000)));
+  const idleDays = Math.floor(idleHours / 24);
+
+  return {
+    statusAgeHours,
+    statusAgeDays,
+    lastStatusChangeAt: statusAnchor,
+    inReviewStale: idleHours >= IN_REVIEW_STALE_HOURS,
+    inReviewIdleHours: idleHours,
+    inReviewIdleDays: idleDays,
+    lastReviewActivityAt: latestAt,
+  };
 }

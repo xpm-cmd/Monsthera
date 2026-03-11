@@ -202,14 +202,19 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .filters-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.65rem}
 .board-wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.75rem}
 .board-column{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem;display:flex;flex-direction:column;gap:.65rem;min-height:220px}
-.board-column-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.board-column-head{display:flex;flex-direction:column;gap:.5rem}
+.board-column-headline{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
 .board-column-title{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
 .board-column-count{font-family:monospace;font-size:.72rem;color:var(--text3)}
+.board-column-summary{display:flex;gap:.35rem;flex-wrap:wrap}
+.board-column-stat{display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .42rem;border-radius:999px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);font-size:.65rem;color:var(--text3)}
+.board-column-stat.alert{color:var(--orange);border-color:rgba(245,158,11,.22);background:rgba(245,158,11,.08)}
 .board-list{display:flex;flex-direction:column;gap:.6rem}
 .board-card{border:1px solid rgba(255,255,255,.05);border-left:3px solid rgba(59,130,246,.45);border-radius:8px;background:rgba(255,255,255,.02);padding:.7rem;cursor:pointer;transition:all .15s}
 .board-card:hover{background:rgba(255,255,255,.04);border-color:rgba(59,130,246,.25)}
 .board-card.active{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.35)}
 .board-card-title{font-size:.8rem;color:var(--text);font-weight:600;line-height:1.35;margin:.35rem 0}
+.board-card-flags{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.35rem}
 .board-card-meta{display:flex;gap:.4rem;flex-wrap:wrap;font-size:.68rem;color:var(--text3)}
 .board-card-sub{font-size:.68rem;color:var(--text3);font-family:monospace}
 .field{display:flex;flex-direction:column;gap:.35rem;margin-bottom:.7rem}
@@ -302,6 +307,7 @@ const STATE_COLORS={proposed:'#f59e0b',validated:'#3b82f6',applied:'#22c55e',com
 const TICKET_STATUS_CLS={resolved:'success',closed:'success',technical_analysis:'purple',approved:'success',in_progress:'blue',in_review:'blue',ready_for_commit:'cyan',backlog:'orange',blocked:'red',wont_fix:'red'};
 const TICKET_TRANSITIONS={backlog:['technical_analysis','wont_fix'],technical_analysis:['backlog','approved','wont_fix'],approved:['in_progress','backlog','wont_fix'],in_progress:['in_review','blocked','wont_fix'],in_review:['in_progress','ready_for_commit'],ready_for_commit:['in_progress','resolved'],blocked:['in_progress'],resolved:['in_progress','closed'],closed:[],wont_fix:[]};
 const DONE_TICKET_STATUSES=['resolved','closed','wont_fix'];
+const TICKET_BOARD_WIP_THRESHOLDS={backlog:8,technical_analysis:4,approved:6,in_progress:4,in_review:3,ready_for_commit:4,blocked:2,done:99};
 const TICKET_BOARD_COLUMNS=[
   {id:'backlog',label:'Backlog',statuses:['backlog']},
   {id:'technical_analysis',label:'Technical Analysis',statuses:['technical_analysis']},
@@ -390,6 +396,29 @@ function formatClockTime(date){
   return COMMENT_TIME_FORMATTER?COMMENT_TIME_FORMATTER.format(date):date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
 }
 
+function formatDayShort(days){
+  if(days===null||days===undefined||Number.isNaN(days)) return '-';
+  if(days<=0) return 'today';
+  if(days===1) return '1d';
+  return days+'d';
+}
+
+function formatIdleLabel(days,hours){
+  if(hours===null||hours===undefined||Number.isNaN(hours)) return '';
+  if(hours<24) return 'idle '+Math.max(1,hours)+'h';
+  return 'idle '+formatDayShort(days);
+}
+
+function ticketStatusLabel(status){
+  return String(status||'').replace(/_/g,' ');
+}
+
+function formatStatusAge(days,hours){
+  if(hours===null||hours===undefined||Number.isNaN(hours)) return '-';
+  if(hours<24) return Math.max(1,hours)+'h';
+  return formatDayShort(days);
+}
+
 function formatTicketConversationTime(value){
   var date=parseDashboardDate(value);
   if(!date){
@@ -424,6 +453,32 @@ function formatTicketConversationTime(value){
 
 function actorLabel(actor){
   return actor.name+' ('+actor.role+') · '+actor.sessionId.slice(0,12);
+}
+
+function buildBoardColumnSummary(column,columnTickets){
+  if(!columnTickets.length) return '';
+  var parts=[];
+  var limit=TICKET_BOARD_WIP_THRESHOLDS[column.id];
+  if(limit!==undefined&&columnTickets.length>=limit&&column.id!=='done'){
+    parts.push('<span class="badge badge-orange" title="WIP limit '+esc(String(limit))+'">WIP '+esc(String(columnTickets.length))+'/'+esc(String(limit))+'</span>');
+  }
+  var unassignedCount=columnTickets.filter(function(ticket){return !ticket.assignee}).length;
+  if(unassignedCount){
+    parts.push('<span class="board-column-stat'+(column.id==='in_progress'||column.id==='in_review'?' alert':'')+'">'+esc(String(unassignedCount))+' unassigned</span>');
+  }
+  var staleReviews=columnTickets.filter(function(ticket){return ticket.inReviewStale}).length;
+  if(staleReviews){
+    parts.push('<span class="board-column-stat alert">'+esc(String(staleReviews))+' stale review'+(staleReviews===1?'':'s')+'</span>');
+  }
+  var highPriorityCount=columnTickets.filter(function(ticket){return ticket.isHighPriority}).length;
+  if(highPriorityCount){
+    parts.push('<span class="board-column-stat">'+esc(String(highPriorityCount))+' P7+</span>');
+  }
+  var oldestAge=columnTickets.reduce(function(maxAge,ticket){
+    return Math.max(maxAge,Number(ticket.statusAgeDays)||0);
+  },0);
+  parts.push('<span class="board-column-stat">longest '+esc(formatDayShort(oldestAge))+' in state</span>');
+  return '<div class="board-column-summary">'+parts.join('')+'</div>';
 }
 
 function getTicketTemplatesData(){
@@ -1032,6 +1087,7 @@ function renderTicketDetail(error){
     +'<div class="detail-block"><div class="detail-label">Acceptance Criteria</div><div class="detail-value">'+esc(t.acceptanceCriteria||'-')+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Ownership</div><div class="detail-value">Creator: '+esc(t.creatorAgentId||'-')+'<br>Assignee: '+esc(t.assigneeAgentId||'-')+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Context</div><div class="detail-value">Severity: '+esc(t.severity||'-')+'<br>Priority: '+esc(String(t.priority??'-'))+'<br>Commit: '+esc((t.commitSha||'-').slice(0,7))+'</div></div>'
+    +(function(){var hint=t.nextActionHint;if(!hint)return '';var cls=hint.kind==='reviewer'?'purple':hint.kind==='assignee'?'blue':'orange';var actorName=hint.agentName?' · '+hint.agentName:'';return '<div class="detail-block"><div class="detail-label">Next Action (Heuristic)</div><div class="detail-value"><span class="badge badge-'+cls+'">'+esc(hint.label+actorName)+'</span><br>'+esc(hint.reason||'')+'</div></div>';})()
     +'<div class="detail-block"><div class="detail-label">Tags</div><div class="detail-value">'+esc(tags)+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Affected Paths</div><div class="detail-value">'+esc(affectedPaths)+'</div></div>'
     +(function(){var deps=t.dependencies;if(!deps)return '';var parts=[];if(deps.blocking&&deps.blocking.length)parts.push('Blocks: '+deps.blocking.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.blockedBy&&deps.blockedBy.length)parts.push('Blocked by: '+deps.blockedBy.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.relatedTo&&deps.relatedTo.length)parts.push('Related: '+deps.relatedTo.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(!parts.length)return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">-</div></div>';return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">'+parts.join('<br>')+'</div></div>';})()
@@ -1075,7 +1131,7 @@ function renderTicketsSection(tickets,metrics){
       var columnTickets=filteredTickets.filter(function(ticket){return column.statuses.includes(ticket.status)});
       var col=document.createElement('div');
       col.className='board-column';
-      col.innerHTML='<div class="board-column-head"><div class="board-column-title">'+esc(column.label)+'</div><div class="board-column-count">'+esc(String(columnTickets.length))+'</div></div>';
+      col.innerHTML='<div class="board-column-head"><div class="board-column-headline"><div class="board-column-title">'+esc(column.label)+'</div><div class="board-column-count">'+esc(String(columnTickets.length))+'</div></div>'+buildBoardColumnSummary(column,columnTickets)+'</div>';
       var list=document.createElement('div');
       list.className='board-list';
       if(!columnTickets.length){
@@ -1085,10 +1141,25 @@ function renderTicketsSection(tickets,metrics){
           var card=document.createElement('div');
           card.className='board-card'+(selectedTicketId===ticket.ticketId?' active':'');
           card.addEventListener('click',function(){loadTicketDetail(ticket.ticketId)});
+          var flags=[];
+          if(ticket.isHighPriority){
+            flags.push('<span class="badge badge-cyan">P7+</span>');
+          }
+          if(!ticket.assignee){
+            flags.push('<span class="badge badge-orange">Unassigned</span>');
+          }
+          if(ticket.inReviewStale){
+            var reviewTitle=ticket.lastReviewActivityAt
+              ?'Last review activity '+formatTicketConversationTime(ticket.lastReviewActivityAt).title
+              :'No recent review activity';
+            flags.push('<span class="badge badge-red" title="'+esc(reviewTitle)+'">Review stale</span>');
+          }
           card.innerHTML='<div class="board-card-sub">'+esc(ticket.ticketId)+'</div>'
             +'<div class="board-card-title">'+esc(ticket.title)+'</div>'
+            +(flags.length?'<div class="board-card-flags">'+flags.join('')+'</div>':'')
             +'<div class="board-card-meta"><span class="badge badge-'+(TICKET_STATUS_CLS[ticket.status]||'blue')+'">'+esc(ticket.status)+'</span><span class="badge badge-'+(ticket.severity==='critical'?'red':ticket.severity==='high'?'orange':'blue')+'">'+esc(ticket.severity)+'</span><span>P'+esc(String(ticket.priority))+'</span></div>'
-            +'<div class="board-card-meta"><span>'+(ticket.assignee?esc(ticket.assignee):'unassigned')+'</span><span>'+esc(new Date(ticket.updatedAt).toLocaleDateString())+'</span></div>';
+            +'<div class="board-card-meta"><span>'+(ticket.assignee?esc(ticket.assignee):'unassigned')+'</span><span>'+esc(new Date(ticket.updatedAt).toLocaleDateString())+'</span><span>'+esc(ticketStatusLabel(ticket.status))+' '+esc(formatStatusAge(ticket.statusAgeDays,ticket.statusAgeHours))+'</span></div>'
+            +(ticket.inReviewStale?'<div class="board-card-meta"><span title="'+esc(ticket.lastReviewActivityAt?formatTicketConversationTime(ticket.lastReviewActivityAt).title:'No recent review activity')+'">'+esc(formatIdleLabel(ticket.inReviewIdleDays,ticket.inReviewIdleHours))+'</span></div>':'');
           list.appendChild(card);
         });
       }
@@ -1102,7 +1173,7 @@ function renderTicketsSection(tickets,metrics){
     var table=document.createElement('table');
     var thead=document.createElement('thead');
     var hr=document.createElement('tr');
-    ['ID','Title','Status','Severity','Priority','Assignee','Creator','Updated'].forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
+    ['ID','Title','Status','Severity','Priority','Assignee','Creator','Age','Updated'].forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
     thead.appendChild(hr);
     table.appendChild(thead);
     var tbody=document.createElement('tbody');
@@ -1118,6 +1189,9 @@ function renderTicketsSection(tickets,metrics){
         t.priority,
         t.assignee||'-',
         t.creator||'-',
+        (t.inReviewStale
+          ?b('Review stale','red')
+          :ticketStatusLabel(t.status)+' '+formatStatusAge(t.statusAgeDays,t.statusAgeHours)),
         new Date(t.updatedAt).toLocaleString(),
       ].forEach(function(cell){
         var td=document.createElement('td');

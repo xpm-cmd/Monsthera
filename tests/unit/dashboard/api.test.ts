@@ -277,6 +277,57 @@ describe("Dashboard API", () => {
     expect(getTicketsList(deps)).toHaveLength(60);
   });
 
+  it("adds board visibility metadata for high priority and stale in-review tickets", () => {
+    const now = Date.now();
+    const insertTicket = sqlite.prepare(`
+      INSERT INTO tickets (
+        repo_id, ticket_id, title, description, status, severity, priority,
+        creator_agent_id, creator_session_id, assignee_agent_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertTicket.run(1, "TKT-stale-review", "Stale review", "Desc", "in_review", "high", 8, "agent-1", "s-1", null, "abc1234", new Date(now - 10 * 24 * 60 * 60 * 1000).toISOString(), new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString());
+    insertTicket.run(1, "TKT-active-review", "Active review", "Desc", "in_review", "medium", 5, "agent-1", "s-1", "agent-dev", "abc1234", new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString(), new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString());
+
+    const staleId = Number(sqlite.prepare(`SELECT id FROM tickets WHERE ticket_id = ?`).pluck().get("TKT-stale-review"));
+    const activeId = Number(sqlite.prepare(`SELECT id FROM tickets WHERE ticket_id = ?`).pluck().get("TKT-active-review"));
+
+    sqlite.prepare(`
+      INSERT INTO ticket_history (ticket_id, from_status, to_status, agent_id, session_id, comment, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(staleId, "in_progress", "in_review", "reviewer-1", "session-1", "Ready for review", new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString());
+    sqlite.prepare(`
+      INSERT INTO ticket_history (ticket_id, from_status, to_status, agent_id, session_id, comment, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(activeId, "in_progress", "in_review", "reviewer-2", "session-2", "Needs feedback", new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString());
+    sqlite.prepare(`
+      INSERT INTO ticket_comments (ticket_id, agent_id, session_id, content, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(activeId, "reviewer-2", "session-2", "Follow-up review note", new Date(now - 12 * 60 * 60 * 1000).toISOString());
+
+    const tickets = getTicketsList(deps);
+    const stale = tickets.find((ticket) => ticket.ticketId === "TKT-stale-review");
+    const active = tickets.find((ticket) => ticket.ticketId === "TKT-active-review");
+
+    expect(stale).toMatchObject({
+      isHighPriority: true,
+      inReviewStale: true,
+      inReviewIdleDays: 5,
+      statusAgeDays: 5,
+      assignee: null,
+      ageDays: 10,
+    });
+    expect(active).toMatchObject({
+      isHighPriority: false,
+      inReviewStale: false,
+      inReviewIdleHours: 12,
+      statusAgeDays: 2,
+      assignee: "agent-dev",
+      ageDays: 4,
+    });
+    expect(active?.lastReviewActivityAt).toBe(new Date(now - 12 * 60 * 60 * 1000).toISOString());
+  });
+
   it("returns scoped ticket metrics for status, severity, aging, blocked, and assignee load", () => {
     const now = Date.now();
     const insert = sqlite.prepare(`
@@ -370,6 +421,11 @@ describe("Dashboard API", () => {
     const detail = getTicketDetail(deps, "TKT-detail");
 
     expect(detail?.ticketId).toBe("TKT-detail");
+    expect(detail?.nextActionHint).toMatchObject({
+      kind: "assignee",
+      label: "Assignee likely next",
+      agentId: "developer-1",
+    });
     expect(detail?.comments).toHaveLength(3);
     expect(detail?.comments?.map((comment) => comment.content)).toEqual([
       "Follow-up from another reviewer.",
