@@ -6,7 +6,7 @@ import {
   getOverview, getAgentsList, getEventLogsList,
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence,
   getIndexedFilesMetrics, getTicketMetrics, getAgentTimeline, getTicketTemplates, getSearchDebug,
-  getDependencyGraph,
+  getDependencyGraph, getKnowledgeGraph,
   type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
@@ -444,6 +444,8 @@ export function getDashboardReadToolName(route: string): string {
       return "dashboard.read.search.debug";
     case "dependency-graph":
       return "dashboard.read.dependency_graph";
+    case "knowledge-graph":
+      return "dashboard.read.knowledge_graph";
     case "export/audit":
       return "dashboard.read.export.audit";
     default:
@@ -562,6 +564,8 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
       const scope = url.searchParams.get("scope")?.trim() ?? undefined;
       return getDependencyGraph(deps, scope);
     }
+    case "knowledge-graph":
+      return getKnowledgeGraph(deps);
     case "search/debug": {
       const query = url.searchParams.get("query")?.trim() ?? "";
       const scope = url.searchParams.get("scope")?.trim() ?? undefined;

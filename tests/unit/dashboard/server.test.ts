@@ -12,6 +12,7 @@ describe("dashboard read telemetry helpers", () => {
     expect(getDashboardReadToolName("tickets/metrics")).toBe("dashboard.read.tickets.metrics");
     expect(getDashboardReadToolName("search/debug")).toBe("dashboard.read.search.debug");
     expect(getDashboardReadToolName("dependency-graph")).toBe("dashboard.read.dependency_graph");
+    expect(getDashboardReadToolName("knowledge-graph")).toBe("dashboard.read.knowledge_graph");
     expect(getDashboardReadToolName("export/audit")).toBe("dashboard.read.export.audit");
   });
 

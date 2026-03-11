@@ -32,6 +32,39 @@ export interface DashboardDeps {
 
 const IN_REVIEW_STALE_HOURS = 72;
 const HIGH_PRIORITY_THRESHOLD = 7;
+const KNOWLEDGE_GRAPH_THRESHOLD = 0.65;
+const KNOWLEDGE_GRAPH_EDGE_SCORES = {
+  imports: 1.0,
+  blocks: 1.0,
+  relates_to: 0.65,
+  addresses_file: 0.9,
+  touches_file: 1.0,
+  implements_ticket: 0.95,
+  annotates_file: 0.75,
+  documents_file: 0.7,
+  supports_ticket: 0.7,
+} as const;
+
+type KnowledgeGraphNodeType = "file" | "ticket" | "patch" | "note" | "knowledge";
+type KnowledgeGraphEdgeType = keyof typeof KNOWLEDGE_GRAPH_EDGE_SCORES;
+
+interface KnowledgeGraphNode {
+  id: string;
+  nodeType: KnowledgeGraphNodeType;
+  label: string;
+  details: Record<string, unknown>;
+}
+
+interface KnowledgeGraphEdge {
+  source: string;
+  target: string;
+  edgeType: KnowledgeGraphEdgeType;
+  score: number;
+  provenance: {
+    kind: string;
+    detail: string;
+  };
+}
 
 export function getOverview(deps: DashboardDeps) {
   const indexedCommit = getIndexedCommit(deps.db, deps.repoId);
@@ -578,6 +611,356 @@ export function getDependencyGraph(deps: DashboardDeps, scope?: string) {
   }));
 
   return { nodes, edges, cycleCount: cycleNodes.size };
+}
+
+export function getKnowledgeGraph(deps: DashboardDeps) {
+  const files = queries.getAllFiles(deps.db, deps.repoId);
+  const tickets = queries.getTicketsByRepo(deps.db, deps.repoId);
+  const patches = queries.getPatchesByRepo(deps.db, deps.repoId);
+  const notes = queries.getNotesByRepo(deps.db, deps.repoId);
+  const knowledgeEntries = queries.queryKnowledge(deps.db, { status: "active" });
+  const importGraph = queries.getImportGraph(deps.db, deps.repoId);
+
+  const fileById = new Map(files.map((file) => [file.id, file] as const));
+  const fileByPath = new Map(files.map((file) => [file.path, file] as const));
+  const knownFilePaths = new Set(fileByPath.keys());
+  const ticketById = new Map(tickets.map((ticket) => [ticket.id, ticket] as const));
+  const ticketByPublicId = new Map(tickets.map((ticket) => [ticket.ticketId, ticket] as const));
+
+  const nodes = new Map<string, KnowledgeGraphNode>();
+  const edges = new Map<string, KnowledgeGraphEdge>();
+
+  const fileNodeId = (path: string) => `file:${path}`;
+  const ticketNodeId = (ticketId: string) => `ticket:${ticketId}`;
+  const patchNodeId = (proposalId: string) => `patch:${proposalId}`;
+  const noteNodeId = (key: string) => `note:${key}`;
+  const knowledgeNodeId = (key: string) => `knowledge:${key}`;
+
+  const ensureNode = (node: KnowledgeGraphNode) => {
+    if (!nodes.has(node.id)) nodes.set(node.id, node);
+  };
+
+  const ensureFileNode = (path: string) => {
+    const file = fileByPath.get(path);
+    if (!file) return null;
+    const id = fileNodeId(file.path);
+    ensureNode({
+      id,
+      nodeType: "file",
+      label: file.path,
+      details: {
+        path: file.path,
+        language: file.language ?? null,
+        summary: file.summary ?? null,
+      },
+    });
+    return id;
+  };
+
+  const ensureTicketNode = (ticket: typeof schema.tickets.$inferSelect) => {
+    const id = ticketNodeId(ticket.ticketId);
+    ensureNode({
+      id,
+      nodeType: "ticket",
+      label: ticket.ticketId,
+      details: {
+        ticketId: ticket.ticketId,
+        title: ticket.title,
+        status: ticket.status,
+        priority: ticket.priority,
+        severity: ticket.severity,
+      },
+    });
+    return id;
+  };
+
+  const ensurePatchNode = (patch: typeof schema.patches.$inferSelect) => {
+    const id = patchNodeId(patch.proposalId);
+    ensureNode({
+      id,
+      nodeType: "patch",
+      label: patch.proposalId,
+      details: {
+        proposalId: patch.proposalId,
+        state: patch.state,
+        message: patch.message,
+        committedSha: patch.committedSha ?? null,
+      },
+    });
+    return id;
+  };
+
+  const ensureNoteNode = (note: typeof schema.notes.$inferSelect) => {
+    const id = noteNodeId(note.key);
+    ensureNode({
+      id,
+      nodeType: "note",
+      label: note.key,
+      details: {
+        key: note.key,
+        type: note.type,
+        preview: note.content.slice(0, 200),
+        updatedAt: note.updatedAt,
+      },
+    });
+    return id;
+  };
+
+  const ensureKnowledgeNode = (entry: typeof schema.knowledge.$inferSelect) => {
+    const id = knowledgeNodeId(entry.key);
+    ensureNode({
+      id,
+      nodeType: "knowledge",
+      label: entry.title,
+      details: {
+        key: entry.key,
+        title: entry.title,
+        type: entry.type,
+        scope: entry.scope,
+        preview: entry.content.slice(0, 200),
+        updatedAt: entry.updatedAt,
+      },
+    });
+    return id;
+  };
+
+  const addEdge = (edge: KnowledgeGraphEdge) => {
+    if (edge.score < KNOWLEDGE_GRAPH_THRESHOLD) return;
+    const key = edge.edgeType === "relates_to"
+      ? `${edge.edgeType}:${[edge.source, edge.target].sort().join("|")}`
+      : `${edge.edgeType}:${edge.source}->${edge.target}`;
+    const existing = edges.get(key);
+    if (!existing || existing.score < edge.score) {
+      edges.set(key, edge.edgeType === "relates_to" && edge.source > edge.target
+        ? { ...edge, source: edge.target, target: edge.source }
+        : edge);
+    }
+  };
+
+  for (const ticket of tickets) {
+    const ticketId = ensureTicketNode(ticket);
+    const affectedPaths = parseStringArrayJson(ticket.affectedPathsJson, {
+      maxItems: 100,
+      maxItemLength: 500,
+    });
+    for (const path of affectedPaths) {
+      const normalized = normalizeKnowledgeGraphPath(path);
+      const fileId = ensureFileNode(normalized);
+      if (!fileId) continue;
+      addEdge({
+        source: ticketId,
+        target: fileId,
+        edgeType: "addresses_file",
+        score: KNOWLEDGE_GRAPH_EDGE_SCORES.addresses_file,
+        provenance: {
+          kind: "ticket.affected_paths",
+          detail: ticket.ticketId,
+        },
+      });
+    }
+
+    const dependencies = queries.getTicketDependencies(deps.db, ticket.id);
+    for (const relation of dependencies.outgoing) {
+      const targetTicket = ticketById.get(relation.toTicketId);
+      if (!targetTicket) continue;
+      addEdge({
+        source: ticketId,
+        target: ensureTicketNode(targetTicket),
+        edgeType: relation.relationType === "blocks" ? "blocks" : "relates_to",
+        score: KNOWLEDGE_GRAPH_EDGE_SCORES[relation.relationType === "blocks" ? "blocks" : "relates_to"],
+        provenance: {
+          kind: "ticket_dependency",
+          detail: `${ticket.ticketId} ${relation.relationType} ${targetTicket.ticketId}`,
+        },
+      });
+    }
+  }
+
+  for (const patch of patches) {
+    const patchId = ensurePatchNode(patch);
+    const touchedPaths = parseStringArrayJson(patch.touchedPathsJson, {
+      maxItems: 100,
+      maxItemLength: 500,
+    });
+    for (const path of touchedPaths) {
+      const normalized = normalizeKnowledgeGraphPath(path);
+      const fileId = ensureFileNode(normalized);
+      if (!fileId) continue;
+      addEdge({
+        source: patchId,
+        target: fileId,
+        edgeType: "touches_file",
+        score: KNOWLEDGE_GRAPH_EDGE_SCORES.touches_file,
+        provenance: {
+          kind: "patch.touched_paths",
+          detail: patch.proposalId,
+        },
+      });
+    }
+
+    if (patch.ticketId) {
+      const ticket = ticketById.get(patch.ticketId);
+      if (ticket) {
+        addEdge({
+          source: patchId,
+          target: ensureTicketNode(ticket),
+          edgeType: "implements_ticket",
+          score: KNOWLEDGE_GRAPH_EDGE_SCORES.implements_ticket,
+          provenance: {
+            kind: "patch.ticket_id",
+            detail: patch.proposalId,
+          },
+        });
+      }
+    }
+  }
+
+  for (const note of notes) {
+    const noteId = ensureNoteNode(note);
+    const linkedPaths = parseStringArrayJson(note.linkedPathsJson, {
+      maxItems: 50,
+      maxItemLength: 500,
+    });
+    for (const path of linkedPaths) {
+      const normalized = normalizeKnowledgeGraphPath(path);
+      const fileId = ensureFileNode(normalized);
+      if (!fileId) continue;
+      addEdge({
+        source: noteId,
+        target: fileId,
+        edgeType: "annotates_file",
+        score: KNOWLEDGE_GRAPH_EDGE_SCORES.annotates_file,
+        provenance: {
+          kind: "note.linked_paths",
+          detail: note.key,
+        },
+      });
+    }
+
+    const ticketRefs = extractExplicitTicketRefs(note.content, ticketByPublicId);
+    for (const ticketRef of ticketRefs) {
+      addEdge({
+        source: noteId,
+        target: ensureTicketNode(ticketByPublicId.get(ticketRef)!),
+        edgeType: "supports_ticket",
+        score: KNOWLEDGE_GRAPH_EDGE_SCORES.supports_ticket,
+        provenance: {
+          kind: "note.ticket_ref",
+          detail: note.key,
+        },
+      });
+    }
+  }
+
+  for (const entry of knowledgeEntries) {
+    const knowledgeId = ensureKnowledgeNode(entry);
+    const text = `${entry.title}\n${entry.content}`;
+    for (const filePath of extractExplicitFilePaths(text, knownFilePaths)) {
+      const fileId = ensureFileNode(filePath);
+      if (!fileId) continue;
+      addEdge({
+        source: knowledgeId,
+        target: fileId,
+        edgeType: "documents_file",
+        score: KNOWLEDGE_GRAPH_EDGE_SCORES.documents_file,
+        provenance: {
+          kind: "knowledge.file_ref",
+          detail: entry.key,
+        },
+      });
+    }
+    for (const ticketRef of extractExplicitTicketRefs(text, ticketByPublicId)) {
+      addEdge({
+        source: knowledgeId,
+        target: ensureTicketNode(ticketByPublicId.get(ticketRef)!),
+        edgeType: "supports_ticket",
+        score: KNOWLEDGE_GRAPH_EDGE_SCORES.supports_ticket,
+        provenance: {
+          kind: "knowledge.ticket_ref",
+          detail: entry.key,
+        },
+      });
+    }
+  }
+
+  for (const edge of importGraph.edges) {
+    const sourceFile = fileById.get(edge.source);
+    const targetFile = fileById.get(edge.target);
+    if (!sourceFile || !targetFile) continue;
+    const source = fileNodeId(sourceFile.path);
+    const target = fileNodeId(targetFile.path);
+    if (!nodes.has(source) || !nodes.has(target)) continue;
+    addEdge({
+      source,
+      target,
+      edgeType: "imports",
+      score: KNOWLEDGE_GRAPH_EDGE_SCORES.imports,
+      provenance: {
+        kind: "imports_index",
+        detail: `${sourceFile.path} -> ${targetFile.path}`,
+      },
+    });
+  }
+
+  const connectionCounts = new Map<string, number>();
+  for (const edge of edges.values()) {
+    connectionCounts.set(edge.source, (connectionCounts.get(edge.source) ?? 0) + 1);
+    connectionCounts.set(edge.target, (connectionCounts.get(edge.target) ?? 0) + 1);
+  }
+
+  const graphNodes = Array.from(nodes.values())
+    .filter((node) => connectionCounts.has(node.id))
+    .sort((a, b) => a.nodeType.localeCompare(b.nodeType) || a.label.localeCompare(b.label))
+    .map((node) => ({
+      ...node,
+      connectionCount: connectionCounts.get(node.id) ?? 0,
+    }));
+
+  const activeNodeIds = new Set(graphNodes.map((node) => node.id));
+  const graphEdges = Array.from(edges.values())
+    .filter((edge) => activeNodeIds.has(edge.source) && activeNodeIds.has(edge.target))
+    .sort((a, b) => a.edgeType.localeCompare(b.edgeType) || a.source.localeCompare(b.source) || a.target.localeCompare(b.target));
+
+  return {
+    defaultThreshold: KNOWLEDGE_GRAPH_THRESHOLD,
+    nodes: graphNodes,
+    edges: graphEdges,
+  };
+}
+
+function normalizeKnowledgeGraphPath(path: string): string {
+  return path.trim().replace(/^\.\/+/, "").replace(/^\/+/, "");
+}
+
+function normalizeGraphToken(token: string): string {
+  return token
+    .replace(/^[("'`[{<]+/, "")
+    .replace(/[)"'`\]}>.,:;!?]+$/, "");
+}
+
+function extractExplicitFilePaths(text: string, knownPaths: Set<string>): string[] {
+  const matches = new Set<string>();
+  const tokens = text.match(/[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+/g) ?? [];
+  for (const rawToken of tokens) {
+    const normalized = normalizeKnowledgeGraphPath(normalizeGraphToken(rawToken));
+    if (knownPaths.has(normalized)) {
+      matches.add(normalized);
+    }
+  }
+  return Array.from(matches);
+}
+
+function extractExplicitTicketRefs(
+  text: string,
+  ticketByPublicId: Map<string, typeof schema.tickets.$inferSelect>,
+): string[] {
+  const matches = new Set<string>();
+  for (const match of text.match(/TKT-[A-Za-z0-9_-]+/g) ?? []) {
+    if (ticketByPublicId.has(match)) {
+      matches.add(match);
+    }
+  }
+  return Array.from(matches);
 }
 
 function ticketAgeDays(createdAt: string, now = Date.now()): number {

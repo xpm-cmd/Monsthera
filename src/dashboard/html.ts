@@ -168,6 +168,11 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .detail-block{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);border-radius:8px;padding:.75rem}
 .detail-label{font-size:.64rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem}
 .detail-value{font-size:.8rem;color:var(--text2);line-height:1.5}
+.edge-meta-list{display:flex;flex-direction:column;gap:.5rem}
+.edge-meta-item{border:1px solid rgba(255,255,255,.05);border-radius:8px;background:rgba(255,255,255,.02);padding:.6rem .7rem}
+.edge-meta-top{display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap;font-size:.74rem;color:var(--text)}
+.edge-meta-score{font-family:monospace;color:var(--text2)}
+.edge-meta-note{font-size:.68rem;color:var(--text3);line-height:1.45;margin-top:.28rem}
 .dep-link{color:#3b82f6;text-decoration:none;font-weight:500}.dep-link:hover{text-decoration:underline;color:#60a5fa}
 .detail-section{margin-top:1rem}
 .detail-section h4{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.55rem}
@@ -332,6 +337,7 @@ let selectedTicketTemplateId='';
 let searchDebugState={query:'',scope:'',limit:10,loading:false,error:'',data:null};
 let knowledgeCatalog=[];
 let knowledgeViewState={query:'',scope:'all',type:'',limit:20,loading:false,error:'',results:[]};
+let knowledgeGraphState={loaded:false,loading:false,error:'',nodes:[],edges:[],defaultThreshold:.65,selectedId:''};
 const DASHBOARD_LOCALE='en-US';
 const COMMENT_RELATIVE_TIME_FORMATTER=typeof Intl!=='undefined'&&Intl.RelativeTimeFormat
   ?new Intl.RelativeTimeFormat(DASHBOARD_LOCALE,{numeric:'auto'})
@@ -1674,6 +1680,10 @@ function renderKnowledgeSection(){
     helper='<div class="ticket-help">'+esc(knowledgeViewState.error)+'</div>';
   }
   resultsCard.innerHTML='<div class="ticket-toolbar-top"><div class="ticket-toolbar-meta">'+summary+'</div></div>'+helper;
+  var graphCard=renderKnowledgeGraphCard();
+  if(graphCard){
+    section.appendChild(graphCard);
+  }
 
   var headers=['Type','Title','Scope','Tags','Status','Agent','Updated'];
   if(knowledgeViewState.query) headers.push('Score');
@@ -1708,10 +1718,356 @@ function renderKnowledgeSection(){
   }
 }
 
+function knowledgeGraphNodeColor(nodeType){
+  return KNOWLEDGE_GRAPH_NODE_COLORS[nodeType]||'#6b7280';
+}
+
+function knowledgeGraphEdgeColor(edgeType){
+  return KNOWLEDGE_GRAPH_EDGE_COLORS[edgeType]||'#94a3b8';
+}
+
+function selectedKnowledgeGraphNode(){
+  return knowledgeGraphState.nodes.find(function(node){return node.id===knowledgeGraphState.selectedId;})||null;
+}
+
+function knowledgeGraphConnectedEdges(nodeId){
+  return knowledgeGraphState.edges.filter(function(edge){return edge.source===nodeId||edge.target===nodeId;});
+}
+
+function knowledgeGraphNodeById(nodeId){
+  return knowledgeGraphState.nodes.find(function(node){return node.id===nodeId;})||null;
+}
+
+function formatKnowledgeGraphScore(score){
+  return Number(score||0).toFixed(2);
+}
+
+function updateKnowledgeGraphDetail(){
+  var host=document.getElementById('knowledge-graph-detail');
+  if(!host) return;
+  var node=selectedKnowledgeGraphNode();
+  if(!node){
+    host.innerHTML='<div class="ticket-help">Click a node to inspect the underlying artifact and its connected edges.</div>';
+    return;
+  }
+  var details=node.details||{};
+  var cls=node.nodeType==='ticket'?'orange':node.nodeType==='patch'?'success':node.nodeType==='note'?'purple':node.nodeType==='knowledge'?'cyan':'blue';
+  var rows=['<div class="detail-block"><div class="detail-label">Connections</div><div class="detail-value">'+esc(String(node.connectionCount||0))+'</div></div>'];
+  if(node.nodeType==='file'){
+    rows.push('<div class="detail-block"><div class="detail-label">Path</div><div class="detail-value">'+esc(details.path||node.label)+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">Language</div><div class="detail-value">'+esc(details.language||'unknown')+'</div></div>');
+    if(details.summary){
+      rows.push('<div class="detail-block"><div class="detail-label">Summary</div><div class="detail-value">'+esc(details.summary)+'</div></div>');
+    }
+  }else if(node.nodeType==='ticket'){
+    rows.push('<div class="detail-block"><div class="detail-label">Ticket</div><div class="detail-value">'+esc(details.ticketId||node.label)+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">Status</div><div class="detail-value">'+esc(details.status||'-')+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">Title</div><div class="detail-value">'+esc(details.title||'-')+'</div></div>');
+  }else if(node.nodeType==='patch'){
+    rows.push('<div class="detail-block"><div class="detail-label">Proposal</div><div class="detail-value">'+esc(details.proposalId||node.label)+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">State</div><div class="detail-value">'+esc(details.state||'-')+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">Message</div><div class="detail-value">'+esc(details.message||'-')+'</div></div>');
+  }else if(node.nodeType==='note'){
+    rows.push('<div class="detail-block"><div class="detail-label">Key</div><div class="detail-value">'+esc(details.key||node.label)+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">Type</div><div class="detail-value">'+esc(details.type||'-')+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">Preview</div><div class="detail-value">'+esc(details.preview||'-')+'</div></div>');
+  }else if(node.nodeType==='knowledge'){
+    rows.push('<div class="detail-block"><div class="detail-label">Key</div><div class="detail-value">'+esc(details.key||'-')+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">Type</div><div class="detail-value">'+esc(details.type||'-')+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">Scope</div><div class="detail-value">'+esc(details.scope||'-')+'</div></div>');
+    rows.push('<div class="detail-block"><div class="detail-label">Preview</div><div class="detail-value">'+esc(details.preview||'-')+'</div></div>');
+  }
+  var connectedEdges=knowledgeGraphConnectedEdges(node.id).sort(function(a,b){
+    return (b.score||0)-(a.score||0)||String(a.edgeType).localeCompare(String(b.edgeType))||String(a.source).localeCompare(String(b.source))||String(a.target).localeCompare(String(b.target));
+  });
+  if(connectedEdges.length){
+    var edgeItems=connectedEdges.map(function(edge){
+      var outgoing=edge.source===node.id;
+      var otherId=outgoing?edge.target:edge.source;
+      var otherNode=knowledgeGraphNodeById(otherId);
+      var direction=outgoing?'outgoing':'incoming';
+      var provenance=edge.provenance||{};
+      return ''
+        +'<div class="edge-meta-item">'
+          +'<div class="edge-meta-top"><span><span class="badge badge-blue">'+esc(edge.edgeType)+'</span> '+esc(direction)+' · '+esc(otherNode?otherNode.label:otherId)+'</span><span class="edge-meta-score">score '+esc(formatKnowledgeGraphScore(edge.score))+'</span></div>'
+          +'<div class="edge-meta-note">'+esc(provenance.kind||'derived')+' · '+esc(provenance.detail||'exact relationship evidence')+'</div>'
+        +'</div>';
+    }).join('');
+    rows.push('<div class="detail-block"><div class="detail-label">Connected Edges</div><div class="edge-meta-list">'+edgeItems+'</div></div>');
+  }else{
+    rows.push('<div class="detail-block"><div class="detail-label">Connected Edges</div><div class="detail-value">No edges above threshold.</div></div>');
+  }
+  host.innerHTML=''
+    +'<div class="detail-card">'
+      +'<div class="detail-head"><div><div class="detail-title">'+esc(node.label)+'</div><div class="detail-sub"><span>'+esc(node.id)+'</span></div></div><div><span class="badge badge-'+cls+'">'+esc(node.nodeType)+'</span></div></div>'
+      +rows.join('')
+    +'</div>';
+}
+
+function renderKnowledgeGraphCard(){
+  var knowledgeSection=document.getElementById('knowledge');
+  if(!knowledgeGraphState.loaded && !knowledgeGraphState.loading && !knowledgeGraphState.error && knowledgeSection && knowledgeSection.classList.contains('active')){
+    loadKnowledgeGraph();
+  }
+  var card=document.createElement('div');
+  card.className='detail-card';
+  var summary;
+  if(knowledgeGraphState.loading && !knowledgeGraphState.loaded){
+    summary='Loading graph…';
+  }else if(knowledgeGraphState.error){
+    summary='Graph unavailable';
+  }else if(knowledgeGraphState.loaded){
+    summary=String(knowledgeGraphState.nodes.length)+' nodes · '+String(knowledgeGraphState.edges.length)+' edges · exact-match derivation only';
+  }else{
+    summary='Preparing graph…';
+  }
+
+  var body='';
+  if(knowledgeGraphState.loading && !knowledgeGraphState.loaded){
+    body='<div class="dep-graph-empty">Loading knowledge graph…</div>';
+  }else if(knowledgeGraphState.error){
+    body='<div class="ticket-help">'+esc(knowledgeGraphState.error)+'</div>';
+  }else if(knowledgeGraphState.loaded && !knowledgeGraphState.nodes.length){
+    body='<div class="dep-graph-empty">No exact cross-artifact relationships found yet.</div>';
+  }else if(knowledgeGraphState.loaded){
+    body=''
+      +'<div class="dep-graph-wrap">'
+        +'<canvas id="knowledge-graph-canvas" height="420"></canvas>'
+        +'<div class="dep-graph-tooltip" id="knowledge-graph-tooltip"></div>'
+        +'<div class="dep-graph-legend">'
+          +'<span><span class="swatch" style="background:'+esc(knowledgeGraphNodeColor('file'))+'"></span> Files</span>'
+          +'<span><span class="swatch" style="background:'+esc(knowledgeGraphNodeColor('ticket'))+'"></span> Tickets</span>'
+          +'<span><span class="swatch" style="background:'+esc(knowledgeGraphNodeColor('patch'))+'"></span> Patches</span>'
+          +'<span><span class="swatch" style="background:'+esc(knowledgeGraphNodeColor('note'))+'"></span> Notes</span>'
+          +'<span><span class="swatch" style="background:'+esc(knowledgeGraphNodeColor('knowledge'))+'"></span> Knowledge</span>'
+        +'</div>'
+      +'</div>';
+  }
+
+  card.innerHTML=''
+    +'<div class="ticket-toolbar-top"><div class="ticket-toolbar-meta">Knowledge Graph · '+esc(summary)+'</div></div>'
+    +'<div class="ticket-help">Read-only graph derived from explicit relationships only. Default threshold '+esc(String(knowledgeGraphState.defaultThreshold||.65))+'.</div>'
+    +body
+    +'<div id="knowledge-graph-detail" style="margin-top:1rem"></div>';
+
+  if(knowledgeGraphState.loaded && knowledgeGraphState.nodes.length){
+    setTimeout(function(){
+      initKnowledgeGraphCanvas();
+      updateKnowledgeGraphDetail();
+    },0);
+  }else{
+    setTimeout(updateKnowledgeGraphDetail,0);
+  }
+  return card;
+}
+
+async function loadKnowledgeGraph(){
+  if(knowledgeGraphState.loading) return;
+  knowledgeGraphState.loading=true;
+  knowledgeGraphState.error='';
+  renderKnowledgeSection();
+  try{
+    var data=await api('knowledge-graph');
+    knowledgeGraphState.nodes=data.nodes||[];
+    knowledgeGraphState.edges=data.edges||[];
+    knowledgeGraphState.defaultThreshold=data.defaultThreshold||.65;
+    knowledgeGraphState.loaded=true;
+    if(knowledgeGraphState.nodes.length && !knowledgeGraphState.nodes.some(function(node){return node.id===knowledgeGraphState.selectedId;})){
+      knowledgeGraphState.selectedId=knowledgeGraphState.nodes[0].id;
+    }
+  }catch(e){
+    knowledgeGraphState.nodes=[];
+    knowledgeGraphState.edges=[];
+    knowledgeGraphState.loaded=true;
+    knowledgeGraphState.error=String(e&&e.message?e.message:e);
+  }finally{
+    knowledgeGraphState.loading=false;
+    renderKnowledgeSection();
+  }
+}
+
+function initKnowledgeGraphCanvas(){
+  var canvas=document.getElementById('knowledge-graph-canvas');
+  if(!canvas) return;
+  var tooltip=document.getElementById('knowledge-graph-tooltip');
+  var rect=canvas.parentElement.getBoundingClientRect();
+  var W=Math.floor(rect.width);
+  var H=420;
+  var dpr=window.devicePixelRatio||1;
+  canvas.width=W*dpr;
+  canvas.height=H*dpr;
+  canvas.style.width=W+'px';
+  canvas.style.height=H+'px';
+  var ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+
+  var nodes=knowledgeGraphState.nodes.map(function(node){
+    return{
+      id:node.id,
+      label:node.label,
+      nodeType:node.nodeType,
+      details:node.details||{},
+      connectionCount:node.connectionCount||0,
+      x:W/2+(Math.random()-.5)*W*.55,
+      y:H/2+(Math.random()-.5)*H*.55,
+      vx:0,
+      vy:0
+    };
+  });
+  var idToNode={};
+  nodes.forEach(function(node){idToNode[node.id]=node;});
+  var edges=knowledgeGraphState.edges.filter(function(edge){return idToNode[edge.source]&&idToNode[edge.target];});
+  var hovered=null;
+  var frames=0;
+  var stable=false;
+
+  function radius(node){
+    return Math.max(6,Math.min(12,6+(node.connectionCount||0)*.6));
+  }
+
+  function simulate(){
+    frames+=1;
+    var repulsion=2200;
+    var spring=.02;
+    var damping=.82;
+
+    for(var i=0;i<nodes.length;i+=1){
+      var a=nodes[i];
+      for(var j=i+1;j<nodes.length;j+=1){
+        var b=nodes[j];
+        var dx=a.x-b.x;
+        var dy=a.y-b.y;
+        var distSq=Math.max(dx*dx+dy*dy,1);
+        var force=repulsion/distSq;
+        var dist=Math.sqrt(distSq);
+        var ux=dx/dist;
+        var uy=dy/dist;
+        a.vx+=ux*force;
+        a.vy+=uy*force;
+        b.vx-=ux*force;
+        b.vy-=uy*force;
+      }
+    }
+
+    edges.forEach(function(edge){
+      var source=idToNode[edge.source];
+      var target=idToNode[edge.target];
+      var dx=target.x-source.x;
+      var dy=target.y-source.y;
+      var dist=Math.max(Math.sqrt(dx*dx+dy*dy),1);
+      var desired=edge.edgeType==='blocks'?120:105;
+      var force=(dist-desired)*spring;
+      var ux=dx/dist;
+      var uy=dy/dist;
+      source.vx+=ux*force;
+      source.vy+=uy*force;
+      target.vx-=ux*force;
+      target.vy-=uy*force;
+    });
+
+    var maxSpeed=0;
+    nodes.forEach(function(node){
+      node.vx=(node.vx-(node.x-W/2)*.0015)*damping;
+      node.vy=(node.vy-(node.y-H/2)*.0015)*damping;
+      node.x=Math.max(24,Math.min(W-24,node.x+node.vx));
+      node.y=Math.max(24,Math.min(H-24,node.y+node.vy));
+      var speed=Math.abs(node.vx)+Math.abs(node.vy);
+      if(speed>maxSpeed) maxSpeed=speed;
+    });
+
+    draw();
+    stable=frames>90&&maxSpeed<.2;
+    if(!stable&&frames<240){
+      requestAnimationFrame(simulate);
+    }
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    edges.forEach(function(edge){
+      var source=idToNode[edge.source];
+      var target=idToNode[edge.target];
+      ctx.beginPath();
+      ctx.moveTo(source.x,source.y);
+      ctx.lineTo(target.x,target.y);
+      ctx.strokeStyle=knowledgeGraphEdgeColor(edge.edgeType);
+      ctx.lineWidth=Math.max(1,1+edge.score*1.5);
+      ctx.globalAlpha=edge.edgeType==='relates_to' ? .45 : .72;
+      ctx.stroke();
+      ctx.globalAlpha=1;
+    });
+
+    nodes.forEach(function(node){
+      var selected=knowledgeGraphState.selectedId===node.id;
+      var isHovered=hovered&&hovered.id===node.id;
+      ctx.beginPath();
+      ctx.arc(node.x,node.y,radius(node),0,Math.PI*2);
+      ctx.fillStyle=knowledgeGraphNodeColor(node.nodeType);
+      ctx.globalAlpha=.92;
+      ctx.fill();
+      ctx.globalAlpha=1;
+      ctx.lineWidth=selected?3:isHovered?2:1.5;
+      ctx.strokeStyle=selected?'#f8fafc':'rgba(15,23,42,.75)';
+      ctx.stroke();
+
+      ctx.fillStyle='rgba(226,232,240,.9)';
+      ctx.font=(selected||isHovered?'600 ':'400 ')+'10px ui-monospace, monospace';
+      ctx.fillText(node.label,node.x+radius(node)+6,node.y+4);
+    });
+  }
+
+  function nearestNode(x,y){
+    var best=null;
+    var bestDist=Infinity;
+    nodes.forEach(function(node){
+      var dx=node.x-x,dy=node.y-y;
+      var dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<radius(node)+6&&dist<bestDist){
+        best=node;
+        bestDist=dist;
+      }
+    });
+    return best;
+  }
+
+  canvas.addEventListener('mousemove',function(e){
+    var r=canvas.getBoundingClientRect();
+    hovered=nearestNode(e.clientX-r.left,e.clientY-r.top);
+    if(hovered){
+      tooltip.style.display='block';
+      tooltip.style.left=(Math.min(r.width-220,hovered.x+14))+'px';
+      tooltip.style.top=(Math.max(12,hovered.y-10))+'px';
+      tooltip.innerHTML='<div class="mono">'+esc(hovered.label)+'</div><div>'+esc(hovered.nodeType)+' · '+esc(String(hovered.connectionCount||0))+' connections</div>';
+    }else{
+      tooltip.style.display='none';
+    }
+    draw();
+  });
+
+  canvas.addEventListener('mouseleave',function(){
+    hovered=null;
+    tooltip.style.display='none';
+    draw();
+  });
+
+  canvas.addEventListener('click',function(e){
+    var r=canvas.getBoundingClientRect();
+    var hit=nearestNode(e.clientX-r.left,e.clientY-r.top);
+    if(!hit) return;
+    knowledgeGraphState.selectedId=hit.id;
+    updateKnowledgeGraphDetail();
+    draw();
+  });
+
+  simulate();
+}
+
 /* ── Dependency Graph ────────────────────────── */
 var depGraphState={scope:'',nodes:[],edges:[],cycleCount:0,loaded:false,catalogPaths:[]};
 
 var LANG_COLORS_MAP={typescript:'#3178c6',javascript:'#f7df1e',python:'#3776ab',go:'#00add8',rust:'#dea584',java:'#b07219',ruby:'#cc342d',php:'#4f5d95'};
+var KNOWLEDGE_GRAPH_NODE_COLORS={file:'#3b82f6',ticket:'#f59e0b',patch:'#22c55e',note:'#a855f7',knowledge:'#06b6d4'};
+var KNOWLEDGE_GRAPH_EDGE_COLORS={imports:'#60a5fa',blocks:'#ef4444',relates_to:'#f59e0b',addresses_file:'#fb7185',touches_file:'#22c55e',implements_ticket:'#10b981',annotates_file:'#a855f7',documents_file:'#06b6d4',supports_ticket:'#8b5cf6'};
 
 function langColor(lang){
   if(!lang) return '#6b7280';
@@ -2119,6 +2475,12 @@ async function refresh(){
 
     /* Knowledge */
     renderKnowledgeSection();
+    if(knowledgeGraphState.loaded && !knowledgeGraphState.loading){
+      var activeKnowledge=document.getElementById('knowledge');
+      if(activeKnowledge && activeKnowledge.classList.contains('active')){
+        loadKnowledgeGraph();
+      }
+    }
 
     /* Tickets */
     var visibleTickets=renderTicketsSection(tickets,ticketMetrics);

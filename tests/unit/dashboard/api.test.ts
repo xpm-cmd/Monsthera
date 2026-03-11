@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
-import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, getAgentTimeline, getEventLogsList, getDependencyGraph, getKnowledgeList, type DashboardDeps } from "../../../src/dashboard/api.js";
+import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, getAgentTimeline, getEventLogsList, getDependencyGraph, getKnowledgeGraph, getKnowledgeList, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -615,5 +615,109 @@ describe("Dashboard API", () => {
     const focused = getDependencyGraph(deps, "src/a.ts");
     expect(focused.nodes.map((node) => node.path)).toEqual(["src/a.ts", "src/b.ts", "src/c.ts"]);
     expect(focused.edges).toHaveLength(2);
+  });
+
+  it("builds a read-only knowledge graph from exact relationships", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/app.ts", "typescript", "h1", "app", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/lib.ts", "typescript", "h2", "lib", "[]", now, "abc");
+    sqlite.prepare(`INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)`)
+      .run(1, "./lib.js", "import");
+
+    sqlite.prepare(`INSERT INTO tickets (repo_id, ticket_id, title, description, status, severity, priority, tags_json, affected_paths_json, acceptance_criteria, creator_agent_id, creator_session_id, commit_sha, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "TKT-graph-a", "Graph A", "Desc", "technical_analysis", "medium", 5, "[]", JSON.stringify(["src/app.ts"]), null, "agent-a", "session-a", "abc", now, now);
+    sqlite.prepare(`INSERT INTO tickets (repo_id, ticket_id, title, description, status, severity, priority, tags_json, affected_paths_json, acceptance_criteria, creator_agent_id, creator_session_id, commit_sha, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "TKT-graph-b", "Graph B", "Desc", "approved", "medium", 4, "[]", "[]", null, "agent-b", "session-b", "abc", now, now);
+    sqlite.prepare(`INSERT INTO ticket_dependencies (from_ticket_id, to_ticket_id, relation_type, created_by_agent_id, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(1, 2, "blocks", "agent-a", now);
+
+    sqlite.prepare(`INSERT INTO patches (repo_id, proposal_id, base_commit, bundle_id, state, diff, message, touched_paths_json, dry_run_result_json, agent_id, session_id, committed_sha, ticket_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "PATCH-1", "abc", null, "proposed", "diff", "Patch message", JSON.stringify(["src/lib.ts"]), null, "agent-a", "session-a", null, 1, now, now);
+
+    sqlite.prepare(`INSERT INTO notes (repo_id, type, key, content, metadata_json, linked_paths_json, agent_id, session_id, commit_sha, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "decision", "note:graph", "Follow-up for TKT-graph-b", null, JSON.stringify(["src/lib.ts"]), "agent-a", "session-a", "abc", now, now);
+
+    sqlite.prepare(`INSERT INTO knowledge (key, type, scope, title, content, tags_json, status, agent_id, session_id, embedding, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run("pattern:graph", "pattern", "repo", "Graph Pattern", "See src/lib.ts and TKT-graph-a for context.", "[]", "active", "agent-a", "session-a", null, now, now);
+
+    const result = getKnowledgeGraph(deps);
+    const edgeTypes = result.edges.map((edge) => edge.edgeType);
+    const importsEdge = result.edges.find((edge) => edge.edgeType === "imports");
+    const noteSupportEdge = result.edges.find((edge) => edge.edgeType === "supports_ticket" && edge.source === "note:note:graph");
+    const knowledgeFileEdge = result.edges.find((edge) => edge.edgeType === "documents_file");
+
+    expect(result.defaultThreshold).toBe(0.65);
+    expect(result.nodes.map((node) => node.id)).toEqual(expect.arrayContaining([
+      "file:src/app.ts",
+      "file:src/lib.ts",
+      "ticket:TKT-graph-a",
+      "ticket:TKT-graph-b",
+      "patch:PATCH-1",
+      "note:note:graph",
+      "knowledge:pattern:graph",
+    ]));
+    expect(edgeTypes).toEqual(expect.arrayContaining([
+      "imports",
+      "blocks",
+      "addresses_file",
+      "touches_file",
+      "implements_ticket",
+      "annotates_file",
+      "documents_file",
+      "supports_ticket",
+    ]));
+    for (const edge of result.edges) {
+      expect(edge.score).toBeGreaterThanOrEqual(result.defaultThreshold);
+      expect(edge.provenance).toEqual(expect.objectContaining({
+        kind: expect.any(String),
+        detail: expect.any(String),
+      }));
+    }
+    expect(importsEdge).toEqual(expect.objectContaining({
+      provenance: expect.objectContaining({
+        kind: "imports_index",
+        detail: "src/app.ts -> src/lib.ts",
+      }),
+    }));
+    expect(noteSupportEdge).toEqual(expect.objectContaining({
+      provenance: expect.objectContaining({
+        kind: "note.ticket_ref",
+        detail: "note:graph",
+      }),
+    }));
+    expect(knowledgeFileEdge).toEqual(expect.objectContaining({
+      provenance: expect.objectContaining({
+        kind: "knowledge.file_ref",
+        detail: "pattern:graph",
+      }),
+    }));
+  });
+
+  it("keeps knowledge graph joins exact and de-duplicates symmetric relations", () => {
+    const now = new Date().toISOString();
+    sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "src/app.ts", "typescript", "h1", "app", "[]", now, "abc");
+
+    sqlite.prepare(`INSERT INTO tickets (repo_id, ticket_id, title, description, status, severity, priority, tags_json, affected_paths_json, acceptance_criteria, creator_agent_id, creator_session_id, commit_sha, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "TKT-rel-a", "Rel A", "Desc", "approved", "medium", 5, "[]", JSON.stringify(["src/app.ts", "missing.ts"]), null, "agent-a", "session-a", "abc", now, now);
+    sqlite.prepare(`INSERT INTO tickets (repo_id, ticket_id, title, description, status, severity, priority, tags_json, affected_paths_json, acceptance_criteria, creator_agent_id, creator_session_id, commit_sha, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "TKT-rel-b", "Rel B", "Desc", "approved", "medium", 5, "[]", "[]", null, "agent-b", "session-b", "abc", now, now);
+    sqlite.prepare(`INSERT INTO ticket_dependencies (from_ticket_id, to_ticket_id, relation_type, created_by_agent_id, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(1, 2, "relates_to", "agent-a", now);
+
+    sqlite.prepare(`INSERT INTO notes (repo_id, type, key, content, metadata_json, linked_paths_json, agent_id, session_id, commit_sha, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(1, "context", "note:exact", "Only explicit paths count", null, JSON.stringify(["missing.ts"]), "agent-a", "session-a", "abc", now, now);
+    sqlite.prepare(`INSERT INTO knowledge (key, type, scope, title, content, tags_json, status, agent_id, session_id, embedding, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run("context:exact", "context", "repo", "Exact paths only", "This references missing.ts but not the indexed file.", "[]", "active", "agent-a", "session-a", null, now, now);
+
+    const result = getKnowledgeGraph(deps);
+    const relatesToEdges = result.edges.filter((edge) => edge.edgeType === "relates_to");
+
+    expect(relatesToEdges).toHaveLength(1);
+    expect(result.nodes.map((node) => node.id)).not.toContain("file:missing.ts");
+    expect(result.edges.some((edge) => edge.edgeType === "annotates_file")).toBe(false);
+    expect(result.edges.some((edge) => edge.edgeType === "documents_file")).toBe(false);
   });
 });
