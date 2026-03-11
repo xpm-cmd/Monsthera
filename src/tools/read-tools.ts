@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MIN_RELEVANCE_SCORE, MIN_RELEVANCE_SCORE_SCOPED, MAX_DIFF_LINES_PER_FILE, HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
-import { AgentIdSchema, SessionIdSchema, parseStringArrayJson } from "../core/input-hardening.js";
+import { AgentIdSchema, FilePathSchema, SessionIdSchema, parseStringArrayJson } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
 import { exportAuditTrail } from "../export/audit.js";
@@ -10,6 +10,7 @@ import { getHead, getChangedFiles, getDiffStats, getPerFileDiffs, getRecentCommi
 import { getIndexedCommit, incrementalIndex } from "../indexing/indexer.js";
 import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
+import { analyzeFileComplexity } from "../analysis/complexity.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -92,6 +93,9 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         get_issue_pack: {
           query: "string (1-1000 chars, required)",
+        },
+        analyze_complexity: {
+          filePath: "string (file path relative to repo root, required)",
         },
         // ── knowledge tools ──
         store_knowledge: {
@@ -531,6 +535,26 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             })),
             matchedKnowledge,
           }, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── analyze_complexity ────────────────────────────────
+  server.tool(
+    "analyze_complexity",
+    "Analyze a single source file and return stable complexity metrics such as LOC, function count, max nesting, and a cyclomatic-like score.",
+    {
+      filePath: FilePathSchema.describe("File path relative to repo root"),
+    },
+    async ({ filePath }) => {
+      const c = await getContext();
+      const result = await analyzeFileComplexity(c.repoPath, filePath);
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
         }],
       };
     },

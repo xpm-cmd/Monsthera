@@ -59,11 +59,20 @@ export interface ParseResult {
   leadingComment: string;
 }
 
-export async function parseFile(content: string, language: SupportedLanguage): Promise<ParseResult> {
+export interface SyntaxTreeResult {
+  tree: Parser.Tree;
+  rootNode: Parser.SyntaxNode;
+}
+
+export async function parseSyntaxTree(content: string, language: SupportedLanguage): Promise<SyntaxTreeResult> {
   const parser = await getParser(language);
   const tree = parser.parse(content);
   if (!tree) throw new Error("Failed to parse file");
-  const root = tree.rootNode;
+  return { tree, rootNode: tree.rootNode };
+}
+
+export async function parseFile(content: string, language: SupportedLanguage): Promise<ParseResult> {
+  const { rootNode: root } = await parseSyntaxTree(content, language);
 
   let symbols: ExtractedSymbol[];
   let imports: ExtractedImport[];
