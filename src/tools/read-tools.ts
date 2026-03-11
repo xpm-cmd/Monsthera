@@ -11,6 +11,7 @@ import { getIndexedCommit, incrementalIndex } from "../indexing/indexer.js";
 import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
 import { analyzeFileComplexity } from "../analysis/complexity.js";
+import { analyzeTestCoverage } from "../analysis/test-coverage.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -95,6 +96,9 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           query: "string (1-1000 chars, required)",
         },
         analyze_complexity: {
+          filePath: "string (file path relative to repo root, required)",
+        },
+        analyze_test_coverage: {
           filePath: "string (file path relative to repo root, required)",
         },
         // ── knowledge tools ──
@@ -550,6 +554,26 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     async ({ filePath }) => {
       const c = await getContext();
       const result = await analyzeFileComplexity(c.repoPath, filePath);
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── analyze_test_coverage ──────────────────────────────
+  server.tool(
+    "analyze_test_coverage",
+    "Analyze structural test coverage for a single source file and return explicit tested, untested, or unknown signals without implying runtime coverage.",
+    {
+      filePath: FilePathSchema.describe("File path relative to repo root"),
+    },
+    async ({ filePath }) => {
+      const c = await getContext();
+      const result = await analyzeTestCoverage(c.db, c.repoId, c.repoPath, filePath);
 
       return {
         content: [{

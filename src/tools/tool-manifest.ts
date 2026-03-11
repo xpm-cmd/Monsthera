@@ -11,6 +11,7 @@ export const CAPABILITY_TOOL_NAMES = [
   "list_tickets", "search_tickets", "get_ticket", "comment_ticket",
   "link_tickets", "unlink_tickets",
   "analyze_complexity",
+  "analyze_test_coverage",
   "lookup_dependencies",
   "export_audit",
 ] as const;
