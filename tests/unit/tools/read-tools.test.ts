@@ -46,6 +46,7 @@ describe("read tool discovery", () => {
       "end_session",
       "search_tickets",
       "analyze_complexity",
+      "analyze_test_coverage",
       "lookup_dependencies",
     ]));
   });
@@ -59,6 +60,7 @@ describe("read tool discovery", () => {
     const listNotes = await handler("schema")({ toolName: "list_notes" });
     const searchTickets = await handler("schema")({ toolName: "search_tickets" });
     const analyzeComplexity = await handler("schema")({ toolName: "analyze_complexity" });
+    const analyzeTestCoverage = await handler("schema")({ toolName: "analyze_test_coverage" });
 
     expect(JSON.parse(storeKnowledge.content[0].text).inputSchema).toMatchObject({
       agentId: "string (required)",
@@ -90,6 +92,9 @@ describe("read tool discovery", () => {
       query: "string (1-1000 chars)",
     });
     expect(JSON.parse(analyzeComplexity.content[0].text).inputSchema).toMatchObject({
+      filePath: "string (file path relative to repo root, required)",
+    });
+    expect(JSON.parse(analyzeTestCoverage.content[0].text).inputSchema).toMatchObject({
       filePath: "string (file path relative to repo root, required)",
     });
   });
