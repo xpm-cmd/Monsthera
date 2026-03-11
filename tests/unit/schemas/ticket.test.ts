@@ -54,15 +54,26 @@ describe("VALID_TRANSITIONS", () => {
     }
   });
 
-  it("terminal states have no transitions", () => {
-    expect(VALID_TRANSITIONS.closed).toEqual([]);
-    expect(VALID_TRANSITIONS.wont_fix).toEqual([]);
+  it("done states keep explicit recovery and closure paths", () => {
+    expect(VALID_TRANSITIONS.resolved).toContain("closed");
+    expect(VALID_TRANSITIONS.resolved).toContain("in_progress");
+    expect(VALID_TRANSITIONS.closed).toContain("backlog");
+    expect(VALID_TRANSITIONS.wont_fix).toContain("backlog");
   });
 
   it("backlog can go to technical_analysis or wont_fix", () => {
     expect(VALID_TRANSITIONS.backlog).toContain("technical_analysis");
     expect(VALID_TRANSITIONS.backlog).toContain("wont_fix");
     expect(VALID_TRANSITIONS.backlog).not.toContain("in_progress");
+  });
+
+  it("includes the agreed recovery and non-implementation transitions", () => {
+    expect(VALID_TRANSITIONS.technical_analysis).toContain("resolved");
+    expect(VALID_TRANSITIONS.approved).toContain("in_review");
+    expect(VALID_TRANSITIONS.blocked).toContain("wont_fix");
+    expect(VALID_TRANSITIONS.closed).toContain("backlog");
+    expect(VALID_TRANSITIONS.wont_fix).toContain("backlog");
+    expect(VALID_TRANSITIONS.in_progress).not.toContain("ready_for_commit");
   });
 });
 
@@ -71,5 +82,13 @@ describe("TRANSITION_ROLES", () => {
     for (const roles of Object.values(TRANSITION_ROLES)) {
       expect(roles).toContain("admin");
     }
+  });
+
+  it("assigns the agreed advisory roles for the new transitions", () => {
+    expect(TRANSITION_ROLES["technical_analysis→resolved"]).toEqual(["reviewer", "admin"]);
+    expect(TRANSITION_ROLES["approved→in_review"]).toEqual(["developer", "admin"]);
+    expect(TRANSITION_ROLES["blocked→wont_fix"]).toEqual(["reviewer", "admin"]);
+    expect(TRANSITION_ROLES["closed→backlog"]).toEqual(["admin"]);
+    expect(TRANSITION_ROLES["wont_fix→backlog"]).toEqual(["admin"]);
   });
 });

@@ -330,4 +330,152 @@ describe("ticket service system context", () => {
       "ticket_commented",
     ]);
   });
+
+  it("supports the agreed recovery and non-implementation transitions", async () => {
+    const planning = await createTicketRecord(ctx, {
+      title: "Planning-only ticket",
+      description: "Should resolve directly from technical analysis",
+      severity: "low",
+      priority: 3,
+      tags: ["planning"],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(planning.ok).toBe(true);
+    const planningTicketId = planning.ok ? String(planning.data.ticketId) : "";
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: planningTicketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: planningTicketId,
+      status: "resolved",
+      comment: "Planning discussion concluded",
+    }).ok).toBe(true);
+
+    const reviewReady = await createTicketRecord(ctx, {
+      title: "Already landed change",
+      description: "Should move directly from approved to in_review",
+      severity: "medium",
+      priority: 6,
+      tags: ["workflow"],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(reviewReady.ok).toBe(true);
+    const reviewReadyTicketId = reviewReady.ok ? String(reviewReady.data.ticketId) : "";
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reviewReadyTicketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reviewReadyTicketId,
+      status: "approved",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reviewReadyTicketId,
+      status: "in_review",
+      comment: "Change already landed, review directly",
+    }).ok).toBe(true);
+
+    const abandoned = await createTicketRecord(ctx, {
+      title: "Abandoned blocked ticket",
+      description: "Should return to backlog after wont_fix",
+      severity: "medium",
+      priority: 5,
+      tags: ["workflow"],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(abandoned.ok).toBe(true);
+    const abandonedTicketId = abandoned.ok ? String(abandoned.data.ticketId) : "";
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: abandonedTicketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: abandonedTicketId,
+      status: "approved",
+    }).ok).toBe(true);
+    expect(assignTicketRecord(ctx, {
+      ticketId: abandonedTicketId,
+      assigneeAgentId: "agent-dev",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: abandonedTicketId,
+      status: "in_progress",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: abandonedTicketId,
+      status: "blocked",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: abandonedTicketId,
+      status: "wont_fix",
+      comment: "Blocked by external constraint",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: abandonedTicketId,
+      status: "backlog",
+      comment: "Return for future re-triage",
+    }).ok).toBe(true);
+
+    const reopened = await createTicketRecord(ctx, {
+      title: "Closed ticket reopened to backlog",
+      description: "Should allow archival closure and later re-triage",
+      severity: "high",
+      priority: 7,
+      tags: ["workflow"],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(reopened.ok).toBe(true);
+    const reopenedTicketId = reopened.ok ? String(reopened.data.ticketId) : "";
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "approved",
+    }).ok).toBe(true);
+    expect(assignTicketRecord(ctx, {
+      ticketId: reopenedTicketId,
+      assigneeAgentId: "agent-dev",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "in_progress",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "in_review",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "ready_for_commit",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "resolved",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "closed",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "backlog",
+      comment: "Reopen after closure",
+    }).ok).toBe(true);
+
+    expect(queries.getTicketByTicketId(db, planningTicketId)?.status).toBe("resolved");
+    expect(queries.getTicketByTicketId(db, reviewReadyTicketId)?.status).toBe("in_review");
+    expect(queries.getTicketByTicketId(db, abandonedTicketId)?.status).toBe("backlog");
+    expect(queries.getTicketByTicketId(db, reopenedTicketId)?.status).toBe("backlog");
+  });
 });

@@ -13,18 +13,27 @@ export type TicketSeverity = z.infer<typeof TicketSeverity>;
 
 // --- State Machine ---
 
-/** Legal status transitions. Each key maps to the set of statuses it can transition TO. */
+/**
+ * Legal status transitions. Each key maps to the set of statuses it can transition TO.
+ *
+ * Canonical implementation path:
+ * backlog → technical_analysis → approved → in_progress → in_review → ready_for_commit → resolved → closed
+ *
+ * Non-implementation or planning-only tickets may finish earlier through:
+ * backlog → technical_analysis → resolved
+ * backlog → technical_analysis → approved → in_review
+ */
 export const VALID_TRANSITIONS: Record<TicketStatus, readonly TicketStatus[]> = {
   backlog:            ["technical_analysis", "wont_fix"],
-  technical_analysis: ["backlog", "approved", "wont_fix"],
-  approved:           ["in_progress", "backlog", "wont_fix"],
+  technical_analysis: ["backlog", "approved", "resolved", "wont_fix"],
+  approved:           ["in_progress", "in_review", "backlog", "wont_fix"],
   in_progress:        ["in_review", "blocked", "wont_fix"],
   in_review:          ["in_progress", "ready_for_commit"],  // reject → in_progress
   ready_for_commit:   ["in_progress", "resolved"],          // late fix or post-commit resolution
-  blocked:            ["in_progress"],               // unblock
+  blocked:            ["in_progress", "wont_fix"],          // unblock or abandon
   resolved:           ["in_progress", "closed"],     // reopen → in_progress
-  closed:             [],
-  wont_fix:           [],
+  closed:             ["backlog"],
+  wont_fix:           ["backlog"],
 };
 
 /**
@@ -36,8 +45,10 @@ export const TRANSITION_ROLES: Record<string, readonly string[]> = {
   "backlog→wont_fix":       ["reviewer", "admin"],
   "technical_analysis→backlog": ["reviewer", "admin"],
   "technical_analysis→approved": ["reviewer", "admin"],
+  "technical_analysis→resolved": ["reviewer", "admin"],
   "technical_analysis→wont_fix": ["reviewer", "admin"],
   "approved→in_progress":   ["developer", "admin"],
+  "approved→in_review":     ["developer", "admin"],
   "approved→backlog":       ["reviewer", "admin"],       // rework
   "approved→wont_fix":      ["reviewer", "admin"],
   "in_progress→in_review":  ["developer", "admin"],
@@ -48,8 +59,11 @@ export const TRANSITION_ROLES: Record<string, readonly string[]> = {
   "ready_for_commit→in_progress": ["developer", "reviewer", "admin"],
   "ready_for_commit→resolved": ["developer", "admin"],
   "blocked→in_progress":    ["developer", "admin"],     // unblock
+  "blocked→wont_fix":       ["reviewer", "admin"],
   "resolved→in_progress":   ["developer", "reviewer", "admin"],  // reopen
   "resolved→closed":        ["reviewer", "admin"],
+  "closed→backlog":         ["admin"],
+  "wont_fix→backlog":       ["admin"],
 };
 
 // --- Input/Output Schemas ---
