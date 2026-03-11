@@ -316,7 +316,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     "get_code_pack",
     "Search for relevant code files and return an Evidence Bundle. Auto-reindexes incrementally when stale. For convention, architecture, or historical questions, use get_issue_pack instead.",
     {
-      query: z.string().min(1).max(1000).describe("Search query"),
+      query: z.string().trim().min(1).max(1000).describe("Search query"),
       scope: z.string().optional().describe("Path scope filter"),
       expand: z.boolean().default(false).describe("Include code spans"),
     },
@@ -471,7 +471,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     "get_issue_pack",
     "Search notes (issues, decisions, change notes) for context",
     {
-      query: z.string().min(1).max(1000).describe("Search query"),
+      query: z.string().trim().min(1).max(1000).describe("Search query"),
     },
     async ({ query }) => {
       const c = await getContext();

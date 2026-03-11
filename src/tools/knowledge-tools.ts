@@ -112,7 +112,7 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     "search_knowledge",
     "Search knowledge by FTS5 full-text search, enhanced with semantic similarity when available. Searches both repo and global scopes by default.",
     {
-      query: z.string().min(1).max(1000).describe("Search query"),
+      query: z.string().trim().min(1).max(1000).describe("Search query"),
       scope: z.enum(["repo", "global", "all"]).default("all").describe("Which scope to search"),
       type: z.enum(KNOWLEDGE_TYPES).optional().describe("Filter by type"),
       limit: z.number().int().min(1).max(50).default(10).describe("Max results"),

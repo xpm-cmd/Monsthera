@@ -48,7 +48,7 @@ describe("buildCodeSearchDebug", () => {
       limit: 5,
     });
 
-    expect(result.sanitizedQuery).toBe("\"repository\" OR \"name\" OR \"header\"");
+    expect(result.sanitizedQuery).toBe("\"repository\" AND \"name\" AND \"header\"");
     expect(result.lexicalBackend).toBe("fts5");
     expect(result.semanticAvailable).toBe(false);
     expect(result.lexicalResults[0]?.path).toBe("src/dashboard/html.ts");

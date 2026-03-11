@@ -221,7 +221,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     "search_tickets",
     "Search tickets by title, description, tags, or ticket ID with optional structured filters.",
     {
-      query: z.string().min(1).max(1000).describe("Search query"),
+      query: z.string().trim().min(1).max(1000).describe("Search query"),
       agentId: AgentIdSchema.describe("Requesting agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
       status: z.enum(TicketStatus.options).optional(),

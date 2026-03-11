@@ -382,7 +382,10 @@ export class FTS5Backend implements SearchBackend {
   }
 }
 
-// Common English stop words that inflate FTS5 results without adding relevance signal
+// Common English stop words that inflate FTS5 results without adding relevance signal.
+// This list is intentionally conservative — only function words with near-zero search
+// value are included.  Domain keywords like "is" (which could appear in identifiers)
+// are kept because they rarely dominate BM25 scoring in code repos.
 const STOP_WORDS = new Set([
   "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
   "of", "with", "by", "from", "is", "it", "as", "be", "was", "are",
@@ -390,28 +393,45 @@ const STOP_WORDS = new Set([
 ]);
 
 export function sanitizeFts5Query(query: string): string {
-  // Split on whitespace AND colons/hyphens to tokenize key prefixes like "map:fe-hooks-stores"
-  const terms = query
+  const trimmed = query.trim();
+  if (!trimmed) return "";
+
+  // Phase 1: Extract user-typed phrase queries ("exact phrase" → FTS5 phrase)
+  const phrases: string[] = [];
+  const remaining = trimmed.replace(/"([^"]+)"/g, (_match, phrase: string) => {
+    const escaped = phrase.replace(/"/g, '""');
+    phrases.push(`"${escaped}"`);
+    return " ";
+  });
+
+  // Phase 2: Tokenize remaining text
+  // Split on whitespace AND colons to tokenize key prefixes like "map:fe-hooks-stores"
+  const terms = remaining
     .split(/[\s:]+/)
     .filter(Boolean)
     .map((term) => {
-      const clean = term.replace(/[*"(){}[\]^~]/g, "");
-      if (!clean || clean.length < 2) return "";
+      // Escape double-quotes for FTS5 (inside quotes, " → "")
+      const escaped = term.replace(/"/g, '""');
+      // Strip only trailing * (FTS5 prefix operator) — keep all other chars
+      // since they are literal inside FTS5 quoted strings
+      const clean = escaped.replace(/\*$/, "");
+      if (!clean) return "";
+      // Allow single uppercase chars / underscore (common identifiers: T, X, _)
+      if (clean.length < 2 && !/^[A-Z_]$/.test(clean)) return "";
       if (STOP_WORDS.has(clean.toLowerCase())) return "";
       return `"${clean}"`;
     })
     .filter(Boolean);
 
-  if (terms.length === 0) return "";
+  const allTerms = [...phrases, ...terms];
+  if (allTerms.length === 0) return "";
 
-  // 1-2 terms: AND for precision — single-concept queries need all tokens present
-  // 3+ terms: OR — BM25 ranks multi-match documents higher naturally.
-  // Previous threshold (<=3) was too restrictive for scoped searches:
-  // "campaign execution flow" with AND + scope often yields 0 results.
-  if (terms.length <= 2) {
-    return terms.join(" AND ");
+  // 1-3 terms: AND for precision — focused queries need all tokens present.
+  // 4+ terms: OR — BM25 ranks multi-match documents higher naturally.
+  if (allTerms.length <= 3) {
+    return allTerms.join(" AND ");
   }
-  return terms.join(" OR ");
+  return allTerms.join(" OR ");
 }
 
 const TEST_PATH_PATTERN = /\/(tests?|__tests__|spec|__spec__)\//i;
