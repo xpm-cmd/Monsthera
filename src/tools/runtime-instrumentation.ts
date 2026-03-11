@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AgoraContext } from "../core/context.js";
 import type { AgoraConfig } from "../core/config.js";
+import { AgoraError } from "../core/errors.js";
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
 import { logEvent } from "../logging/event-logger.js";
@@ -104,7 +105,7 @@ export function instrumentToolHandler(
         durationMs: Date.now() - startedAt,
         ...actor,
       });
-      throw error;
+      throw sanitizeForRethrow(error);
     }
   };
 }
@@ -116,8 +117,8 @@ export async function recordRuntimeEvent(
   try {
     const ctx = await getContext();
     await recordRuntimeEventWithContext(ctx, event);
-  } catch {
-    // Telemetry should never break tool execution.
+  } catch (error) {
+    console.error("Agora: telemetry recording failed:", error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -178,54 +179,94 @@ function serializeResult(result: unknown): string {
   return safeStringify(result);
 }
 
+/** Normalized AgoraError codes that map to "stale" status */
+const STALE_CODES = new Set(["stale_patch", "stale"]);
+/** Normalized AgoraError codes that map to "denied" status */
+const DENIED_CODES = new Set(["permission_denied", "denied", "rate_limited"]);
+
+function mapCodeToStatus(rawCode: string): "stale" | "denied" | "error" {
+  const code = normalizeErrorCode(rawCode);
+  if (STALE_CODES.has(code)) return "stale";
+  if (DENIED_CODES.has(code)) return "denied";
+  return "error";
+}
+
 function classifyResult(result: unknown): Pick<RuntimeEventInput, "status" | "denialReason" | "errorCode" | "errorDetail"> {
   const output = serializeResult(result);
   const parsed = tryParseJson(output);
   const isError = Boolean(result && typeof result === "object" && Reflect.get(result, "isError"));
   const detail = extractDetail(parsed, output);
 
-  if (!isError) {
-    if ((parsed && (parsed.stale === true || parsed.state === "stale")) || /\bstale\b/i.test(output)) {
-      return { status: "stale", errorCode: normalizeErrorCode(getStringField(parsed, ["errorCode", "code", "state"]) ?? "stale"), errorDetail: detail };
+  // Phase 1: Structured error code — most reliable signal
+  const structuredCode = getStringField(parsed, ["errorCode", "code"]);
+  if (structuredCode) {
+    const mappedStatus = mapCodeToStatus(structuredCode);
+
+    if (mappedStatus === "stale") {
+      return { status: "stale", errorCode: normalizeErrorCode(structuredCode), errorDetail: detail };
     }
-    return { status: "success" };
+    if (isError && mappedStatus === "denied") {
+      return {
+        status: "denied",
+        denialReason: getStringField(parsed, ["reason", "error", "message"]) ?? detail,
+        errorCode: normalizeErrorCode(structuredCode),
+        errorDetail: detail,
+      };
+    }
+    if (isError) {
+      return { status: "error", errorCode: normalizeErrorCode(structuredCode), errorDetail: detail };
+    }
   }
+
+  // Phase 2: Boolean flags (legacy format)
+  if (parsed && (parsed.stale === true || parsed.state === "stale")) {
+    return { status: "stale", errorCode: normalizeErrorCode(structuredCode ?? "stale"), errorDetail: detail };
+  }
+  if (!isError) return { status: "success" };
 
   if (parsed?.denied === true) {
     return {
       status: "denied",
       denialReason: getStringField(parsed, ["reason", "error", "message"]) ?? detail,
-      errorCode: normalizeErrorCode(getStringField(parsed, ["errorCode", "code"]) ?? "denied"),
+      errorCode: normalizeErrorCode(structuredCode ?? "denied"),
       errorDetail: detail,
     };
   }
 
-  if ((parsed && (parsed.stale === true || parsed.state === "stale")) || /\bstale\b/i.test(output)) {
-    return {
-      status: "stale",
-      errorCode: normalizeErrorCode(getStringField(parsed, ["errorCode", "code", "state"]) ?? "stale"),
-      errorDetail: detail,
-    };
+  // Phase 3: Regex fallback — only for isError results to prevent false positives
+  if (/\bstale\b/i.test(output)) {
+    return { status: "stale", errorCode: normalizeErrorCode("stale"), errorDetail: detail };
   }
 
-  return {
-    status: "error",
-    errorCode: normalizeErrorCode(getStringField(parsed, ["errorCode", "code"]) ?? "error"),
-    errorDetail: detail,
-  };
+  return { status: "error", errorCode: normalizeErrorCode(structuredCode ?? "error"), errorDetail: detail };
 }
 
 export function classifyResultForLogging(result: unknown): Pick<RuntimeEventInput, "status" | "denialReason" | "errorCode" | "errorDetail"> {
   return classifyResult(result);
 }
 
-function classifyThrownError(error: unknown): Pick<RuntimeEventInput, "status" | "errorCode" | "errorDetail"> {
+function classifyThrownError(error: unknown): Pick<RuntimeEventInput, "status" | "denialReason" | "errorCode" | "errorDetail"> {
   const detail = error instanceof Error ? error.message : String(error);
+
+  // Phase 1: AgoraError — use structured .code directly
+  if (error instanceof AgoraError) {
+    const status = mapCodeToStatus(error.code);
+    return {
+      status,
+      errorCode: normalizeErrorCode(error.code),
+      errorDetail: detail,
+      ...(status === "denied" ? { denialReason: detail } : {}),
+    };
+  }
+
+  // Phase 2: Non-AgoraError with .code property (e.g., Node.js system errors)
   const rawCode = typeof error === "object" && error && typeof Reflect.get(error, "code") === "string"
     ? String(Reflect.get(error, "code"))
     : error instanceof Error && error.name
       ? error.name
       : "error";
+
+  // Phase 3: Regex fallback for stale detection (error context only)
   if (/\bstale\b/i.test(detail)) {
     return { status: "stale", errorCode: normalizeErrorCode(rawCode || "stale"), errorDetail: detail };
   }
@@ -281,11 +322,15 @@ async function recordRuntimeEventFromSource(
   getContext: GetContext,
   event: RuntimeEventInput,
 ): Promise<void> {
-  if (ctx) {
-    await recordRuntimeEventWithContext(ctx, event);
-    return;
+  try {
+    if (ctx) {
+      await recordRuntimeEventWithContext(ctx, event);
+      return;
+    }
+    await recordRuntimeEvent(getContext, event);
+  } catch (error) {
+    console.error("Agora: telemetry recording failed:", error instanceof Error ? error.message : String(error));
   }
-  await recordRuntimeEvent(getContext, event);
 }
 
 function consumeToolRateLimit(
@@ -321,6 +366,16 @@ function resolveToolRateLimit(config: Partial<AgoraConfig>, tool: string): numbe
   return config.toolRateLimits?.overrides?.[tool]
     ?? config.toolRateLimits?.defaultPerMinute
     ?? DEFAULT_TOOL_LIMIT_PER_MINUTE;
+}
+
+function sanitizeForRethrow(error: unknown): Error {
+  // AgoraError messages are intentionally crafted for clients — safe to expose
+  if (error instanceof AgoraError) return error;
+  // Generic errors may leak file paths, DB schema, or internal state
+  const name = error instanceof Error ? error.name : "Error";
+  const sanitized = new Error(`Tool execution failed (${name})`);
+  sanitized.name = name;
+  return sanitized;
 }
 
 function buildRateLimitedResult(

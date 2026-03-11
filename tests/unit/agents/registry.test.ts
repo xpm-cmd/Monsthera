@@ -152,6 +152,21 @@ describe("Agent Registry", () => {
     expect(sessionCount.count).toBe(0);
   });
 
+  it("reaps sessions with corrupted lastActivity (NaN date)", () => {
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-nan", "BadDate", "test", "developer", "A", new Date().toISOString());
+    sqlite.prepare(`
+      INSERT INTO sessions (id, agent_id, state, connected_at, last_activity)
+      VALUES (?, ?, ?, ?, ?)
+    `).run("session-nan", "agent-nan", "active", new Date().toISOString(), "not-a-date");
+
+    const reaped = reapStaleSessions(db);
+    expect(reaped).toBe(1);
+
+    const session = sqlite.prepare("SELECT state FROM sessions WHERE id = ?").get("session-nan") as { state: string };
+    expect(session.state).toBe("disconnected");
+  });
+
   it("rolls back stale-session reaping when claim cleanup fails", () => {
     const now = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)

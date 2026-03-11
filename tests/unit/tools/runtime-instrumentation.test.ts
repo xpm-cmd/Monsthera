@@ -6,7 +6,9 @@ import * as schema from "../../../src/db/schema.js";
 import {
   installToolRuntimeInstrumentation,
   resetToolRateLimitState,
+  classifyResultForLogging,
 } from "../../../src/tools/runtime-instrumentation.js";
+import { StalePatchError, PermissionDeniedError } from "../../../src/core/errors.js";
 
 class FakeServer {
   handlers = new Map<string, (input: unknown) => Promise<any>>();
@@ -90,18 +92,20 @@ describe("runtime instrumentation", () => {
     expect(row.agent_id).toBe("agent-1");
   });
 
-  it("logs thrown errors with normalized code and detail", async () => {
+  it("logs thrown errors with normalized code and sanitized re-throw", async () => {
     server.tool("store_knowledge", "store_knowledge", {}, async () => {
       const error = new Error("sqlite busy");
       (error as Error & { code?: string }).code = "SQLITE_BUSY";
       throw error;
     });
 
+    // Generic errors are sanitized before re-throw (internal details hidden)
     await expect(server.handlers.get("store_knowledge")!({
       agentId: "agent-2",
       sessionId: "session-2",
-    })).rejects.toThrow("sqlite busy");
+    })).rejects.toThrow("Tool execution failed (Error)");
 
+    // But telemetry still records the original detail
     const row = sqlite.prepare("SELECT * FROM event_logs").get() as Record<string, unknown>;
     expect(row.tool).toBe("store_knowledge");
     expect(row.status).toBe("error");
@@ -150,5 +154,87 @@ describe("runtime instrumentation", () => {
       errorCode: "rate_limited",
       limitPerMinute: 2,
     });
+  });
+
+  it("does not misclassify success results mentioning 'stale' in text", async () => {
+    server.tool("list_patches", "list_patches", {}, async () => ({
+      content: [{ type: "text", text: JSON.stringify({ patches: [{ note: "this patch is stale" }] }) }],
+    }));
+
+    await server.handlers.get("list_patches")!({});
+
+    const row = sqlite.prepare("SELECT status FROM event_logs").get() as Record<string, unknown>;
+    expect(row.status).toBe("success");
+  });
+
+  it("classifies thrown StalePatchError by structured code", async () => {
+    server.tool("propose_patch", "propose_patch", {}, async () => {
+      throw new StalePatchError("abc123", "def456");
+    });
+
+    // AgoraError is re-thrown as-is (not sanitized)
+    await expect(server.handlers.get("propose_patch")!({
+      agentId: "agent-3",
+      sessionId: "session-3",
+    })).rejects.toThrow("Patch base commit");
+
+    const row = sqlite.prepare("SELECT status, error_code, error_detail FROM event_logs").get() as Record<string, unknown>;
+    expect(row.status).toBe("stale");
+    expect(row.error_code).toBe("stale_patch");
+    expect(row.error_detail).toContain("abc123");
+  });
+
+  it("classifies thrown PermissionDeniedError as denied", async () => {
+    server.tool("claim_files_denied", "test", {}, async () => {
+      throw new PermissionDeniedError("agent-x", "claim_files", "insufficient trust tier");
+    });
+
+    await expect(server.handlers.get("claim_files_denied")!({
+      agentId: "agent-x",
+      sessionId: "session-x",
+    })).rejects.toThrow("denied access");
+
+    const row = sqlite.prepare("SELECT status, error_code FROM event_logs").get() as Record<string, unknown>;
+    expect(row.status).toBe("denied");
+    expect(row.error_code).toBe("permission_denied");
+  });
+
+  it("classifies result with structured errorCode over regex", async () => {
+    server.tool("test_structured", "test", {}, async () => ({
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({ errorCode: "STALE_PATCH", message: "outdated" }) }],
+    }));
+
+    await server.handlers.get("test_structured")!({});
+
+    const row = sqlite.prepare("SELECT status, error_code FROM event_logs").get() as Record<string, unknown>;
+    expect(row.status).toBe("stale");
+    expect(row.error_code).toBe("stale_patch");
+  });
+});
+
+describe("classifyResultForLogging", () => {
+  it("returns success for non-error results mentioning stale", () => {
+    const result = {
+      content: [{ type: "text", text: JSON.stringify({ message: "patch is stale, please refresh" }) }],
+    };
+    expect(classifyResultForLogging(result)).toMatchObject({ status: "success" });
+  });
+
+  it("returns stale for non-error results with stale boolean flag", () => {
+    const result = {
+      content: [{ type: "text", text: JSON.stringify({ stale: true, reason: "commit mismatch" }) }],
+    };
+    expect(classifyResultForLogging(result)).toMatchObject({ status: "stale" });
+  });
+
+  it("returns denied for error results with structured denied code", () => {
+    const result = {
+      isError: true,
+      content: [{ type: "text", text: JSON.stringify({ errorCode: "PERMISSION_DENIED", reason: "nope" }) }],
+    };
+    const classified = classifyResultForLogging(result);
+    expect(classified.status).toBe("denied");
+    expect(classified.errorCode).toBe("permission_denied");
   });
 });

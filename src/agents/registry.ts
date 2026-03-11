@@ -142,7 +142,7 @@ export function reapStaleSessions(
 
     for (const s of active) {
       const lastMs = new Date(s.lastActivity).getTime();
-      if (now - lastMs > HEARTBEAT_TIMEOUT_MS) {
+      if (Number.isNaN(lastMs) || now - lastMs > HEARTBEAT_TIMEOUT_MS) {
         tx.update(tables.sessions)
           .set({ state: "disconnected", lastActivity: new Date().toISOString() })
           .where(eq(tables.sessions.id, s.id))
