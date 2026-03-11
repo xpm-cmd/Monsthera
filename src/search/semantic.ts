@@ -3,7 +3,11 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import type { SearchResult } from "./interface.js";
 import * as queries from "../db/queries.js";
-import { isTestFile } from "./fts5.js";
+import { isTestFile, isTestRelatedQuery, TEST_FILE_PENALTY_FACTOR } from "./fts5.js";
+
+export const DEFAULT_SEMANTIC_BLEND_ALPHA = 0.5;
+export const FTS5_ONLY_PENALTY_FACTOR = 0.8;
+export const SCOPED_VECTOR_ONLY_PENALTY_FACTOR = 0.85;
 
 export interface SemanticRerankerOptions {
   sqlite: DatabaseType;
@@ -91,10 +95,9 @@ export class SemanticReranker {
         return { ...result, score: result.score / maxFts5 };
       }
 
-      const semantic = cosineSimilarity(queryEmbedding, embedding);
-      const normalizedSemantic = (semantic + 1) / 2; // map [-1,1] to [0,1]
+      const normalizedSemantic = normalizedCosineSimilarity(queryEmbedding, embedding);
       const normalizedFts5 = result.score / maxFts5;
-      const blended = blendScores(normalizedFts5, normalizedSemantic, 0.6);
+      const blended = blendScores(normalizedFts5, normalizedSemantic, DEFAULT_SEMANTIC_BLEND_ALPHA);
 
       return { ...result, score: blended };
     });
@@ -150,7 +153,6 @@ export class SemanticReranker {
 
     const scored = rows.map((row) => {
       const emb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
-      const similarity = cosineSimilarity(queryEmbedding, emb);
       return {
         id: row.id,
         key: row.key,
@@ -158,7 +160,7 @@ export class SemanticReranker {
         content: row.content,
         type: row.type,
         tagsJson: row.tags_json,
-        score: (similarity + 1) / 2, // map [-1,1] to [0,1]
+        score: normalizedCosineSimilarity(queryEmbedding, emb),
       };
     });
 
@@ -176,7 +178,7 @@ export class SemanticReranker {
     const queryEmbedding = await this.embed(query);
     if (!queryEmbedding) return [];
 
-    const queryMentionsTest = /test|spec/i.test(query);
+    const queryMentionsTest = isTestRelatedQuery(query);
 
     // Filter by scope at SQL level (not post-hoc) to avoid false positives
     let sql = "SELECT id, path, embedding FROM files WHERE repo_id = ? AND embedding IS NOT NULL";
@@ -193,12 +195,11 @@ export class SemanticReranker {
     const scored: SearchResult[] = [];
     for (const row of rows) {
       const fileEmb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
-      const similarity = cosineSimilarity(queryEmbedding, fileEmb);
-      let score = (similarity + 1) / 2; // map [-1,1] → [0,1]
+      let score = normalizedCosineSimilarity(queryEmbedding, fileEmb);
 
       // Consistent test file penalty across both search paths (FTS5 + vector)
       if (!queryMentionsTest && isTestFile(row.path)) {
-        score *= 0.4;
+        score *= TEST_FILE_PENALTY_FACTOR;
       }
 
       scored.push({ path: row.path, score });
@@ -256,12 +257,9 @@ export function mergeResults(
       // Both sources — full blend
       score = blendScores(normalizedFts5, vectorScore, alpha);
     } else if (normalizedFts5 !== undefined) {
-      // FTS5 only — penalized (no semantic signal)
-      score = normalizedFts5 * (1 - alpha);
+      score = normalizedFts5 * FTS5_ONLY_PENALTY_FACTOR;
     } else {
-      // Vector only — gentle demote when scoped FTS5 found nothing (0.7x not 0.5x)
-      // With alpha=0.5: effective score = vec * 0.5 * 0.7 = vec * 0.35 — still above threshold
-      score = vectorScore! * alpha * (demoteVectorOnly ? 0.7 : 1.0);
+      score = vectorScore! * alpha * (demoteVectorOnly ? SCOPED_VECTOR_ONLY_PENALTY_FACTOR : 1.0);
     }
 
     merged.push({
@@ -295,11 +293,19 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   return dot / denom;
 }
 
+export function normalizedCosineSimilarity(a: Float32Array, b: Float32Array): number {
+  return (cosineSimilarity(a, b) + 1) / 2;
+}
+
 /**
  * Blend FTS5 rank score with semantic similarity.
  * alpha controls weight of semantic (default 0.5 = equal weight, optimal per benchmark).
  */
-export function blendScores(fts5Score: number, semanticScore: number, alpha = 0.5): number {
+export function blendScores(
+  fts5Score: number,
+  semanticScore: number,
+  alpha = DEFAULT_SEMANTIC_BLEND_ALPHA,
+): number {
   return alpha * semanticScore + (1 - alpha) * fts5Score;
 }
 

@@ -4,7 +4,7 @@ import type * as schema from "../db/schema.js";
 import type { SearchBackend, SearchBackendName, SearchResult } from "./interface.js";
 import { FTS5Backend, type KnowledgeFtsResult, type TicketFtsResult } from "./fts5.js";
 import { ZoektBackend } from "./zoekt.js";
-import { SemanticReranker, mergeResults } from "./semantic.js";
+import { DEFAULT_SEMANTIC_BLEND_ALPHA, SemanticReranker, mergeResults } from "./semantic.js";
 
 export interface SearchRouterOptions {
   repoId: number;
@@ -75,7 +75,7 @@ export class SearchRouter {
       try {
         // Scope is now filtered at SQL level inside vectorSearch (not post-hoc)
         const vectorResults = await this.semantic.vectorSearch(query, repoId, effectiveLimit, scope);
-        return mergeResults(fts5Results, vectorResults, effectiveLimit, 0.5, !!scope);
+        return mergeResults(fts5Results, vectorResults, effectiveLimit, DEFAULT_SEMANTIC_BLEND_ALPHA, !!scope);
       } catch {
         this.opts.onFallback?.("Semantic vector search failed, using FTS5 results");
       }

@@ -90,4 +90,19 @@ describe("FTS5Backend", () => {
       expect.objectContaining({ path: "src/server.ts" }),
     ]));
   });
+
+  it("does not penalize test files when the query is explicitly test-related", async () => {
+    sqlite.prepare(
+      "INSERT INTO files (repo_id, path, language, summary, symbols_json) VALUES (?, ?, ?, ?, ?)",
+    ).run(1, "src/auth.ts", "typescript", "Authentication flow", JSON.stringify([{ name: "authenticate" }]));
+    sqlite.prepare(
+      "INSERT INTO files (repo_id, path, language, summary, symbols_json) VALUES (?, ?, ?, ?, ?)",
+    ).run(1, "tests/auth.e2e.test.ts", "typescript", "Authentication unit testing flow", JSON.stringify([{ name: "authenticate" }]));
+
+    fts5.initFtsTable();
+    fts5.rebuildIndex(1);
+
+    const results = await fts5.search("unit testing authenticate", 1, 10);
+    expect(results[0]?.path).toBe("tests/auth.e2e.test.ts");
+  });
 });

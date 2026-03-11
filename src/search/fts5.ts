@@ -11,6 +11,9 @@ const FTS_TABLE = "files_fts";
 const KNOWLEDGE_FTS_TABLE = "knowledge_fts";
 const TICKETS_FTS_TABLE = "tickets_fts";
 const FileSymbolsSchema = z.array(z.object({ name: z.string().min(1).max(200) }));
+export const TEST_FILE_PENALTY_FACTOR = 0.4;
+export const CONFIG_FILE_PENALTY_FACTOR = 0.5;
+const TEST_RELATED_QUERY_PATTERN = /\b(test(?:ing|s)?|unit|integration|e2e|spec(?:s)?)\b/i;
 
 export interface KnowledgeFtsResult {
   knowledgeId: number;
@@ -338,18 +341,17 @@ export class FTS5Backend implements SearchBackend {
         rank: number;
       }>;
 
-      const queryLower = query.toLowerCase();
-      const queryMentionsTest = queryLower.includes("test") || queryLower.includes("spec");
+      const queryMentionsTest = isTestRelatedQuery(query);
 
       return rows.map((row) => {
         let score = Math.abs(row.rank);
         // Penalize test files when query doesn't mention testing
         if (!queryMentionsTest && isTestFile(row.path)) {
-          score *= 0.4;
+          score *= TEST_FILE_PENALTY_FACTOR;
         }
         // Penalize config/build files (rarely the target of code searches)
         if (isConfigFile(row.path)) {
-          score *= 0.5;
+          score *= CONFIG_FILE_PENALTY_FACTOR;
         }
         return { path: row.path, score };
       })
@@ -441,7 +443,11 @@ export function isTestFile(path: string): boolean {
   return TEST_PATH_PATTERN.test(path) || TEST_FILE_PATTERN.test(path);
 }
 
-const CONFIG_FILE_PATTERN = /\/(tsconfig[^/]*|\.eslintrc[^/]*|vite\.config[^/]*|webpack[^/]*|jest\.config[^/]*|package\.json|\.prettierrc[^/]*|\.babelrc[^/]*|rollup\.config[^/]*)$/i;
+export function isTestRelatedQuery(query: string): boolean {
+  return TEST_RELATED_QUERY_PATTERN.test(query);
+}
+
+const CONFIG_FILE_PATTERN = /(?:^|\/)(Dockerfile(?:\.[^/]+)?|Makefile|\.github\/workflows\/[^/]+\.ya?ml|tsconfig[^/]*|\.eslintrc[^/]*|vite\.config[^/]*|webpack[^/]*|jest\.config[^/]*|package\.json|\.prettierrc[^/]*|\.babelrc[^/]*|rollup\.config[^/]*)$/i;
 
 export function isConfigFile(path: string): boolean {
   return CONFIG_FILE_PATTERN.test(path);

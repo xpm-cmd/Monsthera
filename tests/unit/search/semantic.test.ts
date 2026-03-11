@@ -6,7 +6,10 @@ import {
   cosineSimilarity,
   blendScores,
   buildEmbeddingText,
+  DEFAULT_SEMANTIC_BLEND_ALPHA,
+  FTS5_ONLY_PENALTY_FACTOR,
   mergeResults,
+  SCOPED_VECTOR_ONLY_PENALTY_FACTOR,
   SemanticReranker,
 } from "../../../src/search/semantic.js";
 
@@ -227,8 +230,8 @@ describe("SemanticReranker — rerank with injected embeddings", () => {
 
     // auth.ts (id=1): embedding close to "authentication" query
     reranker.storeEmbedding(1, new Float32Array([0.9, 0.1, 0.0]));
-    // utils.ts (id=2): orthogonal
-    reranker.storeEmbedding(2, new Float32Array([0.0, 0.1, 0.9]));
+    // utils.ts (id=2): strongly unrelated
+    reranker.storeEmbedding(2, new Float32Array([-0.9, -0.1, 0.0]));
     // db.ts (id=3): weakly related (low similarity to auth query)
     reranker.storeEmbedding(3, new Float32Array([0.1, 0.9, 0.0]));
   });
@@ -323,8 +326,7 @@ describe("mergeResults", () => {
 
     const merged = mergeResults(fts5, vector, 5, 0.6);
     expect(merged.length).toBe(1);
-    // FTS5 only: score = 1.0 * (1 - 0.6) = 0.4
-    expect(merged[0]!.score).toBeCloseTo(0.4, 5);
+    expect(merged[0]!.score).toBeCloseTo(FTS5_ONLY_PENALTY_FACTOR, 5);
   });
 
   it("includes vector-only results — the hybrid win", () => {
@@ -335,6 +337,11 @@ describe("mergeResults", () => {
     expect(merged.length).toBe(1);
     // Vector only: score = 0.9 * 0.6 = 0.54
     expect(merged[0]!.score).toBeCloseTo(0.54, 5);
+  });
+
+  it("softens scoped vector-only demotion", () => {
+    const merged = mergeResults([], [{ path: "src/vec-only.ts", score: 0.9 }], 5, DEFAULT_SEMANTIC_BLEND_ALPHA, true);
+    expect(merged[0]!.score).toBeCloseTo(0.9 * DEFAULT_SEMANTIC_BLEND_ALPHA * SCOPED_VECTOR_ONLY_PENALTY_FACTOR, 5);
   });
 
   it("deduplicates and ranks correctly with mixed sources", () => {
@@ -424,6 +431,17 @@ describe("SemanticReranker — vectorSearch", () => {
     expect(results[1]!.path).toBe("src/utils.ts");
     // Scores should be in [0, 1] (mapped from cosine [-1,1])
     expect(results[0]!.score).toBeGreaterThan(0.5);
+  });
+
+  it("does not penalize test files when the query is test-related", async () => {
+    sqlite.prepare(
+      "INSERT INTO files (repo_id, path, language, summary, symbols_json) VALUES (?, ?, ?, ?, ?)",
+    ).run(1, "tests/auth.unit.test.ts", "typescript", "Authentication unit tests", "[]");
+    reranker.storeEmbedding(4, new Float32Array([0.95, 0.05, 0.0]));
+    reranker.embed = async () => new Float32Array([1.0, 0.0, 0.0]);
+
+    const results = await reranker.vectorSearch("unit testing auth flow", 1, 10);
+    expect(results[0]!.path).toBe("tests/auth.unit.test.ts");
   });
 
   it("returns empty when embed fails", async () => {

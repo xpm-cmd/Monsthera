@@ -10,6 +10,7 @@ import {
   parseStringArrayJson,
 } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
+import { blendScores, DEFAULT_SEMANTIC_BLEND_ALPHA } from "../search/semantic.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 
@@ -159,70 +160,47 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       if (reranker?.isAvailable()) {
         const queryEmbedding = await reranker.embed(query);
         if (queryEmbedding) {
-          const cosine = (a: Float32Array, b: Float32Array): number => {
-            let dot = 0, nA = 0, nB = 0;
-            for (let i = 0; i < a.length; i++) { dot += a[i]! * b[i]!; nA += a[i]! * a[i]!; nB += b[i]! * b[i]!; }
-            const d = Math.sqrt(nA) * Math.sqrt(nB);
-            return d ? (dot / d + 1) / 2 : 0; // normalized to [0,1]
-          };
-
-          // Track which entries came from FTS5 (for score blending)
-          const ftsScores = new Map(results.map((r) => [r.key, r.score]));
+          const makeResultKey = (scopeLabel: string, key: string) => `${scopeLabel}:${key}`;
+          const ftsScores = new Map(results.map((r) => [makeResultKey(r.scope, r.key), r.score]));
           const maxFts5 = Math.max(...results.map((r) => r.score), 1);
-          const existingKeys = new Set(results.map((r) => r.key));
+          const existingKeys = new Set(results.map((r) => makeResultKey(r.scope, r.key)));
 
-          // Independent vector search: scan all knowledge embeddings
           const targets: Array<{ sqlite: typeof c.sqlite; db: typeof c.db; scopeLabel: string }> = [];
           if (scope === "repo" || scope === "all") targets.push({ sqlite: c.sqlite, db: c.db, scopeLabel: "repo" });
           if ((scope === "global" || scope === "all") && c.globalSqlite) targets.push({ sqlite: c.globalSqlite!, db: c.globalDb!, scopeLabel: "global" });
 
           for (const t of targets) {
-            const rows = t.sqlite.prepare(
-              "SELECT id, embedding FROM knowledge WHERE status = 'active' AND embedding IS NOT NULL",
-            ).all() as Array<{ id: number; embedding: Buffer }>;
+            const vectorResults = reranker.searchKnowledgeByVector(t.sqlite, queryEmbedding, limit * 3);
 
-            for (const row of rows) {
-              const emb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
-              const sim = cosine(queryEmbedding, emb);
-              if (sim < 0.6) continue; // only semantically relevant entries
-
-              const entry = queries.getKnowledgeById(t.db, row.id);
-              if (!entry?.content) continue;
+            for (const entry of vectorResults) {
               if (type && entry.type !== type) continue;
+              if (entry.score < 0.6) continue;
 
-              if (!existingKeys.has(entry.key)) {
-                // New entry found only by vector search
-                existingKeys.add(entry.key);
+              const resultKey = makeResultKey(t.scopeLabel, entry.key);
+              const mergedScore = ftsScores.has(resultKey)
+                ? blendScores((ftsScores.get(resultKey) ?? 0) / maxFts5, entry.score, DEFAULT_SEMANTIC_BLEND_ALPHA)
+                : entry.score;
+
+              if (!existingKeys.has(resultKey)) {
+                existingKeys.add(resultKey);
                 results.push({
                   key: entry.key,
                   type: entry.type,
                   scope: t.scopeLabel,
-                  title: entry.key,
+                  title: entry.title,
                   content: entry.content,
                   tags: parseStringArrayJson(entry.tagsJson, {
                     maxItems: 25,
                     maxItemLength: 64,
                   }),
-                  score: sim, // semantic-only score
+                  score: mergedScore,
                 });
+                continue;
               }
-            }
-          }
 
-          // Blend scores for entries found by FTS5
-          for (const r of results) {
-            const fts = ftsScores.get(r.key);
-            if (fts !== undefined) {
-              // Recompute semantic score for FTS5 entries
-              const t = r.scope === "global" ? { sqlite: c.globalSqlite!, db: c.globalDb! } : { sqlite: c.sqlite, db: c.db };
-              const entry = queries.getKnowledgeByKey(t.db, r.key);
-              if (entry) {
-                const row = t.sqlite.prepare("SELECT embedding FROM knowledge WHERE id = ?").get(entry.id) as { embedding: Buffer | null } | undefined;
-                if (row?.embedding) {
-                  const emb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
-                  const sim = cosine(queryEmbedding, emb);
-                  r.score = 0.5 * (fts / maxFts5) + 0.5 * sim;
-                }
+              const existing = results.find((result) => makeResultKey(result.scope, result.key) === resultKey);
+              if (existing) {
+                existing.score = mergedScore;
               }
             }
           }

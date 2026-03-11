@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeFts5Query } from "../../../src/search/fts5.js";
+import { isConfigFile, isTestRelatedQuery, sanitizeFts5Query } from "../../../src/search/fts5.js";
 
 describe("sanitizeFts5Query", () => {
   it("returns empty for whitespace-only input", () => {
@@ -70,5 +70,18 @@ describe("sanitizeFts5Query", () => {
     // 1 phrase + 1 term = 2 terms total → AND
     const result = sanitizeFts5Query('"exact match" other');
     expect(result).toContain(" AND ");
+  });
+
+  it("detects broader test-related query vocabulary", () => {
+    expect(isTestRelatedQuery("unit testing dashboard search")).toBe(true);
+    expect(isTestRelatedQuery("e2e workflow spec")).toBe(true);
+    expect(isTestRelatedQuery("dashboard metrics")).toBe(false);
+  });
+
+  it("recognizes common config and build files", () => {
+    expect(isConfigFile("Dockerfile")).toBe(true);
+    expect(isConfigFile("Makefile")).toBe(true);
+    expect(isConfigFile(".github/workflows/ci.yml")).toBe(true);
+    expect(isConfigFile("package.json")).toBe(true);
   });
 });
