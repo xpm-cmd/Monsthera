@@ -26,7 +26,7 @@ interface TicketServiceBaseContext {
   refreshTicketSearch?: () => void;
 }
 
-export interface TicketServiceContext extends TicketServiceBaseContext {}
+export type TicketServiceContext = TicketServiceBaseContext;
 
 export interface TicketSystemContext extends TicketServiceBaseContext {
   system: true;
