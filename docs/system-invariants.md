@@ -29,3 +29,7 @@ Every tool call checks `(trust_tier, role)` before executing. Denied actions are
 ## 7. Reindex must complete before the next mutation cycle
 
 No patch can be validated against an outdated index. The write queue blocks until reindex finishes and makes the new HEAD visible.
+
+## Known limitation: file claims are advisory and still have a TOCTOU window
+
+`claim_files` reduces accidental overlap, but patch validation still checks claims against a snapshot of active sessions before a later write happens. Another agent can claim or release a file between that read and the eventual mutation. Until claims become a hard lock or move into a stricter lease protocol, agents must treat claim conflicts as advisory coordination signals rather than a serialization guarantee.

@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
+import * as tables from "../db/schema.js";
 import type { InsightStream } from "../core/insight-stream.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { getHead } from "../git/operations.js";
@@ -149,32 +151,36 @@ export async function createTicketRecord(
   const ticketId = `TKT-${randomUUID().slice(0, 8)}`;
   const commitSha = await getHead({ cwd: ctx.repoPath });
 
-  const ticket = queries.insertTicket(ctx.db, {
-    repoId: ctx.repoId,
-    ticketId,
-    title: input.title,
-    description: input.description,
-    status: "backlog",
-    severity: input.severity,
-    priority: input.priority,
-    tagsJson: JSON.stringify(input.tags),
-    affectedPathsJson: JSON.stringify(input.affectedPaths),
-    acceptanceCriteria: input.acceptanceCriteria ?? null,
-    creatorAgentId: resolved.agentId,
-    creatorSessionId: resolved.sessionId,
-    commitSha,
-    createdAt: now,
-    updatedAt: now,
-  });
+  const ticket = ctx.db.transaction((tx) => {
+    const createdTicket = tx.insert(tables.tickets).values({
+      repoId: ctx.repoId,
+      ticketId,
+      title: input.title,
+      description: input.description,
+      status: "backlog",
+      severity: input.severity,
+      priority: input.priority,
+      tagsJson: JSON.stringify(input.tags),
+      affectedPathsJson: JSON.stringify(input.affectedPaths),
+      acceptanceCriteria: input.acceptanceCriteria ?? null,
+      creatorAgentId: resolved.agentId,
+      creatorSessionId: resolved.sessionId,
+      commitSha,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().get();
 
-  queries.insertTicketHistory(ctx.db, {
-    ticketId: ticket.id,
-    fromStatus: null,
-    toStatus: "backlog",
-    agentId: resolved.agentId,
-    sessionId: resolved.sessionId,
-    comment: "Ticket created",
-    timestamp: now,
+    tx.insert(tables.ticketHistory).values({
+      ticketId: createdTicket.id,
+      fromStatus: null,
+      toStatus: "backlog",
+      agentId: resolved.agentId,
+      sessionId: resolved.sessionId,
+      comment: "Ticket created",
+      timestamp: now,
+    }).run();
+
+    return createdTicket;
   });
   refreshTicketSearch(ctx);
 
@@ -224,14 +230,11 @@ export function assignTicketRecord(
     return err("not_found", `Assignee not found: ${input.assigneeAgentId}`);
   }
 
-  const now = new Date().toISOString();
-  const updates: Record<string, unknown> = { assigneeAgentId: input.assigneeAgentId };
+  const updates: Partial<Pick<typeof tables.tickets.$inferInsert, "assigneeAgentId">> = {
+    assigneeAgentId: input.assigneeAgentId,
+  };
 
-  queries.updateTicket(
-    ctx.db,
-    ticket.id,
-    updates as Parameters<typeof queries.updateTicket>[2],
-  );
+  queries.updateTicket(ctx.db, ticket.id, updates);
   refreshTicketSearch(ctx);
 
   ctx.insight.info(`Ticket ${input.ticketId} assigned to ${input.assigneeAgentId} by ${resolved.agentId}`);
@@ -285,23 +288,26 @@ export function updateTicketStatusRecord(
   }
 
   const now = new Date().toISOString();
-  const updates: Record<string, unknown> = { status: input.status };
+  const updates: Partial<Pick<typeof tables.tickets.$inferInsert, "status" | "resolvedByAgentId">> = {
+    status: input.status,
+  };
   if (input.status === "resolved") updates.resolvedByAgentId = resolved.agentId;
   if (current === "resolved" && input.status === "in_progress") updates.resolvedByAgentId = null;
 
-  queries.updateTicket(
-    ctx.db,
-    ticket.id,
-    updates as Parameters<typeof queries.updateTicket>[2],
-  );
-  queries.insertTicketHistory(ctx.db, {
-    ticketId: ticket.id,
-    fromStatus: current,
-    toStatus: input.status,
-    agentId: resolved.agentId,
-    sessionId: resolved.sessionId,
-    comment: input.comment ?? null,
-    timestamp: now,
+  ctx.db.transaction((tx) => {
+    tx.update(tables.tickets)
+      .set({ ...updates, updatedAt: now })
+      .where(eq(tables.tickets.id, ticket.id))
+      .run();
+    tx.insert(tables.ticketHistory).values({
+      ticketId: ticket.id,
+      fromStatus: current,
+      toStatus: input.status,
+      agentId: resolved.agentId,
+      sessionId: resolved.sessionId,
+      comment: input.comment ?? null,
+      timestamp: now,
+    }).run();
   });
   refreshTicketSearch(ctx);
 

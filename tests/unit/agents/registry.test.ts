@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
-import { AgentRegistrationError, registerAgent, getAgentStatus, disconnectSession } from "../../../src/agents/registry.js";
+import { AgentRegistrationError, registerAgent, getAgentStatus, disconnectSession, reapStaleSessions } from "../../../src/agents/registry.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -130,5 +130,50 @@ describe("Agent Registry", () => {
     expect(status!.activeSessions).toHaveLength(0);
     expect(status!.sessions[0]!.state).toBe("disconnected");
     expect(JSON.parse(status!.sessions[0]!.claimedFilesJson!)).toEqual([]);
+  });
+
+  it("rolls back agent registration when session insert fails", () => {
+    sqlite.exec(`
+      CREATE TRIGGER fail_session_insert
+      BEFORE INSERT ON sessions
+      BEGIN
+        SELECT RAISE(FAIL, 'session insert failed');
+      END;
+    `);
+
+    expect(() => registerAgent(
+      db,
+      { name: "Dev", type: "test", desiredRole: "developer" },
+    )).toThrowError("session insert failed");
+
+    const agentCount = sqlite.prepare("SELECT COUNT(*) as count FROM agents").get() as { count: number };
+    const sessionCount = sqlite.prepare("SELECT COUNT(*) as count FROM sessions").get() as { count: number };
+    expect(agentCount.count).toBe(0);
+    expect(sessionCount.count).toBe(0);
+  });
+
+  it("rolls back stale-session reaping when claim cleanup fails", () => {
+    const now = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-1", "Dev", "test", "developer", "A", now);
+    sqlite.prepare(`
+      INSERT INTO sessions (id, agent_id, state, connected_at, last_activity, claimed_files_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run("session-1", "agent-1", "active", now, now, JSON.stringify(["src/file.ts"]));
+
+    sqlite.exec(`
+      CREATE TRIGGER fail_claim_clear
+      BEFORE UPDATE OF claimed_files_json ON sessions
+      BEGIN
+        SELECT RAISE(FAIL, 'claim clear failed');
+      END;
+    `);
+
+    expect(() => reapStaleSessions(db)).toThrowError("claim clear failed");
+
+    const session = sqlite.prepare("SELECT state, claimed_files_json as claimedFilesJson FROM sessions WHERE id = ?")
+      .get("session-1") as { state: string; claimedFilesJson: string | null };
+    expect(session.state).toBe("active");
+    expect(JSON.parse(session.claimedFilesJson ?? "[]")).toEqual(["src/file.ts"]);
   });
 });

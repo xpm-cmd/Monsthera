@@ -31,21 +31,31 @@ export function registerAgent(
   const role = BUILT_IN_ROLES[effectiveRoleId] ?? BUILT_IN_ROLES.observer;
   const trustTier = role.permissions.trustTier;
 
-  queries.upsertAgent(db, {
-    id: agentId,
-    name: input.name,
-    type: input.type,
-    roleId: effectiveRoleId,
-    trustTier,
-    registeredAt: now,
-  });
+  db.transaction((tx) => {
+    const existing = tx.select().from(tables.agents).where(eq(tables.agents.id, agentId)).get();
+    if (existing) {
+      tx.update(tables.agents)
+        .set({ name: input.name, type: input.type, roleId: effectiveRoleId, trustTier })
+        .where(eq(tables.agents.id, agentId))
+        .run();
+    } else {
+      tx.insert(tables.agents).values({
+        id: agentId,
+        name: input.name,
+        type: input.type,
+        roleId: effectiveRoleId,
+        trustTier,
+        registeredAt: now,
+      }).run();
+    }
 
-  queries.insertSession(db, {
-    id: sessionId,
-    agentId,
-    state: "active",
-    connectedAt: now,
-    lastActivity: now,
+    tx.insert(tables.sessions).values({
+      id: sessionId,
+      agentId,
+      state: "active",
+      connectedAt: now,
+      lastActivity: now,
+    }).run();
   });
 
   return { agentId, sessionId, role: effectiveRoleId, trustTier };
@@ -125,17 +135,26 @@ export function disconnectSession(
 export function reapStaleSessions(
   db: BetterSQLite3Database<typeof schema>,
 ): number {
-  const now = Date.now();
-  const active = queries.getActiveSessions(db);
-  let reaped = 0;
+  return db.transaction((tx) => {
+    const now = Date.now();
+    const active = tx.select().from(tables.sessions).where(eq(tables.sessions.state, "active")).all();
+    let reaped = 0;
 
-  for (const s of active) {
-    const lastMs = new Date(s.lastActivity).getTime();
-    if (now - lastMs > HEARTBEAT_TIMEOUT_MS) {
-      disconnectSession(db, s.id);
-      reaped++;
+    for (const s of active) {
+      const lastMs = new Date(s.lastActivity).getTime();
+      if (now - lastMs > HEARTBEAT_TIMEOUT_MS) {
+        tx.update(tables.sessions)
+          .set({ state: "disconnected", lastActivity: new Date().toISOString() })
+          .where(eq(tables.sessions.id, s.id))
+          .run();
+        tx.update(tables.sessions)
+          .set({ claimedFilesJson: JSON.stringify([]) })
+          .where(eq(tables.sessions.id, s.id))
+          .run();
+        reaped++;
+      }
     }
-  }
 
-  return reaped;
+    return reaped;
+  });
 }

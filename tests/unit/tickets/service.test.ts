@@ -165,6 +165,65 @@ describe("ticket service system context", () => {
     expect(refreshCount).toBe(1);
   });
 
+  it("rolls back ticket creation when history insert fails", async () => {
+    sqlite.exec(`
+      CREATE TRIGGER fail_ticket_history_insert
+      BEFORE INSERT ON ticket_history
+      BEGIN
+        SELECT RAISE(FAIL, 'ticket history failed');
+      END;
+    `);
+
+    await expect(createTicketRecord(ctx, {
+      title: "Atomic create",
+      description: "Should rollback the ticket insert",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    })).rejects.toThrow("ticket history failed");
+
+    expect(queries.getTicketsByRepo(db, repoId)).toHaveLength(0);
+    expect(queries.getDashboardEventsByRepo(db, repoId)).toHaveLength(0);
+    expect(bus.getMessages("agent-dev")).toHaveLength(0);
+    expect(refreshCount).toBe(0);
+  });
+
+  it("rolls back status updates when history insert fails", async () => {
+    const createResult = await createTicketRecord(ctx, {
+      title: "Atomic transition",
+      description: "Status and history should commit together",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(createResult.ok).toBe(true);
+    const ticketId = createResult.ok ? String(createResult.data.ticketId) : "";
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+
+    sqlite.exec(`
+      CREATE TRIGGER fail_ticket_history_transition
+      BEFORE INSERT ON ticket_history
+      WHEN NEW.from_status IS NOT NULL
+      BEGIN
+        SELECT RAISE(FAIL, 'transition history failed');
+      END;
+    `);
+
+    expect(() => updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "technical_analysis",
+      comment: "Should rollback",
+    })).toThrowError("transition history failed");
+
+    const unchanged = queries.getTicketByTicketId(db, ticketId)!;
+    expect(unchanged.status).toBe("backlog");
+    expect(queries.getTicketHistory(db, ticket.id)).toHaveLength(1);
+  });
+
   it("batch transitions multiple tickets while preserving per-ticket workflow records", async () => {
     const first = await createTicketRecord(ctx, {
       title: "First batch ticket",
