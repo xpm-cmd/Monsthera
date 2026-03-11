@@ -108,6 +108,8 @@ If Agora is already running as an HTTP server (e.g. `agora serve --transport htt
 
 This is useful when multiple agents need to share the same Agora instance.
 
+Recommendation: prefer the local `type: "local"` stdio setup first. Use HTTP only when multiple local agents or tools need to share one Agora runtime. A separate thin proxy is not recommended at this stage; see `docs/local-llm-proxy-recommendation.md`.
+
 ## Available Tools
 
 Once connected, OpenCode has access to all 23 Agora MCP tools:

@@ -17,7 +17,7 @@ function createTestDb() {
     CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), path TEXT NOT NULL, language TEXT, content_hash TEXT, summary TEXT, symbols_json TEXT, has_secrets INTEGER DEFAULT 0, secret_line_ranges TEXT, indexed_at TEXT, commit_sha TEXT, embedding BLOB);
     CREATE TABLE imports (id INTEGER PRIMARY KEY AUTOINCREMENT, source_file_id INTEGER NOT NULL REFERENCES files(id), target_path TEXT NOT NULL, kind TEXT NOT NULL);
   `);
-  return { db: drizzle(sqlite, { schema: {} as typeof schema }), sqlite };
+  return { db: drizzle(sqlite, { schema }), sqlite };
 }
 
 describe("structural test coverage analysis", () => {
@@ -35,7 +35,7 @@ describe("structural test coverage analysis", () => {
     const result = createTestDb();
     sqlite = result.sqlite;
     db = result.db;
-    repoId = queries.upsertRepo(db as never, repoPath, "test").id;
+    repoId = queries.upsertRepo(db, repoPath, "test").id;
   });
 
   afterEach(() => {
@@ -63,7 +63,7 @@ describe("structural test coverage analysis", () => {
     const testFile = insertFile("tests/unit/auth/login.test.ts", "typescript");
     insertImport(Number(testFile.lastInsertRowid), "../../../src/auth/login.js");
 
-    const result = await analyzeTestCoverage(db as never, repoId, repoPath, "src/auth/login.ts");
+    const result = await analyzeTestCoverage(db, repoId, repoPath, "src/auth/login.ts");
 
     expect(result).toMatchObject({
       filePath: "src/auth/login.ts",
@@ -90,7 +90,7 @@ describe("structural test coverage analysis", () => {
     insertFile("src/payments/refund.ts", "typescript");
     insertFile("tests/unit/auth/login.test.ts", "typescript");
 
-    const result = await analyzeTestCoverage(db as never, repoId, repoPath, "src/payments/refund.ts");
+    const result = await analyzeTestCoverage(db, repoId, repoPath, "src/payments/refund.ts");
 
     expect(result).toMatchObject({
       status: "untested",
@@ -107,7 +107,7 @@ describe("structural test coverage analysis", () => {
   it("returns unknown when the target file exists but is not indexed", async () => {
     writeFileSync(join(repoPath, "src", "payments", "refund.ts"), "export function refund() {}\n");
 
-    const result = await analyzeTestCoverage(db as never, repoId, repoPath, "src/payments/refund.ts");
+    const result = await analyzeTestCoverage(db, repoId, repoPath, "src/payments/refund.ts");
 
     expect(result.status).toBe("unknown");
     expect(result.reason).toContain("not indexed");
