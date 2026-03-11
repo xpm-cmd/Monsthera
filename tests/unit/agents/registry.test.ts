@@ -167,6 +167,28 @@ describe("Agent Registry", () => {
     expect(session.state).toBe("disconnected");
   });
 
+  it("registers a facilitator with Tier A", () => {
+    const result = registerAgent(db, { name: "Facilitator", type: "claude-code", desiredRole: "facilitator" });
+    expect(result.role).toBe("facilitator");
+    expect(result.trustTier).toBe("A");
+  });
+
+  it("allows facilitator registration with a valid role token", () => {
+    const result = registerAgent(
+      db,
+      { name: "Facilitator", type: "test", desiredRole: "facilitator", authToken: "fac-secret" },
+      {
+        registrationAuth: {
+          enabled: true,
+          observerOpenRegistration: true,
+          roleTokens: { facilitator: "fac-secret" },
+        },
+      },
+    );
+    expect(result.role).toBe("facilitator");
+    expect(result.trustTier).toBe("A");
+  });
+
   it("rolls back stale-session reaping when claim cleanup fails", () => {
     const now = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)

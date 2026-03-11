@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 import { TrustTier } from "./evidence-bundle.js";
 
-export const RoleId = z.enum(["developer", "reviewer", "observer", "admin"]);
+export const RoleId = z.enum(["developer", "reviewer", "facilitator", "observer", "admin"]);
 export type RoleId = z.infer<typeof RoleId>;
 
 export const RolePermissions = z.object({
@@ -110,6 +110,36 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
       canViewSharedLogs: false,
       canCreateTicket: false,
       canTransitionTicket: false,
+    },
+  },
+  facilitator: {
+    id: "facilitator",
+    name: "Facilitator",
+    description: "Drives discussion convergence, synthesizes positions, and advances ticket decisions",
+    permissions: {
+      allowedTools: [
+        "get_code_pack", "get_change_pack", "get_issue_pack",
+        "propose_note",
+        "status", "capabilities", "schema",
+        "register_agent", "agent_status", "broadcast",
+        "send_coordination", "poll_coordination", "list_patches", "list_notes",
+        "store_knowledge", "search_knowledge", "query_knowledge", "archive_knowledge", "delete_knowledge",
+        "create_ticket", "assign_ticket", "update_ticket_status", "update_ticket",
+        "list_tickets", "search_tickets", "get_ticket", "comment_ticket",
+        "link_tickets", "unlink_tickets",
+        "analyze_complexity", "analyze_test_coverage",
+        "lookup_dependencies", "export_audit",
+      ],
+      trustTier: "A",
+      canBroadcast: true,
+      canClaimFiles: false,
+      canProposePatch: false,
+      canProposeNote: true,
+      allowedNoteTypes: ["issue", "decision", "change_note", "gotcha"],
+      readableNoteTypes: ["issue", "decision", "change_note", "gotcha", "runbook", "repo_map", "module_map", "file_summary"],
+      canViewSharedLogs: true,
+      canCreateTicket: true,
+      canTransitionTicket: true,
     },
   },
   admin: {

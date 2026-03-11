@@ -62,7 +62,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           ticketSeverities: ["critical", "high", "medium", "low"],
           languages: [...SUPPORTED_LANGUAGES],
           trustTiers: ["A", "B"],
-          roles: ["developer", "reviewer", "observer", "admin"],
+          roles: ["developer", "reviewer", "facilitator", "observer", "admin"],
           coordinationTopologies: ["hub-spoke", "hybrid", "mesh"],
           maxCandidates: STAGE_A_MAX_CANDIDATES,
           maxExpanded: STAGE_B_MAX_EXPANDED,
@@ -168,7 +168,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         register_agent: {
           name: "string (1-100 chars)",
           type: "string (default unknown)",
-          desiredRole: "enum: developer|reviewer|observer|admin (default observer)",
+          desiredRole: "enum: developer|reviewer|facilitator|observer|admin (default observer)",
           authToken: "string (optional, required when registrationAuth is enabled for the requested role)",
         },
         agent_status: { agentId: "string (optional, omit for all)" },

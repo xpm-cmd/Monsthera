@@ -85,10 +85,19 @@ describe("TRANSITION_ROLES", () => {
   });
 
   it("assigns the agreed advisory roles for the new transitions", () => {
-    expect(TRANSITION_ROLES["technical_analysis→resolved"]).toEqual(["reviewer", "admin"]);
+    expect(TRANSITION_ROLES["technical_analysis→resolved"]).toEqual(["reviewer", "facilitator", "admin"]);
     expect(TRANSITION_ROLES["approved→in_review"]).toEqual(["developer", "admin"]);
-    expect(TRANSITION_ROLES["blocked→wont_fix"]).toEqual(["reviewer", "admin"]);
+    expect(TRANSITION_ROLES["blocked→wont_fix"]).toEqual(["reviewer", "facilitator", "admin"]);
     expect(TRANSITION_ROLES["closed→backlog"]).toEqual(["admin"]);
     expect(TRANSITION_ROLES["wont_fix→backlog"]).toEqual(["admin"]);
+  });
+
+  it("includes facilitator in TA governance transitions", () => {
+    expect(TRANSITION_ROLES["backlog→technical_analysis"]).toContain("facilitator");
+    expect(TRANSITION_ROLES["technical_analysis→approved"]).toContain("facilitator");
+    expect(TRANSITION_ROLES["technical_analysis→resolved"]).toContain("facilitator");
+    expect(TRANSITION_ROLES["in_review→ready_for_commit"]).toContain("facilitator");
+    expect(TRANSITION_ROLES["ready_for_commit→resolved"]).toContain("facilitator");
+    expect(TRANSITION_ROLES["resolved→closed"]).toContain("facilitator");
   });
 });

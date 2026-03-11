@@ -23,7 +23,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
     {
       name: z.string().min(1).max(100).describe("Agent display name"),
       type: z.string().max(50).default("unknown").describe("Agent type (e.g. claude-code)"),
-      desiredRole: z.enum(["developer", "reviewer", "observer", "admin"]).default("observer").describe("Requested role"),
+      desiredRole: z.enum(["developer", "reviewer", "facilitator", "observer", "admin"]).default("observer").describe("Requested role"),
       authToken: z.string().min(1).max(200).optional().describe("Optional registration token for privileged roles"),
     },
     async ({ name, type, desiredRole, authToken }) => {

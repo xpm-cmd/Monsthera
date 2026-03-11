@@ -76,7 +76,7 @@ describe("agent tools", () => {
   function insertAgentWithSession(
     agentId: string,
     sessionId: string,
-    roleId: "developer" | "reviewer" | "observer" | "admin",
+    roleId: "developer" | "reviewer" | "facilitator" | "observer" | "admin",
   ) {
     const now = new Date().toISOString();
     queries.upsertAgent(db, {
@@ -165,6 +165,46 @@ describe("agent tools", () => {
     expect(result.isError).toBeUndefined();
     const payload = JSON.parse(result.content[0].text);
     expect(payload.role).toBe("reviewer");
+    expect(payload.trustTier).toBe("A");
+  });
+
+  it("allows facilitator registration when the role is requested explicitly", async () => {
+    const registerAgent = setupServer();
+
+    const result = await registerAgent({
+      name: "Facilitator",
+      type: "codex",
+      desiredRole: "facilitator",
+    });
+
+    expect(result.isError).toBeUndefined();
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.role).toBe("facilitator");
+    expect(payload.trustTier).toBe("A");
+  });
+
+  it("requires a facilitator token when privileged registration is gated", async () => {
+    const registerAgent = setupServer({
+      enabled: true,
+      observerOpenRegistration: true,
+      roleTokens: { facilitator: "fac-secret" },
+    });
+
+    const denied = await registerAgent({
+      name: "Facilitator",
+      desiredRole: "facilitator",
+    });
+    expect(denied.isError).toBe(true);
+    expect(denied.content[0].text).toContain("Invalid authToken for role facilitator");
+
+    const allowed = await registerAgent({
+      name: "Facilitator",
+      desiredRole: "facilitator",
+      authToken: "fac-secret",
+    });
+    expect(allowed.isError).toBeUndefined();
+    const payload = JSON.parse(allowed.content[0].text);
+    expect(payload.role).toBe("facilitator");
     expect(payload.trustTier).toBe("A");
   });
 

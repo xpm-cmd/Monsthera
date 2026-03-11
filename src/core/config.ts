@@ -18,6 +18,7 @@ import {
 export const RegistrationRoleTokensSchema = z.object({
   developer: z.string().min(1).optional(),
   reviewer: z.string().min(1).optional(),
+  facilitator: z.string().min(1).optional(),
   observer: z.string().min(1).optional(),
   admin: z.string().min(1).optional(),
 });

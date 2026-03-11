@@ -41,27 +41,27 @@ export const VALID_TRANSITIONS: Record<TicketStatus, readonly TicketStatus[]> = 
  * "*" means any role. Specific roles listed mean only those roles should trigger it.
  */
 export const TRANSITION_ROLES: Record<string, readonly string[]> = {
-  "backlog→technical_analysis": ["reviewer", "admin"],
-  "backlog→wont_fix":       ["reviewer", "admin"],
-  "technical_analysis→backlog": ["reviewer", "admin"],
-  "technical_analysis→approved": ["reviewer", "admin"],
-  "technical_analysis→resolved": ["reviewer", "admin"],
-  "technical_analysis→wont_fix": ["reviewer", "admin"],
+  "backlog→technical_analysis": ["reviewer", "facilitator", "admin"],
+  "backlog→wont_fix":       ["reviewer", "facilitator", "admin"],
+  "technical_analysis→backlog": ["reviewer", "facilitator", "admin"],
+  "technical_analysis→approved": ["reviewer", "facilitator", "admin"],
+  "technical_analysis→resolved": ["reviewer", "facilitator", "admin"],
+  "technical_analysis→wont_fix": ["reviewer", "facilitator", "admin"],
   "approved→in_progress":   ["developer", "admin"],
   "approved→in_review":     ["developer", "admin"],
-  "approved→backlog":       ["reviewer", "admin"],       // rework
-  "approved→wont_fix":      ["reviewer", "admin"],
+  "approved→backlog":       ["reviewer", "facilitator", "admin"],       // rework
+  "approved→wont_fix":      ["reviewer", "facilitator", "admin"],
   "in_progress→in_review":  ["developer", "admin"],
   "in_progress→blocked":    ["developer", "admin"],
-  "in_progress→wont_fix":   ["reviewer", "admin"],
-  "in_review→in_progress":  ["reviewer", "admin"],     // reject
-  "in_review→ready_for_commit": ["reviewer", "admin"],
-  "ready_for_commit→in_progress": ["developer", "reviewer", "admin"],
-  "ready_for_commit→resolved": ["developer", "admin"],
+  "in_progress→wont_fix":   ["reviewer", "facilitator", "admin"],
+  "in_review→in_progress":  ["reviewer", "facilitator", "admin"],     // reject
+  "in_review→ready_for_commit": ["reviewer", "facilitator", "admin"],
+  "ready_for_commit→in_progress": ["developer", "reviewer", "facilitator", "admin"],
+  "ready_for_commit→resolved": ["developer", "facilitator", "admin"],
   "blocked→in_progress":    ["developer", "admin"],     // unblock
-  "blocked→wont_fix":       ["reviewer", "admin"],
-  "resolved→in_progress":   ["developer", "reviewer", "admin"],  // reopen
-  "resolved→closed":        ["reviewer", "admin"],
+  "blocked→wont_fix":       ["reviewer", "facilitator", "admin"],
+  "resolved→in_progress":   ["developer", "reviewer", "facilitator", "admin"],  // reopen
+  "resolved→closed":        ["reviewer", "facilitator", "admin"],
   "closed→backlog":         ["admin"],
   "wont_fix→backlog":       ["admin"],
 };
