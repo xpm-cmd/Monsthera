@@ -12,6 +12,10 @@ import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
 import { analyzeFileComplexity } from "../analysis/complexity.js";
 import { analyzeTestCoverage } from "../analysis/test-coverage.js";
+import {
+  CrossInstanceSearchSurfaceSchema,
+  searchAcrossRemoteInstances,
+} from "../federation/search.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -94,6 +98,16 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         get_issue_pack: {
           query: "string (1-1000 chars, required)",
+        },
+        search_remote_instances: {
+          query: "string (1-1000 chars, required)",
+          surface: "enum: code|knowledge|tickets",
+          limit: "number 1-20 (default 10)",
+          scope: "string (optional path or scope filter)",
+          type: "string (optional, knowledge only)",
+          status: "enum: ticket status (optional, tickets only)",
+          severity: "enum: ticket severity (optional, tickets only)",
+          peerIds: "string[] (optional peer filter)",
         },
         analyze_complexity: {
           filePath: "string (file path relative to repo root, required)",
@@ -541,6 +555,43 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             })),
             matchedKnowledge,
           }, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── search_remote_instances ─────────────────────────────
+  server.tool(
+    "search_remote_instances",
+    "Query configured remote Agora instances over authenticated HTTP and merge read-only search hits with explicit provenance.",
+    {
+      query: z.string().trim().min(1).max(1000).describe("Search query"),
+      surface: CrossInstanceSearchSurfaceSchema.describe("Remote search surface"),
+      limit: z.number().int().min(1).max(20).default(10).describe("Max hits per remote"),
+      scope: z.string().trim().min(1).max(500).optional().describe("Optional scope or path filter"),
+      type: z.string().trim().min(1).max(100).optional().describe("Knowledge type filter"),
+      status: z.enum(["backlog", "technical_analysis", "approved", "in_progress", "in_review", "ready_for_commit", "blocked", "resolved", "closed", "wont_fix"]).optional().describe("Ticket status filter"),
+      severity: z.enum(["critical", "high", "medium", "low"]).optional().describe("Ticket severity filter"),
+      peerIds: z.array(z.string().trim().min(1).max(64)).max(20).optional().describe("Optional remote peer filter"),
+    },
+    async ({ query, surface, limit, scope, type, status, severity, peerIds }) => {
+      const c = await getContext();
+      const result = await searchAcrossRemoteInstances(c, {
+        query,
+        surface,
+        limit,
+        scope,
+        type,
+        status,
+        severity,
+      }, {
+        peerIds,
+      });
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
         }],
       };
     },

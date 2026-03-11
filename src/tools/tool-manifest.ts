@@ -1,6 +1,6 @@
 export const CAPABILITY_TOOL_NAMES = [
   "status", "capabilities", "schema",
-  "get_code_pack", "get_change_pack", "get_issue_pack",
+  "get_code_pack", "get_change_pack", "get_issue_pack", "search_remote_instances",
   "propose_patch", "propose_note",
   "register_agent", "agent_status", "broadcast",
   "send_coordination", "poll_coordination",

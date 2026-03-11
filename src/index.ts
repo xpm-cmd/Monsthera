@@ -2,6 +2,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { createAgoraServer } from "./server.js";
 import { loadConfigFile, mergeConfigSources, resolveConfig, type AgoraConfig } from "./core/config.js";
 import { VERSION } from "./core/constants.js";
+import { createAgoraContextLoader } from "./core/context-loader.js";
+import { recordRuntimeEventWithContext } from "./tools/runtime-instrumentation.js";
 import { initDatabase, initGlobalDatabase } from "./db/init.js";
 import { InsightStream } from "./core/insight-stream.js";
 import { fullIndex, getIndexedCommit } from "./indexing/indexer.js";
@@ -11,6 +13,14 @@ import { prepareKnowledgeSearchTarget } from "./knowledge/search.js";
 import { basename, join } from "node:path";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { compileSecretPatterns } from "./trust/secret-patterns.js";
+import { CrossInstanceNonceStore } from "./trust/cross-instance-nonce-store.js";
+import { validateCrossInstanceRequest } from "./trust/cross-instance-request-guard.js";
+import {
+  CROSS_INSTANCE_SEARCH_PATH,
+  CrossInstanceSearchRequestSchema,
+  getCrossInstanceCapabilityTool,
+  runLocalCrossInstanceSearch,
+} from "./federation/search.js";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -154,6 +164,8 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
     "@modelcontextprotocol/sdk/server/streamableHttp.js"
   );
   const { randomUUID } = await import("node:crypto");
+  const getContext = createAgoraContextLoader(config, insight);
+  const nonceStore = new CrossInstanceNonceStore(config.crossInstance.nonceTtlSeconds * 1000);
 
   // Map of sessionId → { server, transport }
   const sessions = new Map<string, { server: ReturnType<typeof createAgoraServer>; transport: InstanceType<typeof StreamableHTTPServerTransport> }>();
@@ -161,7 +173,7 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
   const MCP_CORS_HEADERS: Record<string, string> = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, mcp-session-id",
+    "Access-Control-Allow-Headers": "Content-Type, mcp-session-id, X-Agora-Instance-Id, X-Agora-Timestamp, X-Agora-Nonce, X-Agora-Signature",
     "Access-Control-Expose-Headers": "mcp-session-id",
     "X-Content-Type-Options": "nosniff",
   };
@@ -176,10 +188,127 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
       return;
     }
 
+    if (url.pathname === CROSS_INSTANCE_SEARCH_PATH) {
+      if (req.method !== "POST") {
+        res.writeHead(405, { ...MCP_CORS_HEADERS, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Method not allowed" }));
+        return;
+      }
+
+      const startedAt = Date.now();
+      const body = await readRequestBody(req);
+      const bodyText = body.toString("utf-8");
+      const headerInstanceId = typeof req.headers["x-agora-instance-id"] === "string"
+        ? req.headers["x-agora-instance-id"].trim()
+        : "unknown";
+
+      if (!config.crossInstance.enabled) {
+        const ctx = await getContext();
+        await recordRuntimeEventWithContext(ctx, {
+          tool: "cross_instance.search.disabled",
+          input: { path: url.pathname, body: bodyText },
+          output: "cross_instance_disabled",
+          status: "denied",
+          durationMs: Date.now() - startedAt,
+          denialReason: "cross_instance_disabled",
+          errorCode: "cross_instance_disabled",
+          errorDetail: "Cross-instance search request rejected because crossInstance is disabled",
+          agentId: `system:peer-${headerInstanceId || "unknown"}`,
+          sessionId: "system",
+        });
+        res.writeHead(404, { ...MCP_CORS_HEADERS, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Cross-instance search is disabled" }));
+        return;
+      }
+
+      const parsed = CrossInstanceSearchRequestSchema.safeParse(tryParseJson(bodyText));
+      if (!parsed.success) {
+        const ctx = await getContext();
+        await recordRuntimeEventWithContext(ctx, {
+          tool: "cross_instance.search.invalid_request",
+          input: { path: url.pathname, body: bodyText },
+          output: "invalid_request",
+          status: "error",
+          durationMs: Date.now() - startedAt,
+          errorCode: "invalid_request",
+          errorDetail: parsed.error.message,
+          agentId: `system:peer-${headerInstanceId || "unknown"}`,
+          sessionId: "system",
+        });
+        res.writeHead(400, { ...MCP_CORS_HEADERS, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Invalid cross-instance search payload" }));
+        return;
+      }
+
+      const request = parsed.data;
+      const ctx = await getContext();
+      const validation = validateCrossInstanceRequest({
+        crossInstance: {
+          peers: config.crossInstance.peers,
+          timestampSkewSeconds: config.crossInstance.timestampSkewSeconds,
+        },
+        nonceStore,
+        tool: getCrossInstanceCapabilityTool(request.surface),
+        method: req.method,
+        path: url.pathname,
+        query: url.searchParams,
+        body,
+        headers: req.headers,
+      });
+
+      if (!validation.ok) {
+        await recordRuntimeEventWithContext(ctx, {
+          tool: `cross_instance.search.${request.surface}`,
+          input: { path: url.pathname, request },
+          output: validation.reason,
+          status: "denied",
+          durationMs: Date.now() - startedAt,
+          denialReason: validation.reason,
+          errorCode: validation.reason,
+          errorDetail: `Cross-instance search rejected for ${headerInstanceId || "unknown"}`,
+          agentId: `system:peer-${headerInstanceId || "unknown"}`,
+          sessionId: "system",
+        });
+        res.writeHead(crossInstanceHttpStatus(validation.reason), { ...MCP_CORS_HEADERS, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: validation.reason }));
+        return;
+      }
+
+      try {
+        const result = await runLocalCrossInstanceSearch(ctx, request);
+        await recordRuntimeEventWithContext(ctx, {
+          tool: `cross_instance.search.${request.surface}`,
+          input: { path: url.pathname, request },
+          output: JSON.stringify({ count: result.count, instanceId: result.instanceId }),
+          status: "success",
+          durationMs: Date.now() - startedAt,
+          agentId: `system:peer-${validation.instanceId}`,
+          sessionId: "system",
+        });
+        res.writeHead(200, { ...MCP_CORS_HEADERS, "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        await recordRuntimeEventWithContext(ctx, {
+          tool: `cross_instance.search.${request.surface}`,
+          input: { path: url.pathname, request },
+          output: error instanceof Error ? error.message : String(error),
+          status: "error",
+          durationMs: Date.now() - startedAt,
+          errorCode: "cross_instance_search_failed",
+          errorDetail: error instanceof Error ? error.stack ?? error.message : String(error),
+          agentId: `system:peer-${validation.instanceId}`,
+          sessionId: "system",
+        });
+        res.writeHead(500, { ...MCP_CORS_HEADERS, "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Cross-instance search failed" }));
+      }
+      return;
+    }
+
     // Only handle /mcp endpoint
     if (url.pathname !== "/mcp") {
       res.writeHead(404, { ...MCP_CORS_HEADERS, "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Not found. Use /mcp endpoint." }));
+      res.end(JSON.stringify({ error: `Not found. Use /mcp or ${CROSS_INSTANCE_SEARCH_PATH}.` }));
       return;
     }
 
@@ -217,7 +346,7 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
       }
     };
 
-    const server = createAgoraServer(config);
+    const server = createAgoraServer(config, { insight, getContext });
     await server.connect(transport);
     await transport.handleRequest(req, res);
   });
@@ -237,6 +366,33 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+}
+
+async function readRequestBody(req: import("node:http").IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+function tryParseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function crossInstanceHttpStatus(reason: string): number {
+  switch (reason) {
+    case "capability_not_allowed":
+      return 403;
+    case "replayed_nonce":
+      return 409;
+    default:
+      return 401;
+  }
 }
 
 async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: InsightStream) {

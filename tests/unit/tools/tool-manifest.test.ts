@@ -3,7 +3,7 @@ import { CAPABILITY_TOOL_NAMES } from "../../../src/tools/tool-manifest.js";
 
 describe("tool-manifest", () => {
   it("exports the expected number of capability tools", () => {
-    expect(CAPABILITY_TOOL_NAMES.length).toBe(37);
+    expect(CAPABILITY_TOOL_NAMES.length).toBe(38);
   });
 
   it("contains all core MCP tool names", () => {
@@ -18,6 +18,7 @@ describe("tool-manifest", () => {
     expect(names.has("get_code_pack")).toBe(true);
     expect(names.has("get_change_pack")).toBe(true);
     expect(names.has("get_issue_pack")).toBe(true);
+    expect(names.has("search_remote_instances")).toBe(true);
 
     // Agent management
     expect(names.has("register_agent")).toBe(true);
