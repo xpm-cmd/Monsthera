@@ -20,6 +20,9 @@ import {
 } from "../tickets/service.js";
 import { reapStaleSessions } from "../agents/registry.js";
 import { classifyResultForLogging, recordRuntimeEventWithContext } from "../tools/runtime-instrumentation.js";
+import { z } from "zod/v4";
+import { AgentIdSchema, SessionIdSchema, TagsSchema, AffectedPathsSchema } from "../core/input-hardening.js";
+import { TicketSeverity, TicketStatus } from "../../schemas/ticket.js";
 
 export class DashboardSSE {
   private clients = new Set<ServerResponse>();
@@ -55,6 +58,41 @@ const SECURITY_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+
+// ─── Dashboard POST body schemas ─────────────────────────────────
+// Reuse constraints from MCP tool layer to keep validation consistent.
+
+const CreateTicketBodySchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().min(1).max(5000),
+  severity: TicketSeverity.default("medium"),
+  priority: z.number().int().min(0).max(10).default(5),
+  tags: TagsSchema.default([]),
+  affectedPaths: AffectedPathsSchema.default([]),
+  acceptanceCriteria: z.string().max(2000).nullable().optional(),
+  humanName: z.string().trim().max(100).optional(),
+  agentId: AgentIdSchema.optional(),
+  sessionId: SessionIdSchema.optional(),
+});
+
+const CommentTicketBodySchema = z.object({
+  content: z.string().min(1).max(2000),
+  agentId: AgentIdSchema,
+  sessionId: SessionIdSchema,
+});
+
+const AssignTicketBodySchema = z.object({
+  assigneeAgentId: AgentIdSchema,
+  agentId: AgentIdSchema,
+  sessionId: SessionIdSchema,
+});
+
+const UpdateStatusBodySchema = z.object({
+  status: TicketStatus,
+  comment: z.string().max(500).nullable().optional(),
+  agentId: AgentIdSchema,
+  sessionId: SessionIdSchema,
+});
 
 export function startDashboard(
   deps: DashboardDeps,
@@ -126,9 +164,11 @@ export function startDashboard(
       }
 
       if (path === "/api/tickets/create" && req.method === "POST") {
-        const body = await readJsonBody(req);
+        const raw = await readJsonBody(req);
+        const parsed = validateBody(res, CreateTicketBodySchema, raw);
+        if (!parsed) return;
         const startedAt = Date.now();
-        const humanName = typeof body.humanName === "string" ? body.humanName.trim() : "";
+        const humanName = parsed.humanName ?? "";
         const ticketContext = {
           db: deps.db,
           repoId: deps.repoId,
@@ -139,24 +179,24 @@ export function startDashboard(
           ...(humanName ? { system: true as const, actorLabel: `human ${humanName}` } : {}),
         };
         const ticketInput = {
-          title: String(body.title ?? ""),
-          description: String(body.description ?? ""),
-          severity: String(body.severity ?? "medium"),
-          priority: Number(body.priority ?? 5),
-          tags: toStringArray(body.tags),
-          affectedPaths: toStringArray(body.affectedPaths),
-          acceptanceCriteria: body.acceptanceCriteria ? String(body.acceptanceCriteria) : null,
+          title: parsed.title,
+          description: parsed.description,
+          severity: parsed.severity,
+          priority: parsed.priority,
+          tags: parsed.tags,
+          affectedPaths: parsed.affectedPaths,
+          acceptanceCriteria: parsed.acceptanceCriteria ?? null,
           ...(humanName
             ? { actorLabel: `human ${humanName}` }
             : {
-                agentId: String(body.agentId ?? ""),
-                sessionId: String(body.sessionId ?? ""),
+                agentId: parsed.agentId ?? "",
+                sessionId: parsed.sessionId ?? "",
               }),
         };
         const result = await createTicketRecord(ticketContext, ticketInput);
         await logDashboardMutation(deps, {
           tool: "dashboard.create_ticket",
-          input: body,
+          input: raw,
           result,
           startedAt,
         });
@@ -175,6 +215,8 @@ export function startDashboard(
         const body = await readJsonBody(req);
 
         if (action === "comment") {
+          const parsed = validateBody(res, CommentTicketBodySchema, body);
+          if (!parsed) return;
           const startedAt = Date.now();
           const result = commentTicketRecord({
             db: deps.db,
@@ -185,9 +227,9 @@ export function startDashboard(
             refreshTicketSearch: deps.refreshTicketSearch,
           }, {
             ticketId: decodeURIComponent(ticketId),
-            content: String(body.content ?? ""),
-            agentId: String(body.agentId ?? ""),
-            sessionId: String(body.sessionId ?? ""),
+            content: parsed.content,
+            agentId: parsed.agentId,
+            sessionId: parsed.sessionId,
           });
           await logDashboardMutation(deps, {
             tool: "dashboard.comment_ticket",
@@ -199,6 +241,8 @@ export function startDashboard(
         }
 
         if (action === "assign") {
+          const parsed = validateBody(res, AssignTicketBodySchema, body);
+          if (!parsed) return;
           const startedAt = Date.now();
           const result = assignTicketRecord({
             db: deps.db,
@@ -209,9 +253,9 @@ export function startDashboard(
             refreshTicketSearch: deps.refreshTicketSearch,
           }, {
             ticketId: decodeURIComponent(ticketId),
-            assigneeAgentId: String(body.assigneeAgentId ?? ""),
-            agentId: String(body.agentId ?? ""),
-            sessionId: String(body.sessionId ?? ""),
+            assigneeAgentId: parsed.assigneeAgentId,
+            agentId: parsed.agentId,
+            sessionId: parsed.sessionId,
           });
           await logDashboardMutation(deps, {
             tool: "dashboard.assign_ticket",
@@ -223,6 +267,8 @@ export function startDashboard(
         }
 
         if (action === "status") {
+          const parsed = validateBody(res, UpdateStatusBodySchema, body);
+          if (!parsed) return;
           const startedAt = Date.now();
           const result = updateTicketStatusRecord({
             db: deps.db,
@@ -233,10 +279,10 @@ export function startDashboard(
             refreshTicketSearch: deps.refreshTicketSearch,
           }, {
             ticketId: decodeURIComponent(ticketId),
-            status: String(body.status ?? "") as Parameters<typeof updateTicketStatusRecord>[1]["status"],
-            comment: body.comment ? String(body.comment) : null,
-            agentId: String(body.agentId ?? ""),
-            sessionId: String(body.sessionId ?? ""),
+            status: parsed.status,
+            comment: parsed.comment ?? null,
+            agentId: parsed.agentId,
+            sessionId: parsed.sessionId,
           });
           await logDashboardMutation(deps, {
             tool: "dashboard.update_ticket_status",
@@ -442,9 +488,15 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   return JSON.parse(Buffer.concat(chunks).toString("utf-8")) as Record<string, unknown>;
 }
 
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => String(item)).filter(Boolean);
+function validateBody<T>(res: ServerResponse, schema: z.ZodType<T>, body: unknown): T | null {
+  const result = schema.safeParse(body);
+  if (result.success) return result.data;
+  res.writeHead(400, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    error: "Validation failed",
+    details: result.error.issues.map((i) => ({ path: i.path, message: i.message })),
+  }));
+  return null;
 }
 
 function writeTicketMutationResult(

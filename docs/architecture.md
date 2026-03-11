@@ -190,6 +190,24 @@ The dashboard currently exposes:
 
 Realtime updates are driven from persisted `dashboard_events`, not only in-memory broadcast.
 
+### Security Model
+
+The dashboard binds to `localhost` and assumes a **localhost trust model**: any process on the local machine can reach the HTTP API. This is intentional for the current use case (single-developer, local-first tooling).
+
+What the dashboard does enforce:
+
+- **Input validation**: all POST endpoints validate request bodies through Zod schemas (same constraints as the MCP tool layer) and reject malformed input with structured 400 errors.
+- **Security headers**: CSP, X-Frame-Options DENY, nosniff, CORS restricted to localhost origin.
+- **Body size limit**: request bodies are capped at 1 MB.
+- **Role and session checks**: ticket mutations go through the same `authorizeTicketActor` path as MCP tools, requiring a valid agent session.
+
+What the dashboard does not enforce:
+
+- **Authentication**: no bearer token or API key is required. Localhost reachability is the trust boundary.
+- **CSRF protection**: POST endpoints do not check Origin headers beyond CORS preflight.
+
+If the dashboard is ever exposed beyond localhost (reverse proxy, tunneling), authentication and CSRF protection should be added before that change ships.
+
 ## Coordination and Audit
 
 Coordination messages and dashboard events are persisted in the repo DB, which gives:
