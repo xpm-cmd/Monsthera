@@ -27,7 +27,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "coverage": "vitest run --coverage",
-    "benchmark": "vitest run tests/benchmark/"
+    "benchmark": "vitest run tests/benchmark/",
+    "prepare": "husky"
   },
   "keywords": [
     "mcp",
@@ -72,6 +73,9 @@
     "web-tree-sitter": "0.20.8",
     "zod": "^4.3.6"
   },
+  "lint-staged": {
+    "*.ts": "eslint"
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.3.5",
@@ -80,6 +84,8 @@
     "@vitest/coverage-v8": "^4.0.18",
     "drizzle-kit": "^0.31.9",
     "eslint": "^10.0.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.3",
     "prettier": "^3.8.1",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
