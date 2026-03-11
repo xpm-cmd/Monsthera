@@ -250,13 +250,45 @@ export function startDashboard(
 
       if (path.startsWith("/api/")) {
         const route = path.slice(5);
-        const data = await routeApi(route, deps, url);
+        const startedAt = Date.now();
+        let data: unknown;
+        try {
+          data = await routeApi(route, deps, url);
+        } catch (error) {
+          await logDashboardRead(deps, {
+            route,
+            url,
+            startedAt,
+            status: "error",
+            data: { shape: "error" },
+            errorCode: "dashboard_read_failed",
+            errorDetail: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
 
         if (data === null) {
+          await logDashboardRead(deps, {
+            route,
+            url,
+            startedAt,
+            status: "error",
+            data: { shape: "null" },
+            errorCode: "not_found",
+            errorDetail: "Dashboard route not found",
+          });
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Not found" }));
           return;
         }
+
+        await logDashboardRead(deps, {
+          route,
+          url,
+          startedAt,
+          status: "success",
+          data,
+        });
 
         res.writeHead(200, {
           "Content-Type": "application/json",
@@ -326,6 +358,75 @@ async function logDashboardMutation(
     agentId: typeof args.input.agentId === "string" ? args.input.agentId : undefined,
     sessionId: typeof args.input.sessionId === "string" ? args.input.sessionId : undefined,
   });
+}
+
+async function logDashboardRead(
+  deps: DashboardDeps,
+  args: {
+    route: string;
+    url: URL;
+    startedAt: number;
+    status: "success" | "error";
+    data: unknown;
+    errorCode?: string;
+    errorDetail?: string;
+  },
+): Promise<void> {
+  await recordRuntimeEventWithContext({
+    config: { debugLogging: false, secretPatterns: [] },
+    db: deps.db,
+    repoId: deps.repoId,
+    repoPath: deps.repoPath,
+  }, {
+    tool: getDashboardReadToolName(args.route),
+    input: summarizeDashboardReadInput(args.route, args.url),
+    output: JSON.stringify(summarizeDashboardReadOutput(args.data)),
+    status: args.status,
+    durationMs: Date.now() - args.startedAt,
+    errorCode: args.errorCode,
+    errorDetail: args.errorDetail,
+  });
+}
+
+export function getDashboardReadToolName(route: string): string {
+  if (route.startsWith("tickets/")) {
+    return route === "tickets/metrics" ? "dashboard.read.tickets.metrics" : "dashboard.read.tickets.detail";
+  }
+
+  switch (route) {
+    case "search/debug":
+      return "dashboard.read.search.debug";
+    case "dependency-graph":
+      return "dashboard.read.dependency_graph";
+    case "export/audit":
+      return "dashboard.read.export.audit";
+    default:
+      return `dashboard.read.${route.replace(/[^a-zA-Z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").toLowerCase() || "unknown"}`;
+  }
+}
+
+export function summarizeDashboardReadInput(route: string, url: URL): Record<string, unknown> {
+  const queryKeys = [...new Set([...url.searchParams.keys()])].sort();
+  return {
+    route: route.startsWith("tickets/") && route !== "tickets/metrics" ? "tickets/:ticketId" : route,
+    queryKeys,
+  };
+}
+
+export function summarizeDashboardReadOutput(data: unknown): Record<string, unknown> {
+  if (Array.isArray(data)) {
+    return { shape: "array", count: data.length };
+  }
+  if (data === null) {
+    return { shape: "null" };
+  }
+  if (data && typeof data === "object") {
+    return {
+      shape: "object",
+      keys: Object.keys(data as Record<string, unknown>).sort().slice(0, 12),
+    };
+  }
+  return { shape: typeof data };
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
