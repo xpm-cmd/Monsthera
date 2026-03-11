@@ -45,7 +45,7 @@
     "code-index"
   ],
   "author": "xpm-cmd (https://github.com/xpm-cmd)",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/xpm-cmd/Agora.git"
