@@ -6,9 +6,14 @@ const {
   ftsInitMock,
   ftsRebuildMock,
   ftsInitKnowledgeMock,
+  ftsKnowledgeCurrentMock,
   ftsRebuildKnowledgeMock,
   ftsInitTicketMock,
+  ftsTicketCurrentMock,
   ftsRebuildTicketMock,
+  ftsFileCurrentMock,
+  getHeadMock,
+  getIndexedCommitMock,
   knowledgeSearchMock,
   ticketSearchMock,
   zoektAvailableMock,
@@ -23,9 +28,14 @@ const {
   ftsInitMock: vi.fn(),
   ftsRebuildMock: vi.fn(),
   ftsInitKnowledgeMock: vi.fn(),
+  ftsKnowledgeCurrentMock: vi.fn(),
   ftsRebuildKnowledgeMock: vi.fn(),
   ftsInitTicketMock: vi.fn(),
+  ftsTicketCurrentMock: vi.fn(),
   ftsRebuildTicketMock: vi.fn(),
+  ftsFileCurrentMock: vi.fn(),
+  getHeadMock: vi.fn(),
+  getIndexedCommitMock: vi.fn(),
   knowledgeSearchMock: vi.fn(),
   ticketSearchMock: vi.fn(),
   zoektAvailableMock: vi.fn(),
@@ -43,9 +53,12 @@ vi.mock("../../../src/search/fts5.js", () => ({
     initFtsTable = ftsInitMock;
     rebuildIndex = ftsRebuildMock;
     initKnowledgeFts = ftsInitKnowledgeMock;
+    isKnowledgeIndexCurrent = ftsKnowledgeCurrentMock;
     rebuildKnowledgeFts = ftsRebuildKnowledgeMock;
     initTicketFts = ftsInitTicketMock;
+    isTicketIndexCurrent = ftsTicketCurrentMock;
     rebuildTicketFts = ftsRebuildTicketMock;
+    isFileIndexCurrent = ftsFileCurrentMock;
     search = ftsSearchMock;
     searchKnowledge = knowledgeSearchMock;
     searchTickets = ticketSearchMock;
@@ -59,6 +72,14 @@ vi.mock("../../../src/search/zoekt.js", () => ({
     search = zoektSearchMock;
     indexRepo = zoektIndexRepoMock;
   },
+}));
+
+vi.mock("../../../src/indexing/indexer.js", () => ({
+  getIndexedCommit: getIndexedCommitMock,
+}));
+
+vi.mock("../../../src/git/operations.js", () => ({
+  getHead: getHeadMock,
 }));
 
 vi.mock("../../../src/search/semantic.js", () => ({
@@ -96,6 +117,11 @@ describe("SearchRouter", () => {
     semanticAvailableMock.mockReturnValue(false);
     semanticVectorSearchMock.mockResolvedValue([]);
     mergeResultsMock.mockImplementation((fts5Results: SearchResult[]) => fts5Results);
+    getIndexedCommitMock.mockReturnValue(null);
+    getHeadMock.mockResolvedValue("head-1");
+    ftsFileCurrentMock.mockReturnValue(false);
+    ftsKnowledgeCurrentMock.mockReturnValue(false);
+    ftsTicketCurrentMock.mockReturnValue(false);
   });
 
   it("falls back to FTS5 during initialize when Zoekt is unavailable", async () => {
@@ -185,5 +211,21 @@ describe("SearchRouter", () => {
       0.65,
       true,
     );
+  });
+
+  it("skips redundant FTS rebuilds when indexed commit and table counts are current", async () => {
+    const router = createRouter();
+
+    getIndexedCommitMock.mockReturnValue("head-1");
+    getHeadMock.mockResolvedValue("head-1");
+    ftsFileCurrentMock.mockReturnValue(true);
+    ftsKnowledgeCurrentMock.mockReturnValue(true);
+    ftsTicketCurrentMock.mockReturnValue(true);
+
+    await router.initialize();
+
+    expect(ftsRebuildMock).not.toHaveBeenCalled();
+    expect(ftsRebuildKnowledgeMock).not.toHaveBeenCalled();
+    expect(ftsRebuildTicketMock).not.toHaveBeenCalled();
   });
 });

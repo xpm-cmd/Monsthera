@@ -100,6 +100,14 @@ export class FTS5Backend implements SearchBackend {
     batch();
   }
 
+  isFileIndexCurrent(repoId: number): boolean {
+    const indexedRows = this.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${FTS_TABLE} WHERE repo_id = ?`)
+      .get(repoId) as { count: number } | undefined;
+    const sourceRows = this.sqlite.prepare("SELECT COUNT(*) AS count FROM files WHERE repo_id = ?")
+      .get(repoId) as { count: number } | undefined;
+    return (indexedRows?.count ?? 0) === (sourceRows?.count ?? 0);
+  }
+
   // ─── Knowledge FTS5 ───────────────────────────────────────
 
   /**
@@ -138,6 +146,14 @@ export class FTS5Backend implements SearchBackend {
       }
     });
     batch();
+  }
+
+  isKnowledgeIndexCurrent(sqlite: DatabaseType): boolean {
+    const indexedRows = sqlite.prepare(`SELECT COUNT(*) AS count FROM ${KNOWLEDGE_FTS_TABLE}`)
+      .get() as { count: number } | undefined;
+    const sourceRows = sqlite.prepare("SELECT COUNT(*) AS count FROM knowledge WHERE status = 'active'")
+      .get() as { count: number } | undefined;
+    return (indexedRows?.count ?? 0) === (sourceRows?.count ?? 0);
   }
 
   // ─── Ticket FTS5 ───────────────────────────────────────────
@@ -205,6 +221,14 @@ export class FTS5Backend implements SearchBackend {
     });
 
     batch();
+  }
+
+  isTicketIndexCurrent(repoId: number): boolean {
+    const indexedRows = this.sqlite.prepare(`SELECT COUNT(*) AS count FROM ${TICKETS_FTS_TABLE} WHERE repo_id = ?`)
+      .get(repoId) as { count: number } | undefined;
+    const sourceRows = this.sqlite.prepare("SELECT COUNT(*) AS count FROM tickets WHERE repo_id = ?")
+      .get(repoId) as { count: number } | undefined;
+    return (indexedRows?.count ?? 0) === (sourceRows?.count ?? 0);
   }
 
   searchTickets(

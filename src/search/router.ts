@@ -6,6 +6,8 @@ import { FTS5Backend, type KnowledgeFtsResult, type TicketFtsResult } from "./ft
 import { ZoektBackend } from "./zoekt.js";
 import { SemanticReranker, mergeResults } from "./semantic.js";
 import { DEFAULT_SEARCH_CONFIG, type SearchConfigShape } from "./constants.js";
+import { getIndexedCommit } from "../indexing/indexer.js";
+import { getHead } from "../git/operations.js";
 
 export interface SearchRouterOptions {
   repoId: number;
@@ -47,12 +49,33 @@ export class SearchRouter {
 
   async initialize(): Promise<void> {
     this.fts5.initFtsTable();
-    this.fts5.rebuildIndex(this.opts.repoId);
     // Initialize knowledge FTS for repo DB
     this.fts5.initKnowledgeFts(this.opts.sqlite);
-    this.fts5.rebuildKnowledgeFts(this.opts.sqlite);
     this.fts5.initTicketFts();
-    this.fts5.rebuildTicketFts(this.opts.repoId);
+
+    let indexedCommit: string | null = null;
+    try {
+      indexedCommit = getIndexedCommit(this.opts.db, this.opts.repoId);
+    } catch {
+      indexedCommit = null;
+    }
+    let head: string | null = null;
+    try {
+      head = await getHead({ cwd: this.opts.repoPath });
+    } catch {
+      head = null;
+    }
+    const repoIndexCurrent = Boolean(indexedCommit && head && indexedCommit === head);
+
+    if (!repoIndexCurrent || !this.fts5.isFileIndexCurrent(this.opts.repoId)) {
+      this.fts5.rebuildIndex(this.opts.repoId);
+    }
+    if (!repoIndexCurrent || !this.fts5.isKnowledgeIndexCurrent(this.opts.sqlite)) {
+      this.fts5.rebuildKnowledgeFts(this.opts.sqlite);
+    }
+    if (!repoIndexCurrent || !this.fts5.isTicketIndexCurrent(this.opts.repoId)) {
+      this.fts5.rebuildTicketFts(this.opts.repoId);
+    }
 
     if (this.zoekt && (await this.zoekt.isAvailable())) {
       this.activeBackend = this.zoekt;

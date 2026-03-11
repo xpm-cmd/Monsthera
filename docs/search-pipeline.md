@@ -44,9 +44,12 @@ If semantic search is enabled and the MiniLM model loads successfully:
 
 - the reranker generates an embedding for the query
 - vector search runs against indexed file embeddings
+- file vector search is an `O(n)` linear scan over embedded files in the repo today
 - lexical and vector results are merged with `alpha=0.5`
 
 If semantic initialization fails, code search remains available via lexical search only.
+
+Agora does not maintain an ANN structure yet. If repository size or query latency makes linear scans a problem, the next step should be an explicit ANN layer evaluation rather than hiding the limitation.
 
 ### Scope filtering
 
@@ -110,6 +113,7 @@ Knowledge BM25 weights are tuned toward concise identifiers:
 If the semantic model is available:
 
 - vector search scans active knowledge embeddings
+- knowledge vector search is also `O(n)` over active embedded entries
 - vector-only discoveries are merged with FTS results
 
 If semantic search is unavailable:
@@ -149,7 +153,7 @@ BM25 weighting favors ticket identity and title:
 
 Ticket FTS is rebuilt:
 
-- during router initialization
+- during router initialization only when the indexed commit changed or the FTS row counts no longer match source tables
 - on repo reindex
 - after ticket mutations that change searchable content
 
@@ -196,3 +200,9 @@ Search docs should therefore stay aligned with:
 - `src/search/debug.ts`
 - `src/retrieval/evidence-bundle.ts`
 - `src/index.ts`
+
+Current performance posture:
+
+- startup now avoids redundant FTS rebuilds when repo index state already matches `HEAD` and the FTS row counts are current
+- batched FTS rebuild reads are still deferred until repository scale shows the count-based fast path is no longer sufficient
+- ANN/vector indexing remains a future optimization, not a hidden assumption in the current search path
