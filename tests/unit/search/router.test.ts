@@ -153,4 +153,37 @@ describe("SearchRouter", () => {
     expect(results).toEqual(mergedResults);
     expect(router.getActiveBackendName()).toBe("fts5+semantic");
   });
+
+  it("uses configured semantic alpha when merging hybrid results", async () => {
+    const router = createRouter({
+      semanticEnabled: true,
+      searchConfig: {
+        semanticBlendAlpha: 0.65,
+        bm25: {
+          file: { path: 1.5, summary: 1.0, symbols: 2.0 },
+          ticket: { ticketId: 2.5, title: 3.0, description: 1.0, tags: 2.0 },
+          knowledge: { title: 3.0, content: 1.0 },
+        },
+        penalties: { testFiles: 0.4, configFiles: 0.5 },
+        thresholds: { relevance: 0.35, scopedRelevance: 0.2, andQueryTermCount: 3 },
+      },
+    });
+
+    semanticInitializeMock.mockResolvedValue(true);
+    semanticAvailableMock.mockReturnValue(true);
+    ftsSearchMock.mockResolvedValueOnce([{ path: "src/router.ts", score: 0.8 }]);
+    semanticVectorSearchMock.mockResolvedValueOnce([{ path: "src/router.ts", score: 0.9 }]);
+    mergeResultsMock.mockReturnValueOnce([{ path: "src/router.ts", score: 0.865 }]);
+
+    await router.initialize();
+    await router.search("hybrid routing", 1, 10, "src/");
+
+    expect(mergeResultsMock).toHaveBeenCalledWith(
+      [{ path: "src/router.ts", score: 0.8 }],
+      [{ path: "src/router.ts", score: 0.9 }],
+      10,
+      0.65,
+      true,
+    );
+  });
 });

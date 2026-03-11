@@ -46,7 +46,10 @@ describe("sanitizeFts5Query", () => {
 
   it("strips stop words", () => {
     const result = sanitizeFts5Query("the createServer");
-    expect(result).toBe('"createServer"');
+    expect(result).not.toContain('"the"');
+    expect(result).toContain('"createServer"');
+    expect(result).toContain('"create"');
+    expect(result).toContain('"Server"');
   });
 
   it("strips trailing * (FTS5 prefix operator)", () => {
@@ -70,6 +73,20 @@ describe("sanitizeFts5Query", () => {
     // 1 phrase + 1 term = 2 terms total → AND
     const result = sanitizeFts5Query('"exact match" other');
     expect(result).toContain(" AND ");
+  });
+
+  it("expands camelCase query terms bidirectionally", () => {
+    const result = sanitizeFts5Query("useCreateCampaign");
+    expect(result).toContain('"useCreateCampaign"');
+    expect(result).toContain('"use"');
+    expect(result).toContain('"Create"');
+    expect(result).toContain('"Campaign"');
+  });
+
+  it("supports a custom AND/OR threshold", () => {
+    const result = sanitizeFts5Query("alpha beta gamma", 2);
+    expect(result).toContain(" OR ");
+    expect(result).not.toContain(" AND ");
   });
 
   it("detects broader test-related query vocabulary", () => {

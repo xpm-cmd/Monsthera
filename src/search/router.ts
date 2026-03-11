@@ -4,7 +4,8 @@ import type * as schema from "../db/schema.js";
 import type { SearchBackend, SearchBackendName, SearchResult } from "./interface.js";
 import { FTS5Backend, type KnowledgeFtsResult, type TicketFtsResult } from "./fts5.js";
 import { ZoektBackend } from "./zoekt.js";
-import { DEFAULT_SEMANTIC_BLEND_ALPHA, SemanticReranker, mergeResults } from "./semantic.js";
+import { SemanticReranker, mergeResults } from "./semantic.js";
+import { DEFAULT_SEARCH_CONFIG, type SearchConfigShape } from "./constants.js";
 
 export interface SearchRouterOptions {
   repoId: number;
@@ -15,6 +16,7 @@ export interface SearchRouterOptions {
   semanticEnabled: boolean;
   indexDir: string;
   onFallback?: (reason: string) => void;
+  searchConfig?: SearchConfigShape;
 }
 
 /**
@@ -27,12 +29,19 @@ export class SearchRouter {
   private zoekt: ZoektBackend | null;
   private semantic: SemanticReranker | null;
   private activeBackend: SearchBackend | null = null;
+  private searchConfig: SearchConfigShape;
 
   constructor(private opts: SearchRouterOptions) {
-    this.fts5 = new FTS5Backend(opts.sqlite, opts.db, (reason) => opts.onFallback?.(reason));
+    this.searchConfig = opts.searchConfig ?? DEFAULT_SEARCH_CONFIG;
+    this.fts5 = new FTS5Backend(opts.sqlite, opts.db, (reason) => opts.onFallback?.(reason), this.searchConfig);
     this.zoekt = opts.zoektEnabled ? new ZoektBackend(opts.repoPath, opts.indexDir) : null;
     this.semantic = opts.semanticEnabled
-      ? new SemanticReranker({ sqlite: opts.sqlite, db: opts.db, onFallback: opts.onFallback })
+      ? new SemanticReranker({
+          sqlite: opts.sqlite,
+          db: opts.db,
+          onFallback: opts.onFallback,
+          searchConfig: this.searchConfig,
+        })
       : null;
   }
 
@@ -75,7 +84,13 @@ export class SearchRouter {
       try {
         // Scope is now filtered at SQL level inside vectorSearch (not post-hoc)
         const vectorResults = await this.semantic.vectorSearch(query, repoId, effectiveLimit, scope);
-        return mergeResults(fts5Results, vectorResults, effectiveLimit, DEFAULT_SEMANTIC_BLEND_ALPHA, !!scope);
+        return mergeResults(
+          fts5Results,
+          vectorResults,
+          effectiveLimit,
+          this.searchConfig.semanticBlendAlpha,
+          !!scope,
+        );
       } catch {
         this.opts.onFallback?.("Semantic vector search failed, using FTS5 results");
       }
@@ -121,6 +136,10 @@ export class SearchRouter {
 
   getLexicalBackendName(): "fts5" | "zoekt" {
     return (this.activeBackend?.name ?? "fts5") as "fts5" | "zoekt";
+  }
+
+  getSearchConfig(): SearchConfigShape {
+    return this.searchConfig;
   }
 
   // ─── Knowledge FTS5 pass-through ──────────────────────────

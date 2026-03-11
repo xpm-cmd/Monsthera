@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MIN_RELEVANCE_SCORE, MIN_RELEVANCE_SCORE_SCOPED, MAX_DIFF_LINES_PER_FILE, HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
+import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MAX_DIFF_LINES_PER_FILE, HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
 import { AgentIdSchema, FilePathSchema, SessionIdSchema, parseStringArrayJson } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
@@ -374,7 +374,9 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
 
       const rawResults = await c.searchRouter.search(query, c.repoId, 10, scope);
       // Nonsense guard: dynamic threshold — scoped queries have smaller candidate pools so scores are lower
-      const threshold = scope ? MIN_RELEVANCE_SCORE_SCOPED : MIN_RELEVANCE_SCORE;
+      const threshold = scope
+        ? c.config.search.thresholds.scopedRelevance
+        : c.config.search.thresholds.relevance;
       const searchResults = rawResults.filter((r) => r.score >= threshold);
       c.insight.debug(`get_code_pack: "${query}" → ${rawResults.length} raw, ${searchResults.length} above threshold (${threshold})`);
 

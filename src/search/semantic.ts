@@ -3,16 +3,24 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import type { SearchResult } from "./interface.js";
 import * as queries from "../db/queries.js";
-import { isTestFile, isTestRelatedQuery, TEST_FILE_PENALTY_FACTOR } from "./fts5.js";
+import { isTestFile, isTestRelatedQuery } from "./fts5.js";
+import {
+  DEFAULT_SEARCH_CONFIG,
+  DEFAULT_SEMANTIC_BLEND_ALPHA as DEFAULT_SEMANTIC_BLEND_ALPHA_VALUE,
+  FTS5_ONLY_PENALTY_FACTOR as FTS5_ONLY_PENALTY_FACTOR_VALUE,
+  SCOPED_VECTOR_ONLY_PENALTY_FACTOR as SCOPED_VECTOR_ONLY_PENALTY_FACTOR_VALUE,
+  type SearchConfigShape,
+} from "./constants.js";
 
-export const DEFAULT_SEMANTIC_BLEND_ALPHA = 0.5;
-export const FTS5_ONLY_PENALTY_FACTOR = 0.8;
-export const SCOPED_VECTOR_ONLY_PENALTY_FACTOR = 0.85;
+export const DEFAULT_SEMANTIC_BLEND_ALPHA = DEFAULT_SEMANTIC_BLEND_ALPHA_VALUE;
+export const FTS5_ONLY_PENALTY_FACTOR = FTS5_ONLY_PENALTY_FACTOR_VALUE;
+export const SCOPED_VECTOR_ONLY_PENALTY_FACTOR = SCOPED_VECTOR_ONLY_PENALTY_FACTOR_VALUE;
 
 export interface SemanticRerankerOptions {
   sqlite: DatabaseType;
   db: BetterSQLite3Database<typeof schema>;
   onFallback?: (reason: string) => void;
+  searchConfig?: SearchConfigShape;
 }
 
 /**
@@ -24,8 +32,11 @@ export class SemanticReranker {
   private pipeline: any | null = null;
   private loading: Promise<boolean> | null = null;
   private available = false;
+  private searchConfig: SearchConfigShape;
 
-  constructor(private opts: SemanticRerankerOptions) {}
+  constructor(private opts: SemanticRerankerOptions) {
+    this.searchConfig = opts.searchConfig ?? DEFAULT_SEARCH_CONFIG;
+  }
 
   /**
    * Lazy-load the transformer model. Returns true if model loaded successfully.
@@ -97,7 +108,7 @@ export class SemanticReranker {
 
       const normalizedSemantic = normalizedCosineSimilarity(queryEmbedding, embedding);
       const normalizedFts5 = result.score / maxFts5;
-      const blended = blendScores(normalizedFts5, normalizedSemantic, DEFAULT_SEMANTIC_BLEND_ALPHA);
+      const blended = blendScores(normalizedFts5, normalizedSemantic, this.searchConfig.semanticBlendAlpha);
 
       return { ...result, score: blended };
     });
@@ -199,7 +210,7 @@ export class SemanticReranker {
 
       // Consistent test file penalty across both search paths (FTS5 + vector)
       if (!queryMentionsTest && isTestFile(row.path)) {
-        score *= TEST_FILE_PENALTY_FACTOR;
+        score *= this.searchConfig.penalties.testFiles;
       }
 
       scored.push({ path: row.path, score });

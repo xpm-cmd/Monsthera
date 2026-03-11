@@ -4,7 +4,7 @@ import type * as schema from "../db/schema.js";
 import { parseStringArrayJson } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
 import type { SearchRouter } from "../search/router.js";
-import { blendScores, DEFAULT_SEMANTIC_BLEND_ALPHA } from "../search/semantic.js";
+import { blendScores } from "../search/semantic.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
@@ -95,6 +95,7 @@ export async function searchKnowledgeEntries(
       const maxFtsScore = results.length
         ? Math.max(...results.map((entry) => entry.score), 1)
         : 1;
+      const semanticBlendAlpha = deps.searchRouter.getSearchConfig().semanticBlendAlpha;
       const scoresByKey = new Map(results.map((entry) => [makeResultKey(entry.scope, entry.key), entry.score]));
       const seenKeys = new Set(results.map((entry) => makeResultKey(entry.scope, entry.key)));
 
@@ -109,7 +110,7 @@ export async function searchKnowledgeEntries(
 
           const resultKey = makeResultKey(target.scopeLabel, entry.key);
           const mergedScore = scoresByKey.has(resultKey)
-            ? blendScores((scoresByKey.get(resultKey) ?? 0) / maxFtsScore, entry.score, DEFAULT_SEMANTIC_BLEND_ALPHA)
+            ? blendScores((scoresByKey.get(resultKey) ?? 0) / maxFtsScore, entry.score, semanticBlendAlpha)
             : entry.score;
 
           if (!seenKeys.has(resultKey)) {

@@ -88,6 +88,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
         repoPath: repoRoot,
         zoektEnabled: config.zoektEnabled,
         semanticEnabled: config.semanticEnabled,
+        searchConfig: config.search,
         indexDir: `${mainRepoRoot}/${config.agoraDir}`,
         onFallback: (reason) => insight.warn(reason),
       });
@@ -124,6 +125,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
             lexicalSearch: (query, targetRepoId, limit, scope) =>
               searchRouter.searchLexical(query, targetRepoId, limit, scope),
             semanticReranker: searchRouter.getSemanticReranker(),
+            semanticBlendAlpha: config.search.semanticBlendAlpha,
           }, params),
         },
       }, config.dashboardPort, insight);

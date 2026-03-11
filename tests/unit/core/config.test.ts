@@ -8,6 +8,7 @@ import {
   mergeConfigSources,
   loadConfigFile,
 } from "../../../src/core/config.js";
+import { DEFAULT_SEARCH_CONFIG } from "../../../src/search/constants.js";
 
 const tempDirs: string[] = [];
 
@@ -44,6 +45,7 @@ describe("AgoraConfigSchema", () => {
     expect(result.secretPatterns).toEqual([]);
     expect(result.crossInstance.enabled).toBe(false);
     expect(result.crossInstance.peers).toEqual([]);
+    expect(result.search).toEqual(DEFAULT_SEARCH_CONFIG);
   });
 
   it("rejects missing repoPath", () => {
@@ -93,6 +95,31 @@ describe("AgoraConfigSchema", () => {
     expect(result.toolRateLimits.defaultPerMinute).toBe(20);
     expect(result.toolRateLimits.overrides.get_code_pack).toBe(5);
     expect(result.toolRateLimits.overrides.status).toBe(100);
+  });
+
+  it("accepts valid search tuning config", () => {
+    const result = AgoraConfigSchema.parse({
+      repoPath: "/r",
+      search: {
+        semanticBlendAlpha: 0.65,
+        bm25: {
+          file: { path: 2.0, summary: 1.2, symbols: 2.5 },
+        },
+        penalties: {
+          testFiles: 0.55,
+        },
+        thresholds: {
+          andQueryTermCount: 2,
+        },
+      },
+    });
+
+    expect(result.search.semanticBlendAlpha).toBe(0.65);
+    expect(result.search.bm25.file).toEqual({ path: 2.0, summary: 1.2, symbols: 2.5 });
+    expect(result.search.bm25.ticket).toEqual(DEFAULT_SEARCH_CONFIG.bm25.ticket);
+    expect(result.search.penalties.testFiles).toBe(0.55);
+    expect(result.search.penalties.configFiles).toBe(DEFAULT_SEARCH_CONFIG.penalties.configFiles);
+    expect(result.search.thresholds.andQueryTermCount).toBe(2);
   });
 
   it("accepts valid crossInstance config", () => {
@@ -172,6 +199,13 @@ describe("AgoraConfigSchema", () => {
       secretPatterns: [{ name: "Bad", pattern: ".*", flags: "xyz" }],
     })).toThrow();
   });
+
+  it("rejects invalid search alpha", () => {
+    expect(() => AgoraConfigSchema.parse({
+      repoPath: "/r",
+      search: { semanticBlendAlpha: 1.5 },
+    })).toThrow();
+  });
 });
 
 describe("resolveConfig", () => {
@@ -236,6 +270,30 @@ describe("mergeConfigSources", () => {
     expect(result.toolRateLimits).toEqual({
       defaultPerMinute: 20,
       overrides: { status: 50, get_code_pack: 5 },
+    });
+  });
+
+  it("deep-merges search tuning config", () => {
+    const result = mergeConfigSources(
+      {
+        search: {
+          semanticBlendAlpha: 0.55,
+          bm25: { file: { path: 1.8 } },
+        },
+      } as Partial<any>,
+      {
+        search: {
+          penalties: { testFiles: 0.6 },
+          thresholds: { scopedRelevance: 0.25 },
+        },
+      } as Partial<any>,
+    );
+
+    expect(result.search).toEqual({
+      semanticBlendAlpha: 0.55,
+      bm25: { file: { path: 1.8 } },
+      penalties: { testFiles: 0.6 },
+      thresholds: { scopedRelevance: 0.25 },
     });
   });
 

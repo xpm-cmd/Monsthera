@@ -12,8 +12,6 @@ export const DEFAULT_DB_NAME = "agora.db";
 export const STAGE_A_MAX_CANDIDATES = 10;
 export const STAGE_B_MAX_EXPANDED = 5;
 export const MAX_CODE_SPAN_LINES = 200;
-export const MIN_RELEVANCE_SCORE = 0.35; // Filter low-confidence results (nonsense guard)
-export const MIN_RELEVANCE_SCORE_SCOPED = 0.20; // Lower threshold for scoped queries (raised from 0.15 to reduce false positives)
 export const MAX_DIFF_LINES_PER_FILE = 50; // Truncate per-file diffs in get_change_pack
 
 // Trust

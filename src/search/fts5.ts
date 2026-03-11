@@ -6,13 +6,20 @@ import type * as schema from "../db/schema.js";
 import { TagsSchema } from "../core/input-hardening.js";
 import * as tables from "../db/schema.js";
 import type { SearchBackend, SearchResult } from "./interface.js";
+import {
+  DEFAULT_AND_QUERY_TERM_THRESHOLD,
+  DEFAULT_CONFIG_FILE_PENALTY_FACTOR,
+  DEFAULT_SEARCH_CONFIG,
+  DEFAULT_TEST_FILE_PENALTY_FACTOR,
+  type SearchConfigShape,
+} from "./constants.js";
 
 const FTS_TABLE = "files_fts";
 const KNOWLEDGE_FTS_TABLE = "knowledge_fts";
 const TICKETS_FTS_TABLE = "tickets_fts";
 const FileSymbolsSchema = z.array(z.object({ name: z.string().min(1).max(200) }));
-export const TEST_FILE_PENALTY_FACTOR = 0.4;
-export const CONFIG_FILE_PENALTY_FACTOR = 0.5;
+export const TEST_FILE_PENALTY_FACTOR = DEFAULT_TEST_FILE_PENALTY_FACTOR;
+export const CONFIG_FILE_PENALTY_FACTOR = DEFAULT_CONFIG_FILE_PENALTY_FACTOR;
 const TEST_RELATED_QUERY_PATTERN = /\b(test(?:ing|s)?|unit|integration|e2e|spec(?:s)?)\b/i;
 
 export interface KnowledgeFtsResult {
@@ -42,6 +49,7 @@ export class FTS5Backend implements SearchBackend {
     private sqlite: DatabaseType,
     private db: BetterSQLite3Database<typeof schema>,
     private onWarning: (message: string) => void = () => undefined,
+    private searchConfig: SearchConfigShape = DEFAULT_SEARCH_CONFIG,
   ) {}
 
   async isAvailable(): Promise<boolean> {
@@ -209,7 +217,7 @@ export class FTS5Backend implements SearchBackend {
       assigneeAgentId?: string;
     },
   ): TicketFtsResult[] {
-    const sanitized = sanitizeFts5Query(query);
+    const sanitized = sanitizeFts5Query(query, this.searchConfig.thresholds.andQueryTermCount);
     if (!sanitized) return [];
 
     try {
@@ -221,7 +229,13 @@ export class FTS5Backend implements SearchBackend {
           status,
           severity,
           assignee_agent_id,
-          bm25(${TICKETS_FTS_TABLE}, 2.5, 3.0, 1.0, 2.0) AS rank
+          bm25(
+            ${TICKETS_FTS_TABLE},
+            ${this.searchConfig.bm25.ticket.ticketId},
+            ${this.searchConfig.bm25.ticket.title},
+            ${this.searchConfig.bm25.ticket.description},
+            ${this.searchConfig.bm25.ticket.tags}
+          ) AS rank
         FROM ${TICKETS_FTS_TABLE}
         WHERE ${TICKETS_FTS_TABLE} MATCH ? AND repo_id = ?`;
       const params: unknown[] = [sanitized, repoId];
@@ -272,12 +286,19 @@ export class FTS5Backend implements SearchBackend {
    * Works regardless of semantic model status.
    */
   searchKnowledge(sqlite: DatabaseType, query: string, limit = 10, type?: string): KnowledgeFtsResult[] {
-    const sanitized = sanitizeFts5Query(query);
+    const sanitized = sanitizeFts5Query(query, this.searchConfig.thresholds.andQueryTermCount);
     if (!sanitized) return [];
 
     try {
       let sql = `
-        SELECT knowledge_id, title, bm25(${KNOWLEDGE_FTS_TABLE}, 3.0, 1.0) AS rank
+        SELECT
+          knowledge_id,
+          title,
+          bm25(
+            ${KNOWLEDGE_FTS_TABLE},
+            ${this.searchConfig.bm25.knowledge.title},
+            ${this.searchConfig.bm25.knowledge.content}
+          ) AS rank
         FROM ${KNOWLEDGE_FTS_TABLE}
         WHERE ${KNOWLEDGE_FTS_TABLE} MATCH ?`;
       const params: unknown[] = [sanitized];
@@ -309,7 +330,7 @@ export class FTS5Backend implements SearchBackend {
   // ─── File search ─────────────────────────────────────────
 
   async search(query: string, repoId: number, limit = 20, scope?: string): Promise<SearchResult[]> {
-    const sanitized = sanitizeFts5Query(query);
+    const sanitized = sanitizeFts5Query(query, this.searchConfig.thresholds.andQueryTermCount);
     if (!sanitized) return [];
 
     try {
@@ -317,7 +338,15 @@ export class FTS5Backend implements SearchBackend {
       // Path is boosted slightly (filenames are relevant) but not dominant
       // UNINDEXED columns (file_id, repo_id, language) are skipped automatically
       let sql = `
-        SELECT file_id, path, bm25(${FTS_TABLE}, 1.5, 1.0, 2.0) AS rank
+        SELECT
+          file_id,
+          path,
+          bm25(
+            ${FTS_TABLE},
+            ${this.searchConfig.bm25.file.path},
+            ${this.searchConfig.bm25.file.summary},
+            ${this.searchConfig.bm25.file.symbols}
+          ) AS rank
         FROM ${FTS_TABLE}
         WHERE ${FTS_TABLE} MATCH ? AND repo_id = ?`;
       const params: unknown[] = [sanitized, repoId];
@@ -347,11 +376,11 @@ export class FTS5Backend implements SearchBackend {
         let score = Math.abs(row.rank);
         // Penalize test files when query doesn't mention testing
         if (!queryMentionsTest && isTestFile(row.path)) {
-          score *= TEST_FILE_PENALTY_FACTOR;
+          score *= this.searchConfig.penalties.testFiles;
         }
         // Penalize config/build files (rarely the target of code searches)
         if (isConfigFile(row.path)) {
-          score *= CONFIG_FILE_PENALTY_FACTOR;
+          score *= this.searchConfig.penalties.configFiles;
         }
         return { path: row.path, score };
       })
@@ -394,7 +423,10 @@ const STOP_WORDS = new Set([
   "this", "that", "not", "no", "if", "so", "do", "my", "we", "up",
 ]);
 
-export function sanitizeFts5Query(query: string): string {
+export function sanitizeFts5Query(
+  query: string,
+  andQueryTermCount = DEFAULT_AND_QUERY_TERM_THRESHOLD,
+): string {
   const trimmed = query.trim();
   if (!trimmed) return "";
 
@@ -417,11 +449,12 @@ export function sanitizeFts5Query(query: string): string {
       // Strip only trailing * (FTS5 prefix operator) — keep all other chars
       // since they are literal inside FTS5 quoted strings
       const clean = escaped.replace(/\*$/, "");
-      if (!clean) return "";
-      // Allow single uppercase chars / underscore (common identifiers: T, X, _)
-      if (clean.length < 2 && !/^[A-Z_]$/.test(clean)) return "";
-      if (STOP_WORDS.has(clean.toLowerCase())) return "";
-      return `"${clean}"`;
+      if (!isAllowedQueryToken(clean)) return "";
+      const variants = expandQueryTerm(clean);
+      if (variants.length === 1) {
+        return `"${variants[0]}"`;
+      }
+      return `(${variants.map((variant) => `"${variant}"`).join(" OR ")})`;
     })
     .filter(Boolean);
 
@@ -430,7 +463,7 @@ export function sanitizeFts5Query(query: string): string {
 
   // 1-3 terms: AND for precision — focused queries need all tokens present.
   // 4+ terms: OR — BM25 ranks multi-match documents higher naturally.
-  if (allTerms.length <= 3) {
+  if (allTerms.length <= andQueryTermCount) {
     return allTerms.join(" AND ");
   }
   return allTerms.join(" OR ");
@@ -479,9 +512,31 @@ function parseJsonWithWarning<T>(
  * Keeps the original name intact so exact matches still work.
  */
 function expandCamelCase(name: string): string {
-  // Split on camelCase boundaries: lowercase→uppercase, or between consecutive uppercase and lowercase
-  const parts = name.split(/(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/);
+  const parts = splitCamelCase(name);
   if (parts.length <= 1) return name;
-  // Return original + individual parts (lowercased for FTS5 matching)
   return `${name} ${parts.join(" ")}`;
+}
+
+function expandQueryTerm(term: string): string[] {
+  const variants = [term, ...splitCamelCase(term).filter(isAllowedQueryToken)];
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const variant of variants) {
+    const normalized = variant.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    deduped.push(variant);
+  }
+  return deduped;
+}
+
+function splitCamelCase(value: string): string[] {
+  // Split on camelCase boundaries: lowercase→uppercase, or between consecutive uppercase and lowercase
+  return value.split(/(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/).filter(Boolean);
+}
+
+function isAllowedQueryToken(term: string): boolean {
+  if (!term) return false;
+  if (term.length < 2 && !/^[A-Z_]$/.test(term)) return false;
+  return !STOP_WORDS.has(term.toLowerCase());
 }

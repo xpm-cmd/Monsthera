@@ -2,6 +2,18 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod/v4";
 import { DEFAULT_AGORA_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_DB_NAME } from "./constants.js";
+import {
+  DEFAULT_CONFIG_FILE_PENALTY_FACTOR,
+  DEFAULT_FILE_BM25_WEIGHTS,
+  DEFAULT_KNOWLEDGE_BM25_WEIGHTS,
+  DEFAULT_MIN_RELEVANCE_SCORE,
+  DEFAULT_MIN_RELEVANCE_SCORE_SCOPED,
+  DEFAULT_SEARCH_CONFIG,
+  DEFAULT_SEMANTIC_BLEND_ALPHA,
+  DEFAULT_TEST_FILE_PENALTY_FACTOR,
+  DEFAULT_TICKET_BM25_WEIGHTS,
+  DEFAULT_AND_QUERY_TERM_THRESHOLD,
+} from "../search/constants.js";
 
 export const RegistrationRoleTokensSchema = z.object({
   developer: z.string().min(1).optional(),
@@ -25,6 +37,46 @@ export const SecretPatternRuleSchema = z.object({
 export const ToolRateLimitConfigSchema = z.object({
   defaultPerMinute: z.number().int().min(1).max(1_000).default(10),
   overrides: z.record(z.string().min(1), z.number().int().min(1).max(1_000)).default({}),
+});
+
+export const SearchFileBm25WeightsSchema = z.object({
+  path: z.number().positive().max(10).default(DEFAULT_FILE_BM25_WEIGHTS.path),
+  summary: z.number().positive().max(10).default(DEFAULT_FILE_BM25_WEIGHTS.summary),
+  symbols: z.number().positive().max(10).default(DEFAULT_FILE_BM25_WEIGHTS.symbols),
+});
+
+export const SearchTicketBm25WeightsSchema = z.object({
+  ticketId: z.number().positive().max(10).default(DEFAULT_TICKET_BM25_WEIGHTS.ticketId),
+  title: z.number().positive().max(10).default(DEFAULT_TICKET_BM25_WEIGHTS.title),
+  description: z.number().positive().max(10).default(DEFAULT_TICKET_BM25_WEIGHTS.description),
+  tags: z.number().positive().max(10).default(DEFAULT_TICKET_BM25_WEIGHTS.tags),
+});
+
+export const SearchKnowledgeBm25WeightsSchema = z.object({
+  title: z.number().positive().max(10).default(DEFAULT_KNOWLEDGE_BM25_WEIGHTS.title),
+  content: z.number().positive().max(10).default(DEFAULT_KNOWLEDGE_BM25_WEIGHTS.content),
+});
+
+export const SearchPenaltyConfigSchema = z.object({
+  testFiles: z.number().min(0).max(1).default(DEFAULT_TEST_FILE_PENALTY_FACTOR),
+  configFiles: z.number().min(0).max(1).default(DEFAULT_CONFIG_FILE_PENALTY_FACTOR),
+});
+
+export const SearchThresholdConfigSchema = z.object({
+  relevance: z.number().min(0).max(1).default(DEFAULT_MIN_RELEVANCE_SCORE),
+  scopedRelevance: z.number().min(0).max(1).default(DEFAULT_MIN_RELEVANCE_SCORE_SCOPED),
+  andQueryTermCount: z.number().int().min(1).max(10).default(DEFAULT_AND_QUERY_TERM_THRESHOLD),
+});
+
+export const SearchConfigSchema = z.object({
+  semanticBlendAlpha: z.number().min(0).max(1).default(DEFAULT_SEMANTIC_BLEND_ALPHA),
+  bm25: z.object({
+    file: SearchFileBm25WeightsSchema.default(DEFAULT_SEARCH_CONFIG.bm25.file),
+    ticket: SearchTicketBm25WeightsSchema.default(DEFAULT_SEARCH_CONFIG.bm25.ticket),
+    knowledge: SearchKnowledgeBm25WeightsSchema.default(DEFAULT_SEARCH_CONFIG.bm25.knowledge),
+  }).default(DEFAULT_SEARCH_CONFIG.bm25),
+  penalties: SearchPenaltyConfigSchema.default(DEFAULT_SEARCH_CONFIG.penalties),
+  thresholds: SearchThresholdConfigSchema.default(DEFAULT_SEARCH_CONFIG.thresholds),
 });
 
 export const CrossInstanceCapabilitySchema = z.enum([
@@ -120,6 +172,7 @@ export const AgoraConfigSchema = z.object({
   httpPort: z.number().int().min(1024).max(65535).default(3000),
   noDashboard: z.boolean().default(false),
   semanticEnabled: z.boolean().default(false),
+  search: SearchConfigSchema.default(DEFAULT_SEARCH_CONFIG),
   registrationAuth: RegistrationAuthSchema.default({
     enabled: false,
     observerOpenRegistration: true,
@@ -141,6 +194,7 @@ export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
 export type RegistrationAuth = z.infer<typeof RegistrationAuthSchema>;
 export type SecretPatternRule = z.infer<typeof SecretPatternRuleSchema>;
 export type ToolRateLimitConfig = z.infer<typeof ToolRateLimitConfigSchema>;
+export type SearchConfig = z.infer<typeof SearchConfigSchema>;
 export type CrossInstanceCapability = z.infer<typeof CrossInstanceCapabilitySchema>;
 export type CrossInstancePeer = z.infer<typeof CrossInstancePeerSchema>;
 export type CrossInstanceConfig = z.infer<typeof CrossInstanceConfigSchema>;
@@ -171,7 +225,7 @@ export function mergeConfigSources(
   for (const source of sources) {
     if (!source) continue;
 
-    const { registrationAuth, crossInstance, toolRateLimits, ...rest } = source;
+    const { registrationAuth, crossInstance, toolRateLimits, search, ...rest } = source;
     Object.assign(merged, rest);
 
     if (registrationAuth) {
@@ -200,6 +254,51 @@ export function mergeConfigSources(
         overrides: {
           ...(merged.toolRateLimits?.overrides ?? {}),
           ...(toolRateLimits.overrides ?? {}),
+        },
+      };
+    }
+
+    if (search) {
+      const mergedBm25 = {
+        ...(merged.search?.bm25 ?? {}),
+        ...(search.bm25 ?? {}),
+        ...(search.bm25?.file || merged.search?.bm25?.file
+          ? {
+              file: {
+                ...(merged.search?.bm25?.file ?? {}),
+                ...(search.bm25?.file ?? {}),
+              },
+            }
+          : {}),
+        ...(search.bm25?.ticket || merged.search?.bm25?.ticket
+          ? {
+              ticket: {
+                ...(merged.search?.bm25?.ticket ?? {}),
+                ...(search.bm25?.ticket ?? {}),
+              },
+            }
+          : {}),
+        ...(search.bm25?.knowledge || merged.search?.bm25?.knowledge
+          ? {
+              knowledge: {
+                ...(merged.search?.bm25?.knowledge ?? {}),
+                ...(search.bm25?.knowledge ?? {}),
+              },
+            }
+          : {}),
+      };
+
+      merged.search = {
+        ...(merged.search ?? {}),
+        ...search,
+        ...(search.bm25 || merged.search?.bm25 ? { bm25: mergedBm25 } : {}),
+        penalties: {
+          ...(merged.search?.penalties ?? {}),
+          ...(search.penalties ?? {}),
+        },
+        thresholds: {
+          ...(merged.search?.thresholds ?? {}),
+          ...(search.thresholds ?? {}),
         },
       };
     }

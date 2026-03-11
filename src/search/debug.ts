@@ -4,6 +4,7 @@ import type * as schema from "../db/schema.js";
 import type { SearchBackendName, SearchResult } from "./interface.js";
 import { sanitizeFts5Query } from "./fts5.js";
 import { mergeResults, type SemanticReranker } from "./semantic.js";
+import { DEFAULT_SEMANTIC_BLEND_ALPHA } from "./constants.js";
 
 export interface SearchDebugResultItem {
   path: string;
@@ -33,6 +34,7 @@ export async function buildCodeSearchDebug(
     lexicalBackend: "fts5" | "zoekt";
     lexicalSearch: (query: string, repoId: number, limit?: number, scope?: string) => Promise<SearchResult[]>;
     semanticReranker: SemanticReranker | null;
+    semanticBlendAlpha?: number;
   },
   params: {
     query: string;
@@ -65,7 +67,7 @@ export async function buildCodeSearchDebug(
       lexicalResults.map(({ path, score }) => ({ path, score })),
       vectorResults.map(({ path, score }) => ({ path, score })),
       limit,
-      0.5,
+      args.semanticBlendAlpha ?? DEFAULT_SEMANTIC_BLEND_ALPHA,
       !!scope,
     )
     : lexicalResults.map(({ path, score }) => ({ path, score }));

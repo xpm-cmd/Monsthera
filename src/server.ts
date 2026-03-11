@@ -54,6 +54,7 @@ export function createAgoraServer(config: AgoraConfig) {
       repoPath: repoRoot,
       zoektEnabled: config.zoektEnabled,
       semanticEnabled: config.semanticEnabled,
+      searchConfig: config.search,
       indexDir: `${mainRepoRoot}/${config.agoraDir}`,
       onFallback: (reason) => insight.warn(reason),
     });
