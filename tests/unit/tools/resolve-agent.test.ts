@@ -85,6 +85,9 @@ describe("resolveAgent", () => {
   });
 
   it("updates lastActivity on successful resolution (presence tracking)", () => {
+    sqlite.prepare("UPDATE sessions SET last_activity = ? WHERE id = ?")
+      .run("2020-01-01T00:00:00.000Z", "session-1");
+
     const before = sqlite.prepare("SELECT last_activity FROM sessions WHERE id = ?")
       .get("session-1") as { last_activity: string };
 
@@ -94,7 +97,7 @@ describe("resolveAgent", () => {
     const after = sqlite.prepare("SELECT last_activity FROM sessions WHERE id = ?")
       .get("session-1") as { last_activity: string };
 
-    expect(new Date(after.last_activity).getTime()).toBeGreaterThanOrEqual(
+    expect(new Date(after.last_activity).getTime()).toBeGreaterThan(
       new Date(before.last_activity).getTime(),
     );
   });
