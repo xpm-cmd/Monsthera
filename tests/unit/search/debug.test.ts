@@ -56,6 +56,24 @@ describe("buildCodeSearchDebug", () => {
     expect(result.mergedResults[0]?.source).toBe("fts5");
   });
 
+  it("uses the configured AND/OR threshold when reporting sanitized queries", async () => {
+    const result = await buildCodeSearchDebug({
+      sqlite,
+      db,
+      repoId: 1,
+      runtimeBackend: "fts5",
+      lexicalBackend: "fts5",
+      lexicalSearch: async () => [],
+      semanticReranker: null,
+      andQueryTermCount: 2,
+    }, {
+      query: "alpha beta gamma",
+      limit: 5,
+    });
+
+    expect(result.sanitizedQuery).toBe("\"alpha\" OR \"beta\" OR \"gamma\"");
+  });
+
   it("includes semantic and hybrid sources when semantic results are available", async () => {
     const result = await buildCodeSearchDebug({
       sqlite,

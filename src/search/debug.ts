@@ -35,6 +35,7 @@ export async function buildCodeSearchDebug(
     lexicalSearch: (query: string, repoId: number, limit?: number, scope?: string) => Promise<SearchResult[]>;
     semanticReranker: SemanticReranker | null;
     semanticBlendAlpha?: number;
+    andQueryTermCount?: number;
   },
   params: {
     query: string;
@@ -44,7 +45,9 @@ export async function buildCodeSearchDebug(
 ): Promise<CodeSearchDebugResult> {
   const limit = params.limit ?? 10;
   const scope = params.scope?.trim() ? params.scope.trim() : undefined;
-  const sanitizedQuery = args.lexicalBackend === "fts5" ? sanitizeFts5Query(params.query) : null;
+  const sanitizedQuery = args.lexicalBackend === "fts5"
+    ? sanitizeFts5Query(params.query, args.andQueryTermCount)
+    : null;
   const lexicalResults = (await args.lexicalSearch(params.query, args.repoId, limit, scope))
     .map((result) => ({
       path: result.path,

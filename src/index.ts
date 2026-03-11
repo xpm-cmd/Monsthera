@@ -7,6 +7,7 @@ import { InsightStream } from "./core/insight-stream.js";
 import { fullIndex, getIndexedCommit } from "./indexing/indexer.js";
 import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
 import * as queries from "./db/queries.js";
+import { prepareKnowledgeSearchTarget } from "./knowledge/search.js";
 import { basename, join } from "node:path";
 import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { compileSecretPatterns } from "./trust/secret-patterns.js";
@@ -99,6 +100,9 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
         const globalResult = initGlobalDatabase();
         globalDb = globalResult.globalDb;
         globalSqlite = globalResult.globalSqlite;
+        if (globalSqlite) {
+          prepareKnowledgeSearchTarget(searchRouter, globalSqlite);
+        }
       } catch { /* non-fatal */ }
       startDashboard({
         db,
@@ -125,6 +129,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
             lexicalSearch: (query, targetRepoId, limit, scope) =>
               searchRouter.searchLexical(query, targetRepoId, limit, scope),
             semanticReranker: searchRouter.getSemanticReranker(),
+            andQueryTermCount: config.search.thresholds.andQueryTermCount,
             semanticBlendAlpha: config.search.semanticBlendAlpha,
           }, params),
         },

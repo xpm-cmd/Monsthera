@@ -97,7 +97,6 @@ export class SearchRouter {
   }
 
   async search(query: string, repoId: number, limit?: number, scope?: string): Promise<SearchResult[]> {
-    const backend = this.activeBackend ?? this.fts5;
     const effectiveLimit = limit ?? 10;
 
     const fts5Results = await this.searchLexical(query, repoId, effectiveLimit, scope);
@@ -170,6 +169,10 @@ export class SearchRouter {
   /** Initialize knowledge FTS table for an arbitrary sqlite handle (repo or global). */
   initKnowledgeFts(sqlite: DatabaseType): void {
     this.fts5.initKnowledgeFts(sqlite);
+  }
+
+  isKnowledgeIndexCurrent(sqlite: DatabaseType): boolean {
+    return this.fts5.isKnowledgeIndexCurrent(sqlite);
   }
 
   /** Rebuild knowledge FTS index for an arbitrary sqlite handle. */

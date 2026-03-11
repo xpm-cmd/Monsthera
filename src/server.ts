@@ -4,6 +4,7 @@ import type { AgoraConfig } from "./core/config.js";
 import type { AgoraContext } from "./core/context.js";
 import { initDatabase, initGlobalDatabase } from "./db/init.js";
 import * as queries from "./db/queries.js";
+import { prepareKnowledgeSearchTarget } from "./knowledge/search.js";
 import { SearchRouter } from "./search/router.js";
 import { InsightStream } from "./core/insight-stream.js";
 import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
@@ -69,9 +70,8 @@ export function createAgoraServer(config: AgoraConfig) {
       const globalResult = initGlobalDatabase();
       globalDb = globalResult.globalDb;
       globalSqlite = globalResult.globalSqlite;
-      // Initialize knowledge FTS5 table for global DB
       if (globalSqlite) {
-        searchRouter.initKnowledgeFts(globalSqlite);
+        prepareKnowledgeSearchTarget(searchRouter, globalSqlite);
       }
     } catch (err) {
       insight.warn(`Global knowledge DB init failed: ${err}`);

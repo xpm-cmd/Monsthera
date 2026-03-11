@@ -38,6 +38,22 @@ export interface KnowledgeSearchEntry {
   score: number;
 }
 
+export interface KnowledgeSearchInitializer {
+  initKnowledgeFts(sqlite: DatabaseType): void;
+  isKnowledgeIndexCurrent(sqlite: DatabaseType): boolean;
+  rebuildKnowledgeFts(sqlite: DatabaseType): void;
+}
+
+export function prepareKnowledgeSearchTarget(
+  initializer: KnowledgeSearchInitializer,
+  sqlite: DatabaseType,
+): void {
+  initializer.initKnowledgeFts(sqlite);
+  if (!initializer.isKnowledgeIndexCurrent(sqlite)) {
+    initializer.rebuildKnowledgeFts(sqlite);
+  }
+}
+
 export async function searchKnowledgeEntries(
   deps: SearchKnowledgeDeps,
   opts: SearchKnowledgeOptions,
