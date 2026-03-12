@@ -40,7 +40,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
           { name, type, provider, model, modelFamily, modelVersion, identitySource, desiredRole, authToken },
           { registrationAuth: c.config.registrationAuth },
         );
-        c.insight.info(`Agent registered: ${name} (${result.agentId}) as ${result.role}`);
+        c.insight.info(`Agent ${result.resumed ? "resumed" : "registered"}: ${name} (${result.agentId}) as ${result.role}`);
 
         return {
           content: [{
@@ -51,7 +51,10 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
               role: result.role,
               trustTier: result.trustTier,
               identity: result.identity,
-              message: `Registered as ${result.role} with trust tier ${result.trustTier}`,
+              resumed: result.resumed,
+              message: result.resumed
+                ? `Resumed as ${result.role} with trust tier ${result.trustTier} (same agentId, new session)`
+                : `Registered as ${result.role} with trust tier ${result.trustTier}`,
             }, null, 2),
           }],
         };

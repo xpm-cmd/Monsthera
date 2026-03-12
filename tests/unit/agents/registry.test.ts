@@ -224,6 +224,105 @@ describe("Agent Registry", () => {
     expect(result.trustTier).toBe("A");
   });
 
+  // ─── Re-registration (transparent resume) ───────────────────
+
+  it("resumes with same agentId when re-registering after disconnect", () => {
+    const first = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+    expect(first.resumed).toBe(false);
+
+    disconnectSession(db, first.sessionId);
+
+    const second = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+
+    expect(second.agentId).toBe(first.agentId);
+    expect(second.sessionId).not.toBe(first.sessionId);
+    expect(second.resumed).toBe(true);
+  });
+
+  it("creates new agentId when identity fields differ", () => {
+    const first = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+    disconnectSession(db, first.sessionId);
+
+    const second = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "sonnet-4", desiredRole: "developer",
+    });
+
+    expect(second.agentId).not.toBe(first.agentId);
+    expect(second.resumed).toBe(false);
+  });
+
+  it("does not reuse agent with an active session", () => {
+    const first = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+    // Do NOT disconnect — session is still active
+
+    const second = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+
+    expect(second.agentId).not.toBe(first.agentId);
+    expect(second.resumed).toBe(false);
+  });
+
+  it("creates a fresh agent when multiple disconnected matches exist", () => {
+    const first = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+    const duplicate = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+
+    disconnectSession(db, first.sessionId);
+    disconnectSession(db, duplicate.sessionId);
+
+    const third = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+
+    expect(third.agentId).not.toBe(first.agentId);
+    expect(third.agentId).not.toBe(duplicate.agentId);
+    expect(third.resumed).toBe(false);
+  });
+
+  it("cleans old session claims on resume", () => {
+    const first = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+    sqlite.prepare(`UPDATE sessions SET claimed_files_json = ? WHERE id = ?`)
+      .run(JSON.stringify(["src/a.ts", "src/b.ts"]), first.sessionId);
+
+    disconnectSession(db, first.sessionId);
+    // disconnectSession clears claims, but let's re-add to simulate stale state from reaping
+    sqlite.prepare(`UPDATE sessions SET claimed_files_json = ? WHERE id = ?`)
+      .run(JSON.stringify(["src/a.ts"]), first.sessionId);
+
+    const second = registerAgent(db, {
+      name: "claude-opus", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer",
+    });
+
+    expect(second.agentId).toBe(first.agentId);
+    const oldSession = sqlite.prepare("SELECT claimed_files_json FROM sessions WHERE id = ?")
+      .get(first.sessionId) as { claimed_files_json: string | null };
+    expect(JSON.parse(oldSession.claimed_files_json ?? "[]")).toEqual([]);
+  });
+
+  it("resumes agents with null provider/model fields", () => {
+    const first = registerAgent(db, { name: "anon", type: "unknown", desiredRole: "observer" });
+    disconnectSession(db, first.sessionId);
+
+    const second = registerAgent(db, { name: "anon", type: "unknown", desiredRole: "observer" });
+
+    expect(second.agentId).toBe(first.agentId);
+    expect(second.resumed).toBe(true);
+  });
+
   it("rolls back stale-session reaping when claim cleanup fails", () => {
     const now = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)

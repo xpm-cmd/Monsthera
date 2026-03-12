@@ -273,6 +273,32 @@ describe("agent tools", () => {
     });
   });
 
+  it("returns resumed=true with the same agentId and a new session on re-registration", async () => {
+    const registerAgent = setupServer();
+    const first = JSON.parse((await registerAgent({
+      name: "Claude",
+      type: "claude-code",
+      provider: "anthropic",
+      model: "opus-4",
+      desiredRole: "developer",
+    })).content[0].text);
+
+    sqlite.prepare("UPDATE sessions SET state = ? WHERE id = ?").run("disconnected", first.sessionId);
+
+    const second = JSON.parse((await registerAgent({
+      name: "Claude",
+      type: "claude-code",
+      provider: "anthropic",
+      model: "opus-4",
+      desiredRole: "developer",
+    })).content[0].text);
+
+    expect(second.agentId).toBe(first.agentId);
+    expect(second.sessionId).not.toBe(first.sessionId);
+    expect(second.resumed).toBe(true);
+    expect(second.message).toContain("same agentId, new session");
+  });
+
   it("denies observer broadcast and allows reviewer broadcast with a validated session", async () => {
     insertAgentWithSession("agent-review", "session-review", "reviewer");
     insertAgentWithSession("agent-obs", "session-obs", "observer");

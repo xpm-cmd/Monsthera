@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import * as tables from "../db/schema.js";
@@ -27,9 +27,12 @@ export interface RegisterResult {
   role: RoleId;
   trustTier: TrustTier;
   identity: AgentIdentityRecord;
+  resumed: boolean;
 }
 
 export class AgentRegistrationError extends Error {}
+
+type AgentLookupDb = Pick<BetterSQLite3Database<typeof schema>, "select">;
 
 export function registerAgent(
   db: BetterSQLite3Database<typeof schema>,
@@ -47,26 +50,28 @@ export function registerAgent(
   opts?: { registrationAuth?: RegistrationAuth },
 ): RegisterResult {
   const now = new Date().toISOString();
-  const agentId = `agent-${randomUUID().slice(0, 8)}`;
-  const sessionId = `session-${randomUUID().slice(0, 8)}`;
 
   const effectiveRoleId = resolveRegistrationRole(input.desiredRole, input.authToken, opts?.registrationAuth);
   const role = BUILT_IN_ROLES[effectiveRoleId] ?? BUILT_IN_ROLES.observer;
   const trustTier = role.permissions.trustTier;
   const identity = normalizeIdentity(input);
 
-  db.transaction((tx) => {
-    const existing = tx.select().from(tables.agents).where(eq(tables.agents.id, agentId)).get();
-    if (existing) {
+  return db.transaction((tx) => {
+    const existing = findReusableAgent(tx, input.name, input.type, identity);
+    const agentId = existing?.id ?? `agent-${randomUUID().slice(0, 8)}`;
+    const sessionId = `session-${randomUUID().slice(0, 8)}`;
+    const resumed = existing !== undefined;
+
+    if (resumed) {
+      // Reactivate only when the identity match is unambiguous; clear stale claims first.
       tx.update(tables.agents)
-        .set({
-          name: input.name,
-          type: input.type,
-          ...identity,
-          roleId: effectiveRoleId,
-          trustTier,
-        })
+        .set({ ...identity, roleId: effectiveRoleId, trustTier })
         .where(eq(tables.agents.id, agentId))
+        .run();
+
+      tx.update(tables.sessions)
+        .set({ claimedFilesJson: JSON.stringify([]) })
+        .where(eq(tables.sessions.agentId, agentId))
         .run();
     } else {
       tx.insert(tables.agents).values({
@@ -87,9 +92,40 @@ export function registerAgent(
       connectedAt: now,
       lastActivity: now,
     }).run();
+    return { agentId, sessionId, role: effectiveRoleId, trustTier, identity, resumed };
   });
+}
 
-  return { agentId, sessionId, role: effectiveRoleId, trustTier, identity };
+/**
+ * Find an existing agent whose identity strictly matches (name+type+provider+model)
+ * and whose reuse is unambiguous. Any active match or multiple disconnected matches
+ * fall back to a fresh agent to avoid identity hijacking.
+ */
+function findReusableAgent(
+  db: AgentLookupDb,
+  name: string,
+  type: string,
+  identity: AgentIdentityRecord,
+): typeof tables.agents.$inferSelect | undefined {
+  // Query by name+type (always non-null), then filter provider+model in JS
+  // to handle null-safe comparison (SQL NULL = NULL is false, JS null === null is true)
+  const candidates = db.select().from(tables.agents)
+    .where(and(eq(tables.agents.name, name), eq(tables.agents.type, type)))
+    .all();
+  const reusable: Array<typeof tables.agents.$inferSelect> = [];
+
+  for (const agent of candidates) {
+    if (agent.provider !== identity.provider || agent.model !== identity.model) continue;
+
+    const activeSessions = db.select().from(tables.sessions)
+      .where(and(eq(tables.sessions.agentId, agent.id), eq(tables.sessions.state, "active")))
+      .all();
+
+    if (activeSessions.length > 0) return undefined;
+    reusable.push(agent);
+  }
+
+  return reusable.length === 1 ? reusable[0] : undefined;
 }
 
 function normalizeIdentity(input: {
