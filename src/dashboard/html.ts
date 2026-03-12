@@ -2515,6 +2515,7 @@ function connectSSE(){
   es.addEventListener('ticket_assigned',function(){refresh()});
   es.addEventListener('ticket_status_changed',function(){refresh()});
   es.addEventListener('ticket_commented',function(){refresh()});
+  es.addEventListener('ticket_external_sync',function(){refresh()});
   es.onerror=function(){
     pulse.classList.add('disconnected');pulse.title='SSE disconnected';
     es.close();setTimeout(connectSSE,5000);

@@ -109,13 +109,13 @@ describe("ticket service system context", () => {
       comment: "Move into review prep",
     });
     expect(statusResult.ok).toBe(true);
-
     const commentResult = commentTicketRecord(ctx, {
       ticketId,
       content: "Triggered from system context.",
     });
     expect(commentResult.ok).toBe(true);
     expect(commentResult.ok ? commentResult.data.agentId : "").toBe("system:cli-admin");
+    const commentCreatedAt = commentResult.ok ? String(commentResult.data.createdAt) : "";
 
     const updated = queries.getTicketByTicketId(db, ticketId)!;
     const comments = queries.getTicketComments(db, ticket.id);
@@ -124,6 +124,7 @@ describe("ticket service system context", () => {
 
     expect(updated.assigneeAgentId).toBe("agent-dev");
     expect(updated.status).toBe("technical_analysis");
+    expect(updated.updatedAt).toBe(commentCreatedAt);
     expect(comments).toHaveLength(1);
     expect(comments[0]?.agentId).toBe("system:cli-admin");
     expect(comments[0]?.sessionId).toBe("system");

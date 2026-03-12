@@ -346,12 +346,19 @@ export function commentTicketRecord(
   if (!ticket) return err("not_found", `Ticket not found: ${input.ticketId}`);
 
   const now = new Date().toISOString();
-  const comment = queries.insertTicketComment(ctx.db, {
-    ticketId: ticket.id,
-    agentId: resolved.agentId,
-    sessionId: resolved.sessionId,
-    content: input.content,
-    createdAt: now,
+  const comment = ctx.db.transaction((tx) => {
+    tx.update(tables.tickets)
+      .set({ updatedAt: now })
+      .where(eq(tables.tickets.id, ticket.id))
+      .run();
+
+    return tx.insert(tables.ticketComments).values({
+      ticketId: ticket.id,
+      agentId: resolved.agentId,
+      sessionId: resolved.sessionId,
+      content: input.content,
+      createdAt: now,
+    }).returning().get();
   });
 
   recordDashboardEvent(ctx.db, ctx.repoId, {

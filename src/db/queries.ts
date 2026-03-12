@@ -882,3 +882,79 @@ export function getLatestDashboardEventId(db: DB, repoId: number): number {
     .get();
   return latest?.id ?? 0;
 }
+
+export function getLatestTicketSyncCursor(db: DB, repoId: number): string {
+  const row = db.select({
+    ticketCount: sql<number>`(
+      select count(*)
+      from tickets
+      where repo_id = ${repoId}
+    )`,
+    latestTicketUpdatedAt: sql<string | null>`(
+      select max(updated_at)
+      from tickets
+      where repo_id = ${repoId}
+    )`,
+    historyCount: sql<number>`(
+      select count(*)
+      from ticket_history h
+      inner join tickets t on t.id = h.ticket_id
+      where t.repo_id = ${repoId}
+    )`,
+    latestHistoryAt: sql<string | null>`(
+      select max(h.timestamp)
+      from ticket_history h
+      inner join tickets t on t.id = h.ticket_id
+      where t.repo_id = ${repoId}
+    )`,
+    commentCount: sql<number>`(
+      select count(*)
+      from ticket_comments c
+      inner join tickets t on t.id = c.ticket_id
+      where t.repo_id = ${repoId}
+    )`,
+    latestCommentAt: sql<string | null>`(
+      select max(c.created_at)
+      from ticket_comments c
+      inner join tickets t on t.id = c.ticket_id
+      where t.repo_id = ${repoId}
+    )`,
+    dependencyCount: sql<number>`(
+      select count(*)
+      from ticket_dependencies d
+      inner join tickets t on t.id = d.from_ticket_id
+      where t.repo_id = ${repoId}
+    )`,
+    latestDependencyAt: sql<string | null>`(
+      select max(d.created_at)
+      from ticket_dependencies d
+      inner join tickets t on t.id = d.from_ticket_id
+      where t.repo_id = ${repoId}
+    )`,
+    linkedPatchCount: sql<number>`(
+      select count(*)
+      from patches p
+      inner join tickets t on t.id = p.ticket_id
+      where t.repo_id = ${repoId}
+    )`,
+    latestLinkedPatchAt: sql<string | null>`(
+      select max(p.updated_at)
+      from patches p
+      inner join tickets t on t.id = p.ticket_id
+      where t.repo_id = ${repoId}
+    )`,
+  }).from(tables.repos).where(eq(tables.repos.id, repoId)).get();
+
+  return JSON.stringify(row ?? {
+    ticketCount: 0,
+    latestTicketUpdatedAt: null,
+    historyCount: 0,
+    latestHistoryAt: null,
+    commentCount: 0,
+    latestCommentAt: null,
+    dependencyCount: 0,
+    latestDependencyAt: null,
+    linkedPatchCount: 0,
+    latestLinkedPatchAt: null,
+  });
+}

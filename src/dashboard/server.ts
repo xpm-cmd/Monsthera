@@ -10,7 +10,12 @@ import {
   type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
-import { getDashboardEventsAfter, getLatestDashboardEventId, type DashboardEvent } from "./events.js";
+import {
+  getDashboardEventsAfter,
+  getLatestDashboardEventId,
+  getLatestTicketSyncCursor,
+  type DashboardEvent,
+} from "./events.js";
 import {
   assignTicketRecord,
   commentTicketRecord,
@@ -49,6 +54,14 @@ export class DashboardSSE {
     return this.clients.size;
   }
 }
+
+const TICKET_SYNC_EVENT_TYPES = new Set<DashboardEvent["type"]>([
+  "ticket_created",
+  "ticket_assigned",
+  "ticket_status_changed",
+  "ticket_commented",
+  "ticket_linked",
+]);
 
 const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'",
@@ -101,13 +114,27 @@ export function startDashboard(
 ): Server & { sse: DashboardSSE } {
   const sse = new DashboardSSE();
   let lastDashboardEventId = getLatestDashboardEventId(deps.db, deps.repoId);
+  let lastTicketSyncCursor = getLatestTicketSyncCursor(deps.db, deps.repoId);
   const poller = setInterval(() => {
     try {
       const events = getDashboardEventsAfter(deps.db, deps.repoId, lastDashboardEventId, 100);
+      let sawTicketEvent = false;
       for (const event of events) {
         lastDashboardEventId = event.id;
+        if (TICKET_SYNC_EVENT_TYPES.has(event.type)) {
+          sawTicketEvent = true;
+        }
         sse.broadcast({ type: event.type, data: event.data });
       }
+
+      const nextTicketSyncCursor = getLatestTicketSyncCursor(deps.db, deps.repoId);
+      if (nextTicketSyncCursor !== lastTicketSyncCursor && !sawTicketEvent) {
+        sse.broadcast({
+          type: "ticket_external_sync",
+          data: { cursor: nextTicketSyncCursor },
+        });
+      }
+      lastTicketSyncCursor = nextTicketSyncCursor;
     } catch (error) {
       insight.warn(`Dashboard event poll failed: ${error}`);
     }

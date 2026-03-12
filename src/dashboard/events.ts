@@ -17,7 +17,8 @@ export interface DashboardEvent {
     | "ticket_assigned"
     | "ticket_status_changed"
     | "ticket_commented"
-    | "ticket_linked";
+    | "ticket_linked"
+    | "ticket_external_sync";
   data: Record<string, unknown>;
 }
 
@@ -50,4 +51,8 @@ export function getDashboardEventsAfter(
 
 export function getLatestDashboardEventId(db: DB, repoId: number): number {
   return queries.getLatestDashboardEventId(db, repoId);
+}
+
+export function getLatestTicketSyncCursor(db: DB, repoId: number): string {
+  return queries.getLatestTicketSyncCursor(db, repoId);
 }
