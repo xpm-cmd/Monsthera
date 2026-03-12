@@ -7,6 +7,7 @@ import * as queries from "../../../src/db/queries.js";
 import { registerTicketTools } from "../../../src/tools/ticket-tools.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
 import { FTS5Backend } from "../../../src/search/fts5.js";
+import { MAX_TICKET_LONG_TEXT_LENGTH } from "../../../src/core/input-hardening.js";
 
 vi.mock("../../../src/git/operations.js", () => ({
   getHead: vi.fn().mockResolvedValue("abc1234"),
@@ -14,9 +15,11 @@ vi.mock("../../../src/git/operations.js", () => ({
 
 class FakeServer {
   handlers = new Map<string, (input: unknown) => Promise<any>>();
+  schemas = new Map<string, Record<string, { safeParse: (input: unknown) => { success: boolean } }>>();
 
-  tool(name: string, _description: string, _schema: object, handler: (input: unknown) => Promise<any>) {
+  tool(name: string, _description: string, schema: object, handler: (input: unknown) => Promise<any>) {
     this.handlers.set(name, handler);
+    this.schemas.set(name, schema as Record<string, { safeParse: (input: unknown) => { success: boolean } }>);
   }
 }
 
@@ -639,6 +642,28 @@ describe("ticket tools", () => {
     });
     expect(denied.isError).toBe(true);
     expect(denied.content[0].text).toContain("does not have access");
+  });
+
+  it("uses the shared long-text limit across ticket create, update, comment, and verdict schemas", () => {
+    const createSchema = server.schemas.get("create_ticket")!;
+    const updateSchema = server.schemas.get("update_ticket")!;
+    const commentSchema = server.schemas.get("comment_ticket")!;
+    const verdictSchema = server.schemas.get("submit_verdict")!;
+    const validLongText = "x".repeat(MAX_TICKET_LONG_TEXT_LENGTH);
+    const tooLongText = "x".repeat(MAX_TICKET_LONG_TEXT_LENGTH + 1);
+    const createAcceptance = createSchema.acceptanceCriteria!;
+    const updateAcceptance = updateSchema.acceptanceCriteria!;
+    const commentContent = commentSchema.content!;
+    const verdictReasoning = verdictSchema.reasoning!;
+
+    expect(createAcceptance.safeParse(validLongText).success).toBe(true);
+    expect(createAcceptance.safeParse(tooLongText).success).toBe(false);
+    expect(updateAcceptance.safeParse(validLongText).success).toBe(true);
+    expect(updateAcceptance.safeParse(tooLongText).success).toBe(false);
+    expect(commentContent.safeParse(validLongText).success).toBe(true);
+    expect(commentContent.safeParse(tooLongText).success).toBe(false);
+    expect(verdictReasoning.safeParse(validLongText).success).toBe(true);
+    expect(verdictReasoning.safeParse(tooLongText).success).toBe(false);
   });
 
   it("records advisory verdicts and reports consensus state", async () => {

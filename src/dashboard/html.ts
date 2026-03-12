@@ -1,4 +1,5 @@
 import { VERSION } from "../core/constants.js";
+import { MAX_TICKET_LONG_TEXT_LENGTH } from "../core/input-hardening.js";
 
 export function renderDashboard(): string {
   return `<!DOCTYPE html>
@@ -176,6 +177,9 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .dep-link{color:#3b82f6;text-decoration:none;font-weight:500}.dep-link:hover{text-decoration:underline;color:#60a5fa}
 .detail-section{margin-top:1rem}
 .detail-section h4{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.55rem}
+.quorum-banner{border:1px solid rgba(239,68,68,.22);border-left:3px solid var(--red);border-radius:8px;background:rgba(239,68,68,.08);padding:.8rem .9rem;margin-bottom:.75rem}
+.quorum-banner strong{color:var(--red)}
+.quorum-banner-list{display:flex;flex-direction:column;gap:.4rem;margin-top:.45rem}
 .comment-list,.history-list,.patch-list{display:flex;flex-direction:column;gap:.55rem}
 .comment-item,.history-item,.patch-item{border:1px solid rgba(255,255,255,.05);border-radius:8px;background:rgba(255,255,255,.02);padding:.7rem .8rem}
 .comment-meta,.history-meta,.patch-meta{font-size:.67rem;color:var(--text3);display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.35rem}
@@ -647,6 +651,43 @@ function commentPersona(comment){
   };
 }
 
+function quorumVerdictBadgeClass(verdict){
+  if(verdict==='pass') return 'success';
+  if(verdict==='fail') return 'red';
+  if(verdict==='abstain') return 'orange';
+  return 'blue';
+}
+
+function truncateTicketText(value,maxLength){
+  var text=String(value||'').trim();
+  if(text.length<=maxLength) return text;
+  return text.slice(0,Math.max(0,maxLength-3)).trimEnd()+'...';
+}
+
+function renderTicketQuorumDetail(quorum){
+  if(!quorum) return '';
+  var progressTitle=quorum.progress&&quorum.progress.title?quorum.progress.title:(quorum.progress&&quorum.progress.label?quorum.progress.label:'Quorum progress');
+  var summary='<div class="detail-grid">'
+    +'<div class="detail-block"><div class="detail-label">Quorum Progress</div><div class="detail-value"><span class="badge badge-'+esc(quorum.progress&&quorum.progress.state||'blue')+'" title="'+esc(progressTitle)+'">'+esc(quorum.progress&&quorum.progress.label||'-')+'</span><br>'+esc(String((quorum.progress&&quorum.progress.responded)||0))+' / '+esc(String((quorum.progress&&quorum.progress.total)||0))+' verdicts received</div></div>'
+    +'<div class="detail-block"><div class="detail-label">Consensus</div><div class="detail-value">Pass: '+esc(String(quorum.counts&&quorum.counts.pass||0))+'<br>Fail: '+esc(String(quorum.counts&&quorum.counts.fail||0))+'<br>Abstain: '+esc(String(quorum.counts&&quorum.counts.abstain||0))+'<br>Missing: '+esc(String(quorum.counts&&quorum.counts.missing||0))+'</div></div>'
+    +'<div class="detail-block"><div class="detail-label">Gate</div><div class="detail-value">Transition: '+esc(quorum.transition||'-')+'<br>Required passes: '+esc(String(quorum.requiredPasses||0))+'<br>Ready: '+esc(quorum.advisoryReady?'yes':'no')+'</div></div>'
+    +'</div>';
+  var vetoBanner=!quorum.blockedByVeto?'':'<div class="quorum-banner"><strong>Blocked by veto.</strong><div class="quorum-banner-list">'+(quorum.vetoes||[]).map(function(veto){
+    var author=veto.agentName||veto.agentId||veto.specialization;
+    var reason=truncateTicketText(veto.reasoning||'No reasoning provided.',160);
+    return '<div>'+esc(veto.specialization)+' · '+esc(author)+' · '+esc(reason)+'</div>';
+  }).join('')+'</div></div>';
+  var verdictRows=(quorum.verdicts||[]).map(function(entry){
+    var who=entry.agentName||entry.agentId||'Awaiting verdict';
+    var when=entry.createdAt?new Date(entry.createdAt).toLocaleString():'Pending';
+    var note=entry.reasoning||'Waiting for a verdict from this specialization.';
+    var badge='<span class="badge badge-'+quorumVerdictBadgeClass(entry.verdict)+'">'+esc(entry.verdict)+'</span>';
+    var vetoNote=entry.isVeto?' <span class="badge badge-red">veto</span>':'';
+    return '<div class="history-item"><div class="history-meta"><span>'+esc(entry.specialization)+'</span><span>'+badge+vetoNote+'</span><span>'+esc(who)+'</span><span>'+esc(when)+'</span></div><div class="history-content">'+esc(note)+'</div></div>';
+  }).join('')||'<div class="ticket-help">No verdicts recorded yet.</div>';
+  return '<div class="detail-section"><h4>Council Verdicts</h4>'+summary+vetoBanner+'<div class="history-list">'+verdictRows+'</div></div>';
+}
+
 function agentShortLabel(agentId){
   var parts=String(agentId||'-').split(/[^a-zA-Z0-9]+/).filter(Boolean);
   if(parts.length>1){
@@ -836,7 +877,7 @@ function renderTicketToolbar(tickets,filteredTickets){
           +'<div class="field"><label for="create-ticket-tags">Tags</label><input id="create-ticket-tags" name="tags" placeholder="dashboard, ui"></div>'
           +'<div class="field"><label for="create-ticket-paths">Affected Paths</label><input id="create-ticket-paths" name="paths" placeholder="src/dashboard/html.ts"></div>'
         +'</div>'
-        +'<div class="field"><label for="create-ticket-criteria">Acceptance Criteria</label><textarea id="create-ticket-criteria" name="criteria" maxlength="2000"></textarea></div>'
+        +'<div class="field"><label for="create-ticket-criteria">Acceptance Criteria</label><textarea id="create-ticket-criteria" name="criteria" maxlength="${MAX_TICKET_LONG_TEXT_LENGTH}"></textarea></div>'
         +'<button class="action-submit" type="submit">Create Ticket</button>'
       +'</form>'
     +'</div>'
@@ -1091,6 +1132,7 @@ function renderTicketDetail(error){
   }).join('')||'<div class="ticket-help">No linked patches.</div>';
   var tags=(t.tags||[]).length?(t.tags||[]).join(', '):'-';
   var affectedPaths=(t.affectedPaths||[]).length?(t.affectedPaths||[]).join(', '):'-';
+  var quorumSection=renderTicketQuorumDetail(t.quorum);
   var actor=getSelectedActor();
   var assigneeOptions=dashboardAgents.map(function(agent){
     return '<option value="'+esc(agent.id)+'"'+(t.assigneeAgentId===agent.id?' selected':'')+'>'+esc(agent.name+' ('+agent.role+')')+'</option>';
@@ -1102,11 +1144,12 @@ function renderTicketDetail(error){
     ?'<div class="action-grid">'
       +'<form class="action-card" id="assign-ticket-form"><h4>Assign</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-assignee-select">Assignee</label><select id="ticket-assignee-select">'+assigneeOptions+'</select></div><button class="action-submit" type="submit">Assign Ticket</button></form>'
       +'<form class="action-card" id="status-ticket-form"><h4>Transition</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-status-select">Next Status</label><select id="ticket-status-select"'+(statusOptions?'':' disabled')+'>'+(statusOptions||'<option value="">No transitions available</option>')+'</select></div><div class="field"><label for="ticket-status-comment">Comment</label><textarea id="ticket-status-comment" maxlength="500" placeholder="Optional transition note"></textarea></div><button class="action-submit" type="submit"'+(statusOptions?'':' disabled')+'>Update Status</button></form>'
-      +'<form class="action-card" id="comment-ticket-form"><h4>Add Comment</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-comment-content">Comment</label><textarea id="ticket-comment-content" maxlength="2000" placeholder="Provide context for the next agent"></textarea></div><button class="action-submit" type="submit">Post Comment</button></form>'
+      +'<form class="action-card" id="comment-ticket-form"><h4>Add Comment</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-comment-content">Comment</label><textarea id="ticket-comment-content" maxlength="${MAX_TICKET_LONG_TEXT_LENGTH}" placeholder="Provide context for the next agent"></textarea></div><button class="action-submit" type="submit">Post Comment</button></form>'
     +'</div>'
     :'<div class="ticket-help">No active session selected. Register an agent to comment or move tickets.</div>';
+  var headBadges='<span class="badge badge-'+(TICKET_STATUS_CLS[t.status]||'blue')+'">'+esc(t.status)+'</span>'+(t.quorum?(' <span class="badge badge-'+esc((t.quorum.progress&&t.quorum.progress.state)||'blue')+'" title="'+esc((t.quorum.progress&&t.quorum.progress.title)||'Quorum progress')+'">'+esc((t.quorum.progress&&t.quorum.progress.label)||'-')+'</span>'):'');
   host.innerHTML='<div class="detail-card">'
-    +'<div class="detail-head"><div><div class="detail-title">'+esc(t.title||t.ticketId)+'</div><div class="detail-sub"><span>'+esc(t.ticketId)+'</span><span>'+esc(new Date(t.updatedAt).toLocaleString())+'</span></div></div><div><span class="badge badge-'+(TICKET_STATUS_CLS[t.status]||'blue')+'">'+esc(t.status)+'</span></div></div>'
+    +'<div class="detail-head"><div><div class="detail-title">'+esc(t.title||t.ticketId)+'</div><div class="detail-sub"><span>'+esc(t.ticketId)+'</span><span>'+esc(new Date(t.updatedAt).toLocaleString())+'</span></div></div><div>'+headBadges+'</div></div>'
     +'<div class="detail-grid">'
     +'<div class="detail-block"><div class="detail-label">Description</div><div class="detail-value">'+esc(t.description||'-')+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Acceptance Criteria</div><div class="detail-value">'+esc(t.acceptanceCriteria||'-')+'</div></div>'
@@ -1117,6 +1160,7 @@ function renderTicketDetail(error){
     +'<div class="detail-block"><div class="detail-label">Affected Paths</div><div class="detail-value">'+esc(affectedPaths)+'</div></div>'
     +(function(){var deps=t.dependencies;if(!deps)return '';var parts=[];if(deps.blocking&&deps.blocking.length)parts.push('Blocks: '+deps.blocking.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.blockedBy&&deps.blockedBy.length)parts.push('Blocked by: '+deps.blockedBy.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.relatedTo&&deps.relatedTo.length)parts.push('Related: '+deps.relatedTo.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(!parts.length)return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">-</div></div>';return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">'+parts.join('<br>')+'</div></div>';})()
     +'</div>'
+    +quorumSection
     +'<div class="detail-section"><h4>Actions</h4>'+actionsHtml+'</div>'
     +'<div class="detail-section"><h4>Comments</h4><div class="comment-list">'+comments+'</div></div>'
     +'<div class="detail-section"><h4>History</h4><div class="history-list">'+history+'</div></div>'
@@ -1179,6 +1223,9 @@ function renderTicketsSection(tickets,metrics){
               :'No recent review activity';
             flags.push('<span class="badge badge-red" title="'+esc(reviewTitle)+'">Review stale</span>');
           }
+          if(ticket.quorumBadge){
+            flags.push('<span class="badge badge-'+esc(ticket.quorumState||'blue')+'" title="'+esc(ticket.quorumTitle||ticket.quorumBadge)+'">'+esc(ticket.quorumBadge)+'</span>');
+          }
           card.innerHTML='<div class="board-card-sub">'+esc(ticket.ticketId)+'</div>'
             +'<div class="board-card-title">'+esc(ticket.title)+'</div>'
             +(flags.length?'<div class="board-card-flags">'+flags.join('')+'</div>':'')
@@ -1193,12 +1240,13 @@ function renderTicketsSection(tickets,metrics){
     });
     section.appendChild(board);
   }else{
+    var showQuorumColumn=filteredTickets.some(function(ticket){return !!ticket.quorumBadge});
     var wrap=document.createElement('div');
     wrap.className='table-wrap';
     var table=document.createElement('table');
     var thead=document.createElement('thead');
     var hr=document.createElement('tr');
-    ['ID','Title','Status','Severity','Priority','Assignee','Creator','Age','Updated'].forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
+    ['ID','Title','Status'].concat(showQuorumColumn?['Quorum']:[]).concat(['Severity','Priority','Assignee','Creator','Age','Updated']).forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
     thead.appendChild(hr);
     table.appendChild(thead);
     var tbody=document.createElement('tbody');
@@ -1206,17 +1254,23 @@ function renderTicketsSection(tickets,metrics){
       var tr=document.createElement('tr');
       tr.className='clickable'+(selectedTicketId===t.ticketId?' active':'');
       tr.addEventListener('click',function(){loadTicketDetail(t.ticketId)});
-      [
+      var cells=[
         m(t.ticketId),
         t.title.slice(0,60),
         b(t.status,TICKET_STATUS_CLS[t.status]||'blue'),
+      ];
+      if(showQuorumColumn){
+        cells.push(t.quorumBadge?{badge:t.quorumBadge,cls:t.quorumState||'blue',title:t.quorumTitle||t.quorumBadge}:'-');
+      }
+      cells=cells.concat([
         b(t.severity,t.severity==='critical'?'red':t.severity==='high'?'orange':'blue'),
         t.priority,
         t.assignee||'-',
         t.creator||'-',
         ticketAgeCell(t),
         new Date(t.updatedAt).toLocaleString(),
-      ].forEach(function(cell){
+      ]);
+      cells.forEach(function(cell){
         var td=document.createElement('td');
         if(typeof cell==='object'&&cell&&cell.badge){var s=document.createElement('span');s.className='badge badge-'+cell.cls;s.textContent=cell.badge;td.appendChild(s);if(cell.text){td.appendChild(document.createTextNode(' '+String(cell.text)));}if(cell.title){td.title=String(cell.title);}}
         else if(typeof cell==='object'&&cell&&cell.mono){td.className='mono';td.textContent=cell.mono;}

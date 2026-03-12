@@ -11,6 +11,8 @@ import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import { loadTicketTemplates, type TicketTemplate } from "../tickets/templates.js";
 import type { CodeSearchDebugResult } from "../search/debug.js";
 import type { KnowledgeScope, SearchKnowledgeOptions, KnowledgeSearchEntry } from "../knowledge/search.js";
+import type { TicketStatus } from "../../schemas/ticket.js";
+import { buildTicketConsensusReport, inferConsensusTransitionForTicketStatus } from "../tickets/consensus.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 const SecretLineHitsSchema = z.array(z.object({ pattern: z.string().min(1).optional() }));
@@ -314,6 +316,7 @@ export function getTicketsList(deps: DashboardDeps) {
   const now = Date.now();
   return queries.getTicketsByRepo(deps.db, deps.repoId).map((ticket) => {
     const visibility = getTicketVisibilitySignals(deps, ticket, now);
+    const quorum = buildDashboardTicketQuorum(deps, ticket);
 
     return {
       ticketId: ticket.ticketId,
@@ -334,6 +337,10 @@ export function getTicketsList(deps: DashboardDeps) {
       inReviewIdleHours: visibility.inReviewIdleHours,
       inReviewIdleDays: visibility.inReviewIdleDays,
       lastReviewActivityAt: visibility.lastReviewActivityAt,
+      quorumBadge: quorum?.progress.label ?? null,
+      quorumState: quorum?.progress.state ?? null,
+      quorumTitle: quorum?.progress.title ?? null,
+      blockedByVeto: quorum?.blockedByVeto ?? false,
     };
   });
 }
@@ -346,6 +353,7 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
   const history = queries.getTicketHistory(deps.db, ticket.id);
   const linkedPatches = queries.getPatchesByTicketId(deps.db, ticket.id);
   const ticketDeps = queries.getTicketDependencies(deps.db, ticket.id);
+  const quorum = buildDashboardTicketQuorum(deps, ticket);
 
   const resolvePublicId = (internalId: number) => {
     const t = queries.getTicketById(deps.db, internalId);
@@ -409,6 +417,7 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
       agentId: patch.agentId,
       createdAt: patch.createdAt,
     })),
+    quorum,
   };
 }
 
@@ -1146,5 +1155,162 @@ function getTicketVisibilitySignals(
     inReviewIdleHours: idleHours,
     inReviewIdleDays: idleDays,
     lastReviewActivityAt: latestAt,
+  };
+}
+
+function buildDashboardTicketQuorum(
+  deps: DashboardDeps,
+  ticket: typeof schema.tickets.$inferSelect,
+): {
+  transition: string;
+  requiredPasses: number;
+  progress: {
+    label: string;
+    state: "success" | "purple" | "orange" | "red";
+    title: string;
+    responded: number;
+    total: number;
+  };
+  counts: {
+    pass: number;
+    fail: number;
+    abstain: number;
+    responded: number;
+    missing: number;
+  };
+  quorumMet: boolean;
+  blockedByVeto: boolean;
+  advisoryReady: boolean;
+  missingSpecializations: string[];
+  verdicts: Array<{
+    specialization: string;
+    verdict: "pass" | "fail" | "abstain" | "missing";
+    agentId: string | null;
+    agentName: string | null;
+    agentType: string | null;
+    createdAt: string | null;
+    reasoning: string | null;
+    isVeto: boolean;
+  }>;
+  vetoes: Array<{
+    specialization: string;
+    verdict: "fail";
+    agentId: string;
+    agentName: string | null;
+    agentType: string | null;
+    createdAt: string;
+    reasoning: string | null;
+  }>;
+} | null {
+  const transition = inferConsensusTransitionForTicketStatus(ticket.status as TicketStatus);
+  if (!transition) return null;
+
+  const verdictRows = queries.getReviewVerdicts(deps.db, ticket.id);
+  const agentCache = new Map<string, ReturnType<typeof queries.getAgent> | null>();
+  const resolveAgent = (agentId: string) => {
+    if (!agentCache.has(agentId)) {
+      agentCache.set(agentId, queries.getAgent(deps.db, agentId) ?? null);
+    }
+    return agentCache.get(agentId) ?? null;
+  };
+
+  const consensus = buildTicketConsensusReport({
+    ticketId: ticket.ticketId,
+    verdictRows,
+    config: deps.ticketQuorum,
+    transition,
+  });
+  const vetoKeys = new Set(consensus.vetoes.map((entry) => `${entry.specialization}:${entry.agentId}`));
+  const verdictBySpecialization = new Map(consensus.verdicts.map((entry) => [entry.specialization, entry] as const));
+  const progress = summarizeDashboardQuorumProgress(consensus);
+
+  return {
+    transition,
+    requiredPasses: consensus.requiredPasses,
+    progress,
+    counts: consensus.counts,
+    quorumMet: consensus.quorumMet,
+    blockedByVeto: consensus.blockedByVeto,
+    advisoryReady: consensus.advisoryReady,
+    missingSpecializations: [...consensus.missingSpecializations],
+    verdicts: consensus.councilSpecializations.map((specialization) => {
+      const verdict = verdictBySpecialization.get(specialization);
+      const agent = verdict ? resolveAgent(verdict.agentId) : null;
+
+      return {
+        specialization,
+        verdict: verdict?.verdict ?? "missing",
+        agentId: verdict?.agentId ?? null,
+        agentName: agent?.name ?? null,
+        agentType: agent?.type ?? null,
+        createdAt: verdict?.createdAt ?? null,
+        reasoning: verdict?.reasoning ?? null,
+        isVeto: verdict ? vetoKeys.has(`${verdict.specialization}:${verdict.agentId}`) : false,
+      };
+    }),
+    vetoes: consensus.vetoes.map((entry) => {
+      const agent = resolveAgent(entry.agentId);
+      return {
+        specialization: entry.specialization,
+        verdict: "fail" as const,
+        agentId: entry.agentId,
+        agentName: agent?.name ?? null,
+        agentType: agent?.type ?? null,
+        createdAt: entry.createdAt,
+        reasoning: entry.reasoning,
+      };
+    }),
+  };
+}
+
+function summarizeDashboardQuorumProgress(consensus: ReturnType<typeof buildTicketConsensusReport>): {
+  label: string;
+  state: "success" | "purple" | "orange" | "red";
+  title: string;
+  responded: number;
+  total: number;
+} {
+  const responded = consensus.counts.responded;
+  const total = consensus.councilSpecializations.length;
+  const progressLabel = `${responded}/${total}`;
+  const baseTitle = `${progressLabel} responded · ${consensus.counts.pass}/${consensus.requiredPasses} passes required`;
+
+  if (consensus.blockedByVeto) {
+    const vetoRoles = consensus.vetoes.map((entry) => entry.specialization).join(", ");
+    return {
+      label: "VETO ✗",
+      state: "red",
+      title: vetoRoles ? `${baseTitle} · veto by ${vetoRoles}` : baseTitle,
+      responded,
+      total,
+    };
+  }
+
+  if (consensus.advisoryReady) {
+    return {
+      label: `${progressLabel} ✓`,
+      state: "success",
+      title: `${baseTitle} · advisory ready`,
+      responded,
+      total,
+    };
+  }
+
+  if (consensus.counts.missing > 0) {
+    return {
+      label: `${progressLabel} ⏳`,
+      state: "purple",
+      title: `${baseTitle} · ${consensus.counts.missing} specialization(s) missing`,
+      responded,
+      total,
+    };
+  }
+
+  return {
+    label: `${progressLabel} !`,
+    state: "orange",
+    title: `${baseTitle} · additional passes still needed`,
+    responded,
+    total,
   };
 }

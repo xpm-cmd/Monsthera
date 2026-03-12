@@ -21,6 +21,7 @@ function createTestDb() {
     `CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
     `CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL, from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL)`,
     `CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    `CREATE TABLE review_verdicts (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, specialization TEXT NOT NULL, verdict TEXT NOT NULL, reasoning TEXT, created_at TEXT NOT NULL, UNIQUE(ticket_id, specialization))`,
     `CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL, to_ticket_id INTEGER NOT NULL, relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL)`,
     `CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, type TEXT NOT NULL, key TEXT NOT NULL UNIQUE, content TEXT NOT NULL, metadata_json TEXT, linked_paths_json TEXT, agent_id TEXT, session_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
     `CREATE TABLE knowledge (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, type TEXT NOT NULL, scope TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, tags_json TEXT, status TEXT NOT NULL DEFAULT 'active', agent_id TEXT, session_id TEXT, embedding BLOB, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
@@ -423,6 +424,70 @@ describe("Dashboard API", () => {
     expect(active?.lastReviewActivityAt).toBe(new Date(now - 12 * 60 * 60 * 1000).toISOString());
   });
 
+  it("adds quorum progress badges only for gated ticket states", () => {
+    const now = new Date().toISOString();
+    deps.ticketQuorum = {
+      technicalAnalysisToApproved: {
+        enabled: true,
+        requiredPasses: 2,
+        vetoSpecializations: ["architect", "security"],
+      },
+      inReviewToReadyForCommit: {
+        enabled: true,
+        requiredPasses: 2,
+        vetoSpecializations: ["architect", "security"],
+      },
+    };
+
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-arch", "Architect Review", "claude", "reviewer", "A", now);
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-security", "Security Review", "codex", "reviewer", "A", now);
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-patterns", "Patterns Review", "codex", "reviewer", "A", now);
+
+    const insertTicket = sqlite.prepare(`
+      INSERT INTO tickets (
+        id, repo_id, ticket_id, title, description, status, severity, priority,
+        creator_agent_id, creator_session_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertTicket.run(21, 1, "TKT-ready", "Ready quorum", "Desc", "technical_analysis", "medium", 5, "agent-arch", "s-1", "abc1234", now, now);
+    insertTicket.run(22, 1, "TKT-veto", "Veto quorum", "Desc", "in_review", "high", 7, "agent-security", "s-2", "abc1234", now, now);
+    insertTicket.run(23, 1, "TKT-backlog", "Plain backlog", "Desc", "backlog", "low", 2, "agent-patterns", "s-3", "abc1234", now, now);
+
+    const insertVerdict = sqlite.prepare(`
+      INSERT INTO review_verdicts (ticket_id, agent_id, session_id, specialization, verdict, reasoning, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertVerdict.run(21, "agent-arch", "s-1", "architect", "pass", "Architecture looks good", now);
+    insertVerdict.run(21, "agent-patterns", "s-3", "patterns", "pass", "Patterns look good", now);
+    insertVerdict.run(22, "agent-security", "s-2", "security", "fail", "Auth boundary unresolved", now);
+
+    const tickets = getTicketsList(deps);
+    const ready = tickets.find((ticket) => ticket.ticketId === "TKT-ready");
+    const veto = tickets.find((ticket) => ticket.ticketId === "TKT-veto");
+    const backlog = tickets.find((ticket) => ticket.ticketId === "TKT-backlog");
+
+    expect(ready).toMatchObject({
+      quorumBadge: "2/6 ✓",
+      quorumState: "success",
+      blockedByVeto: false,
+    });
+    expect(ready?.quorumTitle).toContain("2/6 responded");
+    expect(veto).toMatchObject({
+      quorumBadge: "VETO ✗",
+      quorumState: "red",
+      blockedByVeto: true,
+    });
+    expect(veto?.quorumTitle).toContain("veto by security");
+    expect(backlog).toMatchObject({
+      quorumBadge: null,
+      quorumState: null,
+      blockedByVeto: false,
+    });
+  });
+
   it("returns scoped ticket metrics for status, severity, aging, blocked, and assignee load", () => {
     const now = Date.now();
     const insert = sqlite.prepare(`
@@ -533,6 +598,82 @@ describe("Dashboard API", () => {
     expect(detail?.history).toHaveLength(1);
     expect(detail?.linkedPatches).toHaveLength(1);
     expect(detail?.linkedPatches[0]?.proposalId).toBe("patch-ticket");
+  });
+
+  it("returns gated ticket detail with quorum verdict rows, missing roles, and veto metadata", () => {
+    const now = new Date().toISOString();
+    deps.ticketQuorum = {
+      technicalAnalysisToApproved: {
+        enabled: true,
+        requiredPasses: 2,
+        vetoSpecializations: ["architect", "security"],
+      },
+      inReviewToReadyForCommit: {
+        enabled: true,
+        requiredPasses: 2,
+        vetoSpecializations: ["architect", "security"],
+      },
+    };
+
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("reviewer-architect", "Architect Review", "claude", "reviewer", "A", now);
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("reviewer-security", "Security Review", "codex", "reviewer", "A", now);
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("reviewer-design", "Design Review", "claude", "reviewer", "A", now);
+
+    sqlite.prepare(`
+      INSERT INTO tickets (
+        id, repo_id, ticket_id, title, description, status, severity, priority,
+        creator_agent_id, creator_session_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(31, 1, "TKT-quorum-detail", "Quorum detail", "Desc", "in_review", "high", 8, "reviewer-architect", "session-1", "abc1234", now, now);
+
+    const insertVerdict = sqlite.prepare(`
+      INSERT INTO review_verdicts (ticket_id, agent_id, session_id, specialization, verdict, reasoning, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertVerdict.run(31, "reviewer-architect", "session-1", "architect", "pass", "Architecture is ready.", now);
+    insertVerdict.run(31, "reviewer-security", "session-2", "security", "fail", "Missing auth guard.", now);
+    insertVerdict.run(31, "reviewer-design", "session-3", "design", "abstain", "No UX concerns.", now);
+
+    const detail = getTicketDetail(deps, "TKT-quorum-detail");
+    const securityRow = detail?.quorum?.verdicts.find((entry) => entry.specialization === "security");
+    const missingRow = detail?.quorum?.verdicts.find((entry) => entry.specialization === "simplifier");
+
+    expect(detail?.quorum).toMatchObject({
+      transition: "in_review→ready_for_commit",
+      progress: {
+        label: "VETO ✗",
+        state: "red",
+      },
+      counts: {
+        pass: 1,
+        fail: 1,
+        abstain: 1,
+        responded: 3,
+        missing: 3,
+      },
+      blockedByVeto: true,
+    });
+    expect(detail?.quorum?.verdicts).toHaveLength(6);
+    expect(securityRow).toMatchObject({
+      verdict: "fail",
+      agentName: "Security Review",
+      agentType: "codex",
+      isVeto: true,
+      reasoning: "Missing auth guard.",
+    });
+    expect(missingRow).toMatchObject({
+      verdict: "missing",
+      agentId: null,
+      isVeto: false,
+    });
+    expect(detail?.quorum?.vetoes[0]).toMatchObject({
+      specialization: "security",
+      agentName: "Security Review",
+      reasoning: "Missing auth guard.",
+    });
   });
 
   it("returns null for a missing ticket detail", () => {

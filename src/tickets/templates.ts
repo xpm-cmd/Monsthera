@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod/v4";
 import { DEFAULT_AGORA_DIR } from "../core/constants.js";
+import { MAX_TICKET_LONG_TEXT_LENGTH } from "../core/input-hardening.js";
 
 export const TicketTemplateSchema = z.object({
   id: z.string().min(1).max(80),
@@ -12,7 +13,7 @@ export const TicketTemplateSchema = z.object({
   priority: z.number().int().min(0).max(10).default(5),
   tags: z.array(z.string()).default([]),
   affectedPaths: z.array(z.string()).default([]),
-  acceptanceCriteria: z.string().max(2000).default(""),
+  acceptanceCriteria: z.string().max(MAX_TICKET_LONG_TEXT_LENGTH).default(""),
 });
 
 const TicketTemplateFileSchema = z.object({

@@ -12,6 +12,7 @@ export const MAX_CLAIM_PATH_COUNT = 50;
 export const MAX_METADATA_KEY_LENGTH = 100;
 export const MAX_METADATA_VALUE_LENGTH = 1_000;
 export const MAX_METADATA_KEYS = 20;
+export const MAX_TICKET_LONG_TEXT_LENGTH = 8_000;
 
 export type FlatPrimitive = string | number | boolean | null;
 

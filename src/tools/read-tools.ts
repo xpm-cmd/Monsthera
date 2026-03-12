@@ -2,7 +2,13 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MAX_DIFF_LINES_PER_FILE, HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
-import { AgentIdSchema, FilePathSchema, SessionIdSchema, parseStringArrayJson } from "../core/input-hardening.js";
+import {
+  AgentIdSchema,
+  FilePathSchema,
+  MAX_TICKET_LONG_TEXT_LENGTH,
+  SessionIdSchema,
+  parseStringArrayJson,
+} from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
 import { buildEvidenceBundle, type EvidenceBundleResult } from "../retrieval/evidence-bundle.js";
 import { exportAuditTrail } from "../export/audit.js";
@@ -487,7 +493,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           priority: "number 0-10 (default 5)",
           tags: "string[] (optional)",
           affectedPaths: "string[] (optional)",
-          acceptanceCriteria: "string (optional, max 2000)",
+          acceptanceCriteria: `string (optional, max ${MAX_TICKET_LONG_TEXT_LENGTH})`,
           agentId: "string (required)",
           sessionId: "string (required)",
         },
@@ -513,7 +519,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           priority: "number 0-10 (optional)",
           tags: "string[] (optional)",
           affectedPaths: "string[] (optional)",
-          acceptanceCriteria: "string (optional)",
+          acceptanceCriteria: `string (optional, max ${MAX_TICKET_LONG_TEXT_LENGTH})`,
           agentId: "string (required)",
           sessionId: "string (required)",
         },
@@ -543,7 +549,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         comment_ticket: {
           ticketId: "string (TKT-...)",
-          content: "string (1-2000 chars)",
+          content: `string (1-${MAX_TICKET_LONG_TEXT_LENGTH} chars)`,
           agentId: "string (required)",
           sessionId: "string (required)",
         },
@@ -551,7 +557,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           ticketId: "string (TKT-...)",
           specialization: "enum: architect|simplifier|security|performance|patterns|design",
           verdict: "enum: pass|fail|abstain",
-          reasoning: "string (optional, max 2000)",
+          reasoning: `string (optional, max ${MAX_TICKET_LONG_TEXT_LENGTH})`,
           transition: "enum: technical_analysis→approved|in_review→ready_for_commit (optional)",
           agentId: "string (required)",
           sessionId: "string (required)",

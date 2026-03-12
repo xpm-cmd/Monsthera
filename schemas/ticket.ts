@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { MAX_TICKET_LONG_TEXT_LENGTH } from "../src/core/input-hardening.js";
 
 // --- Enums ---
 
@@ -75,7 +76,7 @@ export const CreateTicketInput = z.object({
   priority: z.number().int().min(0).max(10).default(5).describe("Priority 0-10, higher = more urgent"),
   tags: z.array(z.string()).default([]).describe("Tags for filtering"),
   affectedPaths: z.array(z.string()).default([]).describe("File paths affected"),
-  acceptanceCriteria: z.string().max(2000).optional().describe("Criteria for resolution"),
+  acceptanceCriteria: z.string().max(MAX_TICKET_LONG_TEXT_LENGTH).optional().describe("Criteria for resolution"),
 });
 export type CreateTicketInput = z.infer<typeof CreateTicketInput>;
 

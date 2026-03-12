@@ -26,7 +26,13 @@ import {
 import { reapStaleSessions } from "../agents/registry.js";
 import { classifyResultForLogging, recordRuntimeEventWithContext } from "../tools/runtime-instrumentation.js";
 import { z } from "zod/v4";
-import { AgentIdSchema, SessionIdSchema, TagsSchema, AffectedPathsSchema } from "../core/input-hardening.js";
+import {
+  AgentIdSchema,
+  SessionIdSchema,
+  TagsSchema,
+  AffectedPathsSchema,
+  MAX_TICKET_LONG_TEXT_LENGTH,
+} from "../core/input-hardening.js";
 import { TicketSeverity, TicketStatus } from "../../schemas/ticket.js";
 
 export class DashboardSSE {
@@ -82,14 +88,14 @@ const CreateTicketBodySchema = z.object({
   priority: z.number().int().min(0).max(10).default(5),
   tags: TagsSchema.default([]),
   affectedPaths: AffectedPathsSchema.default([]),
-  acceptanceCriteria: z.string().max(2000).nullable().optional(),
+  acceptanceCriteria: z.string().max(MAX_TICKET_LONG_TEXT_LENGTH).nullable().optional(),
   humanName: z.string().trim().max(100).optional(),
   agentId: AgentIdSchema.optional(),
   sessionId: SessionIdSchema.optional(),
 });
 
 const CommentTicketBodySchema = z.object({
-  content: z.string().min(1).max(2000),
+  content: z.string().min(1).max(MAX_TICKET_LONG_TEXT_LENGTH),
   agentId: AgentIdSchema,
   sessionId: SessionIdSchema,
 });

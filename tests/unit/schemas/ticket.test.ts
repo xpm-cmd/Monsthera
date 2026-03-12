@@ -3,6 +3,7 @@ import {
   TicketStatus, TicketSeverity, CreateTicketInput,
   VALID_TRANSITIONS, TRANSITION_ROLES,
 } from "../../../schemas/ticket.js";
+import { MAX_TICKET_LONG_TEXT_LENGTH } from "../../../src/core/input-hardening.js";
 
 describe("TicketStatus", () => {
   it("accepts all valid statuses", () => {
@@ -43,6 +44,16 @@ describe("CreateTicketInput", () => {
 
   it("rejects priority out of range", () => {
     expect(() => CreateTicketInput.parse({ title: "t", description: "d", priority: 11 })).toThrow();
+  });
+
+  it("accepts acceptanceCriteria up to the shared long-text limit", () => {
+    const text = "x".repeat(MAX_TICKET_LONG_TEXT_LENGTH);
+    expect(CreateTicketInput.parse({ title: "Bug", description: "Something broke", acceptanceCriteria: text }).acceptanceCriteria).toBe(text);
+  });
+
+  it("rejects acceptanceCriteria above the shared long-text limit", () => {
+    const text = "x".repeat(MAX_TICKET_LONG_TEXT_LENGTH + 1);
+    expect(() => CreateTicketInput.parse({ title: "Bug", description: "Something broke", acceptanceCriteria: text })).toThrow();
   });
 });
 

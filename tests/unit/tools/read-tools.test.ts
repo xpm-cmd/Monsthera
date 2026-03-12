@@ -97,6 +97,9 @@ describe("read tool discovery", () => {
     const suggestActions = await handler("schema")({ toolName: "suggest_actions" });
     const listProtectedArtifacts = await handler("schema")({ toolName: "list_protected_artifacts" });
     const registerAgent = await handler("schema")({ toolName: "register_agent" });
+    const createTicket = await handler("schema")({ toolName: "create_ticket" });
+    const updateTicket = await handler("schema")({ toolName: "update_ticket" });
+    const commentTicket = await handler("schema")({ toolName: "comment_ticket" });
     const submitVerdict = await handler("schema")({ toolName: "submit_verdict" });
     const checkConsensus = await handler("schema")({ toolName: "check_consensus" });
     const updateTicketStatus = await handler("schema")({ toolName: "update_ticket_status" });
@@ -150,9 +153,19 @@ describe("read tool discovery", () => {
       modelVersion: "string (optional model version)",
       identitySource: "enum: self_declared|config|peer_asserted|system_assigned (optional)",
     });
+    expect(JSON.parse(createTicket.content[0].text).inputSchema).toMatchObject({
+      acceptanceCriteria: "string (optional, max 8000)",
+    });
+    expect(JSON.parse(updateTicket.content[0].text).inputSchema).toMatchObject({
+      acceptanceCriteria: "string (optional, max 8000)",
+    });
+    expect(JSON.parse(commentTicket.content[0].text).inputSchema).toMatchObject({
+      content: "string (1-8000 chars)",
+    });
     expect(JSON.parse(submitVerdict.content[0].text).inputSchema).toMatchObject({
       specialization: "enum: architect|simplifier|security|performance|patterns|design",
       verdict: "enum: pass|fail|abstain",
+      reasoning: "string (optional, max 8000)",
       transition: "enum: technical_analysis→approved|in_review→ready_for_commit (optional)",
       agentId: "string (required)",
       sessionId: "string (required)",
