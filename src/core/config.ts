@@ -213,6 +213,7 @@ export const AgoraConfigSchema = z.object({
     nonVotingRoles: ["facilitator"],
     modelDiversity: { strict: false },
     requireBinding: false,
+    autoAdvance: true,
   }),
   toolRateLimits: ToolRateLimitConfigSchema.default({
     defaultPerMinute: 10,

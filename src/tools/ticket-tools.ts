@@ -34,6 +34,7 @@ import {
 import {
   buildGovernanceOptions,
   buildTicketConsensusReport,
+  getAutoAdvanceTarget,
   GATED_TICKET_TRANSITIONS,
   inferConsensusTransitionForTicketStatus,
 } from "../tickets/consensus.js";
@@ -473,6 +474,42 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         return a ? { roleId: a.roleId, provider: a.provider, model: a.model } : undefined;
       });
 
+      const consensus = buildTicketConsensusReport({
+        ticketId,
+        verdictRows,
+        config: c.config?.ticketQuorum,
+        transition: transition ?? inferConsensusTransitionForTicketStatus(ticket.status as TicketStatusType),
+        governance: govOpts,
+      });
+
+      let autoAdvanced: { previousStatus: string; status: string } | null = null;
+      if (consensus.advisoryReady && c.config?.governance?.autoAdvance !== false) {
+        const target = getAutoAdvanceTarget(ticket.status as TicketStatusType);
+        if (target) {
+          const advanceResult = updateTicketStatusRecord({
+            db: c.db,
+            repoId: c.repoId,
+            repoPath: c.repoPath,
+            insight: c.insight,
+            ticketQuorum: c.config?.ticketQuorum,
+            governance: c.config?.governance,
+            bus: c.bus,
+            refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
+            refreshKnowledgeSearch: () => c.searchRouter?.rebuildKnowledgeFts?.(c.sqlite),
+            system: true,
+            actorLabel: "council-auto-advance",
+          }, {
+            ticketId,
+            status: target,
+            actorLabel: "council-auto-advance",
+            comment: `Auto-advanced: council quorum met (${consensus.counts.pass}/${consensus.requiredPasses} passes)`,
+          });
+          if (advanceResult.ok) {
+            autoAdvanced = { previousStatus: ticket.status, status: target };
+          }
+        }
+      }
+
       return okJson({
         ticketId,
         verdict: {
@@ -483,13 +520,8 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
           reasoning: stored.reasoning,
           createdAt: stored.createdAt,
         },
-        consensus: buildTicketConsensusReport({
-          ticketId,
-          verdictRows,
-          config: c.config?.ticketQuorum,
-          transition: transition ?? inferConsensusTransitionForTicketStatus(ticket.status as TicketStatusType),
-          governance: govOpts,
-        }),
+        consensus,
+        autoAdvanced,
       });
     },
   );

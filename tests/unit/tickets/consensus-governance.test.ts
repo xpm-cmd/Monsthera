@@ -376,7 +376,7 @@ describe("buildGovernanceOptions", () => {
     };
 
     const opts = buildGovernanceOptions(
-      { nonVotingRoles: ["facilitator"], modelDiversity: { strict: false }, requireBinding: false },
+      { nonVotingRoles: ["facilitator"], modelDiversity: { strict: false }, requireBinding: false, autoAdvance: true },
       verdicts,
       (id) => agentDb[id],
     );
@@ -398,7 +398,7 @@ describe("buildGovernanceOptions", () => {
     ];
 
     const opts = buildGovernanceOptions(
-      { nonVotingRoles: ["facilitator"], modelDiversity: { strict: false }, requireBinding: false },
+      { nonVotingRoles: ["facilitator"], modelDiversity: { strict: false }, requireBinding: false, autoAdvance: true },
       verdicts,
       () => undefined,
     );

@@ -33,6 +33,7 @@ export const GovernanceConfigSchema = z.object({
   nonVotingRoles: z.array(RoleId).default(["facilitator"]),
   modelDiversity: ModelDiversityConfigSchema.default({ strict: false }),
   requireBinding: z.boolean().default(false),
+  autoAdvance: z.boolean().default(true),
 });
 
 export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;

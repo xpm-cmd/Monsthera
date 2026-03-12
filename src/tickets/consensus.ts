@@ -254,6 +254,15 @@ export function inferConsensusTransitionForTicketStatus(status: TicketStatus): G
   }
 }
 
+const GATED_ADVANCE_TARGET: Record<string, TicketStatus> = {
+  technical_analysis: "approved",
+  in_review: "ready_for_commit",
+};
+
+export function getAutoAdvanceTarget(status: TicketStatus): TicketStatus | null {
+  return GATED_ADVANCE_TARGET[status] ?? null;
+}
+
 export function resolveTicketQuorumRule(
   fromStatus: TicketStatus,
   toStatus: TicketStatus,
