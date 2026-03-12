@@ -35,6 +35,7 @@ function createTestDb() {
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE review_verdicts (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, specialization TEXT NOT NULL, verdict TEXT NOT NULL, reasoning TEXT, created_at TEXT NOT NULL, UNIQUE(ticket_id, specialization));
+    CREATE TABLE council_assignments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, specialization TEXT NOT NULL, assigned_by_agent_id TEXT NOT NULL, assigned_at TEXT NOT NULL, UNIQUE(ticket_id, specialization));
     CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL REFERENCES tickets(id), to_ticket_id INTEGER NOT NULL REFERENCES tickets(id), relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE coordination_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), message_id TEXT NOT NULL UNIQUE, from_agent_id TEXT NOT NULL, to_agent_id TEXT, type TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
@@ -720,6 +721,46 @@ describe("ticket tools", () => {
     ]));
   });
 
+  it("assigns council specializations per ticket", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const result = await handler("assign_council")({
+      ticketId,
+      councilAgentId: "agent-review",
+      specialization: "architect",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.isError).not.toBe(true);
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.assignment).toMatchObject({
+      agentId: "agent-review",
+      specialization: "architect",
+      assignedByAgentId: "agent-dev",
+    });
+
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+    expect(queries.getCouncilAssignment(db, ticket.id, "agent-review", "architect")).toBeTruthy();
+  });
+
+  it("rejects council assignment to agents that cannot submit verdicts", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const denied = await handler("assign_council")({
+      ticketId,
+      councilAgentId: "agent-obs",
+      specialization: "design",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(denied.isError).toBe(true);
+    expect(denied.content[0].text).toContain("cannot serve as a council reviewer");
+  });
+
   it("uses configured quorum rules for transition-aware verdict and consensus reports", async () => {
     config.ticketQuorum = {
       technicalAnalysisToApproved: {
@@ -875,6 +916,71 @@ describe("ticket tools", () => {
       specialization: "architect",
       verdict: "fail",
       agentId: "agent-dev",
+    });
+  });
+
+  it("enforces council binding when governance.requireBinding is enabled", async () => {
+    config.governance = {
+      requireBinding: true,
+      nonVotingRoles: ["facilitator"],
+      modelDiversity: { strict: false },
+    };
+
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const denied = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    expect(denied.isError).toBe(true);
+    expect(denied.content[0].text).toContain("is not assigned as architect");
+
+    const assigned = await handler("assign_council")({
+      ticketId,
+      councilAgentId: "agent-review",
+      specialization: "architect",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(assigned.isError).not.toBe(true);
+
+    const allowed = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    expect(allowed.isError).not.toBe(true);
+  });
+
+  it("allows admin to bypass council binding enforcement", async () => {
+    config.governance = {
+      requireBinding: true,
+      nonVotingRoles: ["facilitator"],
+      modelDiversity: { strict: false },
+    };
+
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const allowed = await handler("submit_verdict")({
+      ticketId,
+      specialization: "security",
+      verdict: "pass",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+
+    expect(allowed.isError).not.toBe(true);
+    const payload = JSON.parse(allowed.content[0].text);
+    expect(payload.verdict).toMatchObject({
+      specialization: "security",
+      agentId: "agent-admin",
     });
   });
 

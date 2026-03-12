@@ -26,10 +26,13 @@ export const ModelDiversityConfigSchema = z.object({
  *   counting (default: facilitator is a non-voting coordinator).
  * - modelDiversity: controls whether verdicts must come from distinct provider+model
  *   combinations to count toward quorum.
+ * - requireBinding: when true, advisory verdicts require an explicit
+ *   per-ticket specialization assignment before they are accepted.
  */
 export const GovernanceConfigSchema = z.object({
   nonVotingRoles: z.array(RoleId).default(["facilitator"]),
   modelDiversity: ModelDiversityConfigSchema.default({ strict: false }),
+  requireBinding: z.boolean().default(false),
 });
 
 export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;

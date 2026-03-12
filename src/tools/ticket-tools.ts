@@ -348,6 +348,77 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     },
   );
 
+  // ─── assign_council ────────────────────────────────────────
+  server.tool(
+    "assign_council",
+    "Assign a council specialization to an agent for a specific ticket",
+    {
+      ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
+      councilAgentId: AgentIdSchema.describe("Agent assigned to represent the specialization"),
+      specialization: CouncilSpecializationId.describe("Council specialization being assigned"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
+    },
+    async ({ ticketId, councilAgentId, specialization, agentId, sessionId }) => {
+      const c = await getContext();
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) return errText(result.error);
+      const resolved = result.agent;
+
+      const access = checkToolAccess("assign_council", resolved.role, resolved.trustTier);
+      if (!access.allowed || !BUILT_IN_ROLES[resolved.role].permissions.canTransitionTicket) {
+        return errJson({ denied: true, reason: access.reason ?? "Role cannot assign council members" });
+      }
+
+      const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
+      if (!ticket) return errText(`Ticket not found: ${ticketId}`);
+
+      const councilAgent = queries.getAgent(c.db, councilAgentId);
+      if (!councilAgent) return errText(`Agent not found: ${councilAgentId}`);
+      if (!(councilAgent.roleId in BUILT_IN_ROLES)) {
+        return errJson({
+          denied: true,
+          reason: `Agent ${councilAgentId} has unsupported role ${councilAgent.roleId}`,
+        });
+      }
+      if (councilAgent.trustTier !== "A" && councilAgent.trustTier !== "B") {
+        return errJson({
+          denied: true,
+          reason: `Agent ${councilAgentId} has unsupported trust tier ${councilAgent.trustTier}`,
+        });
+      }
+      const councilRole = councilAgent.roleId as keyof typeof BUILT_IN_ROLES;
+
+      const councilAccess = checkToolAccess("submit_verdict", councilRole, councilAgent.trustTier);
+      if (!councilAccess.allowed || !BUILT_IN_ROLES[councilRole].permissions.canTransitionTicket) {
+        return errJson({
+          denied: true,
+          reason: `Agent ${councilAgentId} cannot serve as a council reviewer`,
+        });
+      }
+
+      const now = new Date().toISOString();
+      const assignment = queries.upsertCouncilAssignment(c.db, {
+        ticketId: ticket.id,
+        agentId: councilAgentId,
+        specialization,
+        assignedByAgentId: resolved.agentId,
+        assignedAt: now,
+      });
+      queries.updateTicket(c.db, ticket.id, {});
+
+      return okJson({
+        ticketId,
+        assignment: {
+          agentId: assignment.agentId,
+          specialization: assignment.specialization,
+          assignedByAgentId: assignment.assignedByAgentId,
+          assignedAt: assignment.assignedAt,
+        },
+      });
+    },
+  );
+
   // ─── submit_verdict ────────────────────────────────────────
   server.tool(
     "submit_verdict",
@@ -374,6 +445,16 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
 
       const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
       if (!ticket) return errText(`Ticket not found: ${ticketId}`);
+
+      if (c.config?.governance?.requireBinding && resolved.role !== "admin") {
+        const assignment = queries.getCouncilAssignment(c.db, ticket.id, resolved.agentId, specialization);
+        if (!assignment) {
+          return errJson({
+            denied: true,
+            reason: `Agent ${resolved.agentId} is not assigned as ${specialization} for ${ticketId}`,
+          });
+        }
+      }
 
       const now = new Date().toISOString();
       const stored = queries.upsertReviewVerdict(c.db, {

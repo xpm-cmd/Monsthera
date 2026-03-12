@@ -8,7 +8,7 @@ export const CAPABILITY_TOOL_NAMES = [
   "list_patches", "list_notes",
   "store_knowledge", "search_knowledge", "query_knowledge", "archive_knowledge", "delete_knowledge",
   "create_ticket", "assign_ticket", "update_ticket_status", "update_ticket",
-  "list_tickets", "search_tickets", "get_ticket", "comment_ticket", "submit_verdict", "check_consensus",
+  "list_tickets", "search_tickets", "get_ticket", "comment_ticket", "assign_council", "submit_verdict", "check_consensus",
   "link_tickets", "unlink_tickets",
   "add_protected_artifact", "remove_protected_artifact", "list_protected_artifacts",
   "analyze_complexity",

@@ -48,6 +48,7 @@ describe("AgoraConfigSchema", () => {
     expect(result.search).toEqual(DEFAULT_SEARCH_CONFIG);
     expect(result.ticketQuorum.technicalAnalysisToApproved.enabled).toBe(true);
     expect(result.ticketQuorum.inReviewToReadyForCommit.vetoSpecializations).toEqual(["architect", "security"]);
+    expect(result.governance.requireBinding).toBe(false);
   });
 
   it("rejects missing repoPath", () => {
@@ -164,6 +165,20 @@ describe("AgoraConfigSchema", () => {
     expect(result.ticketQuorum.technicalAnalysisToApproved.requiredPasses).toBe(5);
     expect(result.ticketQuorum.technicalAnalysisToApproved.vetoSpecializations).toEqual(["security"]);
     expect(result.ticketQuorum.inReviewToReadyForCommit.enabled).toBe(false);
+  });
+
+  it("accepts valid governance binding config", () => {
+    const result = AgoraConfigSchema.parse({
+      repoPath: "/r",
+      governance: {
+        requireBinding: true,
+        nonVotingRoles: ["facilitator"],
+        modelDiversity: { strict: true },
+      },
+    });
+
+    expect(result.governance.requireBinding).toBe(true);
+    expect(result.governance.modelDiversity.strict).toBe(true);
   });
 
   it("rejects crossInstance enabled without instanceId", () => {

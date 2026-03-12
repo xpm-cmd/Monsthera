@@ -59,6 +59,7 @@ describe("read tool discovery", () => {
       "list_notes",
       "end_session",
       "search_tickets",
+      "assign_council",
       "submit_verdict",
       "check_consensus",
       "analyze_complexity",
@@ -100,6 +101,7 @@ describe("read tool discovery", () => {
     const createTicket = await handler("schema")({ toolName: "create_ticket" });
     const updateTicket = await handler("schema")({ toolName: "update_ticket" });
     const commentTicket = await handler("schema")({ toolName: "comment_ticket" });
+    const assignCouncil = await handler("schema")({ toolName: "assign_council" });
     const submitVerdict = await handler("schema")({ toolName: "submit_verdict" });
     const checkConsensus = await handler("schema")({ toolName: "check_consensus" });
     const updateTicketStatus = await handler("schema")({ toolName: "update_ticket_status" });
@@ -161,6 +163,13 @@ describe("read tool discovery", () => {
     });
     expect(JSON.parse(commentTicket.content[0].text).inputSchema).toMatchObject({
       content: "string (1-8000 chars)",
+    });
+    expect(JSON.parse(assignCouncil.content[0].text).inputSchema).toMatchObject({
+      ticketId: "string (TKT-...)",
+      councilAgentId: "string (required)",
+      specialization: "enum: architect|simplifier|security|performance|patterns|design",
+      agentId: "string (required)",
+      sessionId: "string (required)",
     });
     expect(JSON.parse(submitVerdict.content[0].text).inputSchema).toMatchObject({
       specialization: "enum: architect|simplifier|security|performance|patterns|design",

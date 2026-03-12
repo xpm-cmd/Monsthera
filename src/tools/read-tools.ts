@@ -553,6 +553,13 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           agentId: "string (required)",
           sessionId: "string (required)",
         },
+        assign_council: {
+          ticketId: "string (TKT-...)",
+          councilAgentId: "string (required)",
+          specialization: "enum: architect|simplifier|security|performance|patterns|design",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
         submit_verdict: {
           ticketId: "string (TKT-...)",
           specialization: "enum: architect|simplifier|security|performance|patterns|design",

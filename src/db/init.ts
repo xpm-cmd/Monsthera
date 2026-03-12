@@ -180,6 +180,15 @@ function createTables(sqlite: Database.Database): void {
       created_at TEXT NOT NULL,
       UNIQUE(ticket_id, specialization)
     )`,
+    `CREATE TABLE IF NOT EXISTS council_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+      agent_id TEXT NOT NULL,
+      specialization TEXT NOT NULL,
+      assigned_by_agent_id TEXT NOT NULL,
+      assigned_at TEXT NOT NULL,
+      UNIQUE(ticket_id, specialization)
+    )`,
     `CREATE TABLE IF NOT EXISTS ticket_dependencies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       from_ticket_id INTEGER NOT NULL REFERENCES tickets(id),
@@ -368,5 +377,22 @@ function runMigrations(sqlite: Database.Database): void {
   )`).run();
   sqlite.prepare(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_review_verdicts_ticket_specialization ON review_verdicts(ticket_id, specialization)",
+  ).run();
+
+  // Migration 12: Create council_assignments table
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS council_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+    agent_id TEXT NOT NULL,
+    specialization TEXT NOT NULL,
+    assigned_by_agent_id TEXT NOT NULL,
+    assigned_at TEXT NOT NULL,
+    UNIQUE(ticket_id, specialization)
+  )`).run();
+  sqlite.prepare(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_council_assignments_ticket_specialization ON council_assignments(ticket_id, specialization)",
+  ).run();
+  sqlite.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_council_assignments_ticket_agent ON council_assignments(ticket_id, agent_id)",
   ).run();
 }

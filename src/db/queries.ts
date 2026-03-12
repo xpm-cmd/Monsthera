@@ -725,6 +725,77 @@ export function getTicketComments(db: DB, ticketInternalId: number) {
     .all();
 }
 
+// --- Council Assignments ---
+
+export function upsertCouncilAssignment(
+  db: DB,
+  assignment: typeof tables.councilAssignments.$inferInsert,
+): typeof tables.councilAssignments.$inferSelect {
+  const existing = db
+    .select()
+    .from(tables.councilAssignments)
+    .where(and(
+      eq(tables.councilAssignments.ticketId, assignment.ticketId),
+      eq(tables.councilAssignments.specialization, assignment.specialization),
+    ))
+    .get();
+
+  if (!existing) {
+    return db.insert(tables.councilAssignments).values(assignment).returning().get();
+  }
+
+  return db
+    .update(tables.councilAssignments)
+    .set({
+      agentId: assignment.agentId,
+      assignedByAgentId: assignment.assignedByAgentId,
+      assignedAt: assignment.assignedAt,
+    })
+    .where(eq(tables.councilAssignments.id, existing.id))
+    .returning()
+    .get();
+}
+
+export function getCouncilAssignment(
+  db: DB,
+  ticketInternalId: number,
+  agentId: string,
+  specialization: string,
+) {
+  try {
+    return db
+      .select()
+      .from(tables.councilAssignments)
+      .where(and(
+        eq(tables.councilAssignments.ticketId, ticketInternalId),
+        eq(tables.councilAssignments.agentId, agentId),
+        eq(tables.councilAssignments.specialization, specialization),
+      ))
+      .get();
+  } catch (error) {
+    if (isMissingTableError(error, "council_assignments")) return undefined;
+    throw error;
+  }
+}
+
+export function getCouncilAssignmentsForTicket(db: DB, ticketInternalId: number) {
+  try {
+    return db
+      .select()
+      .from(tables.councilAssignments)
+      .where(eq(tables.councilAssignments.ticketId, ticketInternalId))
+      .orderBy(
+        tables.councilAssignments.specialization,
+        sql`coalesce(julianday(${tables.councilAssignments.assignedAt}), 0)`,
+        tables.councilAssignments.id,
+      )
+      .all();
+  } catch (error) {
+    if (isMissingTableError(error, "council_assignments")) return [];
+    throw error;
+  }
+}
+
 // --- Review Verdicts ---
 
 export function upsertReviewVerdict(

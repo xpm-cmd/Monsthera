@@ -17,6 +17,7 @@ function createTestDb() {
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE review_verdicts (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, specialization TEXT NOT NULL, verdict TEXT NOT NULL, reasoning TEXT, created_at TEXT NOT NULL, UNIQUE(ticket_id, specialization));
+    CREATE TABLE council_assignments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, specialization TEXT NOT NULL, assigned_by_agent_id TEXT NOT NULL, assigned_at TEXT NOT NULL, UNIQUE(ticket_id, specialization));
     CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL REFERENCES tickets(id), to_ticket_id INTEGER NOT NULL REFERENCES tickets(id), relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
@@ -216,6 +217,34 @@ describe("ticket queries", () => {
       agentId: "architect-2",
       reasoning: "Updated review",
     });
+  });
+
+  it("upserts council assignments with latest specialization owner", () => {
+    const t = makeTicket();
+    const first = queries.upsertCouncilAssignment(db, {
+      ticketId: t.id,
+      agentId: "agent-a",
+      specialization: "architect",
+      assignedByAgentId: "facilitator-1",
+      assignedAt: "2026-03-10T09:25:20.000Z",
+    });
+    const second = queries.upsertCouncilAssignment(db, {
+      ticketId: t.id,
+      agentId: "agent-b",
+      specialization: "architect",
+      assignedByAgentId: "facilitator-2",
+      assignedAt: "2026-03-10T10:25:20.000Z",
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(queries.getCouncilAssignment(db, t.id, "agent-a", "architect")).toBeUndefined();
+    expect(queries.getCouncilAssignment(db, t.id, "agent-b", "architect")).toMatchObject({
+      ticketId: t.id,
+      agentId: "agent-b",
+      specialization: "architect",
+      assignedByAgentId: "facilitator-2",
+    });
+    expect(queries.getCouncilAssignmentsForTicket(db, t.id)).toHaveLength(1);
   });
 
   it("links patch to ticket and retrieves by ticket", () => {

@@ -3,7 +3,7 @@ import { CAPABILITY_TOOL_NAMES } from "../../../src/tools/tool-manifest.js";
 
 describe("tool-manifest", () => {
   it("exports the expected number of capability tools", () => {
-    expect(CAPABILITY_TOOL_NAMES.length).toBe(44);
+    expect(CAPABILITY_TOOL_NAMES.length).toBe(45);
   });
 
   it("contains all core MCP tool names", () => {
@@ -39,6 +39,7 @@ describe("tool-manifest", () => {
     expect(names.has("list_tickets")).toBe(true);
     expect(names.has("search_tickets")).toBe(true);
     expect(names.has("comment_ticket")).toBe(true);
+    expect(names.has("assign_council")).toBe(true);
     expect(names.has("submit_verdict")).toBe(true);
     expect(names.has("check_consensus")).toBe(true);
     expect(names.has("link_tickets")).toBe(true);

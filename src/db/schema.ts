@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, blob, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, blob, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 
 // --- Repository ---
 
@@ -140,6 +140,20 @@ export const reviewVerdicts = sqliteTable("review_verdicts", {
 }, (table) => ({
   ticketSpecializationUniqueIdx: uniqueIndex("idx_review_verdicts_ticket_specialization")
     .on(table.ticketId, table.specialization),
+}));
+
+export const councilAssignments = sqliteTable("council_assignments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ticketId: integer("ticket_id").notNull().references(() => tickets.id),
+  agentId: text("agent_id").notNull(),
+  specialization: text("specialization").notNull(),
+  assignedByAgentId: text("assigned_by_agent_id").notNull(),
+  assignedAt: text("assigned_at").notNull(),
+}, (table) => ({
+  ticketSpecializationUniqueIdx: uniqueIndex("idx_council_assignments_ticket_specialization")
+    .on(table.ticketId, table.specialization),
+  ticketAgentIdx: index("idx_council_assignments_ticket_agent")
+    .on(table.ticketId, table.agentId),
 }));
 
 // --- Ticket Dependencies ---

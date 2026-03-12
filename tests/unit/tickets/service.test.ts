@@ -1158,6 +1158,7 @@ describe("ticket service governance: facilitator non-voting", () => {
       governance: {
         nonVotingRoles: ["facilitator"],
         modelDiversity: { strict: false },
+        requireBinding: false,
       },
     };
 
