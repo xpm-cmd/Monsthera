@@ -53,6 +53,7 @@ describe("read tool discovery", () => {
     const payload = JSON.parse(result.content[0].text);
 
     expect(payload.tools).toEqual(expect.arrayContaining([
+      "run_workflow",
       "send_coordination",
       "poll_coordination",
       "list_patches",
@@ -67,6 +68,10 @@ describe("read tool discovery", () => {
       "suggest_actions",
       "list_protected_artifacts",
       "lookup_dependencies",
+    ]));
+    expect(payload.workflows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "onboard" }),
+      expect.objectContaining({ name: "deep-review" }),
     ]));
     expect(payload.repoAgents).toEqual([]);
     expect(payload.availableReviewRoles).toEqual({
@@ -93,6 +98,7 @@ describe("read tool discovery", () => {
     const listPatches = await handler("schema")({ toolName: "list_patches" });
     const listNotes = await handler("schema")({ toolName: "list_notes" });
     const searchTickets = await handler("schema")({ toolName: "search_tickets" });
+    const runWorkflow = await handler("schema")({ toolName: "run_workflow" });
     const analyzeComplexity = await handler("schema")({ toolName: "analyze_complexity" });
     const analyzeTestCoverage = await handler("schema")({ toolName: "analyze_test_coverage" });
     const suggestActions = await handler("schema")({ toolName: "suggest_actions" });
@@ -134,6 +140,12 @@ describe("read tool discovery", () => {
       agentId: "string (required)",
       sessionId: "string (required)",
       query: "string (1-1000 chars)",
+    });
+    expect(JSON.parse(runWorkflow.content[0].text).inputSchema).toMatchObject({
+      name: "enum: onboard|deep-review",
+      params: "object (optional workflow parameters)",
+      agentId: "string (required)",
+      sessionId: "string (required)",
     });
     expect(JSON.parse(analyzeComplexity.content[0].text).inputSchema).toMatchObject({
       filePath: "string (file path relative to repo root, required)",

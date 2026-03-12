@@ -14,6 +14,7 @@ export const TOOL_ACCESS_POLICY: Record<CapabilityToolName, ToolAccessPolicyEntr
   get_change_pack: { mode: "public" },
   get_issue_pack: { mode: "public" },
   search_remote_instances: { mode: "public" },
+  run_workflow: { mode: "public" },
   propose_patch: { mode: "role" },
   propose_note: { mode: "role" },
   register_agent: { mode: "public" },

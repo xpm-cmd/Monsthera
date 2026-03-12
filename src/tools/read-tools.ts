@@ -20,6 +20,7 @@ import { analyzeFileComplexity } from "../analysis/complexity.js";
 import { analyzeTestCoverage } from "../analysis/test-coverage.js";
 import { suggestActionsForChanges } from "../dispatch/rules.js";
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
+import { BUILTIN_WORKFLOW_NAMES, listBuiltInWorkflows } from "../workflows/builtins.js";
 import {
   CrossInstanceSearchSurfaceSchema,
   searchAcrossRemoteInstances,
@@ -294,6 +295,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         text: JSON.stringify({
           version: VERSION,
           tools: [...CAPABILITY_TOOL_NAMES],
+          workflows: listBuiltInWorkflows(),
           ticketStatuses: ["backlog", "technical_analysis", "approved", "in_progress", "in_review", "ready_for_commit", "blocked", "resolved", "closed", "wont_fix"],
           ticketSeverities: ["critical", "high", "medium", "low"],
           languages: [...SUPPORTED_LANGUAGES],
@@ -363,6 +365,12 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           status: "enum: ticket status (optional, tickets only)",
           severity: "enum: ticket severity (optional, tickets only)",
           peerIds: "string[] (optional peer filter)",
+        },
+        run_workflow: {
+          name: `enum: ${BUILTIN_WORKFLOW_NAMES.join("|")}`,
+          params: "object (optional workflow parameters)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
         },
         analyze_complexity: {
           filePath: "string (file path relative to repo root, required)",

@@ -38,6 +38,7 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
     permissions: {
       allowedTools: [
         "get_code_pack", "get_change_pack", "get_issue_pack",
+        "run_workflow",
         "propose_patch", "propose_note", "claim_files",
         "status", "capabilities", "schema",
         "register_agent", "agent_status", "broadcast",
@@ -69,6 +70,7 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
     permissions: {
       allowedTools: [
         "get_code_pack", "get_change_pack", "get_issue_pack",
+        "run_workflow",
         "propose_note",
         "status", "capabilities", "schema",
         "register_agent", "agent_status", "broadcast",
@@ -99,6 +101,7 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
     permissions: {
       allowedTools: [
         "get_code_pack", "get_change_pack", "get_issue_pack",
+        "run_workflow",
         "status", "capabilities", "schema",
         "register_agent", "agent_status",
         "search_knowledge", "query_knowledge",
@@ -124,6 +127,7 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
     permissions: {
       allowedTools: [
         "get_code_pack", "get_change_pack", "get_issue_pack",
+        "run_workflow",
         "propose_note",
         "status", "capabilities", "schema",
         "register_agent", "agent_status", "broadcast",

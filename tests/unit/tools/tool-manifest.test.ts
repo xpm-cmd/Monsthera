@@ -19,6 +19,7 @@ describe("tool-manifest", () => {
     expect(names.has("get_change_pack")).toBe(true);
     expect(names.has("get_issue_pack")).toBe(true);
     expect(names.has("search_remote_instances")).toBe(true);
+    expect(names.has("run_workflow")).toBe(true);
 
     // Agent management
     expect(names.has("register_agent")).toBe(true);

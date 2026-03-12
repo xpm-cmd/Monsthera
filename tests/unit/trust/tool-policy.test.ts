@@ -27,4 +27,8 @@ describe("tool access policy", () => {
     expect(tools.has("store_knowledge")).toBe(true);
     expect(tools.has("broadcast")).toBe(true);
   });
+
+  it("declares run_workflow as a public capability", () => {
+    expect(TOOL_ACCESS_POLICY.run_workflow).toEqual({ mode: "public" });
+  });
 });
