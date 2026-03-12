@@ -81,10 +81,13 @@ describe("queries", () => {
   });
 
   it("inserts and queries event logs", () => {
-    const now = new Date().toISOString();
-    queries.insertEventLog(db, { eventId: "e1", agentId: "a1", sessionId: "s1", tool: "get_code_pack", timestamp: now, durationMs: 150, status: "success", repoId: "r1", commitScope: "abc", payloadSizeIn: 100, payloadSizeOut: 2000, inputHash: "hi", outputHash: "ho", redactedSummary: "ok", errorCode: null, errorDetail: null });
-    expect(queries.getEventLogs(db, 10).length).toBe(1);
-    expect(queries.getEventLogsByAgent(db, "a1").length).toBe(1);
+    const older = "2026-03-10T00:00:00.000Z";
+    const now = "2026-03-12T00:00:00.000Z";
+    queries.insertEventLog(db, { eventId: "e1", agentId: "a1", sessionId: "s1", tool: "get_code_pack", timestamp: older, durationMs: 150, status: "success", repoId: "r1", commitScope: "abc", payloadSizeIn: 100, payloadSizeOut: 2000, inputHash: "hi", outputHash: "ho", redactedSummary: "old", errorCode: null, errorDetail: null });
+    queries.insertEventLog(db, { eventId: "e2", agentId: "a1", sessionId: "s1", tool: "get_issue_pack", timestamp: now, durationMs: 180, status: "success", repoId: "r1", commitScope: "abc", payloadSizeIn: 120, payloadSizeOut: 2100, inputHash: "hi2", outputHash: "ho2", redactedSummary: "new", errorCode: null, errorDetail: null });
+    expect(queries.getEventLogs(db, 10).length).toBe(2);
+    expect(queries.getEventLogsByAgent(db, "a1").length).toBe(2);
+    expect(queries.getEventLogs(db, 10, "2026-03-11T00:00:00.000Z").map((event) => event.eventId)).toEqual(["e2"]);
   });
 
   it("builds import graphs with resolved internal edges and focused neighborhoods", () => {

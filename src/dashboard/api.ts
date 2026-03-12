@@ -163,8 +163,9 @@ export function getAgentTimeline(deps: DashboardDeps, limitPerAgent = 8) {
     });
 }
 
-export function getEventLogsList(deps: DashboardDeps, limit = 50) {
-  return queries.getEventLogs(deps.db, limit).map((e) => ({
+export function getEventLogsList(deps: DashboardDeps, limit = 500, since?: string) {
+  const effectiveSince = since?.trim() || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  return queries.getEventLogs(deps.db, limit, effectiveSince).map((e) => ({
     eventId: e.eventId,
     agentId: e.agentId,
     tool: e.tool,

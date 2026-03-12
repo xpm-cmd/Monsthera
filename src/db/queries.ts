@@ -408,7 +408,12 @@ export function insertEventLog(db: DB, event: typeof tables.eventLogs.$inferInse
   return db.insert(tables.eventLogs).values(event).returning().get();
 }
 
-export function getEventLogs(db: DB, limit = 50) {
+export function getEventLogs(db: DB, limit = 500, since?: string) {
+  if (since) {
+    return db.select().from(tables.eventLogs)
+      .where(sql`${tables.eventLogs.timestamp} >= ${since}`)
+      .orderBy(desc(tables.eventLogs.timestamp)).limit(limit).all();
+  }
   return db.select().from(tables.eventLogs).orderBy(desc(tables.eventLogs.timestamp)).limit(limit).all();
 }
 

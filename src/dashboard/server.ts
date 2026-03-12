@@ -569,7 +569,13 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
     case "overview": return getOverview(deps);
     case "agents": return getAgentsList(deps);
     case "agent-timeline": return getAgentTimeline(deps);
-    case "logs": return getEventLogsList(deps);
+    case "logs": {
+      const rawSince = url.searchParams.get("since")?.trim();
+      const sinceParam = rawSince ? rawSince : undefined;
+      const limitRaw = Number(url.searchParams.get("limit") ?? "");
+      const logLimit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, Math.trunc(limitRaw))) : undefined;
+      return getEventLogsList(deps, logLimit, sinceParam);
+    }
     case "patches": return getPatchesList(deps);
     case "notes": return getNotesList(deps);
     case "knowledge": {

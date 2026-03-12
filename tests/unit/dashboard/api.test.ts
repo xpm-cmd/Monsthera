@@ -198,6 +198,25 @@ describe("Dashboard API", () => {
     });
   });
 
+  it("defaults dashboard logs to the last 24 hours but allows explicit since override", () => {
+    const recent = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const older = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const insertEvent = sqlite.prepare(`
+      INSERT INTO event_logs (
+        event_id, agent_id, session_id, tool, timestamp, duration_ms, status,
+        repo_id, commit_scope, payload_size_in, payload_size_out, input_hash,
+        output_hash, redacted_summary, error_code, error_detail, denial_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertEvent.run("evt-old", "agent-x", "session-x", "get_code_pack", older, 10, "success", "1", "abc1234", 12, 30, "in-old", "out-old", "older event", null, null, null);
+    insertEvent.run("evt-recent", "agent-x", "session-x", "get_issue_pack", recent, 12, "success", "1", "abc1234", 12, 30, "in-recent", "out-recent", "recent event", null, null, null);
+
+    expect(getEventLogsList(deps, 10).map((log) => log.eventId)).toEqual(["evt-recent"]);
+    expect(getEventLogsList(deps, 10, older).map((log) => log.eventId)).toEqual(["evt-recent", "evt-old"]);
+    expect(getEventLogsList(deps, 10, "   ").map((log) => log.eventId)).toEqual(["evt-recent"]);
+  });
+
   it("aggregates indexed file metrics by language and extension fallback", () => {
     const now = new Date().toISOString();
     sqlite.prepare(`
