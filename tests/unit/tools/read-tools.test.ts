@@ -3,7 +3,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerReadTools } from "../../../src/tools/read-tools.js";
+import {
+  registerReadTools,
+  shapeChangePackResult,
+  shapeCodePackResult,
+  shapeIssuePackResult,
+} from "../../../src/tools/read-tools.js";
 
 class FakeServer {
   handlers = new Map<string, (input: unknown) => Promise<any>>();
@@ -128,6 +133,20 @@ describe("read tool discovery", () => {
       modelVersion: "string (optional model version)",
       identitySource: "enum: self_declared|config|peer_asserted|system_assigned (optional)",
     });
+
+    const codePack = await handler("schema")({ toolName: "get_code_pack" });
+    const changePack = await handler("schema")({ toolName: "get_change_pack" });
+    const issuePack = await handler("schema")({ toolName: "get_issue_pack" });
+
+    expect(JSON.parse(codePack.content[0].text).inputSchema.verbosity).toBe(
+      "enum: full|compact|minimal (default full)",
+    );
+    expect(JSON.parse(changePack.content[0].text).inputSchema.verbosity).toBe(
+      "enum: full|compact|minimal (default full)",
+    );
+    expect(JSON.parse(issuePack.content[0].text).inputSchema.verbosity).toBe(
+      "enum: full|compact|minimal (default full)",
+    );
   });
 
   it("keeps note schemas aligned with the supported note types", async () => {
@@ -187,5 +206,142 @@ Inspect auth and trust surfaces.
     ]);
     expect(payload.availableReviewRoles.security).toEqual(["Security Reviewer"]);
     expect(payload.repoAgentWarnings).toEqual([]);
+  });
+});
+
+describe("read tool verbosity shaping", () => {
+  it("keeps full code packs backward-compatible and strips heavy fields in compact/minimal modes", () => {
+    const payload = {
+      bundleId: "bundle-1",
+      repoId: "1",
+      commit: "abc1234",
+      query: "router",
+      timestamp: "2026-03-12T00:00:00.000Z",
+      trustTier: "A" as const,
+      redactionPolicy: "none" as const,
+      searchBackend: "fts5" as const,
+      latencyMs: 12,
+      rankingMetadata: { scoringWeights: { relevance: 1 } },
+      currentHead: "abc1234",
+      indexStale: false,
+      candidates: Array.from({ length: 6 }, (_, index) => ({
+        path: `src/file-${index}.ts`,
+        language: "ts",
+        relevanceScore: 1 - index * 0.1,
+        summary: `Summary ${index}`.repeat(30),
+        symbols: [{ name: `fn${index}`, kind: "function", line: index + 1 }],
+        provenance: "search_hit" as const,
+      })),
+      expanded: [{
+        path: "src/file-0.ts",
+        language: "ts",
+        relevanceScore: 1,
+        summary: "Expanded",
+        symbols: [],
+        provenance: "search_hit" as const,
+        codeSpan: "const x = 1;",
+        spanLines: { start: 1, end: 1 },
+        changeRefs: [],
+        relatedNotes: [],
+        redactionApplied: false,
+      }],
+    };
+
+    expect(shapeCodePackResult(payload, "full")).toBe(payload);
+
+    const compact = shapeCodePackResult(payload, "compact") as Record<string, any>;
+    expect(compact.verbosity).toBe("compact");
+    expect(compact.candidateCount).toBe(6);
+    expect(compact.candidatesTruncated).toBe(true);
+    expect(compact.candidates).toHaveLength(5);
+    expect(compact.candidates[0]).not.toHaveProperty("symbols");
+    expect(compact.expanded).toEqual([]);
+
+    const minimal = shapeCodePackResult(payload, "minimal") as Record<string, any>;
+    expect(minimal.verbosity).toBe("minimal");
+    expect(minimal.candidates).toHaveLength(3);
+    expect(minimal.candidates[0]).not.toHaveProperty("relevanceScore");
+    expect(minimal.expanded).toEqual([]);
+  });
+
+  it("drops diff bodies and truncates deterministic slices for change packs", () => {
+    const payload = {
+      currentHead: "head",
+      sinceCommit: "base",
+      changedFiles: Array.from({ length: 21 }, (_, index) => ({
+        status: "M",
+        path: `src/file-${index}.ts`,
+        language: "ts",
+        summary: `Changed file ${index}`.repeat(20),
+        hasSecrets: false,
+        linesAdded: index + 1,
+        linesRemoved: index,
+        diff: `diff body ${index}`,
+      })),
+      recentCommits: Array.from({ length: 4 }, (_, index) => ({
+        sha: `sha-${index}`,
+        message: `Commit message ${index}`.repeat(20),
+        timestamp: `2026-03-12T00:00:0${index}.000Z`,
+      })),
+    };
+
+    expect(shapeChangePackResult(payload, "full")).toBe(payload);
+
+    const compact = shapeChangePackResult(payload, "compact") as Record<string, any>;
+    expect(compact.verbosity).toBe("compact");
+    expect(compact.changedFileCount).toBe(21);
+    expect(compact.changedFilesTruncated).toBe(true);
+    expect(compact.changedFiles).toHaveLength(20);
+    expect(compact.changedFiles[0]).not.toHaveProperty("diff");
+    expect(compact.recentCommits).toHaveLength(3);
+
+    const minimal = shapeChangePackResult(payload, "minimal") as Record<string, any>;
+    expect(minimal.verbosity).toBe("minimal");
+    expect(minimal.changedFiles).toHaveLength(10);
+    expect(minimal.changedFiles[0]).not.toHaveProperty("language");
+    expect(minimal.recentCommits).toHaveLength(3);
+  });
+
+  it("summarizes note and knowledge matches for issue packs", () => {
+    const payload = {
+      currentHead: "head",
+      query: "review",
+      matchedNotes: Array.from({ length: 6 }, (_, index) => ({
+        key: `note-${index}`,
+        type: "issue",
+        content: `This is note content ${index}. `.repeat(20),
+        linkedPaths: [`src/file-${index}.ts`],
+        agentId: "agent-1",
+        commitSha: "abc1234",
+        updatedAt: `2026-03-12T00:00:0${index}.000Z`,
+      })),
+      matchedKnowledge: Array.from({ length: 6 }, (_, index) => ({
+        key: `knowledge-${index}`,
+        type: "decision",
+        scope: "repo",
+        title: `Decision ${index}`,
+        content: `Knowledge content ${index}. `.repeat(20),
+        tags: ["one", "two"],
+        updatedAt: `2026-03-12T00:01:0${index}.000Z`,
+      })),
+    };
+
+    expect(shapeIssuePackResult(payload, "full")).toBe(payload);
+
+    const compact = shapeIssuePackResult(payload, "compact") as Record<string, any>;
+    expect(compact.verbosity).toBe("compact");
+    expect(compact.matchedNoteCount).toBe(6);
+    expect(compact.matchedNotes).toHaveLength(6);
+    expect(compact.matchedNotes[0]).toHaveProperty("excerpt");
+    expect(compact.matchedNotes[0]).not.toHaveProperty("content");
+    expect(compact.matchedKnowledge[0]).toHaveProperty("excerpt");
+    expect(compact.matchedKnowledge[0]).not.toHaveProperty("content");
+
+    const minimal = shapeIssuePackResult(payload, "minimal") as Record<string, any>;
+    expect(minimal.verbosity).toBe("minimal");
+    expect(minimal.matchedNotes).toHaveLength(5);
+    expect(minimal.matchedNotesTruncated).toBe(true);
+    expect(minimal.matchedKnowledge).toHaveLength(5);
+    expect(minimal.matchedKnowledgeTruncated).toBe(true);
   });
 });

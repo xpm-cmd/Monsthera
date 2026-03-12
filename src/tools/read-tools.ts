@@ -4,7 +4,7 @@ import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPAN
 import type { AgoraContext } from "../core/context.js";
 import { AgentIdSchema, FilePathSchema, SessionIdSchema, parseStringArrayJson } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
-import { buildEvidenceBundle } from "../retrieval/evidence-bundle.js";
+import { buildEvidenceBundle, type EvidenceBundleResult } from "../retrieval/evidence-bundle.js";
 import { exportAuditTrail } from "../export/audit.js";
 import { getHead, getChangedFiles, getDiffStats, getPerFileDiffs, getRecentCommits, isValidCommit } from "../git/operations.js";
 import { getIndexedCommit, incrementalIndex } from "../indexing/indexer.js";
@@ -19,6 +19,233 @@ import {
 } from "../federation/search.js";
 
 type GetContext = () => Promise<AgoraContext>;
+
+const ReadToolVerbositySchema = z.enum(["full", "compact", "minimal"]);
+export type ReadToolVerbosity = z.infer<typeof ReadToolVerbositySchema>;
+
+const COMPACT_CODE_PACK_LIMIT = 5;
+const MINIMAL_CODE_PACK_LIMIT = 3;
+const COMPACT_CHANGE_FILE_LIMIT = 20;
+const MINIMAL_CHANGE_FILE_LIMIT = 10;
+const COMPACT_RECENT_COMMIT_LIMIT = 3;
+const MINIMAL_RECENT_COMMIT_LIMIT = 3;
+const COMPACT_ISSUE_MATCH_LIMIT = 10;
+const MINIMAL_ISSUE_MATCH_LIMIT = 5;
+const COMPACT_SUMMARY_LENGTH = 240;
+const MINIMAL_SUMMARY_LENGTH = 120;
+
+type CodePackPayload = EvidenceBundleResult & {
+  currentHead: string;
+  indexStale: boolean;
+  autoReindexed?: true;
+};
+
+type ChangePackPayload = {
+  currentHead: string;
+  sinceCommit: string;
+  changedFiles: Array<{
+    status: string;
+    path: string;
+    language: string | null;
+    summary: string | null;
+    hasSecrets: boolean;
+    linesAdded: number | null;
+    linesRemoved: number | null;
+    diff: string | null;
+  }>;
+  recentCommits: Array<{
+    sha: string;
+    message: string;
+    timestamp: string;
+  }>;
+};
+
+type IssuePackPayload = {
+  currentHead: string;
+  query: string;
+  matchedNotes: Array<{
+    key: string;
+    type: string;
+    content: string;
+    linkedPaths: string[];
+    agentId: string | null;
+    commitSha: string | null;
+    updatedAt: string;
+  }>;
+  matchedKnowledge: Array<{
+    key: string;
+    type: string;
+    scope: string;
+    title: string;
+    content: string;
+    tags: string[];
+    updatedAt: string;
+  }>;
+};
+
+function truncateText(value: string | null | undefined, maxLength: number): string | null {
+  if (!value) return value ?? null;
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function isTruncated(total: number, limit: number): boolean {
+  return total > limit;
+}
+
+export function shapeCodePackResult(
+  payload: CodePackPayload,
+  verbosity: ReadToolVerbosity,
+): CodePackPayload | Record<string, unknown> {
+  if (verbosity === "full") return payload;
+
+  const candidateLimit = verbosity === "compact" ? COMPACT_CODE_PACK_LIMIT : MINIMAL_CODE_PACK_LIMIT;
+  const candidates = payload.candidates.slice(0, candidateLimit).map((candidate) => (
+    verbosity === "compact"
+      ? {
+          path: candidate.path,
+          language: candidate.language,
+          relevanceScore: candidate.relevanceScore,
+          summary: truncateText(candidate.summary, COMPACT_SUMMARY_LENGTH) ?? "",
+          provenance: candidate.provenance,
+        }
+      : {
+          path: candidate.path,
+          language: candidate.language,
+          summary: truncateText(candidate.summary, MINIMAL_SUMMARY_LENGTH) ?? "",
+        }
+  ));
+
+  return {
+    verbosity,
+    bundleId: payload.bundleId,
+    repoId: payload.repoId,
+    commit: payload.commit,
+    query: payload.query,
+    timestamp: payload.timestamp,
+    currentHead: payload.currentHead,
+    indexStale: payload.indexStale,
+    ...(payload.autoReindexed ? { autoReindexed: true } : {}),
+    candidateCount: payload.candidates.length,
+    candidatesTruncated: isTruncated(payload.candidates.length, candidateLimit),
+    candidates,
+    expanded: [],
+    ...(verbosity === "compact"
+      ? {
+          trustTier: payload.trustTier,
+          redactionPolicy: payload.redactionPolicy,
+          searchBackend: payload.searchBackend,
+          latencyMs: payload.latencyMs,
+          rankingMetadata: payload.rankingMetadata,
+        }
+      : {}),
+  };
+}
+
+export function shapeChangePackResult(
+  payload: ChangePackPayload,
+  verbosity: ReadToolVerbosity,
+): ChangePackPayload | Record<string, unknown> {
+  if (verbosity === "full") return payload;
+
+  const fileLimit = verbosity === "compact" ? COMPACT_CHANGE_FILE_LIMIT : MINIMAL_CHANGE_FILE_LIMIT;
+  const commitLimit = verbosity === "compact" ? COMPACT_RECENT_COMMIT_LIMIT : MINIMAL_RECENT_COMMIT_LIMIT;
+
+  return {
+    verbosity,
+    currentHead: payload.currentHead,
+    sinceCommit: payload.sinceCommit,
+    changedFileCount: payload.changedFiles.length,
+    changedFilesTruncated: isTruncated(payload.changedFiles.length, fileLimit),
+    changedFiles: payload.changedFiles.slice(0, fileLimit).map((file) => (
+      verbosity === "compact"
+        ? {
+            status: file.status,
+            path: file.path,
+            language: file.language,
+            summary: truncateText(file.summary, COMPACT_SUMMARY_LENGTH),
+            hasSecrets: file.hasSecrets,
+            linesAdded: file.linesAdded,
+            linesRemoved: file.linesRemoved,
+          }
+        : {
+            status: file.status,
+            path: file.path,
+            summary: truncateText(file.summary, MINIMAL_SUMMARY_LENGTH),
+            linesAdded: file.linesAdded,
+            linesRemoved: file.linesRemoved,
+          }
+    )),
+    recentCommitCount: payload.recentCommits.length,
+    recentCommitsTruncated: isTruncated(payload.recentCommits.length, commitLimit),
+    recentCommits: payload.recentCommits.slice(0, commitLimit).map((commit) => (
+      verbosity === "compact"
+        ? commit
+        : {
+            sha: commit.sha,
+            message: truncateText(commit.message, MINIMAL_SUMMARY_LENGTH) ?? "",
+            timestamp: commit.timestamp,
+          }
+    )),
+  };
+}
+
+export function shapeIssuePackResult(
+  payload: IssuePackPayload,
+  verbosity: ReadToolVerbosity,
+): IssuePackPayload | Record<string, unknown> {
+  if (verbosity === "full") return payload;
+
+  const matchLimit = verbosity === "compact" ? COMPACT_ISSUE_MATCH_LIMIT : MINIMAL_ISSUE_MATCH_LIMIT;
+
+  return {
+    verbosity,
+    currentHead: payload.currentHead,
+    query: payload.query,
+    matchedNoteCount: payload.matchedNotes.length,
+    matchedNotesTruncated: isTruncated(payload.matchedNotes.length, matchLimit),
+    matchedNotes: payload.matchedNotes.slice(0, matchLimit).map((note) => (
+      verbosity === "compact"
+        ? {
+            key: note.key,
+            type: note.type,
+            excerpt: truncateText(note.content, COMPACT_SUMMARY_LENGTH) ?? "",
+            linkedPaths: note.linkedPaths.slice(0, 5),
+            agentId: note.agentId,
+            commitSha: note.commitSha,
+            updatedAt: note.updatedAt,
+          }
+        : {
+            key: note.key,
+            type: note.type,
+            excerpt: truncateText(note.content, MINIMAL_SUMMARY_LENGTH) ?? "",
+            updatedAt: note.updatedAt,
+          }
+    )),
+    matchedKnowledgeCount: payload.matchedKnowledge.length,
+    matchedKnowledgeTruncated: isTruncated(payload.matchedKnowledge.length, matchLimit),
+    matchedKnowledge: payload.matchedKnowledge.slice(0, matchLimit).map((entry) => (
+      verbosity === "compact"
+        ? {
+            key: entry.key,
+            type: entry.type,
+            scope: entry.scope,
+            title: entry.title,
+            excerpt: truncateText(entry.content, COMPACT_SUMMARY_LENGTH) ?? "",
+            tags: entry.tags.slice(0, 10),
+            updatedAt: entry.updatedAt,
+          }
+        : {
+            key: entry.key,
+            type: entry.type,
+            scope: entry.scope,
+            title: entry.title,
+            excerpt: truncateText(entry.content, MINIMAL_SUMMARY_LENGTH) ?? "",
+            updatedAt: entry.updatedAt,
+          }
+    )),
+  };
+}
 
 export function registerReadTools(server: McpServer, getContext: GetContext): void {
   // ─── status ───────────────────────────────────────────────
@@ -110,12 +337,15 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           query: "string (1-1000 chars, required)",
           scope: "string (optional path prefix filter)",
           expand: "boolean (default false)",
+          verbosity: "enum: full|compact|minimal (default full)",
         },
         get_change_pack: {
           sinceCommit: "string (optional, defaults to last 5 commits)",
+          verbosity: "enum: full|compact|minimal (default full)",
         },
         get_issue_pack: {
           query: "string (1-1000 chars, required)",
+          verbosity: "enum: full|compact|minimal (default full)",
         },
         search_remote_instances: {
           query: "string (1-1000 chars, required)",
@@ -364,8 +594,9 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       query: z.string().trim().min(1).max(1000).describe("Search query"),
       scope: z.string().optional().describe("Path scope filter"),
       expand: z.boolean().default(false).describe("Include code spans"),
+      verbosity: ReadToolVerbositySchema.default("full").describe("Response verbosity"),
     },
-    async ({ query, scope, expand }) => {
+    async ({ query, scope, expand, verbosity }) => {
       const c = await getContext();
       const head = await getHead({ cwd: c.repoPath });
       const indexedCommit = getIndexedCommit(c.db, c.repoId);
@@ -426,19 +657,21 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         searchBackend: c.searchRouter.getActiveBackendName(),
         searchResults,
         db: c.db,
-        expand,
+        expand: verbosity === "full" ? expand : false,
         secretPatterns: compileSecretPatterns(c.config.secretPatterns),
       });
+
+      const payload = shapeCodePackResult({
+        ...bundle,
+        indexStale: !autoReindexed && indexedCommit !== head,
+        currentHead: head,
+        ...(autoReindexed && { autoReindexed: true as const }),
+      }, verbosity);
 
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({
-            ...bundle,
-            indexStale: !autoReindexed && indexedCommit !== head,
-            currentHead: head,
-            ...(autoReindexed && { autoReindexed: true }),
-          }, null, 2),
+          text: JSON.stringify(payload, null, 2),
         }],
       };
     },
@@ -450,8 +683,9 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     "Get recently changed files with summaries and commit context",
     {
       sinceCommit: z.string().optional().describe("Base commit (defaults to last 5)"),
+      verbosity: ReadToolVerbositySchema.default("full").describe("Response verbosity"),
     },
-    async ({ sinceCommit }) => {
+    async ({ sinceCommit, verbosity }) => {
       const c = await getContext();
       const head = await getHead({ cwd: c.repoPath });
 
@@ -499,15 +733,17 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
 
       const recentCommits = await getRecentCommits(5, { cwd: c.repoPath });
 
+      const payload = shapeChangePackResult({
+        currentHead: head,
+        sinceCommit: base,
+        changedFiles: enriched,
+        recentCommits,
+      }, verbosity);
+
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({
-            currentHead: head,
-            sinceCommit: base,
-            changedFiles: enriched,
-            recentCommits,
-          }, null, 2),
+          text: JSON.stringify(payload, null, 2),
         }],
       };
     },
@@ -519,8 +755,9 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     "Search notes (issues, decisions, change notes) for context",
     {
       query: z.string().trim().min(1).max(1000).describe("Search query"),
+      verbosity: ReadToolVerbositySchema.default("full").describe("Response verbosity"),
     },
-    async ({ query }) => {
+    async ({ query, verbosity }) => {
       const c = await getContext();
       const head = await getHead({ cwd: c.repoPath });
 
@@ -558,26 +795,28 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         ...(c.globalSqlite && c.globalDb ? searchKnowledgeFts(c.globalSqlite, c.globalDb, "global") : []),
       ];
 
+      const payload = shapeIssuePackResult({
+        currentHead: head,
+        query,
+        matchedNotes: matchedNotes.map((n) => ({
+          key: n.key,
+          type: n.type,
+          content: n.content,
+          linkedPaths: parseStringArrayJson(n.linkedPathsJson, {
+            maxItems: 50,
+            maxItemLength: 500,
+          }),
+          agentId: n.agentId,
+          commitSha: n.commitSha,
+          updatedAt: n.updatedAt,
+        })),
+        matchedKnowledge: matchedKnowledge as IssuePackPayload["matchedKnowledge"],
+      }, verbosity);
+
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({
-            currentHead: head,
-            query,
-            matchedNotes: matchedNotes.map((n) => ({
-              key: n.key,
-              type: n.type,
-              content: n.content,
-              linkedPaths: parseStringArrayJson(n.linkedPathsJson, {
-                maxItems: 50,
-                maxItemLength: 500,
-              }),
-              agentId: n.agentId,
-              commitSha: n.commitSha,
-              updatedAt: n.updatedAt,
-            })),
-            matchedKnowledge,
-          }, null, 2),
+          text: JSON.stringify(payload, null, 2),
         }],
       };
     },
