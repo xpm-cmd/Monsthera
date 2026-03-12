@@ -1,9 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod/v4";
 import { AgoraError } from "../core/errors.js";
+import type { InstrumentedToolRegistration } from "./runtime-instrumentation.js";
 import { classifyResultForLogging, getInstrumentedToolRegistry } from "./runtime-instrumentation.js";
 
-export type RegisteredToolHandler = (input: unknown) => Promise<unknown>;
-export type ToolRunnerErrorCode = "tool_not_found" | "denied" | "execution_failed";
+export type RegisteredToolHandler = InstrumentedToolRegistration["handler"];
+export type ToolRunnerErrorCode = "tool_not_found" | "denied" | "execution_failed" | "validation_failed";
 
 export type ToolRunnerCallResult =
   | {
@@ -24,23 +26,23 @@ export type ToolRunnerCallResult =
 const DENIED_ERROR_CODES = new Set(["permission_denied", "denied", "rate_limited"]);
 
 export class ToolRunner {
-  constructor(private readonly handlers = new Map<string, RegisteredToolHandler>()) {}
+  constructor(private readonly tools = new Map<string, InstrumentedToolRegistration>()) {}
 
-  register(name: string, handler: RegisteredToolHandler): void {
-    this.handlers.set(name, handler);
+  register(name: string, handler: RegisteredToolHandler, inputSchema: object = {}): void {
+    this.tools.set(name, { handler, inputSchema });
   }
 
   has(name: string): boolean {
-    return this.handlers.has(name);
+    return this.tools.has(name);
   }
 
   listTools(): string[] {
-    return [...this.handlers.keys()].sort((a, b) => a.localeCompare(b));
+    return [...this.tools.keys()].sort((a, b) => a.localeCompare(b));
   }
 
   async callTool(name: string, params: unknown): Promise<ToolRunnerCallResult> {
-    const handler = this.handlers.get(name);
-    if (!handler) {
+    const registration = this.tools.get(name);
+    if (!registration) {
       return {
         ok: false,
         tool: name,
@@ -50,8 +52,13 @@ export class ToolRunner {
       };
     }
 
+    const validated = validateToolInput(name, registration.inputSchema, params);
+    if (!validated.ok) {
+      return validated.result;
+    }
+
     try {
-      const result = await handler(params);
+      const result = await registration.handler(validated.data);
       const classification = classifyResultForLogging(result);
 
       if (classification.status === "success") {
@@ -111,4 +118,35 @@ function normalizeErrorCode(value: string): string {
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
   return normalized || "execution_failed";
+}
+
+function validateToolInput(
+  tool: string,
+  inputSchema: object,
+  params: unknown,
+): { ok: true; data: unknown } | { ok: false; result: ToolRunnerCallResult } {
+  const parsed = hasSafeParse(inputSchema)
+    ? inputSchema.safeParse(params)
+    : z.object(inputSchema as z.ZodRawShape).safeParse(params);
+  if (parsed.success) {
+    return { ok: true, data: parsed.data };
+  }
+
+  return {
+    ok: false,
+    result: {
+      ok: false,
+      tool,
+      errorCode: "validation_failed",
+      message: `Invalid input for tool ${tool}`,
+      causeCode: "validation_failed",
+      detail: parsed.error.message,
+    },
+  };
+}
+
+function hasSafeParse(
+  inputSchema: object,
+): inputSchema is object & { safeParse: (input: unknown) => { success: true; data: unknown } | { success: false; error: { message: string } } } {
+  return typeof Reflect.get(inputSchema, "safeParse") === "function";
 }

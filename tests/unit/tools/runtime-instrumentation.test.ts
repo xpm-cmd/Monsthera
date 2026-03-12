@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod/v4";
 import * as schema from "../../../src/db/schema.js";
 import {
   installToolRuntimeInstrumentation,
   resetToolRateLimitState,
   classifyResultForLogging,
+  getInstrumentedToolRegistry,
 } from "../../../src/tools/runtime-instrumentation.js";
 import { StalePatchError, PermissionDeniedError } from "../../../src/core/errors.js";
 
@@ -70,6 +72,20 @@ describe("runtime instrumentation", () => {
     expect(row.status).toBe("success");
     expect(row.agent_id).toBe("public");
     expect(row.commit_scope).toBe("abc1234");
+  });
+
+  it("captures input schemas alongside instrumented handlers", () => {
+    const inputSchema = z.object({
+      message: z.string().min(1),
+    });
+
+    server.tool("echo", "echo", inputSchema, async (input) => ({
+      content: [{ type: "text", text: JSON.stringify(input) }],
+    }));
+
+    const registration = getInstrumentedToolRegistry(server as unknown as McpServer).get("echo");
+    expect(registration?.inputSchema).toBe(inputSchema);
+    expect(typeof registration?.handler).toBe("function");
   });
 
   it("logs denied outcomes and preserves the denial reason", async () => {

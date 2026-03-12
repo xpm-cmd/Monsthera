@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod/v4";
 import * as schema from "../../../src/db/schema.js";
 import * as queries from "../../../src/db/queries.js";
 import { registerAgentTools } from "../../../src/tools/agent-tools.js";
@@ -172,6 +173,28 @@ describe("tool runner", () => {
     expect(count.count).toBe(0);
   });
 
+  it("rejects invalid params before the handler executes", async () => {
+    const result = await runner.callTool("claim_files", {
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+      paths: "src/runner.ts",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      tool: "claim_files",
+      errorCode: "validation_failed",
+      causeCode: "validation_failed",
+      message: "Invalid input for tool claim_files",
+    });
+    if (!result.ok) {
+      expect(result.detail).toContain("paths");
+    }
+
+    const count = sqlite.prepare("SELECT COUNT(*) as count FROM event_logs").get() as { count: number };
+    expect(count.count).toBe(0);
+  });
+
   it("normalizes thrown execution failures from instrumented handlers", async () => {
     server.tool("explode", "explode", {}, async () => {
       throw new Error("boom");
@@ -196,5 +219,23 @@ describe("tool runner", () => {
       error_code: "error",
       error_detail: "boom",
     });
+  });
+
+  it("supports manual registrations with schemas", async () => {
+    runner.register("echo_schema", async (input) => ({
+      content: [{ type: "text", text: JSON.stringify(input) }],
+    }), z.object({
+      message: z.string().min(1),
+    }));
+
+    const invalid = await runner.callTool("echo_schema", { message: 123 });
+    expect(invalid).toMatchObject({
+      ok: false,
+      tool: "echo_schema",
+      errorCode: "validation_failed",
+    });
+
+    const valid = await runner.callTool("echo_schema", { message: "ok" });
+    expect(valid).toMatchObject({ ok: true, tool: "echo_schema" });
   });
 });
