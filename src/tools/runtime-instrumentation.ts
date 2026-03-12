@@ -7,11 +7,15 @@ import { getHead } from "../git/operations.js";
 import { logEvent } from "../logging/event-logger.js";
 
 type GetContext = () => Promise<AgoraContext>;
-type ToolHandler = (input: unknown) => Promise<unknown>;
+export type ToolHandler = (input: unknown) => Promise<unknown>;
 type ToolResult = {
   content?: Array<{ type?: string; text?: string }>;
   isError?: boolean;
 };
+interface RuntimeInstrumentationOptions {
+  onInstrumentedTool?: (name: string, handler: ToolHandler) => void;
+}
+const TOOL_REGISTRY = Symbol.for("agora.instrumentedToolRegistry");
 
 interface RuntimeEventInput {
   tool: string;
@@ -40,19 +44,39 @@ type MinimalLoggingContext = {
   repoPath: string;
 };
 
-export function installToolRuntimeInstrumentation(server: McpServer, getContext: GetContext): void {
+export function installToolRuntimeInstrumentation(
+  server: McpServer,
+  getContext: GetContext,
+  options: RuntimeInstrumentationOptions = {},
+): void {
   const instrumentableServer = server as McpServer & {
     __agoraToolInstrumentationInstalled?: boolean;
+    [TOOL_REGISTRY]?: Map<string, ToolHandler>;
     tool: (...args: [string, string, object, ToolHandler]) => unknown;
   };
 
   if (instrumentableServer.__agoraToolInstrumentationInstalled) return;
 
+  const registry = instrumentableServer[TOOL_REGISTRY] ?? new Map<string, ToolHandler>();
+  instrumentableServer[TOOL_REGISTRY] = registry;
   const originalTool = instrumentableServer.tool.bind(server);
   instrumentableServer.tool = ((name: string, description: string, inputSchema: object, handler: ToolHandler) => {
-    return originalTool(name, description, inputSchema, instrumentToolHandler(name, getContext, handler));
+    const instrumentedHandler = instrumentToolHandler(name, getContext, handler);
+    registry.set(name, instrumentedHandler);
+    options.onInstrumentedTool?.(name, instrumentedHandler);
+    return originalTool(name, description, inputSchema, instrumentedHandler);
   }) as typeof instrumentableServer.tool;
   instrumentableServer.__agoraToolInstrumentationInstalled = true;
+}
+
+export function getInstrumentedToolRegistry(server: McpServer): Map<string, ToolHandler> {
+  const instrumentableServer = server as McpServer & {
+    [TOOL_REGISTRY]?: Map<string, ToolHandler>;
+  };
+  if (!instrumentableServer[TOOL_REGISTRY]) {
+    instrumentableServer[TOOL_REGISTRY] = new Map<string, ToolHandler>();
+  }
+  return instrumentableServer[TOOL_REGISTRY]!;
 }
 
 export function instrumentToolHandler(
