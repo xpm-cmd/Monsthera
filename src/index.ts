@@ -18,6 +18,7 @@ import { validateCrossInstanceRequest } from "./trust/cross-instance-request-gua
 import { cmdTicket } from "./cli/tickets.js";
 import { cmdPatch } from "./cli/patches.js";
 import { cmdKnowledge } from "./cli/knowledge.js";
+import { cmdTool } from "./cli/tools.js";
 import {
   CROSS_INSTANCE_SEARCH_PATH,
   CrossInstanceSearchRequestSchema,
@@ -74,6 +75,10 @@ async function main() {
       break;
     case "knowledge":
       await cmdKnowledge(config, insight, args.slice(1));
+      break;
+    case "tool":
+    case "tools":
+      await cmdTool(config, insight, args.slice(1));
       break;
     case "serve":
     case undefined:
@@ -606,6 +611,7 @@ function printHelp() {
   console.error("  ticket         Repo-scoped ticket operations");
   console.error("  patch          Repo-scoped patch inspection");
   console.error("  knowledge      Repo/global knowledge inspection");
+  console.error("  tool           Invoke a local Agora MCP tool from CLI");
   console.error("");
   console.error("Options:");
   console.error("  --repo-path      Repository path (default: cwd)");
@@ -632,6 +638,14 @@ function printHelp() {
   console.error("  agora knowledge query --scope all --type decision --json");
   console.error("  agora knowledge search \"shared auth\" --scope all --json");
   console.error("  agora knowledge show decision:abc123 --scope all --json");
+  console.error("  agora tool list");
+  console.error("  agora tool inspect propose_patch --json");
+  console.error("  agora tool status --json");
+  console.error("  agora tool claim_files --input '{\"agentId\":\"agent-dev\",\"sessionId\":\"session-dev\",\"paths\":[\"src/index.ts\"]}' --json");
+  console.error("");
+  console.error("Agent access preference:");
+  console.error("  Prefer `agora ticket|patch|knowledge ... --json` or `agora tool ... --json`");
+  console.error("  before reading `.agora/agora.db` directly.");
   console.error("");
   console.error("Environment Variables (overridden by CLI flags):");
   console.error("  AGORA_REPO_PATH       Repository path");

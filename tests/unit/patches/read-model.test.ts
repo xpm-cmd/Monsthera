@@ -84,11 +84,21 @@ describe("patch read model", () => {
       patches: [{
         proposalId: "patch_local_1",
         state: "validated",
+        persistedStale: false,
         message: "Local patch",
         baseCommit: "abc1234",
         agentId: "agent-1",
         createdAt: now,
         linkedTicketId: "TKT-local001",
+        touchedPathCount: 0,
+        validation: {
+          feasible: null,
+          policyViolationCount: 0,
+          secretWarningCount: 0,
+          reindexScope: null,
+          policyViolations: [],
+          secretWarnings: [],
+        },
       }],
     });
   });
@@ -116,11 +126,20 @@ describe("patch read model", () => {
     expect(payload).toMatchObject({
       proposalId: "patch_detail_1",
       state: "validated",
+      persistedStale: false,
       bundleId: "bundle-1",
       touchedPaths: ["src/cli/tickets.ts", "src/index.ts"],
       dryRunResult: {
         touchedPaths: ["src/cli/tickets.ts"],
         appliesCleanly: true,
+      },
+      validation: {
+        feasible: null,
+        policyViolationCount: 0,
+        secretWarningCount: 0,
+        reindexScope: 2,
+        policyViolations: [],
+        secretWarnings: [],
       },
     });
   });
@@ -157,6 +176,14 @@ describe("patch read model", () => {
     expect(payload.stateCounts).toMatchObject({
       validated: 1,
       stale: 1,
+    });
+    expect(payload.validationCounts).toMatchObject({
+      feasible: 0,
+      blocked: 0,
+      unknown: 2,
+      persistedStale: 1,
+      withPolicyViolations: 0,
+      withSecretWarnings: 0,
     });
     expect(payload.recent.map((entry) => entry.proposalId)).toEqual(["patch_sum_2", "patch_sum_1"]);
   });

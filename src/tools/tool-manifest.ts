@@ -10,6 +10,7 @@ export const CAPABILITY_TOOL_NAMES = [
   "create_ticket", "assign_ticket", "update_ticket_status", "update_ticket",
   "list_tickets", "search_tickets", "get_ticket", "comment_ticket",
   "link_tickets", "unlink_tickets",
+  "add_protected_artifact", "remove_protected_artifact", "list_protected_artifacts",
   "analyze_complexity",
   "analyze_test_coverage",
   "suggest_actions",

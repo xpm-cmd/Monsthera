@@ -4,6 +4,24 @@
 > Namespace: `Agora-9d0db75c` | Total memories: 7
 > This file is for agents (Codex, Gemini, etc.) that don't have MCP access.
 
+## Operational Access Preference
+
+For operational access, prefer Agora-native surfaces over direct SQLite access:
+
+1. `agora ticket ... --json`, `agora patch ... --json`, `agora knowledge ... --json`
+2. `agora tool inspect <tool> --json` to discover inputs
+3. `agora tool <tool> --input '{...}' --json` for direct local tool invocation
+4. `.agora/agora.db` only as a last resort when no safe Agora surface exists
+
+Examples:
+- `agora patch list --json`
+- `agora patch show <proposal-id> --json`
+- `agora tool list`
+- `agora tool inspect update_ticket_status --json`
+- `agora tool status --json`
+
+Avoid direct SQL writes for normal operation. Prefer CLI/tool paths because they preserve repo scoping, auth checks, validation, telemetry, and workflow invariants.
+
 ## Architecture Decisions
 
 ### feedback:ticket-workflow-discipline

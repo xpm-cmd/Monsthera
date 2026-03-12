@@ -62,6 +62,7 @@ describe("read tool discovery", () => {
       "analyze_complexity",
       "analyze_test_coverage",
       "suggest_actions",
+      "list_protected_artifacts",
       "lookup_dependencies",
     ]));
     expect(payload.repoAgents).toEqual([]);
@@ -92,6 +93,7 @@ describe("read tool discovery", () => {
     const analyzeComplexity = await handler("schema")({ toolName: "analyze_complexity" });
     const analyzeTestCoverage = await handler("schema")({ toolName: "analyze_test_coverage" });
     const suggestActions = await handler("schema")({ toolName: "suggest_actions" });
+    const listProtectedArtifacts = await handler("schema")({ toolName: "list_protected_artifacts" });
     const registerAgent = await handler("schema")({ toolName: "register_agent" });
 
     expect(JSON.parse(storeKnowledge.content[0].text).inputSchema).toMatchObject({
@@ -131,6 +133,10 @@ describe("read tool discovery", () => {
     });
     expect(JSON.parse(suggestActions.content[0].text).inputSchema).toMatchObject({
       changedPaths: "string[] (repo-relative changed file paths, required)",
+    });
+    expect(JSON.parse(listProtectedArtifacts.content[0].text).inputSchema).toMatchObject({
+      agentId: "string (required)",
+      sessionId: "string (required)",
     });
     expect(JSON.parse(registerAgent.content[0].text).inputSchema).toMatchObject({
       provider: "string (optional normalized provider)",

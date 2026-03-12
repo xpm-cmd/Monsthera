@@ -98,19 +98,53 @@ Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 
 ## Tools
 
-34 MCP tools organized by domain:
+42 MCP tools organized by domain:
 
 | Domain | Tools |
 |--------|-------|
-| **Search** | `status`, `capabilities`, `schema`, `get_code_pack`, `get_change_pack`, `get_issue_pack` |
+| **Search** | `status`, `capabilities`, `schema`, `get_code_pack`, `get_change_pack`, `get_issue_pack`, `search_remote_instances` |
 | **Agents** | `register_agent`, `agent_status`, `broadcast`, `claim_files`, `end_session` |
 | **Coordination** | `send_coordination`, `poll_coordination` |
 | **Patches** | `propose_patch`, `list_patches` |
 | **Notes** | `propose_note`, `list_notes` |
 | **Knowledge** | `store_knowledge`, `search_knowledge`, `query_knowledge`, `archive_knowledge`, `delete_knowledge` |
 | **Tickets** | `create_ticket`, `assign_ticket`, `update_ticket_status`, `update_ticket`, `list_tickets`, `search_tickets`, `get_ticket`, `comment_ticket`, `link_tickets`, `unlink_tickets` |
-| **Analysis** | `lookup_dependencies` |
+| **Protection** | `add_protected_artifact`, `remove_protected_artifact`, `list_protected_artifacts` |
+| **Analysis** | `analyze_complexity`, `analyze_test_coverage`, `suggest_actions`, `lookup_dependencies` |
 | **Index** | `request_reindex` |
+| **Export** | `export_audit` |
+
+## Agent-First Operational Access
+
+When an agent or script needs repository state, prefer Agora-native access in this order:
+
+1. Specialized CLI commands for common workflows
+2. `agora tool inspect <tool> --json` to discover tool inputs
+3. `agora tool <tool> --input '{...}' --json` for direct local MCP tool invocation
+4. Direct reads from `.agora/agora.db` only as a last resort
+
+Why this order:
+
+- specialized commands and `agora tool` keep repo scoping, validation, auth checks, telemetry, and workflow invariants
+- direct SQLite access bypasses those guards and should not be the default path for agents
+
+Operational examples:
+
+```bash
+agora ticket summary --json
+agora patch list --json
+agora patch show patch-123 --json
+agora knowledge search "ticket workflow" --scope all --json
+agora tool list
+agora tool inspect propose_patch --json
+agora tool status --json
+agora tool claim_files --input '{"agentId":"agent-dev","sessionId":"session-dev","paths":["src/index.ts"]}' --json
+```
+
+Patch review guidance:
+
+- use `agora patch list --json` to review current patch states plus live staleness against current `HEAD`
+- use `agora patch show <proposal-id> --json` to inspect feasibility, policy violations, secret warnings, touched path counts, and linked ticket metadata before opening raw diffs
 
 ## Architecture
 
@@ -119,7 +153,7 @@ agora serve
     |
     +---> MCP Server (stdio | HTTP)
     |        |
-    |        +---> 34 Tools ---> Trust Layer (Tier A/B + Roles)
+    |        +---> 42 Tools ---> Trust Layer (Tier A/B + Roles)
     |        |                      |
     |        |       Search --------+---> FTS5 + Semantic Hybrid + Scope Filter
     |        |       Evidence Bundles ---> Stage A (top 10) + Stage B (expand 5)
@@ -193,7 +227,7 @@ agora export --obsidian --vault ~/MyVault        # Export to specific vault
 ```
 agora v1.0.0
 
-Commands:  serve | init | index | status | export
+Commands:  serve | init | index | status | export | ticket | patch | knowledge | tool
 
 Options:
   --repo-path       Path to the git repository (default: cwd)

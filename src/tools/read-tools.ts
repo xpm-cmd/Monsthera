@@ -559,6 +559,22 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           agentId: "string (required)",
           sessionId: "string (required)",
         },
+        // ── protection tools ──
+        add_protected_artifact: {
+          pathPattern: "string (1-500 chars)",
+          reason: "string (1-500 chars)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        remove_protected_artifact: {
+          pathPattern: "string (1-500 chars)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        list_protected_artifacts: {
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
         // ── analysis tools ──
         lookup_dependencies: {
           filePath: "string (file path relative to repo root, required)",

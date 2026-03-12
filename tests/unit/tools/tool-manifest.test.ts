@@ -3,7 +3,7 @@ import { CAPABILITY_TOOL_NAMES } from "../../../src/tools/tool-manifest.js";
 
 describe("tool-manifest", () => {
   it("exports the expected number of capability tools", () => {
-    expect(CAPABILITY_TOOL_NAMES.length).toBe(39);
+    expect(CAPABILITY_TOOL_NAMES.length).toBe(42);
   });
 
   it("contains all core MCP tool names", () => {
@@ -41,6 +41,7 @@ describe("tool-manifest", () => {
     expect(names.has("comment_ticket")).toBe(true);
     expect(names.has("link_tickets")).toBe(true);
     expect(names.has("unlink_tickets")).toBe(true);
+    expect(names.has("list_protected_artifacts")).toBe(true);
 
     // Coordination
     expect(names.has("send_coordination")).toBe(true);
@@ -56,6 +57,8 @@ describe("tool-manifest", () => {
     expect(names.has("suggest_actions")).toBe(true);
     expect(names.has("lookup_dependencies")).toBe(true);
     expect(names.has("export_audit")).toBe(true);
+    expect(names.has("add_protected_artifact")).toBe(true);
+    expect(names.has("remove_protected_artifact")).toBe(true);
   });
 
   it("contains no duplicate tool names", () => {
