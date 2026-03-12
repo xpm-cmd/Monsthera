@@ -31,6 +31,7 @@ import {
   buildTicketListPayload,
 } from "../tickets/read-model.js";
 import {
+  buildGovernanceOptions,
   buildTicketConsensusReport,
   GATED_TICKET_TRANSITIONS,
   inferConsensusTransitionForTicketStatus,
@@ -63,6 +64,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         ticketQuorum: c.config?.ticketQuorum,
+        governance: c.config?.governance,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -98,6 +100,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         ticketQuorum: c.config?.ticketQuorum,
+        governance: c.config?.governance,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -130,6 +133,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         ticketQuorum: c.config?.ticketQuorum,
+        governance: c.config?.governance,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
         refreshKnowledgeSearch: () => c.searchRouter?.rebuildKnowledgeFts?.(c.sqlite),
@@ -330,6 +334,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         ticketQuorum: c.config?.ticketQuorum,
+        governance: c.config?.governance,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -381,6 +386,10 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       });
       queries.updateTicket(c.db, ticket.id, {});
       const verdictRows = queries.getReviewVerdicts(c.db, ticket.id);
+      const govOpts = buildGovernanceOptions(c.config?.governance, verdictRows, (aid) => {
+        const a = queries.getAgent(c.db, aid);
+        return a ? { roleId: a.roleId, provider: a.provider, model: a.model } : undefined;
+      });
 
       return okJson({
         ticketId,
@@ -397,6 +406,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
           verdictRows,
           config: c.config?.ticketQuorum,
           transition: transition ?? inferConsensusTransitionForTicketStatus(ticket.status as TicketStatusType),
+          governance: govOpts,
         }),
       });
     },
@@ -424,11 +434,18 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
       if (!ticket) return errText(`Ticket not found: ${ticketId}`);
 
+      const verdictRows = queries.getReviewVerdicts(c.db, ticket.id);
+      const govOpts = buildGovernanceOptions(c.config?.governance, verdictRows, (aid) => {
+        const a = queries.getAgent(c.db, aid);
+        return a ? { roleId: a.roleId, provider: a.provider, model: a.model } : undefined;
+      });
+
       return okJson(buildTicketConsensusReport({
         ticketId,
-        verdictRows: queries.getReviewVerdicts(c.db, ticket.id),
+        verdictRows,
         config: c.config?.ticketQuorum,
         transition: transition ?? inferConsensusTransitionForTicketStatus(ticket.status as TicketStatusType),
+        governance: govOpts,
       }));
     },
   );
@@ -452,6 +469,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         ticketQuorum: c.config?.ticketQuorum,
+        governance: c.config?.governance,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -483,6 +501,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoPath: c.repoPath,
         insight: c.insight,
         ticketQuorum: c.config?.ticketQuorum,
+        governance: c.config?.governance,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {

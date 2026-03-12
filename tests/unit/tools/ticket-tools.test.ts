@@ -761,6 +761,59 @@ describe("ticket tools", () => {
     });
   });
 
+  it("reports governed ticket consensus against the 5 analytical specializations", async () => {
+    config.governance = {
+      nonVotingRoles: ["facilitator"],
+      modelDiversity: { strict: false },
+    };
+
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    for (const specialization of ["architect", "simplifier", "security", "performance"] as const) {
+      const verdictResult = await handler("submit_verdict")({
+        ticketId,
+        specialization,
+        verdict: "pass",
+        agentId: "agent-review",
+        sessionId: "session-review",
+      });
+      expect(verdictResult.isError).not.toBe(true);
+    }
+
+    const consensus = await handler("check_consensus")({
+      ticketId,
+      transition: "technical_analysis→approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    expect(consensus.isError).not.toBe(true);
+
+    const payload = JSON.parse(consensus.content[0].text);
+    expect(payload.councilSpecializations).toEqual([
+      "architect",
+      "simplifier",
+      "security",
+      "performance",
+      "patterns",
+    ]);
+    expect(payload.counts).toMatchObject({
+      pass: 4,
+      fail: 0,
+      abstain: 0,
+      responded: 4,
+      missing: 1,
+    });
+    expect(payload.missingSpecializations).toEqual(["patterns"]);
+  });
+
   it("latest verdict per specialization wins", async () => {
     const createResult = await createTicket();
     const ticketId = JSON.parse(createResult.content[0].text).ticketId;

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod/v4";
 import { CouncilSpecializationId, COUNCIL_SPECIALIZATIONS } from "../../schemas/council.js";
+import { GovernanceConfigSchema } from "../../schemas/governance.js";
 import { DEFAULT_AGORA_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_DB_NAME } from "./constants.js";
 import {
   DEFAULT_CONFIG_FILE_PENALTY_FACTOR,
@@ -208,6 +209,10 @@ export const AgoraConfigSchema = z.object({
     peers: [],
   }),
   ticketQuorum: TicketQuorumConfigSchema.default(DEFAULT_TICKET_QUORUM_CONFIG),
+  governance: GovernanceConfigSchema.default({
+    nonVotingRoles: ["facilitator"],
+    modelDiversity: { strict: false },
+  }),
   toolRateLimits: ToolRateLimitConfigSchema.default({
     defaultPerMinute: 10,
     overrides: {},
@@ -224,6 +229,7 @@ export type SearchConfig = z.infer<typeof SearchConfigSchema>;
 export type CrossInstanceCapability = z.infer<typeof CrossInstanceCapabilitySchema>;
 export type CrossInstancePeer = z.infer<typeof CrossInstancePeerSchema>;
 export type CrossInstanceConfig = z.infer<typeof CrossInstanceConfigSchema>;
+export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
 
 export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
   return AgoraConfigSchema.parse(partial);
@@ -251,7 +257,7 @@ export function mergeConfigSources(
   for (const source of sources) {
     if (!source) continue;
 
-    const { registrationAuth, crossInstance, ticketQuorum, toolRateLimits, search, ...rest } = source;
+    const { registrationAuth, crossInstance, ticketQuorum, governance, toolRateLimits, search, ...rest } = source;
     Object.assign(merged, rest);
 
     if (registrationAuth) {
@@ -290,6 +296,21 @@ export function mergeConfigSources(
               inReviewToReadyForCommit: {
                 ...(merged.ticketQuorum?.inReviewToReadyForCommit ?? {}),
                 ...(ticketQuorum.inReviewToReadyForCommit ?? {}),
+              },
+            }
+          : {}),
+      };
+    }
+
+    if (governance) {
+      merged.governance = {
+        ...(merged.governance ?? {}),
+        ...governance,
+        ...(governance.modelDiversity || merged.governance?.modelDiversity
+          ? {
+              modelDiversity: {
+                ...(merged.governance?.modelDiversity ?? {}),
+                ...(governance.modelDiversity ?? {}),
               },
             }
           : {}),

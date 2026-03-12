@@ -1110,3 +1110,111 @@ describe("ticket service quorum enforcement", () => {
     verdictSpy.mockRestore();
   });
 });
+
+describe("ticket service governance: facilitator non-voting", () => {
+  let sqlite: InstanceType<typeof Database>;
+  let db: ReturnType<typeof createTestDb>["db"];
+  let repoId: number;
+  let reviewerCtx: TicketServiceContext;
+  let governanceCtx: TicketServiceContext;
+  let systemCtx: TicketSystemContext;
+
+  beforeEach(() => {
+    ({ db, sqlite } = createTestDb());
+    repoId = queries.upsertRepo(db, "/test", "test").id;
+
+    registerActor(db, { agentId: "agent-review", sessionId: "session-review", roleId: "reviewer" });
+
+    // Register a facilitator agent with identity metadata
+    const now = new Date().toISOString();
+    queries.upsertAgent(db, {
+      id: "agent-facilitator",
+      name: "facilitator",
+      type: "test",
+      roleId: "facilitator",
+      trustTier: "A",
+      registeredAt: now,
+      provider: "anthropic",
+      model: "opus",
+    });
+    queries.insertSession(db, {
+      id: "session-facilitator",
+      agentId: "agent-facilitator",
+      state: "active",
+      connectedAt: now,
+      lastActivity: now,
+      claimedFilesJson: null,
+    });
+
+    reviewerCtx = {
+      db,
+      repoId,
+      repoPath: "/test",
+      insight: { info: () => undefined, warn: () => undefined },
+    };
+
+    governanceCtx = {
+      ...reviewerCtx,
+      governance: {
+        nonVotingRoles: ["facilitator"],
+        modelDiversity: { strict: false },
+      },
+    };
+
+    systemCtx = {
+      ...reviewerCtx,
+      system: true,
+      actorLabel: "cli admin",
+    };
+  });
+
+  afterEach(() => sqlite.close());
+
+  it("excludes facilitator verdicts from quorum when governance is configured", async () => {
+    const created = await createTicketRecord(systemCtx, {
+      title: "Governance gate",
+      description: "Facilitator verdict should not count",
+      severity: "high",
+      priority: 8,
+      tags: [],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(created.ok).toBe(true);
+    const ticketId = created.ok ? String(created.data.ticketId) : "";
+    expect(updateTicketStatusRecord(systemCtx, {
+      ticketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+
+    // Facilitator submits architect verdict + 3 other passes = 4 total, but only 3 eligible
+    recordVerdict(db, ticket.id, { specialization: "architect", verdict: "pass", agentId: "agent-facilitator", sessionId: "session-facilitator" });
+    recordVerdict(db, ticket.id, { specialization: "simplifier", verdict: "pass" });
+    recordVerdict(db, ticket.id, { specialization: "security", verdict: "pass" });
+    recordVerdict(db, ticket.id, { specialization: "performance", verdict: "pass" });
+
+    // With governance: facilitator excluded → only 3 passes, needs 4
+    const result = updateTicketStatusRecord(governanceCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("quorum not met");
+    }
+
+    // Without governance: all 4 count → passes
+    const resultNoGov = updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(resultNoGov.ok).toBe(true);
+  });
+});

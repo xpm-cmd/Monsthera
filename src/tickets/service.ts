@@ -5,10 +5,11 @@ import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
 import * as tables from "../db/schema.js";
 import type { InsightStream } from "../core/insight-stream.js";
-import type { TicketQuorumConfig } from "../core/config.js";
+import type { TicketQuorumConfig, GovernanceConfig } from "../core/config.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { getHead } from "../git/operations.js";
 import {
+  buildGovernanceOptions,
   evaluateTicketTransitionConsensus,
   resolveTicketQuorumRule,
   type TransitionConsensusPayload,
@@ -35,6 +36,7 @@ interface TicketServiceBaseContext {
   repoPath: string;
   insight: Pick<InsightStream, "info" | "warn">;
   ticketQuorum?: TicketQuorumConfig;
+  governance?: GovernanceConfig;
   bus?: CoordinationBus;
   refreshTicketSearch?: () => void;
   refreshKnowledgeSearch?: () => void;
@@ -309,13 +311,21 @@ export function updateTicketStatusRecord(
 
   if (resolved.role !== "admin") {
     const quorumRule = resolveTicketQuorumRule(current, input.status, ctx.ticketQuorum);
+    const verdictRows = quorumRule ? queries.getReviewVerdicts(ctx.db, ticket.id) : [];
+    const governanceOpts = quorumRule
+      ? buildGovernanceOptions(ctx.governance, verdictRows, (agentId) => {
+          const agent = queries.getAgent(ctx.db, agentId);
+          return agent ? { roleId: agent.roleId, provider: agent.provider, model: agent.model } : undefined;
+        })
+      : undefined;
     const consensus = quorumRule
       ? evaluateTicketTransitionConsensus({
           ticketId: input.ticketId,
           fromStatus: current,
           toStatus: input.status,
-          verdictRows: queries.getReviewVerdicts(ctx.db, ticket.id),
+          verdictRows,
           config: ctx.ticketQuorum,
+          governance: governanceOpts,
         })
       : null;
     if (consensus && !consensus.advisoryReady) {

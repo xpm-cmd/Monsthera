@@ -7,8 +7,9 @@ import type {
   CouncilSpecializationId as CouncilSpecializationIdValue,
   CouncilVerdict as CouncilVerdictValue,
 } from "../../schemas/council.js";
+import { GOVERNANCE_ANALYTICAL_SPECIALIZATIONS } from "../../schemas/governance.js";
 import type { TicketStatus } from "../../schemas/ticket.js";
-import type { TicketQuorumConfig } from "../core/config.js";
+import type { TicketQuorumConfig, GovernanceConfig } from "../core/config.js";
 
 export interface ReviewVerdictRecord {
   specialization: string;
@@ -17,6 +18,25 @@ export interface ReviewVerdictRecord {
   sessionId: string;
   reasoning: string | null;
   createdAt: string;
+}
+
+export interface AgentIdentity {
+  provider: string | null;
+  model: string | null;
+}
+
+export interface ModelDiversityResult {
+  distinctModels: number;
+  totalVoters: number;
+  diversityEligible: number;
+  ineligibleAgentIds: string[];
+  duplicateGroups: Array<{ provider: string; model: string; agentIds: string[]; specializations: CouncilSpecializationIdValue[] }>;
+  diversityMet: boolean;
+}
+
+export interface GovernanceEvaluation {
+  nonVotingExcluded: NormalizedReviewVerdictRecord[];
+  modelDiversity: ModelDiversityResult | null;
 }
 
 export interface ConsensusCounts {
@@ -39,6 +59,7 @@ export interface ConsensusPayload {
   missingSpecializations: CouncilSpecializationIdValue[];
   vetoes: NormalizedReviewVerdictRecord[];
   verdicts: NormalizedReviewVerdictRecord[];
+  governance?: GovernanceEvaluation;
 }
 
 export const GATED_TICKET_TRANSITIONS = [
@@ -96,48 +117,89 @@ export function getDefaultAdvisoryPasses(totalSpecializations = COUNCIL_SPECIALI
   return Math.max(1, totalSpecializations - 2);
 }
 
+export interface ConsensusGovernanceOptions {
+  nonVotingAgentIds?: string[];
+  agentIdentities?: ReadonlyMap<string, AgentIdentity>;
+  strictDiversity?: boolean;
+}
+
 export function buildConsensusPayload(
   ticketId: string,
   verdictRows: ReviewVerdictRecord[],
   options?: {
     requiredPasses?: number;
     vetoSpecializations?: readonly CouncilSpecializationIdValue[];
+    governance?: ConsensusGovernanceOptions;
   },
 ): ConsensusPayload {
   const vetoSpecializations = dedupeSpecializations(options?.vetoSpecializations ?? DEFAULT_VETO_SPECIALIZATIONS);
-  const normalizedVerdicts = normalizeVerdictRows(verdictRows);
-  const verdicts = COUNCIL_SPECIALIZATIONS.flatMap((specialization) => {
+  const allNormalized = normalizeVerdictRows(verdictRows);
+  const gov = options?.governance;
+  const councilSpecializations = gov
+    ? GOVERNANCE_ANALYTICAL_SPECIALIZATIONS
+    : COUNCIL_SPECIALIZATIONS;
+
+  // Governance: filter out non-voting roles (e.g. facilitator)
+  const nonVotingIds = gov?.nonVotingAgentIds ?? [];
+  const nonVotingExcluded = nonVotingIds.length > 0
+    ? allNormalized.filter((v) => nonVotingIds.includes(v.agentId))
+    : [];
+  const normalizedVerdicts = nonVotingIds.length > 0
+    ? allNormalized.filter((v) => !nonVotingIds.includes(v.agentId))
+    : allNormalized;
+
+  const verdicts = councilSpecializations.flatMap((specialization) => {
     const verdict = normalizedVerdicts.find((entry) => entry.specialization === specialization);
     return verdict ? [{ ...verdict }] : [];
   });
-  const missingSpecializations = COUNCIL_SPECIALIZATIONS.filter(
+  const missingSpecializations = councilSpecializations.filter(
     (specialization) => !verdicts.some((entry) => entry.specialization === specialization),
   );
   const vetoes = verdicts.filter(
     (entry) => entry.verdict === "fail" && vetoSpecializations.includes(entry.specialization),
   );
+
+  // Governance: model diversity evaluation
+  const diversityResult = gov?.agentIdentities
+    ? evaluateModelDiversity(verdicts, gov.agentIdentities)
+    : null;
+
+  // When strict diversity is enabled, passing verdicts from duplicate
+  // provider+model pairs only count once toward quorum.
+  const effectivePassCount = gov?.strictDiversity && diversityResult
+    ? countDiversityAdjustedPasses(verdicts, gov.agentIdentities!)
+    : verdicts.filter((entry) => entry.verdict === "pass").length;
+
   const counts: ConsensusCounts = {
-    pass: verdicts.filter((entry) => entry.verdict === "pass").length,
+    pass: effectivePassCount,
     fail: verdicts.filter((entry) => entry.verdict === "fail").length,
     abstain: verdicts.filter((entry) => entry.verdict === "abstain").length,
     responded: verdicts.length,
     missing: missingSpecializations.length,
   };
-  const requiredPasses = options?.requiredPasses ?? getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length);
+  const requiredPasses = options?.requiredPasses
+    ?? (gov ? Math.max(1, councilSpecializations.length - 1) : getDefaultAdvisoryPasses(councilSpecializations.length));
   const quorumMet = counts.pass >= requiredPasses;
+  const blockedByVeto = vetoes.length > 0;
+  const diversityBlocked = gov?.strictDiversity === true && diversityResult != null && !diversityResult.diversityMet;
+
+  const governance: GovernanceEvaluation | undefined = gov
+    ? { nonVotingExcluded, modelDiversity: diversityResult }
+    : undefined;
 
   return {
     ticketId,
-    councilSpecializations: [...COUNCIL_SPECIALIZATIONS],
+    councilSpecializations: [...councilSpecializations],
     vetoSpecializations,
     requiredPasses,
     counts,
     quorumMet,
-    blockedByVeto: vetoes.length > 0,
-    advisoryReady: quorumMet && vetoes.length === 0,
+    blockedByVeto,
+    advisoryReady: quorumMet && !blockedByVeto && !diversityBlocked,
     missingSpecializations,
     vetoes,
     verdicts,
+    governance,
   };
 }
 
@@ -146,16 +208,21 @@ export function buildTicketConsensusReport(input: {
   verdictRows: ReviewVerdictRecord[];
   config?: TicketQuorumConfig | null;
   transition?: GatedTicketTransition | null;
+  governance?: ConsensusGovernanceOptions;
 }): TicketConsensusReport {
   if (!input.transition) {
-    return buildConsensusPayload(input.ticketId, input.verdictRows);
+    return buildConsensusPayload(input.ticketId, input.verdictRows, {
+      governance: input.governance,
+    });
   }
 
   const key = TICKET_QUORUM_RULES[input.transition];
   const rule = input.config?.[key];
   if (rule?.enabled === false) {
     return {
-      ...buildConsensusPayload(input.ticketId, input.verdictRows),
+      ...buildConsensusPayload(input.ticketId, input.verdictRows, {
+        governance: input.governance,
+      }),
       transition: input.transition,
       ruleKey: key,
       enforcementEnabled: false,
@@ -168,6 +235,7 @@ export function buildTicketConsensusReport(input: {
     ...buildConsensusPayload(input.ticketId, input.verdictRows, {
       requiredPasses,
       vetoSpecializations,
+      governance: input.governance,
     }),
     transition: input.transition,
     ruleKey: key,
@@ -216,6 +284,7 @@ export function evaluateTicketTransitionConsensus(input: {
   toStatus: TicketStatus;
   verdictRows: ReviewVerdictRecord[];
   config?: TicketQuorumConfig | null;
+  governance?: ConsensusGovernanceOptions;
 }): TransitionConsensusPayload | null {
   const rule = resolveTicketQuorumRule(input.fromStatus, input.toStatus, input.config);
   if (!rule) return null;
@@ -224,10 +293,120 @@ export function evaluateTicketTransitionConsensus(input: {
     ...buildConsensusPayload(input.ticketId, input.verdictRows, {
       requiredPasses: rule.requiredPasses,
       vetoSpecializations: rule.vetoSpecializations,
+      governance: input.governance,
     }),
     transition: rule.transition,
     ruleKey: rule.key,
   };
+}
+
+/**
+ * Build governance options from config and agent lookup.
+ * Resolves non-voting agent IDs and agent identity maps for the given verdict rows.
+ */
+export function buildGovernanceOptions(
+  governance: GovernanceConfig | undefined,
+  verdictRows: ReviewVerdictRecord[],
+  getAgentRecord: (agentId: string) => { roleId: string; provider: string | null; model: string | null } | undefined,
+): ConsensusGovernanceOptions | undefined {
+  if (!governance) return undefined;
+
+  const uniqueAgentIds = [...new Set(verdictRows.map((v) => v.agentId))];
+  const agentRecords = new Map(
+    uniqueAgentIds.flatMap((id) => {
+      const agent = getAgentRecord(id);
+      return agent ? [[id, agent] as const] : [];
+    }),
+  );
+
+  const nonVotingRoles = governance.nonVotingRoles ?? [];
+  const nonVotingAgentIds = uniqueAgentIds.filter((id) => {
+    const agent = agentRecords.get(id);
+    return agent && nonVotingRoles.includes(agent.roleId as GovernanceConfig["nonVotingRoles"][number]);
+  });
+
+  const agentIdentities = new Map(
+    [...agentRecords.entries()].map(([id, agent]) => [id, { provider: agent.provider, model: agent.model }]),
+  );
+
+  return {
+    nonVotingAgentIds,
+    agentIdentities,
+    strictDiversity: governance.modelDiversity?.strict ?? false,
+  };
+}
+
+/**
+ * Evaluate model diversity across passing verdicts.
+ * Agents missing provider or model are not diversity-eligible.
+ */
+export function evaluateModelDiversity(
+  verdicts: NormalizedReviewVerdictRecord[],
+  agentIdentities: ReadonlyMap<string, AgentIdentity>,
+): ModelDiversityResult {
+  const passVerdicts = verdicts.filter((v) => v.verdict === "pass");
+  const ineligibleAgentIds: string[] = [];
+  const modelMap = new Map<string, { provider: string; model: string; agentIds: string[]; specializations: CouncilSpecializationIdValue[] }>();
+
+  for (const v of passVerdicts) {
+    const identity = agentIdentities.get(v.agentId);
+    if (!identity?.provider || !identity?.model) {
+      ineligibleAgentIds.push(v.agentId);
+      continue;
+    }
+    const key = `${identity.provider}::${identity.model}`;
+    const existing = modelMap.get(key);
+    if (existing) {
+      if (!existing.agentIds.includes(v.agentId)) existing.agentIds.push(v.agentId);
+      existing.specializations.push(v.specialization);
+    } else {
+      modelMap.set(key, {
+        provider: identity.provider,
+        model: identity.model,
+        agentIds: [v.agentId],
+        specializations: [v.specialization],
+      });
+    }
+  }
+
+  const duplicateGroups = [...modelMap.values()].filter((g) => g.specializations.length > 1);
+  const diversityEligible = passVerdicts.length - ineligibleAgentIds.length;
+
+  return {
+    distinctModels: modelMap.size,
+    totalVoters: passVerdicts.length,
+    diversityEligible,
+    ineligibleAgentIds: [...new Set(ineligibleAgentIds)],
+    duplicateGroups,
+    diversityMet: duplicateGroups.length === 0 && ineligibleAgentIds.length === 0,
+  };
+}
+
+/**
+ * Count passes with diversity deduplication: when multiple passing verdicts
+ * share the same provider+model, only one counts toward quorum.
+ */
+function countDiversityAdjustedPasses(
+  verdicts: NormalizedReviewVerdictRecord[],
+  agentIdentities: ReadonlyMap<string, AgentIdentity>,
+): number {
+  const passVerdicts = verdicts.filter((v) => v.verdict === "pass");
+  const seenModels = new Set<string>();
+  let count = 0;
+
+  for (const v of passVerdicts) {
+    const identity = agentIdentities.get(v.agentId);
+    if (!identity?.provider || !identity?.model) {
+      continue;
+    }
+    const key = `${identity.provider}::${identity.model}`;
+    if (!seenModels.has(key)) {
+      seenModels.add(key);
+      count++;
+    }
+  }
+
+  return count;
 }
 
 function dedupeSpecializations(values: readonly CouncilSpecializationIdValue[]): CouncilSpecializationIdValue[] {
