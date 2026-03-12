@@ -74,11 +74,15 @@ pnpm build
 ```bash
 cd your-project
 agora init                    # Create .agora/config.json and local DB
-agora index                   # Parse tracked files into the local index
+agora index                   # Full index of tracked files
+agora index --incremental     # Fast refresh from the last indexed commit
 agora serve                   # Start MCP server over stdio
 agora serve --transport http  # Start HTTP MCP + dashboard
 agora status                  # Check index status, backend, and live sessions
 ```
+
+Agora also runs `agora index --incremental` automatically in a local git `post-commit` hook so
+committed code is reindexed before reviewers or subsequent agents query fresh context.
 
 In HTTP mode, MCP is exposed at `http://localhost:3000/mcp` and the dashboard runs at
 `http://localhost:3141` by default.

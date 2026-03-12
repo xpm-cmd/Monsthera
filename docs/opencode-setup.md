@@ -175,6 +175,6 @@ Agora exposes 23 tools. Each tool schema consumes prompt tokens. If your model h
 |-------|----------|
 | Tools not appearing | Check that `enabled: true` is set and the command path is correct |
 | "Agent not registered" errors | Ensure the LLM calls `register_agent` before other tools |
-| Stale index results | Ask the LLM to call `request_reindex` or run `agora index` manually |
+| Stale index results | Ask the LLM to call `request_reindex` or run `agora index --incremental` manually (commits also trigger a local post-commit refresh) |
 | Tool calls failing with local models | Try a larger model with better tool-calling support (Llama 3.1 70B, Qwen 2.5 32B) |
 | Permission denied | Check role tokens if `registrationAuth` is enabled |

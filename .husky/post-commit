@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "Agora post-commit reindex skipped: pnpm not available."
+  exit 0
+fi
+
+pnpm tsx src/index.ts index --incremental --verbosity quiet >/dev/null 2>&1 || \
+  echo "Agora post-commit reindex failed. Run 'agora index --incremental' manually."

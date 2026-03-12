@@ -6,7 +6,7 @@ import { createAgoraContextLoader } from "./core/context-loader.js";
 import { recordRuntimeEventWithContext } from "./tools/runtime-instrumentation.js";
 import { initDatabase, initGlobalDatabase } from "./db/init.js";
 import { InsightStream } from "./core/insight-stream.js";
-import { fullIndex, getIndexedCommit } from "./indexing/indexer.js";
+import { fullIndex, getIndexedCommit, incrementalIndex } from "./indexing/indexer.js";
 import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
 import * as queries from "./db/queries.js";
 import { prepareKnowledgeSearchTarget } from "./knowledge/search.js";
@@ -57,7 +57,7 @@ async function main() {
       await cmdInit(config, insight);
       break;
     case "index":
-      await cmdIndex(config, insight);
+      await cmdIndex(config, insight, args.slice(1));
       break;
     case "status":
       await cmdStatus(config, insight);
@@ -479,9 +479,20 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
   }
 }
 
-async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: InsightStream) {
+async function cmdIndex(
+  config: ReturnType<typeof resolveConfig>,
+  insight: InsightStream,
+  args: string[] = [],
+) {
   if (!(await isGitRepo({ cwd: config.repoPath }))) {
     insight.error("Not a git repository");
+    process.exit(1);
+  }
+
+  const forceFull = args.includes("--full");
+  const preferIncremental = args.includes("--incremental");
+  if (forceFull && preferIncremental) {
+    insight.error("Use only one of --full or --incremental");
     process.exit(1);
   }
 
@@ -490,6 +501,7 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
   const repoName = basename(repoRoot);
   const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
+  const indexedCommit = getIndexedCommit(db, repoId);
 
   // Initialize semantic reranker if enabled (generates embeddings during indexing)
   let semanticReranker: import("./search/semantic.js").SemanticReranker | null = null;
@@ -509,44 +521,68 @@ async function cmdIndex(config: ReturnType<typeof resolveConfig>, insight: Insig
     }
   }
 
-  insight.info("Starting full index...");
-  const result = await fullIndex({
-    repoPath: repoRoot,
-    repoId,
-    db,
-    sensitiveFilePatterns: config.sensitiveFilePatterns,
-    secretPatterns: compileSecretPatterns(config.secretPatterns),
-    excludePatterns: config.excludePatterns,
-    onProgress: (msg) => insight.detail(msg),
-    semanticReranker,
-  });
+  const shouldRunIncremental = Boolean(preferIncremental && indexedCommit);
+  if (preferIncremental && !indexedCommit) {
+    insight.warn("No previous indexed commit found; falling back to full index");
+  }
 
-  // Initialize knowledge FTS5 table (idempotent, ensures search_knowledge works after index)
+  insight.info(shouldRunIncremental ? `Starting incremental index from ${indexedCommit!.slice(0, 7)}...` : "Starting full index...");
+  const result = shouldRunIncremental
+    ? await incrementalIndex(indexedCommit!, {
+        repoPath: repoRoot,
+        repoId,
+        db,
+        sensitiveFilePatterns: config.sensitiveFilePatterns,
+        secretPatterns: compileSecretPatterns(config.secretPatterns),
+        excludePatterns: config.excludePatterns,
+        onProgress: (msg: string) => insight.detail(msg),
+        semanticReranker,
+      })
+    : await fullIndex({
+        repoPath: repoRoot,
+        repoId,
+        db,
+        sensitiveFilePatterns: config.sensitiveFilePatterns,
+        secretPatterns: compileSecretPatterns(config.secretPatterns),
+        excludePatterns: config.excludePatterns,
+        onProgress: (msg) => insight.detail(msg),
+        semanticReranker,
+      });
+
+  await rebuildSearchIndexes(sqlite, db, repoId, insight);
+
+  insight.info(`Done: ${result.filesIndexed} files indexed at ${result.commit.slice(0, 7)} (${result.durationMs}ms)`);
+  if (result.errors.length > 0) {
+    insight.warn(`${result.errors.length} errors during indexing`);
+  }
+}
+
+async function rebuildSearchIndexes(
+  sqlite: ReturnType<typeof initDatabase>["sqlite"],
+  db: ReturnType<typeof initDatabase>["db"],
+  repoId: number,
+  insight: InsightStream,
+) {
   try {
     const { FTS5Backend } = await import("./search/fts5.js");
     const fts5 = new FTS5Backend(sqlite, db, (reason) => insight.warn(reason));
-    // Rebuild code FTS5 index (files_fts) so get_code_pack works immediately
     fts5.initFtsTable();
     fts5.rebuildIndex(repoId);
-    // Rebuild knowledge FTS5 index
     fts5.initKnowledgeFts(sqlite);
     fts5.rebuildKnowledgeFts(sqlite);
-    // Rebuild ticket FTS5 index
     fts5.initTicketFts();
     fts5.rebuildTicketFts(repoId);
-    // Also init for global DB if available
     try {
       const { globalSqlite } = initGlobalDatabase();
       if (globalSqlite) {
         fts5.initKnowledgeFts(globalSqlite);
         fts5.rebuildKnowledgeFts(globalSqlite);
       }
-    } catch { /* global DB may not exist */ }
-  } catch { /* non-fatal: FTS5 will be created on next serve */ }
-
-  insight.info(`Done: ${result.filesIndexed} files indexed at ${result.commit.slice(0, 7)} (${result.durationMs}ms)`);
-  if (result.errors.length > 0) {
-    insight.warn(`${result.errors.length} errors during indexing`);
+    } catch {
+      // global DB may not exist
+    }
+  } catch {
+    // non-fatal: FTS5 will be created on next serve
   }
 }
 
@@ -606,7 +642,7 @@ function printHelp() {
   console.error("Commands:");
   console.error("  serve          Start MCP server (default)");
   console.error("  init           Initialize .agora directory");
-  console.error("  index          Run full index");
+  console.error("  index          Run code index (--incremental or --full)");
   console.error("  status         Show index status");
   console.error("  export         Export knowledge to external tools");
   console.error("  ticket         Repo-scoped ticket operations");
@@ -631,6 +667,7 @@ function printHelp() {
   console.error("");
   console.error("Ticket examples:");
   console.error("  agora ticket summary --json");
+  console.error("  agora index --incremental");
   console.error("  agora ticket list --status in_progress");
   console.error("  agora ticket show TKT-1234abcd --json");
   console.error("  agora ticket transition TKT-1234abcd in_review --comment \"Implementation complete\"");

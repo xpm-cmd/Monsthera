@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { initDatabase } from "../../src/db/init.js";
 import * as queries from "../../src/db/queries.js";
-import { fullIndex } from "../../src/indexing/indexer.js";
+import { fullIndex, getIndexedCommit, incrementalIndex } from "../../src/indexing/indexer.js";
 import { FTS5Backend } from "../../src/search/fts5.js";
 
 /**
@@ -136,5 +136,39 @@ export function handleRequest(path: string): string {
     for (const r of scoped) {
       expect(r.path.startsWith("src/")).toBe(true);
     }
+  });
+
+  it("incrementally reindexes committed changes", async () => {
+    const previousCommit = getIndexedCommit(db, repoId);
+    expect(previousCommit).toBeTruthy();
+
+    writeFileSync(
+      join(tmpDir, "src", "auth.ts"),
+      `export function authorizeToken(token: string): boolean {
+  return token.startsWith("tok_");
+}
+`,
+    );
+
+    execFileSync("git", ["add", "-A"], { cwd: tmpDir });
+    execFileSync("git", ["commit", "-m", "update auth symbol"], { cwd: tmpDir });
+
+    const result = await incrementalIndex(previousCommit!, {
+      repoPath: tmpDir,
+      repoId,
+      db,
+      onProgress: () => {},
+    });
+
+    expect(result.filesIndexed).toBeGreaterThanOrEqual(1);
+
+    const fts5 = new FTS5Backend(sqlite, db);
+    fts5.initFtsTable();
+    fts5.rebuildIndex(repoId);
+    const results = await fts5.search("authorizeToken", repoId);
+
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results[0]!.path).toContain("auth.ts");
+    expect(getIndexedCommit(db, repoId)).toBe(result.commit);
   });
 });
