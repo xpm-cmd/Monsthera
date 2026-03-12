@@ -14,6 +14,10 @@ import {
   type TransitionConsensusPayload,
 } from "./consensus.js";
 import {
+  buildTicketResolutionKnowledgeEntry,
+  shouldCaptureTicketKnowledge,
+} from "./knowledge-capture.js";
+import {
   VALID_TRANSITIONS,
   TRANSITION_ROLES,
   type TicketStatus as TicketStatusType,
@@ -33,6 +37,7 @@ interface TicketServiceBaseContext {
   ticketQuorum?: TicketQuorumConfig;
   bus?: CoordinationBus;
   refreshTicketSearch?: () => void;
+  refreshKnowledgeSearch?: () => void;
 }
 
 export type TicketServiceContext = TicketServiceBaseContext;
@@ -106,6 +111,7 @@ interface UpdateTicketStatusFields {
   ticketId: string;
   status: TicketStatusType;
   comment?: string | null;
+  skipKnowledgeCapture?: boolean;
 }
 
 export type UpdateTicketStatusInput = UpdateTicketStatusFields & TicketActorInput;
@@ -334,6 +340,20 @@ export function updateTicketStatusRecord(
   }
 
   const now = new Date().toISOString();
+  const captureTargetStatus = shouldCaptureTicketKnowledge(input.status) ? input.status : null;
+  const knowledgeEntry = captureTargetStatus && input.skipKnowledgeCapture !== true
+    ? buildTicketResolutionKnowledgeEntry({
+        ticket,
+        targetStatus: captureTargetStatus,
+        transitionComment: input.comment ?? null,
+        actorAgentId: resolved.agentId,
+        actorSessionId: resolved.sessionId,
+        capturedAt: now,
+        history: queries.getTicketHistory(ctx.db, ticket.id),
+        comments: queries.getTicketComments(ctx.db, ticket.id),
+        linkedPatches: queries.getPatchesByTicketId(ctx.db, ticket.id),
+      })
+    : null;
   const updates: Partial<Pick<typeof tables.tickets.$inferInsert, "status" | "resolvedByAgentId">> = {
     status: input.status,
   };
@@ -354,8 +374,12 @@ export function updateTicketStatusRecord(
       comment: input.comment ?? null,
       timestamp: now,
     }).run();
+    if (knowledgeEntry) {
+      queries.upsertKnowledge(tx, knowledgeEntry);
+    }
   });
   refreshTicketSearch(ctx);
+  if (knowledgeEntry) refreshKnowledgeSearch(ctx);
 
   ctx.insight.info(`Ticket ${input.ticketId}: ${current} → ${input.status} by ${resolved.agentId}`);
   recordDashboardEvent(ctx.db, ctx.repoId, {
@@ -377,6 +401,8 @@ export function updateTicketStatusRecord(
     ticketId: input.ticketId,
     previousStatus: current,
     status: input.status,
+    knowledgeCaptured: Boolean(knowledgeEntry),
+    knowledgeKey: knowledgeEntry?.key ?? null,
   });
 }
 
@@ -720,6 +746,14 @@ function refreshTicketSearch(ctx: TicketContext): void {
     ctx.refreshTicketSearch?.();
   } catch (error) {
     ctx.insight.warn(`Ticket search refresh failed: ${error}`);
+  }
+}
+
+function refreshKnowledgeSearch(ctx: TicketContext): void {
+  try {
+    ctx.refreshKnowledgeSearch?.();
+  } catch (error) {
+    ctx.insight.warn(`Knowledge search refresh failed: ${error}`);
   }
 }
 

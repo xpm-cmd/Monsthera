@@ -99,6 +99,7 @@ describe("read tool discovery", () => {
     const registerAgent = await handler("schema")({ toolName: "register_agent" });
     const submitVerdict = await handler("schema")({ toolName: "submit_verdict" });
     const checkConsensus = await handler("schema")({ toolName: "check_consensus" });
+    const updateTicketStatus = await handler("schema")({ toolName: "update_ticket_status" });
 
     expect(JSON.parse(storeKnowledge.content[0].text).inputSchema).toMatchObject({
       agentId: "string (required)",
@@ -161,6 +162,9 @@ describe("read tool discovery", () => {
       transition: "enum: technical_analysis→approved|in_review→ready_for_commit (optional)",
       agentId: "string (required)",
       sessionId: "string (required)",
+    });
+    expect(JSON.parse(updateTicketStatus.content[0].text).inputSchema).toMatchObject({
+      skipKnowledgeCapture: "boolean (optional, only relevant for resolved|closed transitions)",
     });
 
     const codePack = await handler("schema")({ toolName: "get_code_pack" });

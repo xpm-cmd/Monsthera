@@ -118,10 +118,11 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
       status: z.enum(TicketStatus.options).describe("Target status"),
       comment: z.string().max(500).optional(),
+      skipKnowledgeCapture: z.boolean().optional().describe("Skip automatic repo knowledge capture when transitioning to resolved or closed"),
       agentId: AgentIdSchema.describe("Requesting agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
     },
-    async ({ ticketId, status: targetStatus, comment, agentId, sessionId }) => {
+    async ({ ticketId, status: targetStatus, comment, skipKnowledgeCapture, agentId, sessionId }) => {
       const c = await getContext();
       const result = updateTicketStatusRecord({
         db: c.db,
@@ -131,10 +132,12 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         ticketQuorum: c.config?.ticketQuorum,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
+        refreshKnowledgeSearch: () => c.searchRouter?.rebuildKnowledgeFts?.(c.sqlite),
       }, {
         ticketId,
         status: targetStatus as TicketStatusType,
         comment,
+        skipKnowledgeCapture,
         agentId,
         sessionId,
       });

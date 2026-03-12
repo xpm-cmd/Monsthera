@@ -67,7 +67,7 @@ export async function cmdTicket(config: TicketCliConfig, insight: InsightStream,
         const ticketId = args[1];
         const targetStatus = args[2];
         if (!ticketId || !targetStatus) {
-          throw new Error("Usage: agora ticket transition <ticket-id> <status> [--comment <text>] [--actor-label <label>] [--json]");
+          throw new Error("Usage: agora ticket transition <ticket-id> <status> [--comment <text>] [--skip-knowledge-capture] [--actor-label <label>] [--json]");
         }
 
         const parsedStatus = TicketStatus.safeParse(targetStatus);
@@ -84,10 +84,12 @@ export async function cmdTicket(config: TicketCliConfig, insight: InsightStream,
           system: true,
           actorLabel: getArg(args, "--actor-label") ?? "cli",
           refreshTicketSearch: buildTicketSearchRefresher(ctx.sqlite, ctx.db, ctx.repoId, insight),
+          refreshKnowledgeSearch: buildKnowledgeSearchRefresher(ctx.sqlite, ctx.db, insight),
         }, {
           ticketId,
           status: parsedStatus.data as TicketStatusType,
           comment: getArg(args, "--comment"),
+          skipKnowledgeCapture: args.includes("--skip-knowledge-capture"),
         });
 
         if (!result.ok) {
@@ -267,12 +269,22 @@ function buildTicketSearchRefresher(
   return () => fts5.rebuildTicketFts(repoId);
 }
 
+function buildKnowledgeSearchRefresher(
+  sqlite: DatabaseType,
+  db: DB,
+  insight: InsightStream,
+): () => void {
+  const fts5 = new FTS5Backend(sqlite, db, (message) => insight.warn(message));
+  fts5.initKnowledgeFts(sqlite);
+  return () => fts5.rebuildKnowledgeFts(sqlite);
+}
+
 function printTicketHelp(): void {
   console.error("Ticket commands:");
   console.error("  agora ticket summary [--json]");
   console.error("  agora ticket list [--status <status>] [--severity <severity>] [--assignee <agent-id>] [--creator <agent-id>] [--tags a,b] [--limit <n>] [--json]");
   console.error("  agora ticket show <ticket-id> [--json]");
-  console.error("  agora ticket transition <ticket-id> <status> [--comment <text>] [--actor-label <label>] [--json]");
+  console.error("  agora ticket transition <ticket-id> <status> [--comment <text>] [--skip-knowledge-capture] [--actor-label <label>] [--json]");
 }
 
 function parseTagsArg(raw: string | undefined): string[] | undefined {

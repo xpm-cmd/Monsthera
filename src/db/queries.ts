@@ -6,6 +6,7 @@ import type * as schema from "./schema.js";
 import * as tables from "./schema.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
+type QueryDb = Pick<DB, "select" | "insert" | "update" | "delete">;
 
 // --- Repos ---
 
@@ -451,7 +452,7 @@ export function cleanExpiredPayloads(db: DB) {
 // --- Knowledge ---
 
 export function upsertKnowledge(
-  db: DB,
+  db: QueryDb,
   entry: typeof tables.knowledge.$inferInsert,
 ): typeof tables.knowledge.$inferSelect {
   const existing = db.select().from(tables.knowledge).where(eq(tables.knowledge.key, entry.key)).get();

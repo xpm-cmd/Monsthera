@@ -14,6 +14,7 @@ import {
   updateTicketStatusRecord,
 } from "../../../src/tickets/service.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
+import { FTS5Backend } from "../../../src/search/fts5.js";
 
 vi.mock("../../../src/git/operations.js", () => ({
   getHead: vi.fn().mockResolvedValue("abc1234"),
@@ -35,6 +36,8 @@ function createTestDb() {
     CREATE TABLE coordination_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), message_id TEXT NOT NULL UNIQUE, from_agent_id TEXT NOT NULL, to_agent_id TEXT, type TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER REFERENCES tickets(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE knowledge (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, type TEXT NOT NULL, scope TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, tags_json TEXT, status TEXT NOT NULL DEFAULT 'active', agent_id TEXT, session_id TEXT, embedding BLOB, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE VIRTUAL TABLE knowledge_fts USING fts5(knowledge_id UNINDEXED, title, content, type UNINDEXED, tags);
     CREATE VIRTUAL TABLE tickets_fts USING fts5(ticket_id UNINDEXED, title, description, tags, status UNINDEXED, content='');
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
@@ -91,6 +94,8 @@ describe("ticket service system context", () => {
   let repoId: number;
   let bus: CoordinationBus;
   let refreshCount: number;
+  let knowledgeRefreshCount: number;
+  let knowledgeFts: FTS5Backend;
   let ctx: TicketSystemContext;
 
   beforeEach(() => {
@@ -98,6 +103,9 @@ describe("ticket service system context", () => {
     repoId = queries.upsertRepo(db, "/test", "test").id;
     bus = new CoordinationBus("hub-spoke", 200, db, repoId);
     refreshCount = 0;
+    knowledgeRefreshCount = 0;
+    knowledgeFts = new FTS5Backend(sqlite, db);
+    knowledgeFts.initKnowledgeFts(sqlite);
 
     queries.upsertAgent(db, {
       id: "agent-dev",
@@ -118,6 +126,10 @@ describe("ticket service system context", () => {
       bus,
       refreshTicketSearch: () => {
         refreshCount += 1;
+      },
+      refreshKnowledgeSearch: () => {
+        knowledgeRefreshCount += 1;
+        knowledgeFts.rebuildKnowledgeFts(sqlite);
       },
     };
   });
@@ -184,6 +196,146 @@ describe("ticket service system context", () => {
     expect(messages).toHaveLength(4);
     expect(messages.every((message) => message.from === "system:cli-admin")).toBe(true);
     expect(refreshCount).toBe(3);
+  });
+
+  it("captures repo knowledge automatically when resolving a ticket", async () => {
+    const createResult = await createTicketRecord(ctx, {
+      title: "Index stale after commit",
+      description: "Resolving tickets should persist the distilled fix as searchable repo knowledge.",
+      severity: "high",
+      priority: 7,
+      tags: ["knowledge", "automation"],
+      affectedPaths: ["src/tickets/service.ts", "src/knowledge/search.ts"],
+      acceptanceCriteria: "Knowledge entry exists",
+    });
+    expect(createResult.ok).toBe(true);
+    if (!createResult.ok) return;
+
+    const ticketId = createResult.data.ticketId as string;
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+
+    queries.insertPatch(db, {
+      repoId,
+      proposalId: "patch_knowledge_1",
+      baseCommit: "abc1234",
+      bundleId: null,
+      state: "committed",
+      diff: "--- a/src/tickets/service.ts",
+      message: "Persist ticket learnings after resolution",
+      touchedPathsJson: JSON.stringify(["src/tickets/service.ts"]),
+      dryRunResultJson: null,
+      agentId: "system:cli-admin",
+      sessionId: "system",
+      committedSha: "def5678",
+      ticketId: ticket.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "technical_analysis",
+      comment: "Ready for resolution capture.",
+    }).ok).toBe(true);
+
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      comment: "Root cause fixed and captured.",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.data).toMatchObject({
+      knowledgeCaptured: true,
+      knowledgeKey: `solution:ticket:${ticketId.toLowerCase()}`,
+    });
+    expect(knowledgeRefreshCount).toBe(1);
+
+    const knowledge = queries.getKnowledgeByKey(db, `solution:ticket:${ticketId.toLowerCase()}`);
+    expect(knowledge).toBeTruthy();
+    expect(knowledge?.title).toContain(ticketId);
+    expect(knowledge?.content).toContain("Problem Summary");
+    expect(knowledge?.content).toContain("Resolution Summary");
+    expect(knowledge?.content).toContain("patch_knowledge_1 [committed]: Persist ticket learnings after resolution");
+    expect(knowledge?.content).toContain("src/tickets/service.ts");
+    expect(JSON.parse(knowledge?.tagsJson ?? "[]")).toEqual(["knowledge", "automation", "ticket-resolution"]);
+
+    const results = knowledgeFts.searchKnowledge(sqlite, ticketId, 10);
+    expect(results.some((entry) => entry.knowledgeId === knowledge?.id)).toBe(true);
+  });
+
+  it("updates the same knowledge entry on close and supports skipKnowledgeCapture", async () => {
+    const createResult = await createTicketRecord(ctx, {
+      title: "Heartbeat timeout follow-up",
+      description: "Use one deterministic key for repeated post-resolution knowledge capture.",
+      severity: "medium",
+      priority: 4,
+      tags: ["sessions"],
+      affectedPaths: ["src/core/constants.ts"],
+      acceptanceCriteria: "Upsert same key",
+    });
+    expect(createResult.ok).toBe(true);
+    if (!createResult.ok) return;
+    const ticketId = createResult.data.ticketId as string;
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "technical_analysis",
+      comment: "Ready for first capture.",
+    }).ok).toBe(true);
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      comment: "Resolved with first capture.",
+    }).ok).toBe(true);
+
+    const first = queries.getKnowledgeByKey(db, `solution:ticket:${ticketId.toLowerCase()}`);
+    expect(first).toBeTruthy();
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "closed",
+      comment: "Closed after verification.",
+    }).ok).toBe(true);
+
+    const entries = queries.queryKnowledge(db, { status: "active", type: "solution" })
+      .filter((entry) => entry.key === `solution:ticket:${ticketId.toLowerCase()}`);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.content).toContain("Final status: closed");
+    expect(entries[0]?.content).toContain("Closed after verification.");
+
+    const createSkipped = await createTicketRecord(ctx, {
+      title: "Skip auto capture",
+      description: "Explicit opt-out should avoid creating repo knowledge.",
+      severity: "low",
+      priority: 2,
+      tags: [],
+      affectedPaths: [],
+      acceptanceCriteria: "No knowledge row",
+    });
+    expect(createSkipped.ok).toBe(true);
+    if (!createSkipped.ok) return;
+    const skippedTicketId = createSkipped.data.ticketId as string;
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: skippedTicketId,
+      status: "technical_analysis",
+      comment: "Ready to resolve without capture.",
+    }).ok).toBe(true);
+
+    const skipped = updateTicketStatusRecord(ctx, {
+      ticketId: skippedTicketId,
+      status: "resolved",
+      comment: "Resolved without capture.",
+      skipKnowledgeCapture: true,
+    });
+    expect(skipped.ok).toBe(true);
+    expect(skipped.ok && skipped.data).toMatchObject({
+      knowledgeCaptured: false,
+      knowledgeKey: null,
+    });
+    expect(queries.getKnowledgeByKey(db, `solution:ticket:${skippedTicketId.toLowerCase()}`)).toBeUndefined();
   });
 
   it("still enforces transition validation in system context", async () => {

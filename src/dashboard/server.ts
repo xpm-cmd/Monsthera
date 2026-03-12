@@ -103,6 +103,7 @@ const AssignTicketBodySchema = z.object({
 const UpdateStatusBodySchema = z.object({
   status: TicketStatus,
   comment: z.string().max(500).nullable().optional(),
+  skipKnowledgeCapture: z.boolean().optional(),
   agentId: AgentIdSchema,
   sessionId: SessionIdSchema,
 });
@@ -308,10 +309,12 @@ export function startDashboard(
             ticketQuorum: deps.ticketQuorum,
             bus: deps.bus,
             refreshTicketSearch: deps.refreshTicketSearch,
+            refreshKnowledgeSearch: deps.refreshKnowledgeSearch,
           }, {
             ticketId: decodeURIComponent(ticketId),
             status: parsed.status,
             comment: parsed.comment ?? null,
+            skipKnowledgeCapture: parsed.skipKnowledgeCapture,
             agentId: parsed.agentId,
             sessionId: parsed.sessionId,
           });

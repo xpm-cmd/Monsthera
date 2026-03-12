@@ -501,6 +501,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           ticketId: "string (TKT-...)",
           status: "enum: backlog|technical_analysis|approved|in_progress|in_review|ready_for_commit|blocked|resolved|closed|wont_fix",
           comment: "string (optional, max 500)",
+          skipKnowledgeCapture: "boolean (optional, only relevant for resolved|closed transitions)",
           agentId: "string (required)",
           sessionId: "string (required)",
         },

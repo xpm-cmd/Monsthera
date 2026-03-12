@@ -36,6 +36,8 @@ function createTestDb() {
     CREATE TABLE coordination_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), message_id TEXT NOT NULL UNIQUE, from_agent_id TEXT NOT NULL, to_agent_id TEXT, type TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER REFERENCES tickets(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE knowledge (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, type TEXT NOT NULL, scope TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, tags_json TEXT, status TEXT NOT NULL DEFAULT 'active', agent_id TEXT, session_id TEXT, embedding BLOB, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE VIRTUAL TABLE knowledge_fts USING fts5(knowledge_id UNINDEXED, title, content, type UNINDEXED, tags);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
 }
@@ -47,7 +49,7 @@ describe("ticket tools", () => {
   let repoId: number;
   let bus: CoordinationBus;
   let fts5: FTS5Backend;
-  let config: { ticketQuorum?: Record<string, unknown> };
+  let config: { ticketQuorum?: Record<string, unknown>; governance?: Record<string, unknown> };
   const now = new Date().toISOString();
 
   beforeEach(() => {
@@ -56,6 +58,7 @@ describe("ticket tools", () => {
     bus = new CoordinationBus("hub-spoke", 200, db, repoId);
     fts5 = new FTS5Backend(sqlite, db);
     fts5.initTicketFts();
+    fts5.initKnowledgeFts(sqlite);
     config = {};
 
     for (const agent of [
@@ -94,6 +97,7 @@ describe("ticket tools", () => {
     server = new FakeServer();
     registerTicketTools(server as unknown as McpServer, async () => ({
       db,
+      sqlite,
       config,
       repoId,
       repoPath: "/test",
@@ -101,6 +105,7 @@ describe("ticket tools", () => {
       bus,
       searchRouter: {
         rebuildTicketFts: () => fts5.rebuildTicketFts(repoId),
+        rebuildKnowledgeFts: () => fts5.rebuildKnowledgeFts(sqlite),
         searchTickets: (query: string, searchRepoId: number, limit?: number, opts?: {
           status?: string;
           severity?: string;
@@ -809,5 +814,70 @@ describe("ticket tools", () => {
 
     expect(denied.isError).toBe(true);
     expect(denied.content[0].text).toContain("does not have access");
+  });
+
+  it("captures repo knowledge on resolve and supports skipKnowledgeCapture", async () => {
+    const created = await handler("create_ticket")({
+      title: "Auto capture knowledge",
+      description: "Resolved tickets should create one deterministic repo knowledge entry.",
+      severity: "medium",
+      priority: 5,
+      tags: ["knowledge"],
+      affectedPaths: ["src/tools/ticket-tools.ts"],
+      acceptanceCriteria: "Knowledge row exists",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    const ticketId = JSON.parse(created.content[0].text).ticketId as string;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      comment: "Ready to resolve",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "resolved",
+      comment: "Resolved and captured.",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const knowledge = queries.getKnowledgeByKey(db, `solution:ticket:${ticketId.toLowerCase()}`);
+    expect(knowledge?.content).toContain("Resolved and captured.");
+    expect(knowledge?.content).toContain("Affected Paths");
+
+    const skipped = await handler("create_ticket")({
+      title: "Skip capture",
+      description: "Skip should opt out of repo knowledge creation.",
+      severity: "low",
+      priority: 2,
+      tags: [],
+      affectedPaths: [],
+      acceptanceCriteria: "No knowledge row",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    const skippedTicketId = JSON.parse(skipped.content[0].text).ticketId as string;
+
+    await handler("update_ticket_status")({
+      ticketId: skippedTicketId,
+      status: "technical_analysis",
+      comment: "Ready to resolve",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("update_ticket_status")({
+      ticketId: skippedTicketId,
+      status: "resolved",
+      comment: "No capture please.",
+      skipKnowledgeCapture: true,
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(queries.getKnowledgeByKey(db, `solution:ticket:${skippedTicketId.toLowerCase()}`)).toBeUndefined();
   });
 });
