@@ -21,6 +21,8 @@ describe("tool access policy", () => {
     expect(tools.has("create_ticket")).toBe(true);
     expect(tools.has("update_ticket_status")).toBe(true);
     expect(tools.has("comment_ticket")).toBe(true);
+    expect(tools.has("submit_verdict")).toBe(true);
+    expect(tools.has("check_consensus")).toBe(true);
     expect(tools.has("store_knowledge")).toBe(true);
     expect(tools.has("broadcast")).toBe(true);
   });

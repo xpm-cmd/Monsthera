@@ -3,7 +3,7 @@ import { EvidenceBundle, TrustTier, Candidate, ExpandedCandidate } from "../../s
 import { Note, NoteType, ProposeNoteInput } from "../../schemas/notes.js";
 import { PatchProposal, ProposePatchInput, PatchState } from "../../schemas/patch.js";
 import { Agent, RegisterAgentInput, RoleId, BUILT_IN_ROLES } from "../../schemas/agent.js";
-import { CouncilSpecializationId } from "../../schemas/council.js";
+import { CouncilSpecializationId, CouncilVerdict } from "../../schemas/council.js";
 import { EventLog, EventStatus } from "../../schemas/interaction-log.js";
 import { CoordinationMessage, BroadcastInput } from "../../schemas/coordination.js";
 
@@ -192,6 +192,13 @@ describe("Agent schema", () => {
     expect(CouncilSpecializationId.safeParse("design").success).toBe(true);
     expect(CouncilSpecializationId.safeParse("dx").success).toBe(false);
     expect(CouncilSpecializationId.safeParse("simplicity").success).toBe(false);
+  });
+
+  it("accepts only the advisory council verdict taxonomy", () => {
+    expect(CouncilVerdict.safeParse("pass").success).toBe(true);
+    expect(CouncilVerdict.safeParse("fail").success).toBe(true);
+    expect(CouncilVerdict.safeParse("abstain").success).toBe(true);
+    expect(CouncilVerdict.safeParse("approve").success).toBe(false);
   });
 
   it("has correct built-in role permissions", () => {

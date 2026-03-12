@@ -724,6 +724,51 @@ export function getTicketComments(db: DB, ticketInternalId: number) {
     .all();
 }
 
+// --- Review Verdicts ---
+
+export function upsertReviewVerdict(
+  db: DB,
+  verdict: typeof tables.reviewVerdicts.$inferInsert,
+): typeof tables.reviewVerdicts.$inferSelect {
+  const existing = db
+    .select()
+    .from(tables.reviewVerdicts)
+    .where(and(
+      eq(tables.reviewVerdicts.ticketId, verdict.ticketId),
+      eq(tables.reviewVerdicts.specialization, verdict.specialization),
+    ))
+    .get();
+
+  if (!existing) {
+    return db.insert(tables.reviewVerdicts).values(verdict).returning().get();
+  }
+
+  return db
+    .update(tables.reviewVerdicts)
+    .set({
+      agentId: verdict.agentId,
+      sessionId: verdict.sessionId,
+      verdict: verdict.verdict,
+      reasoning: verdict.reasoning ?? null,
+      createdAt: verdict.createdAt,
+    })
+    .where(eq(tables.reviewVerdicts.id, existing.id))
+    .returning()
+    .get();
+}
+
+export function getReviewVerdicts(db: DB, ticketInternalId: number) {
+  return db
+    .select()
+    .from(tables.reviewVerdicts)
+    .where(eq(tables.reviewVerdicts.ticketId, ticketInternalId))
+    .orderBy(
+      sql`coalesce(julianday(${tables.reviewVerdicts.createdAt}), 0)`,
+      tables.reviewVerdicts.id,
+    )
+    .all();
+}
+
 // --- Patch ↔ Ticket link ---
 
 export function linkPatchToTicket(db: DB, patchInternalId: number, ticketInternalId: number) {

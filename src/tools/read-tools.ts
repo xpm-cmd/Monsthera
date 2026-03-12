@@ -546,6 +546,19 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           agentId: "string (required)",
           sessionId: "string (required)",
         },
+        submit_verdict: {
+          ticketId: "string (TKT-...)",
+          specialization: "enum: architect|simplifier|security|performance|patterns|design",
+          verdict: "enum: pass|fail|abstain",
+          reasoning: "string (optional, max 2000)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        check_consensus: {
+          ticketId: "string (TKT-...)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
         link_tickets: {
           fromTicketId: "string (TKT-...)",
           toTicketId: "string (TKT-...)",

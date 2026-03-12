@@ -11,3 +11,10 @@ export const CouncilSpecializationId = z.enum([
 export type CouncilSpecializationId = z.infer<typeof CouncilSpecializationId>;
 
 export const COUNCIL_SPECIALIZATIONS = CouncilSpecializationId.options;
+
+export const CouncilVerdict = z.enum([
+  "pass",
+  "fail",
+  "abstain",
+]);
+export type CouncilVerdict = z.infer<typeof CouncilVerdict>;

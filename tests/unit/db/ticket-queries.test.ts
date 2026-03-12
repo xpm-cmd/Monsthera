@@ -16,6 +16,7 @@ function createTestDb() {
     CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER REFERENCES tickets(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE review_verdicts (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, specialization TEXT NOT NULL, verdict TEXT NOT NULL, reasoning TEXT, created_at TEXT NOT NULL, UNIQUE(ticket_id, specialization));
     CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL REFERENCES tickets(id), to_ticket_id INTEGER NOT NULL REFERENCES tickets(id), relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
@@ -183,6 +184,38 @@ describe("ticket queries", () => {
 
     const comments = queries.getTicketComments(db, t.id);
     expect(comments.map((comment) => comment.content)).toEqual(["first", "second", "third"]);
+  });
+
+  it("upserts review verdicts with latest-specialization semantics", () => {
+    const t = makeTicket();
+    const first = queries.upsertReviewVerdict(db, {
+      ticketId: t.id,
+      agentId: "architect-1",
+      sessionId: "session-1",
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: "Initial review",
+      createdAt: "2026-03-10T09:25:20.000Z",
+    });
+    const second = queries.upsertReviewVerdict(db, {
+      ticketId: t.id,
+      agentId: "architect-2",
+      sessionId: "session-2",
+      specialization: "architect",
+      verdict: "fail",
+      reasoning: "Updated review",
+      createdAt: "2026-03-10T10:25:20.000Z",
+    });
+
+    const verdicts = queries.getReviewVerdicts(db, t.id);
+    expect(first.id).toBe(second.id);
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]).toMatchObject({
+      specialization: "architect",
+      verdict: "fail",
+      agentId: "architect-2",
+      reasoning: "Updated review",
+    });
   });
 
   it("links patch to ticket and retrieves by ticket", () => {

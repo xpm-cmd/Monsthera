@@ -59,6 +59,8 @@ describe("read tool discovery", () => {
       "list_notes",
       "end_session",
       "search_tickets",
+      "submit_verdict",
+      "check_consensus",
       "analyze_complexity",
       "analyze_test_coverage",
       "suggest_actions",
@@ -95,6 +97,8 @@ describe("read tool discovery", () => {
     const suggestActions = await handler("schema")({ toolName: "suggest_actions" });
     const listProtectedArtifacts = await handler("schema")({ toolName: "list_protected_artifacts" });
     const registerAgent = await handler("schema")({ toolName: "register_agent" });
+    const submitVerdict = await handler("schema")({ toolName: "submit_verdict" });
+    const checkConsensus = await handler("schema")({ toolName: "check_consensus" });
 
     expect(JSON.parse(storeKnowledge.content[0].text).inputSchema).toMatchObject({
       agentId: "string (required)",
@@ -144,6 +148,17 @@ describe("read tool discovery", () => {
       modelFamily: "string (optional model family)",
       modelVersion: "string (optional model version)",
       identitySource: "enum: self_declared|config|peer_asserted|system_assigned (optional)",
+    });
+    expect(JSON.parse(submitVerdict.content[0].text).inputSchema).toMatchObject({
+      specialization: "enum: architect|simplifier|security|performance|patterns|design",
+      verdict: "enum: pass|fail|abstain",
+      agentId: "string (required)",
+      sessionId: "string (required)",
+    });
+    expect(JSON.parse(checkConsensus.content[0].text).inputSchema).toMatchObject({
+      ticketId: "string (TKT-...)",
+      agentId: "string (required)",
+      sessionId: "string (required)",
     });
 
     const codePack = await handler("schema")({ toolName: "get_code_pack" });

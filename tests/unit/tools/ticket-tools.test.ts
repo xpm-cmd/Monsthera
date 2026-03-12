@@ -31,6 +31,7 @@ function createTestDb() {
     CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE review_verdicts (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, specialization TEXT NOT NULL, verdict TEXT NOT NULL, reasoning TEXT, created_at TEXT NOT NULL, UNIQUE(ticket_id, specialization));
     CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL REFERENCES tickets(id), to_ticket_id INTEGER NOT NULL REFERENCES tickets(id), relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE coordination_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), message_id TEXT NOT NULL UNIQUE, from_agent_id TEXT NOT NULL, to_agent_id TEXT, type TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
@@ -612,6 +613,115 @@ describe("ticket tools", () => {
       agentId: "agent-obs",
       sessionId: "session-obs",
     });
+    expect(denied.isError).toBe(true);
+    expect(denied.content[0].text).toContain("does not have access");
+  });
+
+  it("records advisory verdicts and reports consensus state", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const architect = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: "Architecture is sound",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    const security = await handler("submit_verdict")({
+      ticketId,
+      specialization: "security",
+      verdict: "fail",
+      reasoning: "Auth boundary unresolved",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(architect.isError).not.toBe(true);
+    expect(security.isError).not.toBe(true);
+
+    const consensus = await handler("check_consensus")({
+      ticketId,
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    const payload = JSON.parse(consensus.content[0].text);
+
+    expect(payload.requiredPasses).toBe(4);
+    expect(payload.counts).toMatchObject({
+      pass: 1,
+      fail: 1,
+      abstain: 0,
+      responded: 2,
+      missing: 4,
+    });
+    expect(payload.quorumMet).toBe(false);
+    expect(payload.blockedByVeto).toBe(true);
+    expect(payload.vetoes).toHaveLength(1);
+    expect(payload.vetoes[0]).toMatchObject({
+      specialization: "security",
+      verdict: "fail",
+    });
+    expect(payload.missingSpecializations).toEqual(expect.arrayContaining([
+      "simplifier",
+      "performance",
+      "patterns",
+      "design",
+    ]));
+  });
+
+  it("latest verdict per specialization wins", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: "Initial pass",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    const replacement = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "fail",
+      reasoning: "Updated concern",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    const payload = JSON.parse(replacement.content[0].text);
+
+    expect(payload.verdict).toMatchObject({
+      specialization: "architect",
+      verdict: "fail",
+      agentId: "agent-dev",
+      reasoning: "Updated concern",
+    });
+
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+    const verdicts = queries.getReviewVerdicts(db, ticket.id);
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]).toMatchObject({
+      specialization: "architect",
+      verdict: "fail",
+      agentId: "agent-dev",
+    });
+  });
+
+  it("denies observer verdict submission", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const denied = await handler("submit_verdict")({
+      ticketId,
+      specialization: "design",
+      verdict: "pass",
+      agentId: "agent-obs",
+      sessionId: "session-obs",
+    });
+
     expect(denied.isError).toBe(true);
     expect(denied.content[0].text).toContain("does not have access");
   });

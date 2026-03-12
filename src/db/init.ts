@@ -169,6 +169,17 @@ function createTables(sqlite: Database.Database): void {
       content TEXT NOT NULL,
       created_at TEXT NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS review_verdicts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+      agent_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      specialization TEXT NOT NULL,
+      verdict TEXT NOT NULL,
+      reasoning TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(ticket_id, specialization)
+    )`,
     `CREATE TABLE IF NOT EXISTS ticket_dependencies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       from_ticket_id INTEGER NOT NULL REFERENCES tickets(id),
@@ -342,4 +353,17 @@ function runMigrations(sqlite: Database.Database): void {
       sqlite.prepare(`ALTER TABLE agents ADD COLUMN ${column} ${definition}`).run();
     }
   }
+
+  // Migration 11: Create review_verdicts table
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS review_verdicts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+    agent_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    specialization TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    reasoning TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE(ticket_id, specialization)
+  )`).run();
 }

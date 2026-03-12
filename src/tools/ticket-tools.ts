@@ -1,5 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
+import { BUILT_IN_ROLES } from "../../schemas/agent.js";
+import { COUNCIL_SPECIALIZATIONS, CouncilSpecializationId, CouncilVerdict } from "../../schemas/council.js";
 import type { AgoraContext } from "../core/context.js";
 import {
   AgentIdSchema,
@@ -327,6 +329,84 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     },
   );
 
+  // ─── submit_verdict ────────────────────────────────────────
+  server.tool(
+    "submit_verdict",
+    "Record or replace the latest advisory council verdict for a ticket specialization",
+    {
+      ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
+      specialization: CouncilSpecializationId.describe("Council specialization submitting the verdict"),
+      verdict: CouncilVerdict.describe("Verdict: pass, fail, or abstain"),
+      reasoning: z.string().min(1).max(2000).optional().describe("Optional reasoning for the verdict"),
+      agentId: AgentIdSchema.describe("Submitting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
+    },
+    async ({ ticketId, specialization, verdict, reasoning, agentId, sessionId }) => {
+      const c = await getContext();
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) return errText(result.error);
+      const resolved = result.agent;
+
+      const access = checkToolAccess("submit_verdict", resolved.role, resolved.trustTier);
+      if (!access.allowed || !BUILT_IN_ROLES[resolved.role].permissions.canTransitionTicket) {
+        return errJson({ denied: true, reason: access.reason ?? "Role cannot submit council verdicts" });
+      }
+
+      const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
+      if (!ticket) return errText(`Ticket not found: ${ticketId}`);
+
+      const now = new Date().toISOString();
+      const stored = queries.upsertReviewVerdict(c.db, {
+        ticketId: ticket.id,
+        agentId: resolved.agentId,
+        sessionId: resolved.sessionId,
+        specialization,
+        verdict,
+        reasoning: reasoning ?? null,
+        createdAt: now,
+      });
+      queries.updateTicket(c.db, ticket.id, {});
+
+      return okJson({
+        ticketId,
+        verdict: {
+          specialization: stored.specialization,
+          verdict: stored.verdict,
+          agentId: stored.agentId,
+          sessionId: stored.sessionId,
+          reasoning: stored.reasoning,
+          createdAt: stored.createdAt,
+        },
+        consensus: buildConsensusPayload(ticketId, queries.getReviewVerdicts(c.db, ticket.id)),
+      });
+    },
+  );
+
+  // ─── check_consensus ──────────────────────────────────────
+  server.tool(
+    "check_consensus",
+    "Report advisory council quorum, latest verdicts, missing roles, and architect/security vetoes",
+    {
+      ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
+    },
+    async ({ ticketId, agentId, sessionId }) => {
+      const c = await getContext();
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) return errText(result.error);
+      const resolved = result.agent;
+
+      const access = checkToolAccess("check_consensus", resolved.role, resolved.trustTier);
+      if (!access.allowed) return errJson({ denied: true, reason: access.reason });
+
+      const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
+      if (!ticket) return errText(`Ticket not found: ${ticketId}`);
+
+      return okJson(buildConsensusPayload(ticketId, queries.getReviewVerdicts(c.db, ticket.id)));
+    },
+  );
+
   // ─── link_tickets ──────────────────────────────────────────
   server.tool(
     "link_tickets",
@@ -407,4 +487,57 @@ function errService(result: { message: string; data?: Record<string, unknown> })
     return errJson({ error: result.message, ...result.data });
   }
   return errText(result.message);
+}
+
+type ReviewVerdictRow = ReturnType<typeof queries.getReviewVerdicts>[number];
+
+const VETO_SPECIALIZATIONS = new Set(["architect", "security"]);
+
+function buildConsensusPayload(ticketId: string, verdictRows: ReviewVerdictRow[]) {
+  const verdicts = COUNCIL_SPECIALIZATIONS.flatMap((specialization) => {
+    const verdict = verdictRows.find((entry) => entry.specialization === specialization);
+    return verdict
+      ? [{
+          specialization,
+          verdict: verdict.verdict,
+          agentId: verdict.agentId,
+          sessionId: verdict.sessionId,
+          reasoning: verdict.reasoning,
+          createdAt: verdict.createdAt,
+        }]
+      : [];
+  });
+  const missingSpecializations = COUNCIL_SPECIALIZATIONS.filter(
+    (specialization) => !verdicts.some((entry) => entry.specialization === specialization),
+  );
+  const vetoes = verdicts.filter(
+    (entry) => entry.verdict === "fail" && VETO_SPECIALIZATIONS.has(entry.specialization),
+  );
+  const counts = {
+    pass: verdicts.filter((entry) => entry.verdict === "pass").length,
+    fail: verdicts.filter((entry) => entry.verdict === "fail").length,
+    abstain: verdicts.filter((entry) => entry.verdict === "abstain").length,
+    responded: verdicts.length,
+    missing: missingSpecializations.length,
+  };
+  const requiredPasses = getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length);
+  const quorumMet = counts.pass >= requiredPasses;
+
+  return {
+    ticketId,
+    councilSpecializations: [...COUNCIL_SPECIALIZATIONS],
+    requiredPasses,
+    counts,
+    quorumMet,
+    blockedByVeto: vetoes.length > 0,
+    advisoryReady: quorumMet && vetoes.length === 0,
+    missingSpecializations,
+    vetoes,
+    verdicts,
+  };
+}
+
+function getDefaultAdvisoryPasses(totalSpecializations: number): number {
+  // Current council guidance is 3/5 and 4/6; keeping a simple total-2 rule preserves both.
+  return Math.max(1, totalSpecializations - 2);
 }

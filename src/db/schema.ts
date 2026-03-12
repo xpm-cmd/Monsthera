@@ -128,6 +128,17 @@ export const ticketComments = sqliteTable("ticket_comments", {
   createdAt: text("created_at").notNull(),
 });
 
+export const reviewVerdicts = sqliteTable("review_verdicts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ticketId: integer("ticket_id").notNull().references(() => tickets.id),
+  agentId: text("agent_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  specialization: text("specialization").notNull(),
+  verdict: text("verdict").notNull(),
+  reasoning: text("reasoning"),
+  createdAt: text("created_at").notNull(),
+});
+
 // --- Ticket Dependencies ---
 
 export const ticketDependencies = sqliteTable("ticket_dependencies", {
