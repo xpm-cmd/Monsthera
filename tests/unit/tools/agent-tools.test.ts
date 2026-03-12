@@ -23,6 +23,11 @@ function createTestDb() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       type TEXT NOT NULL DEFAULT 'unknown',
+      provider TEXT,
+      model TEXT,
+      model_family TEXT,
+      model_version TEXT,
+      identity_source TEXT,
       role_id TEXT NOT NULL DEFAULT 'observer',
       trust_tier TEXT NOT NULL DEFAULT 'B',
       registered_at TEXT NOT NULL
@@ -122,6 +127,8 @@ describe("agent tools", () => {
     const result = await registerAgent({
       name: "Dev",
       type: "claude-code",
+      provider: "anthropic",
+      model: "claude-3.7-sonnet",
       desiredRole: "developer",
     });
 
@@ -129,6 +136,13 @@ describe("agent tools", () => {
     const payload = JSON.parse(result.content[0].text);
     expect(payload.role).toBe("developer");
     expect(payload.trustTier).toBe("A");
+    expect(payload.identity).toEqual({
+      provider: "anthropic",
+      model: "claude-3.7-sonnet",
+      modelFamily: null,
+      modelVersion: null,
+      identitySource: "self_declared",
+    });
   });
 
   it("rejects privileged registration without a matching auth token", async () => {
@@ -230,6 +244,33 @@ describe("agent tools", () => {
     expect(allowed.isError).toBeUndefined();
     const payload = JSON.parse(allowed.content[0].text);
     expect(payload.role).toBe("observer");
+  });
+
+  it("surfaces normalized identity fields via agent_status", async () => {
+    const registerAgent = setupServer();
+    const registration = await registerAgent({
+      name: "Reviewer",
+      type: "codex",
+      provider: "openai",
+      model: "gpt-5",
+      modelFamily: "gpt-5",
+      modelVersion: "2026-03",
+      identitySource: "config",
+      desiredRole: "reviewer",
+    });
+    const registrationPayload = JSON.parse(registration.content[0].text);
+
+    const { handlers } = setupActionServer();
+    const result = await handlers.get("agent_status")!({ agentId: registrationPayload.agentId });
+    const payload = JSON.parse(result.content[0].text);
+
+    expect(payload.agent).toMatchObject({
+      provider: "openai",
+      model: "gpt-5",
+      modelFamily: "gpt-5",
+      modelVersion: "2026-03",
+      identitySource: "config",
+    });
   });
 
   it("denies observer broadcast and allows reviewer broadcast with a validated session", async () => {

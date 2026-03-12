@@ -315,14 +315,30 @@ export function updatePatchState(db: DB, proposalId: string, state: string) {
 
 export function upsertAgent(db: DB, agent: typeof tables.agents.$inferInsert) {
   const existing = db.select().from(tables.agents).where(eq(tables.agents.id, agent.id)).get();
+  const identityFields = {
+    provider: agent.provider ?? null,
+    model: agent.model ?? null,
+    modelFamily: agent.modelFamily ?? null,
+    modelVersion: agent.modelVersion ?? null,
+    identitySource: agent.identitySource ?? null,
+  };
   if (existing) {
     db.update(tables.agents)
-      .set({ name: agent.name, type: agent.type, roleId: agent.roleId, trustTier: agent.trustTier })
+      .set({
+        name: agent.name,
+        type: agent.type,
+        ...identityFields,
+        roleId: agent.roleId,
+        trustTier: agent.trustTier,
+      })
       .where(eq(tables.agents.id, agent.id))
       .run();
-    return existing;
+    return db.select().from(tables.agents).where(eq(tables.agents.id, agent.id)).get();
   }
-  return db.insert(tables.agents).values(agent).returning().get();
+  return db.insert(tables.agents).values({
+    ...agent,
+    ...identityFields,
+  }).returning().get();
 }
 
 export function getAgent(db: DB, agentId: string) {

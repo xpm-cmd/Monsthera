@@ -4,23 +4,46 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import * as tables from "../db/schema.js";
 import * as queries from "../db/queries.js";
-import { BUILT_IN_ROLES, type RoleId } from "../../schemas/agent.js";
+import {
+  BUILT_IN_ROLES,
+  type AgentIdentitySource,
+  type RoleId,
+} from "../../schemas/agent.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import type { RegistrationAuth } from "../core/config.js";
+
+export interface AgentIdentityRecord {
+  provider: string | null;
+  model: string | null;
+  modelFamily: string | null;
+  modelVersion: string | null;
+  identitySource: AgentIdentitySource | null;
+}
 
 export interface RegisterResult {
   agentId: string;
   sessionId: string;
   role: RoleId;
   trustTier: TrustTier;
+  identity: AgentIdentityRecord;
 }
 
 export class AgentRegistrationError extends Error {}
 
 export function registerAgent(
   db: BetterSQLite3Database<typeof schema>,
-  input: { name: string; type: string; desiredRole: RoleId; authToken?: string },
+  input: {
+    name: string;
+    type: string;
+    provider?: string;
+    model?: string;
+    modelFamily?: string;
+    modelVersion?: string;
+    identitySource?: AgentIdentitySource;
+    desiredRole: RoleId;
+    authToken?: string;
+  },
   opts?: { registrationAuth?: RegistrationAuth },
 ): RegisterResult {
   const now = new Date().toISOString();
@@ -30,12 +53,19 @@ export function registerAgent(
   const effectiveRoleId = resolveRegistrationRole(input.desiredRole, input.authToken, opts?.registrationAuth);
   const role = BUILT_IN_ROLES[effectiveRoleId] ?? BUILT_IN_ROLES.observer;
   const trustTier = role.permissions.trustTier;
+  const identity = normalizeIdentity(input);
 
   db.transaction((tx) => {
     const existing = tx.select().from(tables.agents).where(eq(tables.agents.id, agentId)).get();
     if (existing) {
       tx.update(tables.agents)
-        .set({ name: input.name, type: input.type, roleId: effectiveRoleId, trustTier })
+        .set({
+          name: input.name,
+          type: input.type,
+          ...identity,
+          roleId: effectiveRoleId,
+          trustTier,
+        })
         .where(eq(tables.agents.id, agentId))
         .run();
     } else {
@@ -43,6 +73,7 @@ export function registerAgent(
         id: agentId,
         name: input.name,
         type: input.type,
+        ...identity,
         roleId: effectiveRoleId,
         trustTier,
         registeredAt: now,
@@ -58,7 +89,29 @@ export function registerAgent(
     }).run();
   });
 
-  return { agentId, sessionId, role: effectiveRoleId, trustTier };
+  return { agentId, sessionId, role: effectiveRoleId, trustTier, identity };
+}
+
+function normalizeIdentity(input: {
+  provider?: string;
+  model?: string;
+  modelFamily?: string;
+  modelVersion?: string;
+  identitySource?: AgentIdentitySource;
+}): AgentIdentityRecord {
+  const provider = input.provider?.trim() || null;
+  const model = input.model?.trim() || null;
+  const modelFamily = input.modelFamily?.trim() || null;
+  const modelVersion = input.modelVersion?.trim() || null;
+  const hasAnyIdentity = Boolean(provider || model || modelFamily || modelVersion || input.identitySource);
+
+  return {
+    provider,
+    model,
+    modelFamily,
+    modelVersion,
+    identitySource: input.identitySource ?? (hasAnyIdentity ? "self_declared" : null),
+  };
 }
 
 function resolveRegistrationRole(

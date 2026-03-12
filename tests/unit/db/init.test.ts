@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import Database from "better-sqlite3";
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { initDatabase } from "../../../src/db/init.js";
@@ -36,6 +37,18 @@ describe("initDatabase", () => {
     expect(tableNames).toContain("patches");
     expect(tableNames).toContain("notes");
 
+    const agentColumns = sqlite
+      .prepare("PRAGMA table_info(agents)")
+      .all() as Array<{ name: string }>;
+    const agentColumnNames = agentColumns.map((column) => column.name);
+    expect(agentColumnNames).toEqual(expect.arrayContaining([
+      "provider",
+      "model",
+      "model_family",
+      "model_version",
+      "identity_source",
+    ]));
+
     sqlite.close();
   });
 
@@ -48,5 +61,43 @@ describe("initDatabase", () => {
 
     const r2 = initDatabase({ repoPath: dir, agoraDir: ".agora", dbName: "test.db" });
     r2.sqlite.close();
+  });
+
+  it("migrates legacy agents tables with identity columns", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agora-db3-"));
+    dirs.push(dir);
+    const agoraDir = join(dir, ".agora");
+    const sqlitePath = join(agoraDir, "test.db");
+    rmSync(agoraDir, { recursive: true, force: true });
+    mkdirSync(agoraDir, { recursive: true });
+
+    const sqlite = new Database(sqlitePath);
+    sqlite.pragma("journal_mode = WAL");
+    sqlite.pragma("foreign_keys = ON");
+    sqlite.prepare(`
+      CREATE TABLE agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'unknown',
+        role_id TEXT NOT NULL DEFAULT 'observer',
+        trust_tier TEXT NOT NULL DEFAULT 'B',
+        registered_at TEXT NOT NULL
+      )
+    `).run();
+    sqlite.close();
+
+    const result = initDatabase({ repoPath: dir, agoraDir: ".agora", dbName: "test.db" });
+    const columns = result.sqlite.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
+    const names = columns.map((column) => column.name);
+
+    expect(names).toEqual(expect.arrayContaining([
+      "provider",
+      "model",
+      "model_family",
+      "model_version",
+      "identity_source",
+    ]));
+
+    result.sqlite.close();
   });
 });

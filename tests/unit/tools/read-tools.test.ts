@@ -66,6 +66,12 @@ describe("read tool discovery", () => {
       performance: [],
       patterns: [],
     });
+    expect(payload.agentIdentity).toEqual({
+      fields: ["provider", "model", "modelFamily", "modelVersion", "identitySource"],
+      identitySources: ["self_declared", "config", "peer_asserted", "system_assigned"],
+      uniquenessKey: "provider+model",
+      strictDiversityEligibility: "requires both provider and model",
+    });
   });
 
   it("describes required actor fields for protected knowledge and coordination tools", async () => {
@@ -78,6 +84,7 @@ describe("read tool discovery", () => {
     const searchTickets = await handler("schema")({ toolName: "search_tickets" });
     const analyzeComplexity = await handler("schema")({ toolName: "analyze_complexity" });
     const analyzeTestCoverage = await handler("schema")({ toolName: "analyze_test_coverage" });
+    const registerAgent = await handler("schema")({ toolName: "register_agent" });
 
     expect(JSON.parse(storeKnowledge.content[0].text).inputSchema).toMatchObject({
       agentId: "string (required)",
@@ -113,6 +120,13 @@ describe("read tool discovery", () => {
     });
     expect(JSON.parse(analyzeTestCoverage.content[0].text).inputSchema).toMatchObject({
       filePath: "string (file path relative to repo root, required)",
+    });
+    expect(JSON.parse(registerAgent.content[0].text).inputSchema).toMatchObject({
+      provider: "string (optional normalized provider)",
+      model: "string (optional normalized model)",
+      modelFamily: "string (optional model family)",
+      modelVersion: "string (optional model version)",
+      identitySource: "enum: self_declared|config|peer_asserted|system_assigned (optional)",
     });
   });
 

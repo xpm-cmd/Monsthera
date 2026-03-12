@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
+import { AgentIdentitySource } from "../../schemas/agent.js";
 import {
   AgentIdSchema,
   ClaimPathsSchema,
@@ -23,15 +24,20 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
     {
       name: z.string().min(1).max(100).describe("Agent display name"),
       type: z.string().max(50).default("unknown").describe("Agent type (e.g. claude-code)"),
+      provider: z.string().trim().min(1).max(100).optional().describe("Optional normalized model provider"),
+      model: z.string().trim().min(1).max(200).optional().describe("Optional normalized model name"),
+      modelFamily: z.string().trim().min(1).max(100).optional().describe("Optional model family identifier"),
+      modelVersion: z.string().trim().min(1).max(100).optional().describe("Optional model version"),
+      identitySource: AgentIdentitySource.optional().describe("Optional identity provenance"),
       desiredRole: z.enum(["developer", "reviewer", "facilitator", "observer", "admin"]).default("observer").describe("Requested role"),
       authToken: z.string().min(1).max(200).optional().describe("Optional registration token for privileged roles"),
     },
-    async ({ name, type, desiredRole, authToken }) => {
+    async ({ name, type, provider, model, modelFamily, modelVersion, identitySource, desiredRole, authToken }) => {
       const c = await getContext();
       try {
         const result = registerAgent(
           c.db,
-          { name, type, desiredRole, authToken },
+          { name, type, provider, model, modelFamily, modelVersion, identitySource, desiredRole, authToken },
           { registrationAuth: c.config.registrationAuth },
         );
         c.insight.info(`Agent registered: ${name} (${result.agentId}) as ${result.role}`);
@@ -44,6 +50,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
               sessionId: result.sessionId,
               role: result.role,
               trustTier: result.trustTier,
+              identity: result.identity,
               message: `Registered as ${result.role} with trust tier ${result.trustTier}`,
             }, null, 2),
           }],
@@ -111,6 +118,11 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
               id: a.id,
               name: a.name,
               type: a.type,
+              provider: a.provider,
+              model: a.model,
+              modelFamily: a.modelFamily,
+              modelVersion: a.modelVersion,
+              identitySource: a.identitySource,
               role: a.roleId,
               trustTier: a.trustTier,
               registeredAt: a.registeredAt,

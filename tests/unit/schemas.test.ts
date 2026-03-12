@@ -143,7 +143,15 @@ describe("Patch schema", () => {
 
 describe("Agent schema", () => {
   it("validates RegisterAgentInput", () => {
-    const valid = { name: "claude-code-1", type: "claude-code", desiredRole: "developer", authToken: "dev-secret" };
+    const valid = {
+      name: "claude-code-1",
+      type: "claude-code",
+      provider: "anthropic",
+      model: "claude-3.7-sonnet",
+      identitySource: "self_declared",
+      desiredRole: "developer",
+      authToken: "dev-secret",
+    };
     expect(RegisterAgentInput.safeParse(valid).success).toBe(true);
   });
 
@@ -161,6 +169,21 @@ describe("Agent schema", () => {
   it("rejects empty authToken", () => {
     const invalid = { name: "test", desiredRole: "developer", authToken: "" };
     expect(RegisterAgentInput.safeParse(invalid).success).toBe(false);
+  });
+
+  it("defaults missing stored identity fields to null", () => {
+    const result = Agent.parse({
+      id: "agent-1",
+      name: "Agent",
+      type: "codex",
+      roleId: "developer",
+      trustTier: "A",
+      registeredAt: "2026-03-07T10:00:00Z",
+    });
+
+    expect(result.provider).toBeNull();
+    expect(result.model).toBeNull();
+    expect(result.identitySource).toBeNull();
   });
 
   it("accepts only the agreed council specialization taxonomy", () => {

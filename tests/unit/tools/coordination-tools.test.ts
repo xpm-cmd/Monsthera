@@ -24,7 +24,12 @@ function createTestDb() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       type TEXT NOT NULL DEFAULT 'unknown',
-      role_id TEXT NOT NULL DEFAULT 'observer',
+provider TEXT,
+model TEXT,
+model_family TEXT,
+model_version TEXT,
+identity_source TEXT,
+role_id TEXT NOT NULL DEFAULT 'observer',
       trust_tier TEXT NOT NULL DEFAULT 'B',
       registered_at TEXT NOT NULL
     );

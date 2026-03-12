@@ -82,6 +82,11 @@ function createTables(sqlite: Database.Database): void {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       type TEXT NOT NULL DEFAULT 'unknown',
+      provider TEXT,
+      model TEXT,
+      model_family TEXT,
+      model_version TEXT,
+      identity_source TEXT,
       role_id TEXT NOT NULL DEFAULT 'observer',
       trust_tier TEXT NOT NULL DEFAULT 'B',
       registered_at TEXT NOT NULL
@@ -301,5 +306,20 @@ function runMigrations(sqlite: Database.Database): void {
     sqlite.prepare("SELECT error_detail FROM event_logs LIMIT 0").get();
   } catch {
     sqlite.prepare("ALTER TABLE event_logs ADD COLUMN error_detail TEXT").run();
+  }
+
+  // Migration 5-9: Add normalized agent identity columns
+  for (const [column, definition] of [
+    ["provider", "TEXT"],
+    ["model", "TEXT"],
+    ["model_family", "TEXT"],
+    ["model_version", "TEXT"],
+    ["identity_source", "TEXT"],
+  ] as const) {
+    try {
+      sqlite.prepare(`SELECT ${column} FROM agents LIMIT 0`).get();
+    } catch {
+      sqlite.prepare(`ALTER TABLE agents ADD COLUMN ${column} ${definition}`).run();
+    }
   }
 }

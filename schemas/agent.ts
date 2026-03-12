@@ -4,6 +4,9 @@ import { TrustTier } from "./evidence-bundle.js";
 export const RoleId = z.enum(["developer", "reviewer", "facilitator", "observer", "admin"]);
 export type RoleId = z.infer<typeof RoleId>;
 
+export const AgentIdentitySource = z.enum(["self_declared", "config", "peer_asserted", "system_assigned"]);
+export type AgentIdentitySource = z.infer<typeof AgentIdentitySource>;
+
 export const RolePermissions = z.object({
   allowedTools: z.array(z.string()),
   trustTier: TrustTier,
@@ -169,6 +172,11 @@ export const Agent = z.object({
   id: z.string(),
   name: z.string(),
   type: z.string().default("unknown"), // e.g., "claude-code", "codex", "opencode"
+  provider: z.string().nullable().default(null),
+  model: z.string().nullable().default(null),
+  modelFamily: z.string().nullable().default(null),
+  modelVersion: z.string().nullable().default(null),
+  identitySource: AgentIdentitySource.nullable().default(null),
   roleId: RoleId,
   trustTier: TrustTier,
   registeredAt: z.string().datetime(),
@@ -188,6 +196,11 @@ export type AgentSession = z.infer<typeof AgentSession>;
 export const RegisterAgentInput = z.object({
   name: z.string().min(1).max(100),
   type: z.string().max(50).default("unknown"),
+  provider: z.string().trim().min(1).max(100).optional(),
+  model: z.string().trim().min(1).max(200).optional(),
+  modelFamily: z.string().trim().min(1).max(100).optional(),
+  modelVersion: z.string().trim().min(1).max(100).optional(),
+  identitySource: AgentIdentitySource.optional(),
   desiredRole: RoleId.default("observer"),
   authToken: z.string().min(1).max(200).optional(),
 });
