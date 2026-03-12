@@ -71,6 +71,7 @@ describe("read tool discovery", () => {
       security: [],
       performance: [],
       patterns: [],
+      design: [],
     });
     expect(payload.agentIdentity).toEqual({
       fields: ["provider", "model", "modelFamily", "modelVersion", "identitySource"],

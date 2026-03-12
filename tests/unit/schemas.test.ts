@@ -189,6 +189,7 @@ describe("Agent schema", () => {
   it("accepts only the agreed council specialization taxonomy", () => {
     expect(CouncilSpecializationId.safeParse("architect").success).toBe(true);
     expect(CouncilSpecializationId.safeParse("patterns").success).toBe(true);
+    expect(CouncilSpecializationId.safeParse("design").success).toBe(true);
     expect(CouncilSpecializationId.safeParse("dx").success).toBe(false);
     expect(CouncilSpecializationId.safeParse("simplicity").success).toBe(false);
   });

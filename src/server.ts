@@ -12,6 +12,7 @@ import { registerNoteTools } from "./tools/note-tools.js";
 import { registerCoordinationTools } from "./tools/coordination-tools.js";
 import { registerKnowledgeTools } from "./tools/knowledge-tools.js";
 import { registerTicketTools } from "./tools/ticket-tools.js";
+import { registerProtectionTools } from "./tools/protection-tools.js";
 import { installToolRuntimeInstrumentation } from "./tools/runtime-instrumentation.js";
 
 export function createAgoraServer(
@@ -40,6 +41,7 @@ export function createAgoraServer(
   registerCoordinationTools(server, getContext);
   registerKnowledgeTools(server, getContext);
   registerTicketTools(server, getContext);
+  registerProtectionTools(server, getContext);
 
   return server;
 }

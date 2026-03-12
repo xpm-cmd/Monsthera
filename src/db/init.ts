@@ -229,6 +229,15 @@ function createTables(sqlite: Database.Database): void {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS protected_artifacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_id INTEGER NOT NULL REFERENCES repos(id),
+      path_pattern TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(repo_id, path_pattern)
+    )`,
     `CREATE TABLE IF NOT EXISTS debug_payloads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       event_id TEXT NOT NULL REFERENCES event_logs(event_id),
@@ -308,7 +317,18 @@ function runMigrations(sqlite: Database.Database): void {
     sqlite.prepare("ALTER TABLE event_logs ADD COLUMN error_detail TEXT").run();
   }
 
-  // Migration 5-9: Add normalized agent identity columns
+  // Migration 5: Create protected_artifacts table
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS protected_artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id INTEGER NOT NULL REFERENCES repos(id),
+    path_pattern TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(repo_id, path_pattern)
+  )`).run();
+
+  // Migration 6-10: Add normalized agent identity columns
   for (const [column, definition] of [
     ["provider", "TEXT"],
     ["model", "TEXT"],

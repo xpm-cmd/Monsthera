@@ -6,6 +6,7 @@ export const CouncilSpecializationId = z.enum([
   "security",
   "performance",
   "patterns",
+  "design",
 ]);
 export type CouncilSpecializationId = z.infer<typeof CouncilSpecializationId>;
 

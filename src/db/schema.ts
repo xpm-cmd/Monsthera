@@ -241,6 +241,17 @@ export const knowledge = sqliteTable("knowledge", {
   updatedAt: text("updated_at").notNull(),
 });
 
+// --- Protected Artifacts ---
+
+export const protectedArtifacts = sqliteTable("protected_artifacts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: integer("repo_id").notNull().references(() => repos.id),
+  pathPattern: text("path_pattern").notNull(),
+  reason: text("reason").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
 // --- Debug Payloads (only when --debug-logging is enabled, 24h TTL) ---
 
 export const debugPayloads = sqliteTable("debug_payloads", {

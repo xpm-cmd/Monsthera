@@ -572,8 +572,8 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
     case "logs": {
       const rawSince = url.searchParams.get("since")?.trim();
       const sinceParam = rawSince ? rawSince : undefined;
-      const limitRaw = Number(url.searchParams.get("limit") ?? "");
-      const logLimit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, Math.trunc(limitRaw))) : undefined;
+      const limitStr = url.searchParams.get("limit");
+      const logLimit = limitStr ? Math.max(1, Math.min(1000, Math.trunc(Number(limitStr)))) : undefined;
       return getEventLogsList(deps, logLimit, sinceParam);
     }
     case "patches": return getPatchesList(deps);
@@ -585,8 +585,8 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
         ? scopeValue
         : undefined;
       const type = url.searchParams.get("type")?.trim() ?? undefined;
-      const limitRaw = Number(url.searchParams.get("limit") ?? "");
-      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(50, Math.trunc(limitRaw))) : undefined;
+      const limitStr = url.searchParams.get("limit");
+      const limit = limitStr ? Math.max(1, Math.min(50, Math.trunc(Number(limitStr)))) : undefined;
       return getKnowledgeList(deps, { query, scope, type, limit });
     }
     case "tickets": return getTicketsList(deps);

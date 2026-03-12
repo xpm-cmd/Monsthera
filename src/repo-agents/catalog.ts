@@ -280,13 +280,9 @@ function summarizePrompt(prompt: string): string {
 }
 
 function emptyReviewRoleMap(): Record<CouncilSpecialization, string[]> {
-  return {
-    architect: [],
-    simplifier: [],
-    security: [],
-    performance: [],
-    patterns: [],
-  };
+  return Object.fromEntries(
+    COUNCIL_SPECIALIZATIONS.map((s) => [s, [] as string[]]),
+  ) as Record<CouncilSpecialization, string[]>;
 }
 
 // v1 frontmatter intentionally supports only the manifest fields we need:

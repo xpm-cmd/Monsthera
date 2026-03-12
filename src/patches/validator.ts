@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import { parseStringArrayJson } from "../core/input-hardening.js";
@@ -63,6 +63,16 @@ export async function validatePatch(
     }
   }
 
+  // Check protected artifacts
+  const protectedRules = queries.getProtectedArtifacts(db, repoId);
+  for (const rule of protectedRules) {
+    for (const path of touchedPaths) {
+      if (matchesProtectedPattern(path, rule.pathPattern)) {
+        policyViolations.push(`Protected artifact: ${path} matches rule "${rule.pathPattern}" (${rule.reason})`);
+      }
+    }
+  }
+
   const dryRunResult: DryRunResult = {
     feasible: !stale && policyViolations.length === 0,
     touchedPaths,
@@ -90,4 +100,25 @@ function extractTouchedPaths(diff: string): string[] {
     }
   }
   return [...paths];
+}
+
+/**
+ * Match a file path against a protected artifact pattern.
+ * Supports: exact match, directory prefix with trailing slash,
+ * and simple glob with trailing wildcard (*).
+ */
+export function matchesProtectedPattern(filePath: string, pattern: string): boolean {
+  // Exact match
+  if (filePath === pattern) return true;
+
+  // Directory prefix: "src/db/" matches "src/db/schema.ts"
+  if (pattern.endsWith("/") && filePath.startsWith(pattern)) return true;
+
+  // Trailing wildcard: "src/db/*" matches "src/db/schema.ts"
+  if (pattern.endsWith("*")) {
+    const prefix = pattern.slice(0, -1);
+    return filePath.startsWith(prefix);
+  }
+
+  return false;
 }

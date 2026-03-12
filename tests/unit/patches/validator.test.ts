@@ -13,11 +13,14 @@ function createTestDb() {
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
   for (const stmt of [
+    `CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL)`,
     `CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', provider TEXT, model TEXT, model_family TEXT, model_version TEXT, identity_source TEXT, role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL)`,
     `CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT)`,
+    `CREATE TABLE protected_artifacts (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), path_pattern TEXT NOT NULL, reason TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(repo_id, path_pattern))`,
   ]) {
     sqlite.prepare(stmt).run();
   }
+  sqlite.prepare("INSERT INTO repos (path, name, created_at) VALUES (?, ?, ?)").run("/repo", "test", new Date().toISOString());
   return { db: drizzle(sqlite, { schema }), sqlite };
 }
 
@@ -140,5 +143,71 @@ describe("validatePatch", () => {
     expect(result.dryRunResult.touchedPaths).toContain("src/a.ts");
     expect(result.dryRunResult.touchedPaths).toContain("src/b.ts");
     expect(result.dryRunResult.touchedPaths).toContain("lib/c.js");
+  });
+
+  it("rejects patches touching exact protected artifact", async () => {
+    sqlite.prepare(
+      "INSERT INTO protected_artifacts (repo_id, path_pattern, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(1, "src/foo.ts", "Critical file", "admin-1", new Date().toISOString());
+
+    const result = await validatePatch(db, "/repo", 1, {
+      diff,
+      message: "fix foo",
+      baseCommit: "abc1234def5678",
+    });
+
+    expect(result.dryRunResult.policyViolations).toHaveLength(1);
+    expect(result.dryRunResult.policyViolations[0]).toContain("Protected artifact");
+    expect(result.dryRunResult.policyViolations[0]).toContain("src/foo.ts");
+    expect(result.dryRunResult.feasible).toBe(false);
+  });
+
+  it("rejects patches touching directory-protected artifacts", async () => {
+    sqlite.prepare(
+      "INSERT INTO protected_artifacts (repo_id, path_pattern, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(1, "src/", "Entire src protected", "admin-1", new Date().toISOString());
+
+    const result = await validatePatch(db, "/repo", 1, {
+      diff,
+      message: "fix foo",
+      baseCommit: "abc1234def5678",
+    });
+
+    expect(result.dryRunResult.policyViolations).toHaveLength(1);
+    expect(result.dryRunResult.policyViolations[0]).toContain("Protected artifact");
+    expect(result.dryRunResult.feasible).toBe(false);
+  });
+
+  it("rejects patches touching glob-protected artifacts", async () => {
+    sqlite.prepare(
+      "INSERT INTO protected_artifacts (repo_id, path_pattern, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(1, "src/db/*", "DB files protected", "admin-1", new Date().toISOString());
+
+    const dbDiff = `--- a/src/db/schema.ts\n+++ b/src/db/schema.ts\n@@ -1 +1 @@\n-old\n+new`;
+
+    const result = await validatePatch(db, "/repo", 1, {
+      diff: dbDiff,
+      message: "change schema",
+      baseCommit: "abc1234def5678",
+    });
+
+    expect(result.dryRunResult.policyViolations).toHaveLength(1);
+    expect(result.dryRunResult.policyViolations[0]).toContain("src/db/*");
+    expect(result.dryRunResult.feasible).toBe(false);
+  });
+
+  it("allows patches not touching protected artifacts", async () => {
+    sqlite.prepare(
+      "INSERT INTO protected_artifacts (repo_id, path_pattern, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run(1, "src/db/*", "DB files protected", "admin-1", new Date().toISOString());
+
+    const result = await validatePatch(db, "/repo", 1, {
+      diff,
+      message: "fix foo",
+      baseCommit: "abc1234def5678",
+    });
+
+    expect(result.dryRunResult.policyViolations).toHaveLength(0);
+    expect(result.dryRunResult.feasible).toBe(true);
   });
 });

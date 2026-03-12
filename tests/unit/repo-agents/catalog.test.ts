@@ -64,6 +64,7 @@ Focus on layering, abstractions, and long-term maintainability.
       security: ["Security Reviewer"],
       performance: [],
       patterns: [],
+      design: [],
     });
     expect(catalog.warnings).toEqual([]);
   });
@@ -89,7 +90,7 @@ Prefer smaller and clearer designs.
     expect(parsed.warnings).toEqual([
       {
         filePath: ".agora/agents/simplify.md",
-        message: "Invalid `reviewRole`; expected one of architect, simplifier, security, performance, patterns",
+        message: "Invalid `reviewRole`; expected one of architect, simplifier, security, performance, patterns, design",
       },
     ]);
   });
