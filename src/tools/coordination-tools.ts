@@ -26,13 +26,14 @@ export function registerCoordinationTools(server: McpServer, getContext: GetCont
     async ({ type, payload, to, agentId, sessionId }) => {
       const c = await getContext();
 
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const access = checkToolAccess("send_coordination", resolved.role, resolved.trustTier);
       if (!access.allowed) {
@@ -75,13 +76,14 @@ export function registerCoordinationTools(server: McpServer, getContext: GetCont
     },
     async ({ agentId, sessionId, since, limit }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const messages = c.bus.getMessages(resolved.agentId, since, limit);
 

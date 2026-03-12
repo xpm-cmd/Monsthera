@@ -145,6 +145,6 @@ describe("coordination tools", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("Agent or session not found / inactive");
+    expect(result.content[0].text).toContain("Session not found");
   });
 });

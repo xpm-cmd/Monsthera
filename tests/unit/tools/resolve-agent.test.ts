@@ -41,47 +41,62 @@ describe("resolveAgent", () => {
 
   afterEach(() => sqlite.close());
 
-  it("returns null when agentId is missing", () => {
-    expect(resolveAgent(ctx, undefined, "session-1")).toBeNull();
+  it("returns error when agentId is missing", () => {
+    const result = resolveAgent(ctx, undefined, "session-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Missing agentId or sessionId");
   });
 
-  it("returns null when sessionId is missing", () => {
-    expect(resolveAgent(ctx, "agent-1", undefined)).toBeNull();
+  it("returns error when sessionId is missing", () => {
+    const result = resolveAgent(ctx, "agent-1", undefined);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Missing agentId or sessionId");
   });
 
-  it("returns null when both are missing", () => {
-    expect(resolveAgent(ctx, undefined, undefined)).toBeNull();
+  it("returns error when both are missing", () => {
+    const result = resolveAgent(ctx, undefined, undefined);
+    expect(result.ok).toBe(false);
   });
 
-  it("returns null when agent does not exist", () => {
-    expect(resolveAgent(ctx, "agent-unknown", "session-1")).toBeNull();
+  it("returns error when agent does not exist", () => {
+    const result = resolveAgent(ctx, "agent-unknown", "session-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Agent not found");
   });
 
-  it("returns null when session does not exist", () => {
-    expect(resolveAgent(ctx, "agent-1", "session-unknown")).toBeNull();
+  it("returns error when session does not exist", () => {
+    const result = resolveAgent(ctx, "agent-1", "session-unknown");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Session not found");
   });
 
-  it("returns null when session belongs to a different agent", () => {
+  it("returns error when session belongs to a different agent", () => {
     seedAgent(sqlite, "agent-2", "observer", "B");
     seedSession(sqlite, "session-2", "agent-2");
 
-    expect(resolveAgent(ctx, "agent-1", "session-2")).toBeNull();
+    const result = resolveAgent(ctx, "agent-1", "session-2");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("belongs to a different agent");
   });
 
-  it("returns null when session is disconnected", () => {
+  it("returns error when session is disconnected", () => {
     seedSession(sqlite, "session-disconnected", "agent-1", "disconnected");
 
-    expect(resolveAgent(ctx, "agent-1", "session-disconnected")).toBeNull();
+    const result = resolveAgent(ctx, "agent-1", "session-disconnected");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("disconnected");
   });
 
   it("returns resolved agent with correct fields for valid input", () => {
     const result = resolveAgent(ctx, "agent-1", "session-1");
 
-    expect(result).not.toBeNull();
-    expect(result!.agentId).toBe("agent-1");
-    expect(result!.sessionId).toBe("session-1");
-    expect(result!.role).toBe("developer");
-    expect(result!.trustTier).toBe("A");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.agent.agentId).toBe("agent-1");
+      expect(result.agent.sessionId).toBe("session-1");
+      expect(result.agent.role).toBe("developer");
+      expect(result.agent.trustTier).toBe("A");
+    }
   });
 
   it("updates lastActivity on successful resolution (presence tracking)", () => {
@@ -92,7 +107,7 @@ describe("resolveAgent", () => {
       .get("session-1") as { last_activity: string };
 
     const result = resolveAgent(ctx, "agent-1", "session-1");
-    expect(result).not.toBeNull();
+    expect(result.ok).toBe(true);
 
     const after = sqlite.prepare("SELECT last_activity FROM sessions WHERE id = ?")
       .get("session-1") as { last_activity: string };
@@ -107,8 +122,10 @@ describe("resolveAgent", () => {
     seedSession(sqlite, "session-obs", "agent-obs");
 
     const result = resolveAgent(ctx, "agent-obs", "session-obs");
-    expect(result).not.toBeNull();
-    expect(result!.role).toBe("observer");
-    expect(result!.trustTier).toBe("B");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.agent.role).toBe("observer");
+      expect(result.agent.trustTier).toBe("B");
+    }
   });
 });

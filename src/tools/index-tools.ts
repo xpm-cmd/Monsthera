@@ -20,13 +20,14 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
     },
     async ({ full, agentId, sessionId }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const access = checkToolAccess("request_reindex", resolved.role, resolved.trustTier);
       if (!access.allowed) {
@@ -43,9 +44,9 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
 
       c.insight.info("Reindex requested...");
 
-      let result;
+      let indexResult;
       if (!indexedCommit || full) {
-        result = await fullIndex({
+        indexResult = await fullIndex({
           repoPath: c.repoPath,
           repoId: c.repoId,
           db: c.db,
@@ -56,7 +57,7 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
           semanticReranker: c.searchRouter.getSemanticReranker(),
         });
       } else {
-        result = await incrementalIndex(indexedCommit, {
+        indexResult = await incrementalIndex(indexedCommit, {
           repoPath: c.repoPath,
           repoId: c.repoId,
           db: c.db,
@@ -69,17 +70,17 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
       }
 
       await c.searchRouter.rebuildIndex(c.repoId);
-      c.insight.info(`Reindex complete: ${result.filesIndexed} files in ${result.durationMs}ms`);
+      c.insight.info(`Reindex complete: ${indexResult.filesIndexed} files in ${indexResult.durationMs}ms`);
 
       return {
         content: [{
           type: "text" as const,
           text: JSON.stringify({
-            commit: result.commit,
-            filesIndexed: result.filesIndexed,
-            filesSkipped: result.filesSkipped,
-            errors: result.errors,
-            durationMs: result.durationMs,
+            commit: indexResult.commit,
+            filesIndexed: indexResult.filesIndexed,
+            filesSkipped: indexResult.filesSkipped,
+            errors: indexResult.errors,
+            durationMs: indexResult.durationMs,
           }, null, 2),
         }],
       };

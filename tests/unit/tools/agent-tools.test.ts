@@ -333,7 +333,7 @@ describe("agent tools", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("Agent or session not found / inactive");
+    expect(result.content[0].text).toContain("belongs to a different agent");
   });
 
   it("ignores malformed stored claim JSON when checking conflicts", async () => {

@@ -145,8 +145,9 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     },
     async (input) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, input.agentId, input.sessionId);
-      if (!resolved) return errText("Agent or session not found / inactive");
+      const result = resolveAgent(c, input.agentId, input.sessionId);
+      if (!result.ok) return errText(result.error);
+      const resolved = result.agent;
 
       const access = checkToolAccess("update_ticket", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
@@ -195,8 +196,9 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     },
     async ({ agentId, sessionId, status, assigneeAgentId, severity, creatorAgentId, tags, limit }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) return errText("Agent or session not found / inactive");
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) return errText(result.error);
+      const resolved = result.agent;
 
       const access = checkToolAccess("list_tickets", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
@@ -231,8 +233,9 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     },
     async ({ query, agentId, sessionId, status, severity, assigneeAgentId, limit }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) return errText("Agent or session not found / inactive");
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) return errText(result.error);
+      const resolved = result.agent;
 
       const access = checkToolAccess("search_tickets", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
@@ -282,8 +285,9 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     },
     async ({ ticketId, agentId, sessionId }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) return errText("Agent or session not found / inactive");
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) return errText(result.error);
+      const resolved = result.agent;
 
       const access = checkToolAccess("get_ticket", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });

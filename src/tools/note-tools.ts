@@ -36,13 +36,14 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
     async ({ type, content, linkedPaths, metadata, agentId, sessionId }) => {
       const c = await getContext();
 
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const access = checkToolAccess("propose_note", resolved.role, resolved.trustTier);
       if (!access.allowed) {
@@ -121,13 +122,14 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
     },
     async ({ type, agentId, sessionId }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const access = checkToolAccess("list_notes", resolved.role, resolved.trustTier);
       if (!access.allowed) {

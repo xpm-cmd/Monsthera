@@ -36,13 +36,14 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     },
     async ({ type, scope, title, content, tags, agentId, sessionId }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const access = checkToolAccess("store_knowledge", resolved.role, resolved.trustTier);
       if (!access.allowed) {
@@ -213,13 +214,14 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     },
     async ({ key, scope, agentId, sessionId }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const access = checkToolAccess("archive_knowledge", resolved.role, resolved.trustTier);
       if (!access.allowed) {
@@ -280,13 +282,14 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     },
     async ({ key, scope, agentId, sessionId }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const access = checkToolAccess("delete_knowledge", resolved.role, resolved.trustTier);
       if (!access.allowed) {

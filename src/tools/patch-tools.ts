@@ -28,13 +28,14 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
     async ({ diff, message, baseCommit, bundleId, agentId, sessionId, dryRun, ticketId }) => {
       const c = await getContext();
 
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const access = checkToolAccess("propose_patch", resolved.role, resolved.trustTier);
       if (!access.allowed) {
@@ -122,13 +123,14 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
     },
     async ({ state, agentId, sessionId }) => {
       const c = await getContext();
-      const resolved = resolveAgent(c, agentId, sessionId);
-      if (!resolved) {
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) {
         return {
-          content: [{ type: "text" as const, text: "Agent or session not found / inactive" }],
+          content: [{ type: "text" as const, text: result.error }],
           isError: true,
         };
       }
+      const resolved = result.agent;
 
       const access = checkToolAccess("list_patches", resolved.role, resolved.trustTier);
       if (!access.allowed) {
