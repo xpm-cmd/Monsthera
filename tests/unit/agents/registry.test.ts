@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { AgentRegistrationError, registerAgent, getAgentStatus, disconnectSession, reapStaleSessions } from "../../../src/agents/registry.js";
+import { HEARTBEAT_TIMEOUT_MS } from "../../../src/core/constants.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -183,6 +184,22 @@ describe("Agent Registry", () => {
 
     const session = sqlite.prepare("SELECT state FROM sessions WHERE id = ?").get("session-nan") as { state: string };
     expect(session.state).toBe("disconnected");
+  });
+
+  it("does not reap sessions that are still within the heartbeat timeout window", () => {
+    const now = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS + 60_000).toISOString();
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-fresh", "Fresh", "test", "developer", "A", new Date().toISOString());
+    sqlite.prepare(`
+      INSERT INTO sessions (id, agent_id, state, connected_at, last_activity)
+      VALUES (?, ?, ?, ?, ?)
+    `).run("session-fresh", "agent-fresh", "active", now, now);
+
+    const reaped = reapStaleSessions(db);
+    expect(reaped).toBe(0);
+
+    const session = sqlite.prepare("SELECT state FROM sessions WHERE id = ?").get("session-fresh") as { state: string };
+    expect(session.state).toBe("active");
   });
 
   it("registers a facilitator with Tier A", () => {

@@ -26,7 +26,7 @@ proposed → validated → applied → committed
 - Claims are released on:
   - Explicit release (via `claim_files` with empty paths)
   - `end_session` call (immediately disconnects session and clears claims)
-  - Automatic stale reaping (sessions inactive > `HEARTBEAT_TIMEOUT_MS` = 10 min)
+  - Automatic stale reaping (sessions inactive > `HEARTBEAT_TIMEOUT_MS` = 60 min)
   - Patch commit
 
 ## Provenance

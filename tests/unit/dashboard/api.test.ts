@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
+import { HEARTBEAT_TIMEOUT_MS } from "../../../src/core/constants.js";
 import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, getAgentTimeline, getEventLogsList, getDependencyGraph, getKnowledgeGraph, getKnowledgeList, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
@@ -66,7 +67,7 @@ describe("Dashboard API", () => {
   });
 
   it("does not count stale active sessions in overview metrics", () => {
-    const stale = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const stale = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS - 60_000).toISOString();
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run("agent-stale", "Stale Dev", "test", "developer", "A", stale);
     sqlite.prepare(`INSERT INTO sessions (id, agent_id, state, connected_at, last_activity) VALUES (?, ?, ?, ?, ?)`)
