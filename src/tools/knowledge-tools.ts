@@ -7,10 +7,10 @@ import {
   KnowledgeKeySchema,
   SessionIdSchema,
   TagsSchema,
-  parseStringArrayJson,
 } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
-import { searchKnowledgeEntries } from "../knowledge/search.js";
+import { buildKnowledgeSearchPayload, searchKnowledgeEntries } from "../knowledge/search.js";
+import { buildKnowledgeListPayload } from "../knowledge/read-model.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 
@@ -137,15 +137,7 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({
-            query, scope, count: results.length,
-            results: results.map((r) => ({
-              key: r.key, type: r.type, scope: r.scope, title: r.title,
-              content: r.content.slice(0, 500) + (r.content.length > 500 ? "..." : ""),
-              tags: r.tags,
-              score: Math.round(r.score * 1000) / 1000,
-            })),
-          }, null, 2),
+          text: JSON.stringify(buildKnowledgeSearchPayload(query, scope, results), null, 2),
         }],
       };
     },
@@ -164,39 +156,16 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
     },
     async ({ scope, type, tags, status, limit }) => {
       const c = await getContext();
-      const queryOpts = { type, tags, status };
-
-      type EntryWithScope = ReturnType<typeof queries.queryKnowledge>[number] & { scope: string };
-      let results: EntryWithScope[] = [];
-
-      if (scope === "repo" || scope === "all") {
-        const repoEntries = queries.queryKnowledge(c.db, queryOpts);
-        results.push(...repoEntries.map((e) => ({ ...e, scope: "repo" })));
-      }
-
-      if ((scope === "global" || scope === "all") && c.globalDb) {
-        const globalEntries = queries.queryKnowledge(c.globalDb, queryOpts);
-        results.push(...globalEntries.map((e) => ({ ...e, scope: "global" })));
-      }
-
-      results = results.slice(0, limit);
-
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({
-            count: results.length,
-            entries: results.map((e) => ({
-              key: e.key, type: e.type, scope: e.scope, title: e.title,
-              content: e.content.slice(0, 200) + (e.content.length > 200 ? "..." : ""),
-              tags: parseStringArrayJson(e.tagsJson, {
-                maxItems: 25,
-                maxItemLength: 64,
-              }),
-              status: e.status,
-              updatedAt: e.updatedAt,
-            })),
-          }, null, 2),
+          text: JSON.stringify(buildKnowledgeListPayload(c.db, c.globalDb, {
+            scope,
+            type,
+            tags,
+            status,
+            limit,
+          }), null, 2),
         }],
       };
     },

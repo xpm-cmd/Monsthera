@@ -44,6 +44,21 @@ export interface KnowledgeSearchInitializer {
   rebuildKnowledgeFts(sqlite: DatabaseType): void;
 }
 
+export interface KnowledgeSearchPayload {
+  query: string;
+  scope: KnowledgeScope;
+  count: number;
+  results: Array<{
+    key: string;
+    type: string;
+    scope: "repo" | "global";
+    title: string;
+    content: string;
+    tags: string[];
+    score: number;
+  }>;
+}
+
 export function prepareKnowledgeSearchTarget(
   initializer: KnowledgeSearchInitializer,
   sqlite: DatabaseType,
@@ -160,4 +175,25 @@ export async function searchKnowledgeEntries(
 
   results.sort((left, right) => right.score - left.score);
   return results.slice(0, limit);
+}
+
+export function buildKnowledgeSearchPayload(
+  query: string,
+  scope: KnowledgeScope,
+  results: KnowledgeSearchEntry[],
+): KnowledgeSearchPayload {
+  return {
+    query,
+    scope,
+    count: results.length,
+    results: results.map((entry) => ({
+      key: entry.key,
+      type: entry.type,
+      scope: entry.scope,
+      title: entry.title,
+      content: entry.content.slice(0, 500) + (entry.content.length > 500 ? "..." : ""),
+      tags: entry.tags,
+      score: Math.round(entry.score * 1000) / 1000,
+    })),
+  };
 }

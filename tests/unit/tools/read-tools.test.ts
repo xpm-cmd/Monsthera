@@ -61,6 +61,7 @@ describe("read tool discovery", () => {
       "search_tickets",
       "analyze_complexity",
       "analyze_test_coverage",
+      "suggest_actions",
       "lookup_dependencies",
     ]));
     expect(payload.repoAgents).toEqual([]);
@@ -89,6 +90,7 @@ describe("read tool discovery", () => {
     const searchTickets = await handler("schema")({ toolName: "search_tickets" });
     const analyzeComplexity = await handler("schema")({ toolName: "analyze_complexity" });
     const analyzeTestCoverage = await handler("schema")({ toolName: "analyze_test_coverage" });
+    const suggestActions = await handler("schema")({ toolName: "suggest_actions" });
     const registerAgent = await handler("schema")({ toolName: "register_agent" });
 
     expect(JSON.parse(storeKnowledge.content[0].text).inputSchema).toMatchObject({
@@ -125,6 +127,9 @@ describe("read tool discovery", () => {
     });
     expect(JSON.parse(analyzeTestCoverage.content[0].text).inputSchema).toMatchObject({
       filePath: "string (file path relative to repo root, required)",
+    });
+    expect(JSON.parse(suggestActions.content[0].text).inputSchema).toMatchObject({
+      changedPaths: "string[] (repo-relative changed file paths, required)",
     });
     expect(JSON.parse(registerAgent.content[0].text).inputSchema).toMatchObject({
       provider: "string (optional normalized provider)",
@@ -206,6 +211,70 @@ Inspect auth and trust surfaces.
     ]);
     expect(payload.availableReviewRoles.security).toEqual(["Security Reviewer"]);
     expect(payload.repoAgentWarnings).toEqual([]);
+  });
+
+  it("runs suggest_actions against repo-local dispatch rules", async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), "agora-dispatch-rules-"));
+    tempDirs.push(repoPath);
+    const agoraDir = join(repoPath, ".agora");
+    await mkdir(agoraDir, { recursive: true });
+    await writeFile(
+      join(agoraDir, "dispatch-rules.yaml"),
+      `rules:
+  - pattern: "src/db/**"
+    actions:
+      - analyze_complexity
+      - lookup_dependencies
+    required_roles:
+      - architect
+      - security
+    reason: "Database changes need deeper review."
+  - always: true
+    actions: get_issue_pack
+    required_roles: patterns
+    reason: "Always collect related issue context."
+`,
+      "utf-8",
+    );
+
+    const scopedServer = new FakeServer();
+    registerReadTools(scopedServer as unknown as McpServer, async () => ({
+      repoId: 1,
+      repoPath,
+      config: {
+        coordinationTopology: "hub-spoke",
+        debugLogging: false,
+      },
+      searchRouter: {
+        getSemanticReranker: () => null,
+      },
+    } as any));
+
+    const result = await scopedServer.handlers.get("suggest_actions")!({
+      changedPaths: ["src/db/schema.ts", "docs/architecture.md"],
+    });
+    const payload = JSON.parse(result.content[0].text);
+
+    expect(payload.advisoryOnly).toBe(true);
+    expect(payload.rulesSource).toBe("repo");
+    expect(payload.repoRuleFileExists).toBe(true);
+    expect(payload.recommendedTools).toEqual(expect.arrayContaining([
+      "analyze_complexity",
+      "lookup_dependencies",
+      "get_issue_pack",
+    ]));
+    expect(payload.requiredRoles).toEqual(["architect", "security", "patterns"]);
+    expect(payload.quorumMin).toBe(3);
+    expect(payload.matchedRules).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        selector: "src/db/**",
+        matchedPaths: ["src/db/schema.ts"],
+      }),
+      expect.objectContaining({
+        selector: "always",
+        matchedPaths: ["src/db/schema.ts", "docs/architecture.md"],
+      }),
+    ]));
   });
 });
 

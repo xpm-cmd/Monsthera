@@ -12,6 +12,7 @@ export const CAPABILITY_TOOL_NAMES = [
   "link_tickets", "unlink_tickets",
   "analyze_complexity",
   "analyze_test_coverage",
+  "suggest_actions",
   "lookup_dependencies",
   "export_audit",
 ] as const;

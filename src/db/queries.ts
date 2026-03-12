@@ -540,8 +540,10 @@ export function getTicketById(db: DB, id: number) {
   return db.select().from(tables.tickets).where(eq(tables.tickets.id, id)).get();
 }
 
-export function getTicketByTicketId(db: DB, ticketId: string) {
-  return db.select().from(tables.tickets).where(eq(tables.tickets.ticketId, ticketId)).get();
+export function getTicketByTicketId(db: DB, ticketId: string, repoId?: number) {
+  const conditions = [eq(tables.tickets.ticketId, ticketId)];
+  if (repoId !== undefined) conditions.push(eq(tables.tickets.repoId, repoId));
+  return db.select().from(tables.tickets).where(and(...conditions)).get();
 }
 
 export function updateTicket(

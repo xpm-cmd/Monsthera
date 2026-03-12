@@ -166,6 +166,48 @@ describe("ticket service system context", () => {
     expect(refreshCount).toBe(1);
   });
 
+  it("does not resolve or mutate tickets outside the active repo", () => {
+    const otherRepoId = queries.upsertRepo(db, "/other", "other").id;
+    const now = new Date().toISOString();
+    queries.insertTicket(db, {
+      repoId: otherRepoId,
+      ticketId: "TKT-foreign01",
+      title: "Foreign ticket",
+      description: "Should stay hidden",
+      status: "backlog",
+      severity: "medium",
+      priority: 5,
+      creatorAgentId: "agent-dev",
+      creatorSessionId: "session-dev",
+      commitSha: "abc1234",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const assignResult = assignTicketRecord(ctx, {
+      ticketId: "TKT-foreign01",
+      assigneeAgentId: "agent-dev",
+    });
+    const statusResult = updateTicketStatusRecord(ctx, {
+      ticketId: "TKT-foreign01",
+      status: "technical_analysis",
+    });
+    const commentResult = commentTicketRecord(ctx, {
+      ticketId: "TKT-foreign01",
+      content: "Should fail",
+    });
+
+    expect(assignResult.ok).toBe(false);
+    expect(statusResult.ok).toBe(false);
+    expect(commentResult.ok).toBe(false);
+    expect(assignResult.ok ? "" : assignResult.code).toBe("not_found");
+    expect(statusResult.ok ? "" : statusResult.code).toBe("not_found");
+    expect(commentResult.ok ? "" : commentResult.code).toBe("not_found");
+    expect(queries.getDashboardEventsByRepo(db, repoId)).toHaveLength(0);
+    expect(bus.getMessages("agent-dev")).toHaveLength(0);
+    expect(refreshCount).toBe(0);
+  });
+
   it("rolls back ticket creation when history insert fails", async () => {
     sqlite.exec(`
       CREATE TRIGGER fail_ticket_history_insert

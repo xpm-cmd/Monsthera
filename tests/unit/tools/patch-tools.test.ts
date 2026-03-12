@@ -103,4 +103,38 @@ describe("patch tools", () => {
     expect(result.content[0].text).toContain("Ticket not found");
     expect(queries.getPatchesByRepo(db, repoId)).toHaveLength(0);
   });
+
+  it("rejects linking a patch to a ticket from another repo", async () => {
+    const otherRepoId = queries.upsertRepo(db, "/other", "other").id;
+    queries.insertTicket(db, {
+      repoId: otherRepoId,
+      ticketId: "TKT-foreign01",
+      title: "Foreign ticket",
+      description: "Hidden from this repo",
+      status: "backlog",
+      severity: "medium",
+      priority: 5,
+      creatorAgentId: "agent-1",
+      creatorSessionId: "session-1",
+      commitSha: "abc1234",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const proposePatch = server.handlers.get("propose_patch");
+    expect(proposePatch).toBeTypeOf("function");
+
+    const result = await proposePatch!({
+      diff: "--- a/src/file.ts\n+++ b/src/file.ts\n@@ -1 +1 @@\n-old\n+new",
+      message: "Fix bug",
+      baseCommit: "abc1234",
+      agentId: "agent-1",
+      sessionId: "session-1",
+      ticketId: "TKT-foreign01",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Ticket not found");
+    expect(queries.getPatchesByRepo(db, repoId)).toHaveLength(0);
+  });
 });

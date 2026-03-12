@@ -57,6 +57,7 @@ describe("ticket tools", () => {
 
     for (const agent of [
       { id: "agent-dev", name: "Dev", roleId: "developer", trustTier: "A" },
+      { id: "agent-dev-2", name: "Dev 2", roleId: "developer", trustTier: "A" },
       { id: "agent-review", name: "Review", roleId: "reviewer", trustTier: "A" },
       { id: "agent-obs", name: "Obs", roleId: "observer", trustTier: "B" },
       { id: "agent-admin", name: "Admin", roleId: "admin", trustTier: "A" },
@@ -73,6 +74,7 @@ describe("ticket tools", () => {
 
     for (const session of [
       { id: "session-dev", agentId: "agent-dev" },
+      { id: "session-dev-2", agentId: "agent-dev-2" },
       { id: "session-review", agentId: "agent-review" },
       { id: "session-obs", agentId: "agent-obs" },
       { id: "session-admin", agentId: "agent-admin" },
@@ -235,6 +237,65 @@ describe("ticket tools", () => {
     expect(assignResult.content[0].text).toContain("Developers can only self-assign");
   });
 
+  it("denies developer reassigning a ticket owned by another developer", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const ownerAssign = await handler("assign_ticket")({
+      ticketId,
+      assigneeAgentId: "agent-dev",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+    expect(ownerAssign.isError).not.toBe(true);
+
+    const reassignResult = await handler("assign_ticket")({
+      ticketId,
+      assigneeAgentId: "agent-dev-2",
+      agentId: "agent-dev-2",
+      sessionId: "session-dev-2",
+    });
+
+    expect(reassignResult.isError).toBe(true);
+    expect(reassignResult.content[0].text).toContain("cannot reassign");
+    expect(queries.getTicketByTicketId(db, ticketId)?.assigneeAgentId).toBe("agent-dev");
+  });
+
+  it("denies developer transitioning a ticket they do not own", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("assign_ticket")({
+      ticketId,
+      assigneeAgentId: "agent-dev",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+
+    const result = await handler("update_ticket_status")({
+      ticketId,
+      status: "in_progress",
+      agentId: "agent-dev-2",
+      sessionId: "session-dev-2",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("assigned to themselves");
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("approved");
+  });
+
   it("updates status, writes history, and clears resolvedByAgentId on reopen", async () => {
     const createResult = await createTicket();
     const ticketId = JSON.parse(createResult.content[0].text).ticketId;
@@ -350,6 +411,50 @@ describe("ticket tools", () => {
       sessionId: "session-review",
     });
     expect(denied.isError).toBe(true);
+  });
+
+  it("scopes ticket tools to the active repo", async () => {
+    const otherRepoId = queries.upsertRepo(db, "/other", "other").id;
+    queries.insertTicket(db, {
+      repoId: otherRepoId,
+      ticketId: "TKT-foreign01",
+      title: "Foreign ticket",
+      description: "Hidden from this repo",
+      status: "backlog",
+      severity: "medium",
+      priority: 5,
+      creatorAgentId: "agent-review",
+      creatorSessionId: "session-review",
+      commitSha: "abc1234",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const getResult = await handler("get_ticket")({
+      ticketId: "TKT-foreign01",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    expect(getResult.isError).toBe(true);
+    expect(getResult.content[0].text).toContain("Ticket not found");
+
+    const updateResult = await handler("update_ticket")({
+      ticketId: "TKT-foreign01",
+      title: "Nope",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+    expect(updateResult.isError).toBe(true);
+    expect(updateResult.content[0].text).toContain("Ticket not found");
+
+    const assignResult = await handler("assign_ticket")({
+      ticketId: "TKT-foreign01",
+      assigneeAgentId: "agent-dev",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+    expect(assignResult.isError).toBe(true);
+    expect(assignResult.content[0].text).toContain("Ticket not found");
   });
 
   it("lists tickets with auth and tag filtering", async () => {

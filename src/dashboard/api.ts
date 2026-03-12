@@ -335,8 +335,8 @@ export function getTicketsList(deps: DashboardDeps) {
 }
 
 export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
-  const ticket = queries.getTicketByTicketId(deps.db, ticketId);
-  if (!ticket || ticket.repoId !== deps.repoId) return null;
+  const ticket = queries.getTicketByTicketId(deps.db, ticketId, deps.repoId);
+  if (!ticket) return null;
 
   const comments = queries.getTicketComments(deps.db, ticket.id);
   const history = queries.getTicketHistory(deps.db, ticket.id);

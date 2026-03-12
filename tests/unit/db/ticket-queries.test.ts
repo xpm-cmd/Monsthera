@@ -51,6 +51,28 @@ describe("ticket queries", () => {
     expect(found?.title).toBe("Bug");
   });
 
+  it("can scope ticket lookup by repo when repoId is provided", () => {
+    const otherRepoId = queries.upsertRepo(db, "/other", "other").id;
+    makeTicket({ ticketId: "TKT-local001" });
+    queries.insertTicket(db, {
+      repoId: otherRepoId,
+      ticketId: "TKT-other001",
+      title: "Other repo",
+      description: "Desc",
+      status: "backlog",
+      severity: "medium",
+      priority: 5,
+      creatorAgentId: "a1",
+      creatorSessionId: "s1",
+      commitSha: "abc123",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    expect(queries.getTicketByTicketId(db, "TKT-other001", repoId)).toBeUndefined();
+    expect(queries.getTicketByTicketId(db, "TKT-other001", otherRepoId)?.title).toBe("Other repo");
+  });
+
   it("retrieves ticket by internal id", () => {
     const t = makeTicket();
     expect(queries.getTicketById(db, t.id)?.ticketId).toBe(t.ticketId);

@@ -43,6 +43,7 @@ export const TOOL_ACCESS_POLICY: Record<CapabilityToolName, ToolAccessPolicyEntr
   unlink_tickets: { mode: "role" },
   analyze_complexity: { mode: "public" },
   analyze_test_coverage: { mode: "public" },
+  suggest_actions: { mode: "public" },
   lookup_dependencies: { mode: "public" },
   export_audit: { mode: "role" },
 };

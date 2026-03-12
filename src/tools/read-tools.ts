@@ -12,6 +12,7 @@ import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
 import { analyzeFileComplexity } from "../analysis/complexity.js";
 import { analyzeTestCoverage } from "../analysis/test-coverage.js";
+import { suggestActionsForChanges } from "../dispatch/rules.js";
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import {
   CrossInstanceSearchSurfaceSchema,
@@ -362,6 +363,9 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         analyze_test_coverage: {
           filePath: "string (file path relative to repo root, required)",
+        },
+        suggest_actions: {
+          changedPaths: "string[] (repo-relative changed file paths, required)",
         },
         // ── knowledge tools ──
         store_knowledge: {
@@ -889,6 +893,26 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     async ({ filePath }) => {
       const c = await getContext();
       const result = await analyzeTestCoverage(c.db, c.repoId, c.repoPath, filePath);
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── suggest_actions ────────────────────────────────────
+  server.tool(
+    "suggest_actions",
+    "Advisory-only rule engine for changed paths. Returns recommended Agora tools, required review roles, quorum, and rule-level reasoning.",
+    {
+      changedPaths: z.array(FilePathSchema).max(100).describe("Repo-relative changed file paths"),
+    },
+    async ({ changedPaths }) => {
+      const c = await getContext();
+      const result = suggestActionsForChanges(changedPaths, c.repoPath);
 
       return {
         content: [{

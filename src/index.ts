@@ -15,6 +15,9 @@ import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { compileSecretPatterns } from "./trust/secret-patterns.js";
 import { CrossInstanceNonceStore } from "./trust/cross-instance-nonce-store.js";
 import { validateCrossInstanceRequest } from "./trust/cross-instance-request-guard.js";
+import { cmdTicket } from "./cli/tickets.js";
+import { cmdPatch } from "./cli/patches.js";
+import { cmdKnowledge } from "./cli/knowledge.js";
 import {
   CROSS_INSTANCE_SEARCH_PATH,
   CrossInstanceSearchRequestSchema,
@@ -60,6 +63,17 @@ async function main() {
       break;
     case "export":
       await cmdExport(config, insight, args);
+      break;
+    case "ticket":
+    case "tickets":
+      await cmdTicket(config, insight, args.slice(1));
+      break;
+    case "patch":
+    case "patches":
+      await cmdPatch(config, insight, args.slice(1));
+      break;
+    case "knowledge":
+      await cmdKnowledge(config, insight, args.slice(1));
       break;
     case "serve":
     case undefined:
@@ -589,6 +603,9 @@ function printHelp() {
   console.error("  index          Run full index");
   console.error("  status         Show index status");
   console.error("  export         Export knowledge to external tools");
+  console.error("  ticket         Repo-scoped ticket operations");
+  console.error("  patch          Repo-scoped patch inspection");
+  console.error("  knowledge      Repo/global knowledge inspection");
   console.error("");
   console.error("Options:");
   console.error("  --repo-path      Repository path (default: cwd)");
@@ -604,6 +621,17 @@ function printHelp() {
   console.error("  --vault          Obsidian vault path (default: repo root)");
   console.error("  --version, -v    Show version");
   console.error("  --help, -h       Show help");
+  console.error("");
+  console.error("Ticket examples:");
+  console.error("  agora ticket summary --json");
+  console.error("  agora ticket list --status in_progress");
+  console.error("  agora ticket show TKT-1234abcd --json");
+  console.error("  agora ticket transition TKT-1234abcd in_review --comment \"Implementation complete\"");
+  console.error("  agora patch summary --json");
+  console.error("  agora patch show patch_abcd1234 --json");
+  console.error("  agora knowledge query --scope all --type decision --json");
+  console.error("  agora knowledge search \"shared auth\" --scope all --json");
+  console.error("  agora knowledge show decision:abc123 --scope all --json");
   console.error("");
   console.error("Environment Variables (overridden by CLI flags):");
   console.error("  AGORA_REPO_PATH       Repository path");

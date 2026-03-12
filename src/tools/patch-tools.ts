@@ -7,6 +7,7 @@ import { checkToolAccess } from "../trust/tiers.js";
 import * as queries from "../db/queries.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
+import { buildPatchListPayload } from "../patches/read-model.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -57,7 +58,7 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
       // Validate ticket exists BEFORE persisting anything
       let resolvedTicket: { id: number } | null = null;
       if (ticketId) {
-        const ticket = queries.getTicketByTicketId(c.db, ticketId);
+        const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
         if (!ticket) {
           return {
             content: [{ type: "text" as const, text: `Ticket not found: ${ticketId}` }],
@@ -143,19 +144,10 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
         };
       }
 
-      const patches = queries.getPatchesByRepo(c.db, c.repoId, state);
-
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({
-            count: patches.length,
-            patches: patches.map((p) => ({
-              proposalId: p.proposalId, state: p.state,
-              message: p.message, baseCommit: p.baseCommit,
-              agentId: p.agentId, createdAt: p.createdAt,
-            })),
-          }, null, 2),
+          text: JSON.stringify(buildPatchListPayload(c.db, c.repoId, state), null, 2),
         }],
       };
     },

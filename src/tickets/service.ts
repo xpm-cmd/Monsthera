@@ -214,7 +214,7 @@ export function assignTicketRecord(
   if (!auth.ok) return auth;
   const resolved = auth.data;
 
-  const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId);
+  const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId, ctx.repoId);
   if (!ticket) return err("not_found", `Ticket not found: ${input.ticketId}`);
 
   if (resolved.role === "developer") {
@@ -223,6 +223,9 @@ export function assignTicketRecord(
     }
     if (!["backlog", "technical_analysis", "approved"].includes(ticket.status)) {
       return err("invalid_request", "Developers can only assign tickets in backlog, technical_analysis, or approved status");
+    }
+    if (ticket.assigneeAgentId && ticket.assigneeAgentId !== resolved.agentId) {
+      return err("denied", "Developers cannot reassign tickets already owned by another agent");
     }
   }
 
@@ -268,8 +271,12 @@ export function updateTicketStatusRecord(
   if (!auth.ok) return auth;
   const resolved = auth.data;
 
-  const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId);
+  const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId, ctx.repoId);
   if (!ticket) return err("not_found", `Ticket not found: ${input.ticketId}`);
+
+  if (resolved.role === "developer" && ticket.assigneeAgentId !== resolved.agentId) {
+    return err("denied", "Developers can only transition tickets assigned to themselves");
+  }
 
   const current = ticket.status as TicketStatusType;
   const validTargets = VALID_TRANSITIONS[current];
@@ -342,7 +349,7 @@ export function commentTicketRecord(
   if (!auth.ok) return auth;
   const resolved = auth.data;
 
-  const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId);
+  const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId, ctx.repoId);
   if (!ticket) return err("not_found", `Ticket not found: ${input.ticketId}`);
 
   const now = new Date().toISOString();
@@ -467,10 +474,10 @@ export function linkTicketsRecord(
   if (!auth.ok) return auth;
   const resolved = auth.data;
 
-  const fromTicket = queries.getTicketByTicketId(ctx.db, input.fromTicketId);
+  const fromTicket = queries.getTicketByTicketId(ctx.db, input.fromTicketId, ctx.repoId);
   if (!fromTicket) return err("not_found", `Ticket not found: ${input.fromTicketId}`);
 
-  const toTicket = queries.getTicketByTicketId(ctx.db, input.toTicketId);
+  const toTicket = queries.getTicketByTicketId(ctx.db, input.toTicketId, ctx.repoId);
   if (!toTicket) return err("not_found", `Ticket not found: ${input.toTicketId}`);
 
   if (fromTicket.id === toTicket.id) return err("invalid_request", "Cannot link a ticket to itself");
@@ -521,10 +528,10 @@ export function unlinkTicketsRecord(
   const auth = authorizeTicketActor(ctx, input, "unlink_tickets");
   if (!auth.ok) return auth;
 
-  const fromTicket = queries.getTicketByTicketId(ctx.db, input.fromTicketId);
+  const fromTicket = queries.getTicketByTicketId(ctx.db, input.fromTicketId, ctx.repoId);
   if (!fromTicket) return err("not_found", `Ticket not found: ${input.fromTicketId}`);
 
-  const toTicket = queries.getTicketByTicketId(ctx.db, input.toTicketId);
+  const toTicket = queries.getTicketByTicketId(ctx.db, input.toTicketId, ctx.repoId);
   if (!toTicket) return err("not_found", `Ticket not found: ${input.toTicketId}`);
 
   queries.deleteTicketDependency(ctx.db, fromTicket.id, toTicket.id);

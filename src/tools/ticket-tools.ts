@@ -24,6 +24,10 @@ import {
   unlinkTicketsRecord,
   updateTicketStatusRecord,
 } from "../tickets/service.js";
+import {
+  buildTicketDetailPayload,
+  buildTicketListPayload,
+} from "../tickets/read-model.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -70,7 +74,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
   // ─── assign_ticket ──────────────────────────────────────────
   server.tool(
     "assign_ticket",
-    "Assign a ticket owner. Developers self-assign from backlog, technical_analysis, or approved; admins reassign at any status.",
+    "Assign a ticket owner. Developers may self-assign unowned tickets from backlog, technical_analysis, or approved; privileged roles may reassign at any status.",
     {
       ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
       assigneeAgentId: AgentIdSchema.describe("Agent to assign"),
@@ -99,7 +103,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
   // ─── update_ticket_status ───────────────────────────────────
   server.tool(
     "update_ticket_status",
-    "Transition a ticket's status. Validates against the state machine.",
+    "Transition a ticket's status. Validates against the state machine. Developers can only transition tickets assigned to themselves.",
     {
       ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
       status: z.enum(TicketStatus.options).describe("Target status"),
@@ -152,7 +156,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const access = checkToolAccess("update_ticket", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
 
-      const ticket = queries.getTicketByTicketId(c.db, input.ticketId);
+      const ticket = queries.getTicketByTicketId(c.db, input.ticketId, c.repoId);
       if (!ticket) return errText(`Ticket not found: ${input.ticketId}`);
 
       if (ticket.creatorAgentId !== input.agentId && resolved.role !== "admin") {
@@ -203,18 +207,14 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const access = checkToolAccess("list_tickets", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
 
-      const tickets = queries.getTicketsByRepo(c.db, c.repoId, {
-        status, assigneeAgentId, severity, creatorAgentId, tags, limit,
-      });
-      return okJson({
-        count: tickets.length,
-        tickets: tickets.map((t) => ({
-          ticketId: t.ticketId, title: t.title, status: t.status,
-          severity: t.severity, priority: t.priority,
-          assigneeAgentId: t.assigneeAgentId, creatorAgentId: t.creatorAgentId,
-          updatedAt: t.updatedAt,
-        })),
-      });
+      return okJson(buildTicketListPayload(c.db, c.repoId, {
+        status,
+        assigneeAgentId,
+        severity,
+        creatorAgentId,
+        tags,
+        limit,
+      }));
     },
   );
 
@@ -292,68 +292,9 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const access = checkToolAccess("get_ticket", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
 
-      const ticket = queries.getTicketByTicketId(c.db, ticketId);
-      if (!ticket) return errText(`Ticket not found: ${ticketId}`);
-
-      const [history, comments, linkedPatches] = [
-        queries.getTicketHistory(c.db, ticket.id),
-        queries.getTicketComments(c.db, ticket.id),
-        queries.getPatchesByTicketId(c.db, ticket.id),
-      ];
-
-      // Resolve dependencies
-      const deps = queries.getTicketDependencies(c.db, ticket.id);
-      const ticketIdCache = new Map<number, string>();
-      const resolvePublicId = (internalId: number) => {
-        if (ticketIdCache.has(internalId)) return ticketIdCache.get(internalId)!;
-        const t = queries.getTicketById(c.db, internalId);
-        const publicId = t?.ticketId ?? `#${internalId}`;
-        ticketIdCache.set(internalId, publicId);
-        return publicId;
-      };
-
-      const blocking = deps.outgoing
-        .filter((d) => d.relationType === "blocks")
-        .map((d) => resolvePublicId(d.toTicketId));
-      const blockedBy = deps.incoming
-        .filter((d) => d.relationType === "blocks")
-        .map((d) => resolvePublicId(d.fromTicketId));
-      const relatedTo = [
-        ...deps.outgoing.filter((d) => d.relationType === "relates_to").map((d) => resolvePublicId(d.toTicketId)),
-        ...deps.incoming.filter((d) => d.relationType === "relates_to").map((d) => resolvePublicId(d.fromTicketId)),
-      ];
-
-      return okJson({
-        ticketId: ticket.ticketId, title: ticket.title,
-        description: ticket.description, status: ticket.status,
-        severity: ticket.severity, priority: ticket.priority,
-        tags: parseStringArrayJson(ticket.tagsJson, {
-          maxItems: 25,
-          maxItemLength: 64,
-        }),
-        affectedPaths: parseStringArrayJson(ticket.affectedPathsJson, {
-          maxItems: 100,
-          maxItemLength: 500,
-        }),
-        acceptanceCriteria: ticket.acceptanceCriteria,
-        creatorAgentId: ticket.creatorAgentId,
-        assigneeAgentId: ticket.assigneeAgentId,
-        resolvedByAgentId: ticket.resolvedByAgentId,
-        commitSha: ticket.commitSha,
-        createdAt: ticket.createdAt, updatedAt: ticket.updatedAt,
-        dependencies: { blocking, blockedBy, relatedTo },
-        history: history.map((h) => ({
-          fromStatus: h.fromStatus, toStatus: h.toStatus,
-          agentId: h.agentId, comment: h.comment, timestamp: h.timestamp,
-        })),
-        comments: comments.map((cm) => ({
-          agentId: cm.agentId, content: cm.content, createdAt: cm.createdAt,
-        })),
-        linkedPatches: linkedPatches.map((p) => ({
-          proposalId: p.proposalId, state: p.state, message: p.message,
-          agentId: p.agentId, createdAt: p.createdAt,
-        })),
-      });
+      const payload = buildTicketDetailPayload(c.db, c.repoId, ticketId);
+      if (!payload) return errText(`Ticket not found: ${ticketId}`);
+      return okJson(payload);
     },
   );
 
