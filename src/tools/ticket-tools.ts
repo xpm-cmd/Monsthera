@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { BUILT_IN_ROLES } from "../../schemas/agent.js";
-import { COUNCIL_SPECIALIZATIONS, CouncilSpecializationId, CouncilVerdict } from "../../schemas/council.js";
+import { CouncilSpecializationId, CouncilVerdict } from "../../schemas/council.js";
 import type { AgoraContext } from "../core/context.js";
 import {
   AgentIdSchema,
@@ -30,8 +30,14 @@ import {
   buildTicketDetailPayload,
   buildTicketListPayload,
 } from "../tickets/read-model.js";
+import {
+  buildTicketConsensusReport,
+  GATED_TICKET_TRANSITIONS,
+  inferConsensusTransitionForTicketStatus,
+} from "../tickets/consensus.js";
 
 type GetContext = () => Promise<AgoraContext>;
+const ConsensusTransitionSchema = z.enum(GATED_TICKET_TRANSITIONS);
 
 export function registerTicketTools(server: McpServer, getContext: GetContext): void {
   // ─── create_ticket ──────────────────────────────────────────
@@ -56,6 +62,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        ticketQuorum: c.config?.ticketQuorum,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -90,6 +97,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        ticketQuorum: c.config?.ticketQuorum,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -120,6 +128,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        ticketQuorum: c.config?.ticketQuorum,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -317,6 +326,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        ticketQuorum: c.config?.ticketQuorum,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -332,16 +342,17 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
   // ─── submit_verdict ────────────────────────────────────────
   server.tool(
     "submit_verdict",
-    "Record or replace the latest advisory council verdict for a ticket specialization",
+    "Record or replace the latest advisory council verdict for a ticket specialization, optionally evaluating a specific gated transition",
     {
       ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
       specialization: CouncilSpecializationId.describe("Council specialization submitting the verdict"),
       verdict: CouncilVerdict.describe("Verdict: pass, fail, or abstain"),
       reasoning: z.string().min(1).max(2000).optional().describe("Optional reasoning for the verdict"),
+      transition: ConsensusTransitionSchema.optional().describe("Optional gated transition to evaluate against repo quorum config"),
       agentId: AgentIdSchema.describe("Submitting agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
     },
-    async ({ ticketId, specialization, verdict, reasoning, agentId, sessionId }) => {
+    async ({ ticketId, specialization, verdict, reasoning, transition, agentId, sessionId }) => {
       const c = await getContext();
       const result = resolveAgent(c, agentId, sessionId);
       if (!result.ok) return errText(result.error);
@@ -366,6 +377,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         createdAt: now,
       });
       queries.updateTicket(c.db, ticket.id, {});
+      const verdictRows = queries.getReviewVerdicts(c.db, ticket.id);
 
       return okJson({
         ticketId,
@@ -377,7 +389,12 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
           reasoning: stored.reasoning,
           createdAt: stored.createdAt,
         },
-        consensus: buildConsensusPayload(ticketId, queries.getReviewVerdicts(c.db, ticket.id)),
+        consensus: buildTicketConsensusReport({
+          ticketId,
+          verdictRows,
+          config: c.config?.ticketQuorum,
+          transition: transition ?? inferConsensusTransitionForTicketStatus(ticket.status as TicketStatusType),
+        }),
       });
     },
   );
@@ -385,13 +402,14 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
   // ─── check_consensus ──────────────────────────────────────
   server.tool(
     "check_consensus",
-    "Report advisory council quorum, latest verdicts, missing roles, and architect/security vetoes",
+    "Report advisory council quorum, latest verdicts, missing roles, and architect/security vetoes, optionally for a specific gated transition",
     {
       ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
+      transition: ConsensusTransitionSchema.optional().describe("Optional gated transition to evaluate against repo quorum config"),
       agentId: AgentIdSchema.describe("Requesting agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
     },
-    async ({ ticketId, agentId, sessionId }) => {
+    async ({ ticketId, transition, agentId, sessionId }) => {
       const c = await getContext();
       const result = resolveAgent(c, agentId, sessionId);
       if (!result.ok) return errText(result.error);
@@ -403,7 +421,12 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
       if (!ticket) return errText(`Ticket not found: ${ticketId}`);
 
-      return okJson(buildConsensusPayload(ticketId, queries.getReviewVerdicts(c.db, ticket.id)));
+      return okJson(buildTicketConsensusReport({
+        ticketId,
+        verdictRows: queries.getReviewVerdicts(c.db, ticket.id),
+        config: c.config?.ticketQuorum,
+        transition: transition ?? inferConsensusTransitionForTicketStatus(ticket.status as TicketStatusType),
+      }));
     },
   );
 
@@ -425,6 +448,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        ticketQuorum: c.config?.ticketQuorum,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -455,6 +479,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         repoId: c.repoId,
         repoPath: c.repoPath,
         insight: c.insight,
+        ticketQuorum: c.config?.ticketQuorum,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
       }, {
@@ -487,57 +512,4 @@ function errService(result: { message: string; data?: Record<string, unknown> })
     return errJson({ error: result.message, ...result.data });
   }
   return errText(result.message);
-}
-
-type ReviewVerdictRow = ReturnType<typeof queries.getReviewVerdicts>[number];
-
-const VETO_SPECIALIZATIONS = new Set(["architect", "security"]);
-
-function buildConsensusPayload(ticketId: string, verdictRows: ReviewVerdictRow[]) {
-  const verdicts = COUNCIL_SPECIALIZATIONS.flatMap((specialization) => {
-    const verdict = verdictRows.find((entry) => entry.specialization === specialization);
-    return verdict
-      ? [{
-          specialization,
-          verdict: verdict.verdict,
-          agentId: verdict.agentId,
-          sessionId: verdict.sessionId,
-          reasoning: verdict.reasoning,
-          createdAt: verdict.createdAt,
-        }]
-      : [];
-  });
-  const missingSpecializations = COUNCIL_SPECIALIZATIONS.filter(
-    (specialization) => !verdicts.some((entry) => entry.specialization === specialization),
-  );
-  const vetoes = verdicts.filter(
-    (entry) => entry.verdict === "fail" && VETO_SPECIALIZATIONS.has(entry.specialization),
-  );
-  const counts = {
-    pass: verdicts.filter((entry) => entry.verdict === "pass").length,
-    fail: verdicts.filter((entry) => entry.verdict === "fail").length,
-    abstain: verdicts.filter((entry) => entry.verdict === "abstain").length,
-    responded: verdicts.length,
-    missing: missingSpecializations.length,
-  };
-  const requiredPasses = getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length);
-  const quorumMet = counts.pass >= requiredPasses;
-
-  return {
-    ticketId,
-    councilSpecializations: [...COUNCIL_SPECIALIZATIONS],
-    requiredPasses,
-    counts,
-    quorumMet,
-    blockedByVeto: vetoes.length > 0,
-    advisoryReady: quorumMet && vetoes.length === 0,
-    missingSpecializations,
-    vetoes,
-    verdicts,
-  };
-}
-
-function getDefaultAdvisoryPasses(totalSpecializations: number): number {
-  // Current council guidance is 3/5 and 4/6; keeping a simple total-2 rule preserves both.
-  return Math.max(1, totalSpecializations - 2);
 }

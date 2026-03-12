@@ -366,4 +366,7 @@ function runMigrations(sqlite: Database.Database): void {
     created_at TEXT NOT NULL,
     UNIQUE(ticket_id, specialization)
   )`).run();
+  sqlite.prepare(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_review_verdicts_ticket_specialization ON review_verdicts(ticket_id, specialization)",
+  ).run();
 }

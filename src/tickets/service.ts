@@ -5,8 +5,14 @@ import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
 import * as tables from "../db/schema.js";
 import type { InsightStream } from "../core/insight-stream.js";
+import type { TicketQuorumConfig } from "../core/config.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { getHead } from "../git/operations.js";
+import {
+  evaluateTicketTransitionConsensus,
+  resolveTicketQuorumRule,
+  type TransitionConsensusPayload,
+} from "./consensus.js";
 import {
   VALID_TRANSITIONS,
   TRANSITION_ROLES,
@@ -24,6 +30,7 @@ interface TicketServiceBaseContext {
   repoId: number;
   repoPath: string;
   insight: Pick<InsightStream, "info" | "warn">;
+  ticketQuorum?: TicketQuorumConfig;
   bus?: CoordinationBus;
   refreshTicketSearch?: () => void;
 }
@@ -292,6 +299,38 @@ export function updateTicketStatusRecord(
     ctx.insight.warn(
       `Advisory: ${resolved.role} triggering ${key} (recommended: ${allowed.join(", ")})`,
     );
+  }
+
+  if (resolved.role !== "admin") {
+    const quorumRule = resolveTicketQuorumRule(current, input.status, ctx.ticketQuorum);
+    const consensus = quorumRule
+      ? evaluateTicketTransitionConsensus({
+          ticketId: input.ticketId,
+          fromStatus: current,
+          toStatus: input.status,
+          verdictRows: queries.getReviewVerdicts(ctx.db, ticket.id),
+          config: ctx.ticketQuorum,
+        })
+      : null;
+    if (consensus && !consensus.advisoryReady) {
+      return err(
+        "invalid_request",
+        buildConsensusBlockMessage(key, consensus),
+        {
+          transition: consensus.transition,
+          requiredPasses: consensus.requiredPasses,
+          counts: consensus.counts,
+          passesNeeded: Math.max(0, consensus.requiredPasses - consensus.counts.pass),
+          quorumMet: consensus.quorumMet,
+          blockedByVeto: consensus.blockedByVeto,
+          councilSpecializations: consensus.councilSpecializations,
+          vetoSpecializations: consensus.vetoSpecializations,
+          missingSpecializations: consensus.missingSpecializations,
+          vetoes: consensus.vetoes,
+          verdicts: consensus.verdicts,
+        },
+      );
+    }
   }
 
   const now = new Date().toISOString();
@@ -690,4 +729,27 @@ function err(
   data?: Record<string, unknown>,
 ): TicketServiceError {
   return { ok: false, code, message, data };
+}
+
+function buildConsensusBlockMessage(
+  transitionKey: string,
+  consensus: TransitionConsensusPayload,
+): string {
+  if (consensus.blockedByVeto) {
+    const vetoSummary = consensus.vetoes
+      .map((veto) => {
+        const reason = veto.reasoning?.trim();
+        return reason
+          ? `${veto.specialization} by ${veto.agentId}: ${reason}`
+          : `${veto.specialization} by ${veto.agentId}`;
+      })
+      .join("; ");
+    return `Council veto blocks ${transitionKey}: ${vetoSummary}. Submit updated verdicts to clear the veto.`;
+  }
+
+  const passesNeeded = Math.max(0, consensus.requiredPasses - consensus.counts.pass);
+  const awaiting = consensus.missingSpecializations.length > 0
+    ? ` Await verdicts from: ${consensus.missingSpecializations.join(", ")}.`
+    : "";
+  return `Council quorum not met for ${transitionKey}: ${consensus.counts.pass}/${consensus.requiredPasses} passes (${passesNeeded} more needed).${awaiting}`;
 }

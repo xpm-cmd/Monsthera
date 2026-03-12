@@ -758,15 +758,20 @@ export function upsertReviewVerdict(
 }
 
 export function getReviewVerdicts(db: DB, ticketInternalId: number) {
-  return db
-    .select()
-    .from(tables.reviewVerdicts)
-    .where(eq(tables.reviewVerdicts.ticketId, ticketInternalId))
-    .orderBy(
-      sql`coalesce(julianday(${tables.reviewVerdicts.createdAt}), 0)`,
-      tables.reviewVerdicts.id,
-    )
-    .all();
+  try {
+    return db
+      .select()
+      .from(tables.reviewVerdicts)
+      .where(eq(tables.reviewVerdicts.ticketId, ticketInternalId))
+      .orderBy(
+        sql`coalesce(julianday(${tables.reviewVerdicts.createdAt}), 0)`,
+        tables.reviewVerdicts.id,
+      )
+      .all();
+  } catch (error) {
+    if (isMissingTableError(error, "review_verdicts")) return [];
+    throw error;
+  }
 }
 
 // --- Patch ↔ Ticket link ---

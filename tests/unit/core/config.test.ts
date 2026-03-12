@@ -46,6 +46,8 @@ describe("AgoraConfigSchema", () => {
     expect(result.crossInstance.enabled).toBe(false);
     expect(result.crossInstance.peers).toEqual([]);
     expect(result.search).toEqual(DEFAULT_SEARCH_CONFIG);
+    expect(result.ticketQuorum.technicalAnalysisToApproved.enabled).toBe(true);
+    expect(result.ticketQuorum.inReviewToReadyForCommit.vetoSpecializations).toEqual(["architect", "security"]);
   });
 
   it("rejects missing repoPath", () => {
@@ -145,6 +147,25 @@ describe("AgoraConfigSchema", () => {
     expect(result.crossInstance.peers[0]?.allowedCapabilities).toEqual(["read_code", "read_knowledge"]);
   });
 
+  it("accepts valid ticketQuorum config", () => {
+    const result = AgoraConfigSchema.parse({
+      repoPath: "/r",
+      ticketQuorum: {
+        technicalAnalysisToApproved: {
+          requiredPasses: 5,
+          vetoSpecializations: ["security"],
+        },
+        inReviewToReadyForCommit: {
+          enabled: false,
+        },
+      },
+    });
+
+    expect(result.ticketQuorum.technicalAnalysisToApproved.requiredPasses).toBe(5);
+    expect(result.ticketQuorum.technicalAnalysisToApproved.vetoSpecializations).toEqual(["security"]);
+    expect(result.ticketQuorum.inReviewToReadyForCommit.enabled).toBe(false);
+  });
+
   it("rejects crossInstance enabled without instanceId", () => {
     expect(() => AgoraConfigSchema.parse({
       repoPath: "/r",
@@ -174,6 +195,17 @@ describe("AgoraConfigSchema", () => {
         ],
       },
     })).toThrow(/duplicate peer instanceId/i);
+  });
+
+  it("rejects ticketQuorum requiredPasses above council size", () => {
+    expect(() => AgoraConfigSchema.parse({
+      repoPath: "/r",
+      ticketQuorum: {
+        technicalAnalysisToApproved: {
+          requiredPasses: 7,
+        },
+      },
+    })).toThrow();
   });
 
   it("rejects toolRateLimits with rate below 1", () => {
@@ -326,6 +358,36 @@ describe("mergeConfigSources", () => {
         baseUrl: "https://peer.example.test",
         sharedSecret: "1234567890abcdef",
       }],
+    });
+  });
+
+  it("deep-merges ticketQuorum rules by transition", () => {
+    const result = mergeConfigSources(
+      {
+        ticketQuorum: {
+          technicalAnalysisToApproved: {
+            requiredPasses: 5,
+            vetoSpecializations: ["security"],
+          },
+        },
+      } as Partial<any>,
+      {
+        ticketQuorum: {
+          inReviewToReadyForCommit: {
+            enabled: false,
+          },
+        },
+      } as Partial<any>,
+    );
+
+    expect(result.ticketQuorum).toEqual({
+      technicalAnalysisToApproved: {
+        requiredPasses: 5,
+        vetoSpecializations: ["security"],
+      },
+      inReviewToReadyForCommit: {
+        enabled: false,
+      },
     });
   });
 

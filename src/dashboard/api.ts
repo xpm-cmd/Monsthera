@@ -6,6 +6,7 @@ import { getIndexedCommit } from "../indexing/indexer.js";
 import { VERSION } from "../core/constants.js";
 import { parseJsonWithSchema, parseStringArrayJson } from "../core/input-hardening.js";
 import type { CoordinationBus } from "../coordination/bus.js";
+import type { TicketQuorumConfig } from "../core/config.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import { loadTicketTemplates, type TicketTemplate } from "../tickets/templates.js";
 import type { CodeSearchDebugResult } from "../search/debug.js";
@@ -25,6 +26,7 @@ export interface DashboardDeps {
   mainRepoPath?: string;
   bus: CoordinationBus;
   globalDb: DB | null;
+  ticketQuorum?: TicketQuorumConfig;
   refreshTicketSearch?: () => void;
   searchDebug?: DashboardSearchDebugProvider;
   knowledgeSearch?: (params: SearchKnowledgeOptions) => Promise<KnowledgeSearchEntry[]>;

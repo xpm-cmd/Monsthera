@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, blob } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, blob, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // --- Repository ---
 
@@ -137,7 +137,10 @@ export const reviewVerdicts = sqliteTable("review_verdicts", {
   verdict: text("verdict").notNull(),
   reasoning: text("reasoning"),
   createdAt: text("created_at").notNull(),
-});
+}, (table) => ({
+  ticketSpecializationUniqueIdx: uniqueIndex("idx_review_verdicts_ticket_specialization")
+    .on(table.ticketId, table.specialization),
+}));
 
 // --- Ticket Dependencies ---
 

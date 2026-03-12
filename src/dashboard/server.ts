@@ -201,6 +201,7 @@ export function startDashboard(
           repoId: deps.repoId,
           repoPath: deps.repoPath,
           insight,
+          ticketQuorum: deps.ticketQuorum,
           bus: deps.bus,
           refreshTicketSearch: deps.refreshTicketSearch,
           ...(humanName ? { system: true as const, actorLabel: `human ${humanName}` } : {}),
@@ -250,6 +251,7 @@ export function startDashboard(
             repoId: deps.repoId,
             repoPath: deps.repoPath,
             insight,
+            ticketQuorum: deps.ticketQuorum,
             bus: deps.bus,
             refreshTicketSearch: deps.refreshTicketSearch,
           }, {
@@ -276,6 +278,7 @@ export function startDashboard(
             repoId: deps.repoId,
             repoPath: deps.repoPath,
             insight,
+            ticketQuorum: deps.ticketQuorum,
             bus: deps.bus,
             refreshTicketSearch: deps.refreshTicketSearch,
           }, {
@@ -302,6 +305,7 @@ export function startDashboard(
             repoId: deps.repoId,
             repoPath: deps.repoPath,
             insight,
+            ticketQuorum: deps.ticketQuorum,
             bus: deps.bus,
             refreshTicketSearch: deps.refreshTicketSearch,
           }, {

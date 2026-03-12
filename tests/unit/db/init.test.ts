@@ -37,6 +37,12 @@ describe("initDatabase", () => {
     expect(tableNames).toContain("patches");
     expect(tableNames).toContain("notes");
 
+    const indexes = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' ORDER BY name")
+      .all() as Array<{ name: string }>;
+    const indexNames = indexes.map((index) => index.name);
+    expect(indexNames).toContain("idx_review_verdicts_ticket_specialization");
+
     const agentColumns = sqlite
       .prepare("PRAGMA table_info(agents)")
       .all() as Array<{ name: string }>;

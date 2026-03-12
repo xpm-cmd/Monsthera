@@ -551,11 +551,13 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           specialization: "enum: architect|simplifier|security|performance|patterns|design",
           verdict: "enum: pass|fail|abstain",
           reasoning: "string (optional, max 2000)",
+          transition: "enum: technical_analysis→approved|in_review→ready_for_commit (optional)",
           agentId: "string (required)",
           sessionId: "string (required)",
         },
         check_consensus: {
           ticketId: "string (TKT-...)",
+          transition: "enum: technical_analysis→approved|in_review→ready_for_commit (optional)",
           agentId: "string (required)",
           sessionId: "string (required)",
         },

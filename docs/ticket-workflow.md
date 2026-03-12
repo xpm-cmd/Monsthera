@@ -75,6 +75,27 @@ Recommended flow:
 
 This is partly social rather than perfectly enforced, so it must stay documented.
 
+## Enforced Quorum Gates
+
+Two workflow transitions are now enforced against council verdicts, not just documented:
+
+- `technical_analysis -> approved`
+- `in_review -> ready_for_commit`
+
+Default enforcement rules:
+
+- require `total council roles - 2` PASS verdicts
+- `architect` and `security` FAIL verdicts act as vetoes
+- `admin` remains the explicit bypass role
+
+Operational flow:
+
+1. reviewers submit structured verdicts via `submit_verdict`
+2. anyone with access can inspect readiness via `check_consensus`
+3. gated transitions fail with structured consensus details until quorum is satisfied
+
+Repository-specific overrides live in `.agora/config.json` under `ticketQuorum`.
+
 ## QA Review Rules
 
 When review finds a problem, choose between two paths:

@@ -9,6 +9,7 @@ import { getMainRepoRoot, getRepoRoot, isGitRepo } from "../git/operations.js";
 import * as queries from "../db/queries.js";
 import type * as schema from "../db/schema.js";
 import type { InsightStream } from "../core/insight-stream.js";
+import type { TicketQuorumConfig } from "../core/config.js";
 import { TicketSeverity, TicketStatus, type TicketStatus as TicketStatusType } from "../../schemas/ticket.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
@@ -17,6 +18,7 @@ export interface TicketCliConfig {
   repoPath: string;
   agoraDir: string;
   dbName: string;
+  ticketQuorum?: TicketQuorumConfig;
 }
 
 interface TicketTransitionPayload {
@@ -78,6 +80,7 @@ export async function cmdTicket(config: TicketCliConfig, insight: InsightStream,
           repoId: ctx.repoId,
           repoPath: ctx.repoRoot,
           insight,
+          ticketQuorum: config.ticketQuorum,
           system: true,
           actorLabel: getArg(args, "--actor-label") ?? "cli",
           refreshTicketSearch: buildTicketSearchRefresher(ctx.sqlite, ctx.db, ctx.repoId, insight),

@@ -47,6 +47,7 @@ describe("ticket tools", () => {
   let repoId: number;
   let bus: CoordinationBus;
   let fts5: FTS5Backend;
+  let config: { ticketQuorum?: Record<string, unknown> };
   const now = new Date().toISOString();
 
   beforeEach(() => {
@@ -55,6 +56,7 @@ describe("ticket tools", () => {
     bus = new CoordinationBus("hub-spoke", 200, db, repoId);
     fts5 = new FTS5Backend(sqlite, db);
     fts5.initTicketFts();
+    config = {};
 
     for (const agent of [
       { id: "agent-dev", name: "Dev", roleId: "developer", trustTier: "A" },
@@ -92,6 +94,7 @@ describe("ticket tools", () => {
     server = new FakeServer();
     registerTicketTools(server as unknown as McpServer, async () => ({
       db,
+      config,
       repoId,
       repoPath: "/test",
       insight: { info: () => undefined, warn: () => undefined },
@@ -128,6 +131,19 @@ describe("ticket tools", () => {
       sessionId: "session-review",
       ...overrides,
     });
+  }
+
+  async function grantAdvisoryQuorum(ticketId: string) {
+    for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
+      const result = await handler("submit_verdict")({
+        ticketId,
+        specialization,
+        verdict: "pass",
+        agentId: "agent-review",
+        sessionId: "session-review",
+      });
+      expect(result.isError).not.toBe(true);
+    }
   }
 
   it("creates a ticket and writes initial history", async () => {
@@ -202,6 +218,7 @@ describe("ticket tools", () => {
       agentId: "agent-review",
       sessionId: "session-review",
     });
+    await grantAdvisoryQuorum(ticketId);
     await handler("update_ticket_status")({
       ticketId,
       status: "approved",
@@ -272,6 +289,7 @@ describe("ticket tools", () => {
       agentId: "agent-review",
       sessionId: "session-review",
     });
+    await grantAdvisoryQuorum(ticketId);
     await handler("update_ticket_status")({
       ticketId,
       status: "approved",
@@ -313,6 +331,7 @@ describe("ticket tools", () => {
       agentId: "agent-review",
       sessionId: "session-review",
     });
+    await grantAdvisoryQuorum(ticketId);
     await handler("update_ticket_status")({
       ticketId,
       status: "approved",
@@ -669,6 +688,72 @@ describe("ticket tools", () => {
       "patterns",
       "design",
     ]));
+  });
+
+  it("uses configured quorum rules for transition-aware verdict and consensus reports", async () => {
+    config.ticketQuorum = {
+      technicalAnalysisToApproved: {
+        enabled: true,
+        requiredPasses: 2,
+        vetoSpecializations: ["security"],
+      },
+      inReviewToReadyForCommit: {
+        enabled: true,
+        requiredPasses: 3,
+        vetoSpecializations: ["architect", "security"],
+      },
+    };
+
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const verdictResult = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    expect(verdictResult.isError).not.toBe(true);
+
+    const verdictPayload = JSON.parse(verdictResult.content[0].text);
+    expect(verdictPayload.consensus).toMatchObject({
+      transition: "technical_analysis→approved",
+      enforcementEnabled: true,
+      requiredPasses: 2,
+      quorumMet: false,
+      blockedByVeto: false,
+      vetoSpecializations: ["security"],
+    });
+
+    const consensus = await handler("check_consensus")({
+      ticketId,
+      transition: "technical_analysis→approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    expect(consensus.isError).not.toBe(true);
+    const consensusPayload = JSON.parse(consensus.content[0].text);
+    expect(consensusPayload).toMatchObject({
+      transition: "technical_analysis→approved",
+      enforcementEnabled: true,
+      requiredPasses: 2,
+      counts: {
+        pass: 1,
+        fail: 0,
+        abstain: 0,
+        responded: 1,
+        missing: 5,
+      },
+      vetoSpecializations: ["security"],
+    });
   });
 
   it("latest verdict per specialization wins", async () => {

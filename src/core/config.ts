@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod/v4";
+import { CouncilSpecializationId, COUNCIL_SPECIALIZATIONS } from "../../schemas/council.js";
 import { DEFAULT_AGORA_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_DB_NAME } from "./constants.js";
 import {
   DEFAULT_CONFIG_FILE_PENALTY_FACTOR,
@@ -39,6 +40,27 @@ export const ToolRateLimitConfigSchema = z.object({
   defaultPerMinute: z.number().int().min(1).max(1_000).default(10),
   overrides: z.record(z.string().min(1), z.number().int().min(1).max(1_000)).default({}),
 });
+
+const DEFAULT_TICKET_QUORUM_RULE = {
+  enabled: true,
+  vetoSpecializations: ["architect", "security"] as ("architect" | "security")[],
+};
+
+const DEFAULT_TICKET_QUORUM_CONFIG = {
+  technicalAnalysisToApproved: { ...DEFAULT_TICKET_QUORUM_RULE },
+  inReviewToReadyForCommit: { ...DEFAULT_TICKET_QUORUM_RULE },
+};
+
+export const TicketQuorumTransitionRuleSchema = z.object({
+  enabled: z.boolean().default(true),
+  requiredPasses: z.number().int().min(1).max(COUNCIL_SPECIALIZATIONS.length).optional(),
+  vetoSpecializations: z.array(CouncilSpecializationId).default(["architect", "security"]),
+}).default(DEFAULT_TICKET_QUORUM_RULE);
+
+export const TicketQuorumConfigSchema = z.object({
+  technicalAnalysisToApproved: TicketQuorumTransitionRuleSchema.default(DEFAULT_TICKET_QUORUM_RULE),
+  inReviewToReadyForCommit: TicketQuorumTransitionRuleSchema.default(DEFAULT_TICKET_QUORUM_RULE),
+}).default(DEFAULT_TICKET_QUORUM_CONFIG);
 
 export const SearchFileBm25WeightsSchema = z.object({
   path: z.number().positive().max(10).default(DEFAULT_FILE_BM25_WEIGHTS.path),
@@ -185,6 +207,7 @@ export const AgoraConfigSchema = z.object({
     nonceTtlSeconds: 600,
     peers: [],
   }),
+  ticketQuorum: TicketQuorumConfigSchema.default(DEFAULT_TICKET_QUORUM_CONFIG),
   toolRateLimits: ToolRateLimitConfigSchema.default({
     defaultPerMinute: 10,
     overrides: {},
@@ -195,6 +218,8 @@ export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
 export type RegistrationAuth = z.infer<typeof RegistrationAuthSchema>;
 export type SecretPatternRule = z.infer<typeof SecretPatternRuleSchema>;
 export type ToolRateLimitConfig = z.infer<typeof ToolRateLimitConfigSchema>;
+export type TicketQuorumTransitionRuleConfig = z.infer<typeof TicketQuorumTransitionRuleSchema>;
+export type TicketQuorumConfig = z.infer<typeof TicketQuorumConfigSchema>;
 export type SearchConfig = z.infer<typeof SearchConfigSchema>;
 export type CrossInstanceCapability = z.infer<typeof CrossInstanceCapabilitySchema>;
 export type CrossInstancePeer = z.infer<typeof CrossInstancePeerSchema>;
@@ -226,7 +251,7 @@ export function mergeConfigSources(
   for (const source of sources) {
     if (!source) continue;
 
-    const { registrationAuth, crossInstance, toolRateLimits, search, ...rest } = source;
+    const { registrationAuth, crossInstance, ticketQuorum, toolRateLimits, search, ...rest } = source;
     Object.assign(merged, rest);
 
     if (registrationAuth) {
@@ -245,6 +270,29 @@ export function mergeConfigSources(
         ...(merged.crossInstance ?? {}),
         ...crossInstance,
         peers: crossInstance.peers ?? merged.crossInstance?.peers ?? [],
+      };
+    }
+
+    if (ticketQuorum) {
+      merged.ticketQuorum = {
+        ...(merged.ticketQuorum ?? {}),
+        ...ticketQuorum,
+        ...(ticketQuorum.technicalAnalysisToApproved || merged.ticketQuorum?.technicalAnalysisToApproved
+          ? {
+              technicalAnalysisToApproved: {
+                ...(merged.ticketQuorum?.technicalAnalysisToApproved ?? {}),
+                ...(ticketQuorum.technicalAnalysisToApproved ?? {}),
+              },
+            }
+          : {}),
+        ...(ticketQuorum.inReviewToReadyForCommit || merged.ticketQuorum?.inReviewToReadyForCommit
+          ? {
+              inReviewToReadyForCommit: {
+                ...(merged.ticketQuorum?.inReviewToReadyForCommit ?? {}),
+                ...(ticketQuorum.inReviewToReadyForCommit ?? {}),
+              },
+            }
+          : {}),
       };
     }
 

@@ -140,6 +140,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
         mainRepoPath: mainRepoRoot,
         bus,
         globalDb,
+        ticketQuorum: config.ticketQuorum,
         knowledgeSearch: (params) => searchKnowledgeEntries({
           db,
           sqlite,

@@ -9,6 +9,7 @@ import {
   batchTransitionTickets,
   commentTicketRecord,
   createTicketRecord,
+  type TicketServiceContext,
   type TicketSystemContext,
   updateTicketStatusRecord,
 } from "../../../src/tickets/service.js";
@@ -29,6 +30,7 @@ function createTestDb() {
     CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE review_verdicts (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, specialization TEXT NOT NULL, verdict TEXT NOT NULL, reasoning TEXT, created_at TEXT NOT NULL, UNIQUE(ticket_id, specialization));
     CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL REFERENCES tickets(id), to_ticket_id INTEGER NOT NULL REFERENCES tickets(id), relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE coordination_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), message_id TEXT NOT NULL UNIQUE, from_agent_id TEXT NOT NULL, to_agent_id TEXT, type TEXT NOT NULL, payload_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
@@ -36,6 +38,51 @@ function createTestDb() {
     CREATE VIRTUAL TABLE tickets_fts USING fts5(ticket_id UNINDEXED, title, description, tags, status UNINDEXED, content='');
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
+}
+
+function registerActor(
+  db: ReturnType<typeof createTestDb>["db"],
+  input: { agentId: string; sessionId: string; roleId: "developer" | "reviewer" | "admin" },
+) {
+  const now = new Date().toISOString();
+  queries.upsertAgent(db, {
+    id: input.agentId,
+    name: input.agentId,
+    type: "test",
+    roleId: input.roleId,
+    trustTier: "A",
+    registeredAt: now,
+  });
+  queries.insertSession(db, {
+    id: input.sessionId,
+    agentId: input.agentId,
+    state: "active",
+    connectedAt: now,
+    lastActivity: now,
+    claimedFilesJson: null,
+  });
+}
+
+function recordVerdict(
+  db: ReturnType<typeof createTestDb>["db"],
+  ticketInternalId: number,
+  input: {
+    specialization: "architect" | "simplifier" | "security" | "performance" | "patterns" | "design";
+    verdict: "pass" | "fail" | "abstain";
+    agentId?: string;
+    sessionId?: string;
+    reasoning?: string;
+  },
+) {
+  queries.upsertReviewVerdict(db, {
+    ticketId: ticketInternalId,
+    agentId: input.agentId ?? `agent-${input.specialization}`,
+    sessionId: input.sessionId ?? `session-${input.specialization}`,
+    specialization: input.specialization,
+    verdict: input.verdict,
+    reasoning: input.reasoning ?? null,
+    createdAt: new Date().toISOString(),
+  });
 }
 
 describe("ticket service system context", () => {
@@ -520,5 +567,394 @@ describe("ticket service system context", () => {
     expect(queries.getTicketByTicketId(db, reviewReadyTicketId)?.status).toBe("in_review");
     expect(queries.getTicketByTicketId(db, abandonedTicketId)?.status).toBe("backlog");
     expect(queries.getTicketByTicketId(db, reopenedTicketId)?.status).toBe("backlog");
+  });
+});
+
+describe("ticket service quorum enforcement", () => {
+  let sqlite: InstanceType<typeof Database>;
+  let db: ReturnType<typeof createTestDb>["db"];
+  let repoId: number;
+  let reviewerCtx: TicketServiceContext;
+  let adminCtx: TicketServiceContext;
+  let systemCtx: TicketSystemContext;
+
+  beforeEach(() => {
+    ({ db, sqlite } = createTestDb());
+    repoId = queries.upsertRepo(db, "/test", "test").id;
+
+    registerActor(db, { agentId: "agent-review", sessionId: "session-review", roleId: "reviewer" });
+    registerActor(db, { agentId: "agent-admin", sessionId: "session-admin", roleId: "admin" });
+
+    reviewerCtx = {
+      db,
+      repoId,
+      repoPath: "/test",
+      insight: { info: () => undefined, warn: () => undefined },
+    };
+
+    adminCtx = {
+      ...reviewerCtx,
+    };
+
+    systemCtx = {
+      ...reviewerCtx,
+      system: true,
+      actorLabel: "cli admin",
+    };
+  });
+
+  afterEach(() => sqlite.close());
+
+  async function createTechnicalAnalysisTicket() {
+    const created = await createTicketRecord(systemCtx, {
+      title: "Consensus gate",
+      description: "Needs council consensus before approval",
+      severity: "high",
+      priority: 8,
+      tags: ["quorum"],
+      affectedPaths: ["src/tickets/service.ts"],
+      acceptanceCriteria: "Consensus passes",
+    });
+    expect(created.ok).toBe(true);
+    const ticketId = created.ok ? String(created.data.ticketId) : "";
+    expect(updateTicketStatusRecord(systemCtx, {
+      ticketId,
+      status: "technical_analysis",
+      comment: "Ready for council review",
+    }).ok).toBe(true);
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+    return { ticketId, ticket };
+  }
+
+  it("blocks technical_analysis→approved when quorum is not met and returns structured details", async () => {
+    const { ticketId, ticket } = await createTechnicalAnalysisTicket();
+
+    recordVerdict(db, ticket.id, {
+      specialization: "architect",
+      verdict: "pass",
+      agentId: "agent-review",
+      sessionId: "session-review",
+      reasoning: "Foundations are sound",
+    });
+
+    const result = updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.code).toBe("invalid_request");
+    expect(result.message).toContain("Council quorum not met");
+    expect(result.message).toContain("1/4 passes");
+    expect(result.message).toContain("3 more needed");
+    expect(result.message).toContain("Await verdicts from:");
+    expect(result.data).toMatchObject({
+      transition: "technical_analysis→approved",
+      requiredPasses: 4,
+      passesNeeded: 3,
+      quorumMet: false,
+      blockedByVeto: false,
+      counts: {
+        pass: 1,
+        fail: 0,
+        abstain: 0,
+        responded: 1,
+        missing: 5,
+      },
+    });
+    expect(result.data?.missingSpecializations).toEqual(expect.arrayContaining([
+      "simplifier",
+      "security",
+      "performance",
+      "patterns",
+      "design",
+    ]));
+    expect(result.data?.verdicts).toHaveLength(1);
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("technical_analysis");
+  });
+
+  it("blocks technical_analysis→approved when there are zero verdicts", async () => {
+    const { ticketId } = await createTechnicalAnalysisTicket();
+
+    const result = updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.message).toContain("Council quorum not met");
+    expect(result.data).toMatchObject({
+      counts: {
+        pass: 0,
+        fail: 0,
+        abstain: 0,
+        responded: 0,
+        missing: 6,
+      },
+      quorumMet: false,
+      blockedByVeto: false,
+    });
+  });
+
+  it("allows technical_analysis→approved once quorum is met", async () => {
+    const { ticketId, ticket } = await createTechnicalAnalysisTicket();
+
+    for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
+      recordVerdict(db, ticket.id, {
+        specialization,
+        verdict: "pass",
+      });
+    }
+
+    const result = updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("approved");
+  });
+
+  it("blocks approval when architect or security veto exists even if pass quorum is met", async () => {
+    const { ticketId, ticket } = await createTechnicalAnalysisTicket();
+
+    for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
+      recordVerdict(db, ticket.id, {
+        specialization,
+        verdict: "pass",
+      });
+    }
+    recordVerdict(db, ticket.id, {
+      specialization: "security",
+      verdict: "fail",
+      reasoning: "Threat model incomplete",
+    });
+
+    const result = updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.message).toContain("Council veto blocks");
+    expect(result.message).toContain("security by");
+    expect(result.message).toContain("Threat model incomplete");
+    expect(result.message).toContain("clear the veto");
+    expect(result.data).toMatchObject({
+      quorumMet: true,
+      blockedByVeto: true,
+    });
+    expect(result.data?.vetoes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        specialization: "security",
+        verdict: "fail",
+      }),
+    ]));
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("technical_analysis");
+  });
+
+  it("blocks approval when the council only abstains", async () => {
+    const { ticketId, ticket } = await createTechnicalAnalysisTicket();
+
+    for (const specialization of ["architect", "simplifier", "security", "performance", "patterns", "design"] as const) {
+      recordVerdict(db, ticket.id, {
+        specialization,
+        verdict: "abstain",
+      });
+    }
+
+    const result = updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.data).toMatchObject({
+      counts: {
+        pass: 0,
+        fail: 0,
+        abstain: 6,
+        responded: 6,
+        missing: 0,
+      },
+      quorumMet: false,
+      blockedByVeto: false,
+    });
+  });
+
+  it("does not treat security abstain as a veto when quorum passes", async () => {
+    const { ticketId, ticket } = await createTechnicalAnalysisTicket();
+
+    for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
+      recordVerdict(db, ticket.id, {
+        specialization,
+        verdict: "pass",
+      });
+    }
+    recordVerdict(db, ticket.id, {
+      specialization: "security",
+      verdict: "abstain",
+    });
+
+    const result = updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("approved");
+  });
+
+  it("allows admin bypass when consensus is missing", async () => {
+    const { ticketId } = await createTechnicalAnalysisTicket();
+
+    const result = updateTicketStatusRecord(adminCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("approved");
+  });
+
+  it("uses configured quorum rules for in_review→ready_for_commit", async () => {
+    const quorumCtx: TicketServiceContext = {
+      ...reviewerCtx,
+      ticketQuorum: {
+        technicalAnalysisToApproved: {
+          enabled: true,
+          requiredPasses: 1,
+          vetoSpecializations: ["architect", "security"],
+        },
+        inReviewToReadyForCommit: {
+          enabled: true,
+          requiredPasses: 2,
+          vetoSpecializations: ["security"],
+        },
+      },
+    };
+
+    const created = await createTicketRecord(systemCtx, {
+      title: "Review-ready ticket",
+      description: "Uses a lower ready_for_commit threshold",
+      severity: "medium",
+      priority: 5,
+      tags: ["quorum"],
+      affectedPaths: ["src/core/config.ts"],
+      acceptanceCriteria: "Config override applies",
+    });
+    expect(created.ok).toBe(true);
+    const ticketId = created.ok ? String(created.data.ticketId) : "";
+
+    expect(updateTicketStatusRecord(systemCtx, {
+      ticketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(quorumCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    }).ok).toBe(false);
+
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+    recordVerdict(db, ticket.id, { specialization: "architect", verdict: "pass" });
+
+    expect(updateTicketStatusRecord(quorumCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(systemCtx, {
+      ticketId,
+      status: "in_review",
+    }).ok).toBe(true);
+
+    recordVerdict(db, ticket.id, { specialization: "simplifier", verdict: "pass" });
+
+    const ready = updateTicketStatusRecord(quorumCtx, {
+      ticketId,
+      status: "ready_for_commit",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(ready.ok).toBe(true);
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("ready_for_commit");
+  });
+
+  it("does not fetch verdicts for non-gated transitions", async () => {
+    const devCtx: TicketServiceContext = {
+      ...reviewerCtx,
+    };
+    registerActor(db, { agentId: "agent-dev", sessionId: "session-dev", roleId: "developer" });
+
+    const created = await createTicketRecord(systemCtx, {
+      title: "Non-gated transition",
+      description: "Should not consult council verdicts",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(created.ok).toBe(true);
+    const ticketId = created.ok ? String(created.data.ticketId) : "";
+
+    expect(updateTicketStatusRecord(systemCtx, {
+      ticketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+    for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
+      recordVerdict(db, ticket.id, { specialization, verdict: "pass" });
+    }
+
+    expect(updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    }).ok).toBe(true);
+    expect(assignTicketRecord(systemCtx, {
+      ticketId,
+      assigneeAgentId: "agent-dev",
+    }).ok).toBe(true);
+
+    const verdictSpy = vi.spyOn(queries, "getReviewVerdicts");
+    const result = updateTicketStatusRecord(devCtx, {
+      ticketId,
+      status: "in_progress",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(verdictSpy).not.toHaveBeenCalled();
+    verdictSpy.mockRestore();
   });
 });

@@ -152,11 +152,13 @@ describe("read tool discovery", () => {
     expect(JSON.parse(submitVerdict.content[0].text).inputSchema).toMatchObject({
       specialization: "enum: architect|simplifier|security|performance|patterns|design",
       verdict: "enum: pass|fail|abstain",
+      transition: "enum: technical_analysis→approved|in_review→ready_for_commit (optional)",
       agentId: "string (required)",
       sessionId: "string (required)",
     });
     expect(JSON.parse(checkConsensus.content[0].text).inputSchema).toMatchObject({
       ticketId: "string (TKT-...)",
+      transition: "enum: technical_analysis→approved|in_review→ready_for_commit (optional)",
       agentId: "string (required)",
       sessionId: "string (required)",
     });
