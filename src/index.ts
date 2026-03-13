@@ -174,18 +174,6 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
         },
       }, config.dashboardPort, insight);
 
-      // Start lifecycle sweep timer if enabled
-      if (config.lifecycle?.enabled) {
-        const { TicketLifecycleReactor } = await import("./tickets/lifecycle.js");
-        const lifecycleReactor = new TicketLifecycleReactor({
-          config, db, sqlite, repoId, repoPath: repoRoot, insight, searchRouter, bus,
-        });
-        setInterval(() => {
-          try { lifecycleReactor.sweep(); }
-          catch (e) { insight.warn(`Lifecycle sweep failed: ${e}`); }
-        }, config.lifecycle.sweepIntervalMs);
-        insight.info(`Lifecycle sweep timer started (interval: ${config.lifecycle.sweepIntervalMs}ms)`);
-      }
     }
   } catch (err) {
     insight.warn(`Dashboard failed to start: ${err}`);

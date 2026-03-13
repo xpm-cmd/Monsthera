@@ -66,7 +66,11 @@ export function createAgoraContextLoader(
     let lifecycle: TicketLifecycleReactor | undefined;
     if (config.lifecycle?.enabled) {
       lifecycle = new TicketLifecycleReactor({ config, db, sqlite, repoId, repoPath: repoRoot, insight, searchRouter, bus });
-      insight.info("Lifecycle automation enabled");
+      setInterval(() => {
+        try { lifecycle!.sweep(); }
+        catch (e) { insight.warn(`Lifecycle sweep failed: ${e}`); }
+      }, config.lifecycle.sweepIntervalMs);
+      insight.info(`Lifecycle automation enabled (sweep interval: ${config.lifecycle.sweepIntervalMs}ms)`);
     }
 
     ctx = { config, db, sqlite, repoId, repoPath: repoRoot, searchRouter, insight, bus, globalDb, globalSqlite, lifecycle };

@@ -51,6 +51,7 @@ export const TOOL_ACCESS_POLICY: Record<CapabilityToolName, ToolAccessPolicyEntr
   analyze_complexity: { mode: "public" },
   analyze_test_coverage: { mode: "public" },
   suggest_actions: { mode: "public" },
+  suggest_next_work: { mode: "role" },
   lookup_dependencies: { mode: "public" },
   export_audit: { mode: "role" },
 };

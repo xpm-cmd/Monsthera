@@ -317,6 +317,7 @@ export function getTicketsList(deps: DashboardDeps) {
   return queries.getTicketsByRepo(deps.db, deps.repoId).map((ticket) => {
     const visibility = getTicketVisibilitySignals(deps, ticket, now);
     const quorum = buildDashboardTicketQuorum(deps, ticket);
+    const humanAction = getHumanActionRequired(ticket, quorum);
 
     return {
       ticketId: ticket.ticketId,
@@ -341,6 +342,8 @@ export function getTicketsList(deps: DashboardDeps) {
       quorumState: quorum?.progress.state ?? null,
       quorumTitle: quorum?.progress.title ?? null,
       blockedByVeto: quorum?.blockedByVeto ?? false,
+      humanActionRequired: humanAction.required,
+      humanActionReason: humanAction.reason,
     };
   });
 }
@@ -354,6 +357,7 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
   const linkedPatches = queries.getPatchesByTicketId(deps.db, ticket.id);
   const ticketDeps = queries.getTicketDependencies(deps.db, ticket.id);
   const quorum = buildDashboardTicketQuorum(deps, ticket);
+  const humanAction = getHumanActionRequired(ticket, quorum);
 
   const resolvePublicId = (internalId: number) => {
     const t = queries.getTicketById(deps.db, internalId);
@@ -395,6 +399,8 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
     nextActionHint,
+    humanActionRequired: humanAction.required,
+    humanActionReason: humanAction.reason,
     dependencies: { blocking, blockedBy, relatedTo },
     comments: comments.map((comment) => ({
       agentId: comment.agentId,
@@ -1156,6 +1162,35 @@ function getTicketVisibilitySignals(
     inReviewIdleDays: idleDays,
     lastReviewActivityAt: latestAt,
   };
+}
+
+function getHumanActionRequired(
+  ticket: typeof schema.tickets.$inferSelect,
+  quorum: ReturnType<typeof buildDashboardTicketQuorum>,
+): { required: boolean; reason: string | null } {
+  // Execution state but unassigned → human must assign
+  if (
+    ["approved", "in_progress", "ready_for_commit"].includes(ticket.status) &&
+    !ticket.assigneeAgentId
+  ) {
+    return { required: true, reason: "unassigned_execution" };
+  }
+
+  // Council veto blocks progress → human must resolve
+  if (quorum?.blockedByVeto) {
+    return { required: true, reason: "veto_blocked" };
+  }
+
+  // Waiting for council quorum with no reviews yet
+  if (
+    ["technical_analysis", "in_review"].includes(ticket.status) &&
+    quorum &&
+    quorum.progress.responded === 0
+  ) {
+    return { required: true, reason: "awaiting_council" };
+  }
+
+  return { required: false, reason: null };
 }
 
 function buildDashboardTicketQuorum(

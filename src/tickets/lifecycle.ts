@@ -148,8 +148,7 @@ export class TicketLifecycleReactor implements LifecycleHook {
     const blockedEntry = history
       .filter((h) => h.toStatus === "blocked")
       .pop(); // most recent
-    const wasLifecycleBlocked = blockedEntry?.agentId?.includes("lifecycle-") === true
-      || blockerIds.length > 0; // has explicit "blocks" dependencies
+    const wasLifecycleBlocked = blockedEntry?.agentId?.includes("lifecycle-") === true;
 
     const blockerStatuses = blockerIds.map((id) => {
       const t = this.ctx.db
@@ -210,6 +209,8 @@ export class TicketLifecycleReactor implements LifecycleHook {
   }
 
   private isLifecycleActor(event: { actorLabel?: string }): boolean {
-    return event.actorLabel?.startsWith("lifecycle-") === true;
+    if (!event.actorLabel) return false;
+    return event.actorLabel.startsWith("lifecycle-")
+      || event.actorLabel.startsWith("system:lifecycle-");
   }
 }

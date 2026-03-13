@@ -28,6 +28,10 @@ export async function getShortSha(sha: string, opts: GitExecOptions): Promise<st
   return git(["rev-parse", "--short", sha], opts);
 }
 
+export async function getCommitMessage(commit: string, opts: GitExecOptions): Promise<string> {
+  return git(["show", "-s", "--format=%B", commit], opts);
+}
+
 export interface ChangedFile {
   status: "A" | "M" | "D" | "R" | "C" | "T" | "U" | "X";
   path: string;

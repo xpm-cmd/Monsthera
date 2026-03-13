@@ -5,6 +5,7 @@ import {
   shouldAutoReview,
   shouldAutoUnblock,
 } from "../../../src/tickets/lifecycle-rules.js";
+import { TicketLifecycleReactor } from "../../../src/tickets/lifecycle.js";
 import type { LifecycleConfig } from "../../../src/core/config.js";
 
 const BASE_CONFIG: LifecycleConfig = {
@@ -249,5 +250,35 @@ describe("shouldAutoUnblock", () => {
       true,
     );
     expect(result.shouldFire).toBe(true);
+  });
+});
+
+// ─── Reactor: isLifecycleActor (loop guard) ─────────────────
+
+describe("isLifecycleActor loop guard", () => {
+  // Access private method via prototype for testing
+  const isLifecycleActor = (actorLabel?: string) => {
+    return (TicketLifecycleReactor.prototype as any).isLifecycleActor.call(
+      {},
+      { actorLabel },
+    );
+  };
+
+  it("recognizes raw lifecycle- prefix", () => {
+    expect(isLifecycleActor("lifecycle-auto-triage")).toBe(true);
+    expect(isLifecycleActor("lifecycle-auto-close")).toBe(true);
+    expect(isLifecycleActor("lifecycle-auto-unblock")).toBe(true);
+  });
+
+  it("recognizes system:lifecycle- prefix (resolved actor ID)", () => {
+    expect(isLifecycleActor("system:lifecycle-auto-triage")).toBe(true);
+    expect(isLifecycleActor("system:lifecycle-auto-close")).toBe(true);
+    expect(isLifecycleActor("system:lifecycle-auto-review")).toBe(true);
+  });
+
+  it("rejects non-lifecycle actors", () => {
+    expect(isLifecycleActor("agent-abc123")).toBe(false);
+    expect(isLifecycleActor("system:council-auto-advance")).toBe(false);
+    expect(isLifecycleActor(undefined)).toBe(false);
   });
 });

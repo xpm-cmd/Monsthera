@@ -26,6 +26,7 @@ import {
   CrossInstanceSearchSurfaceSchema,
   searchAcrossRemoteInstances,
 } from "../federation/search.js";
+import { resolveAgent } from "./resolve-agent.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -281,6 +282,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           connectedAgents: activeSessions.length,
           searchBackend: c.searchRouter.getActiveBackendName(),
           debugLogging: c.config.debugLogging,
+          claimEnforceMode: c.config.claimEnforceMode ?? "advisory",
           lifecycle: {
             enabled: c.config.lifecycle?.enabled ?? false,
             rules: {
@@ -400,6 +402,11 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         },
         suggest_actions: {
           changedPaths: "string[] (repo-relative changed file paths, required)",
+        },
+        suggest_next_work: {
+          agentId: "string (required)",
+          sessionId: "string (required)",
+          limit: "number 1-20 (default 5)",
         },
         // ── knowledge tools ──
         store_knowledge: {
@@ -991,6 +998,68 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         content: [{
           type: "text" as const,
           text: JSON.stringify(result, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── suggest_next_work ──────────────────────────────────
+  server.tool(
+    "suggest_next_work",
+    "Suggest approved tickets that match your claimed files. Returns ranked list by path overlap and priority.",
+    {
+      agentId: AgentIdSchema.describe("Your agent ID"),
+      sessionId: SessionIdSchema.describe("Your session ID"),
+      limit: z.number().int().min(1).max(20).default(5).describe("Max suggestions"),
+    },
+    async ({ agentId, sessionId, limit }) => {
+      const c = await getContext();
+      const resolved = resolveAgent(c, agentId, sessionId);
+      if (!resolved.ok) {
+        return {
+          content: [{ type: "text" as const, text: resolved.error }],
+          isError: true,
+        };
+      }
+
+      const session = queries.getSession(c.db, resolved.agent.sessionId);
+      const claimed = parseStringArrayJson(session?.claimedFilesJson, {
+        maxItems: 50,
+        maxItemLength: 500,
+      });
+
+      const approved = queries.getTicketsByRepo(c.db, c.repoId, { status: "approved" });
+      const unassigned = approved.filter((t) => !t.assigneeAgentId);
+
+      const scored = unassigned.map((ticket) => {
+        const affected = parseStringArrayJson(ticket.affectedPathsJson, {
+          maxItems: 100,
+          maxItemLength: 500,
+        });
+        const overlapPaths = claimed.filter((cp) =>
+          affected.some((ap) => cp.startsWith(ap) || ap.startsWith(cp)),
+        );
+        return {
+          ticketId: ticket.ticketId,
+          title: ticket.title,
+          severity: ticket.severity,
+          priority: ticket.priority,
+          affectedPaths: affected,
+          overlapPaths,
+          overlapScore: overlapPaths.length,
+        };
+      });
+
+      scored.sort((a, b) => b.overlapScore - a.overlapScore || b.priority - a.priority);
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            suggestions: scored.slice(0, limit),
+            totalApprovedUnassigned: unassigned.length,
+            claimedPaths: claimed,
+          }, null, 2),
         }],
       };
     },

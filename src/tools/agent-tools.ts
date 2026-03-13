@@ -241,6 +241,21 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
         }
       }
 
+      // Strict mode: reject if any conflict exists
+      if (c.config.claimEnforceMode === "strict" && conflicts.length > 0) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              denied: true,
+              reason: "Strict claim enforcement: conflicting claims exist",
+              conflicts,
+            }, null, 2),
+          }],
+          isError: true,
+        };
+      }
+
       queries.updateSessionClaims(c.db, resolved.sessionId, paths);
       c.insight.debug(`Files claimed by ${resolved.agentId}: ${paths.join(", ")}`);
 

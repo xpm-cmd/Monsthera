@@ -5,5 +5,8 @@ if ! command -v pnpm >/dev/null 2>&1; then
   exit 0
 fi
 
+pnpm tsx src/index.ts ticket reconcile-commit --actor-label post-commit --verbosity quiet >/dev/null 2>&1 || \
+  echo "Agora post-commit ticket resolution failed. Run 'agora ticket reconcile-commit' manually."
+
 pnpm tsx src/index.ts index --incremental --verbosity quiet >/dev/null 2>&1 || \
   echo "Agora post-commit reindex failed. Run 'agora index --incremental' manually."

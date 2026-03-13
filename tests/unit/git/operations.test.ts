@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
+  getCommitMessage,
   getHead,
   getChangedFiles,
   getAllTrackedFiles,
@@ -106,6 +107,12 @@ describe("git operations", () => {
     expect(commits.length).toBe(1);
     expect(commits[0]!.message).toBe("init");
     expect(commits[0]!.sha).toMatch(/^[a-f0-9]{40}$/);
+  });
+
+  it("getCommitMessage returns the full commit message body", async () => {
+    const head = await getHead({ cwd: repoDir });
+    const message = await getCommitMessage(head, { cwd: repoDir });
+    expect(message).toBe("init");
   });
 
   describe("getMainRepoRoot", () => {

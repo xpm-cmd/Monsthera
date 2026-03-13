@@ -5,7 +5,7 @@ import { FTS5Backend } from "../search/fts5.js";
 import { initDatabase } from "../db/init.js";
 import { buildTicketDetailPayload, buildTicketListPayload, buildTicketSummaryPayload } from "../tickets/read-model.js";
 import { updateTicketStatusRecord } from "../tickets/service.js";
-import { getMainRepoRoot, getRepoRoot, isGitRepo } from "../git/operations.js";
+import { getCommitMessage, getHead, getMainRepoRoot, getRepoRoot, getShortSha, isGitRepo } from "../git/operations.js";
 import * as queries from "../db/queries.js";
 import type * as schema from "../db/schema.js";
 import type { InsightStream } from "../core/insight-stream.js";
@@ -27,6 +27,20 @@ interface TicketTransitionPayload {
   status: string;
 }
 
+interface TicketCommitSkippedPayload {
+  ticketId: string;
+  reason: "not_found" | "not_ready_for_commit";
+  status?: string;
+}
+
+export interface TicketCommitReconcilePayload {
+  commitSha: string;
+  commitShortSha: string;
+  ticketIds: string[];
+  resolved: TicketTransitionPayload[];
+  skipped: TicketCommitSkippedPayload[];
+}
+
 interface TicketCliContext {
   repoRoot: string;
   repoId: number;
@@ -34,14 +48,36 @@ interface TicketCliContext {
   sqlite: DatabaseType;
 }
 
-export async function cmdTicket(config: TicketCliConfig, insight: InsightStream, args: string[]): Promise<void> {
+interface TicketCliDeps {
+  loadContext?: (config: TicketCliConfig, insight: InsightStream) => Promise<TicketCliContext>;
+  getHead?: typeof getHead;
+  getCommitMessage?: typeof getCommitMessage;
+  getShortSha?: typeof getShortSha;
+  getTicketByTicketId?: typeof queries.getTicketByTicketId;
+  transitionTicket?: (
+    ctx: TicketCliContext,
+    config: TicketCliConfig,
+    insight: InsightStream,
+    input: { ticketId: string; comment: string; actorLabel: string },
+  ) => ReturnType<typeof updateTicketStatusRecord>;
+}
+
+const TICKET_ID_PATTERN = /\bTKT-[A-Za-z0-9]+\b/gi;
+
+export async function cmdTicket(
+  config: TicketCliConfig,
+  insight: InsightStream,
+  args: string[],
+  deps: TicketCliDeps = {},
+): Promise<void> {
   const subcommand = args[0];
   if (!subcommand || subcommand === "help" || args.includes("--help") || args.includes("-h")) {
     printTicketHelp();
     return;
   }
 
-  const ctx = await loadTicketCliContext(config, insight);
+  const loadContext = deps.loadContext ?? loadTicketCliContext;
+  const ctx = await loadContext(config, insight);
 
   try {
     switch (subcommand) {
@@ -97,6 +133,17 @@ export async function cmdTicket(config: TicketCliConfig, insight: InsightStream,
         }
 
         printTicketOutput(toTicketTransitionPayload(result.data), args.includes("--json"), formatTicketTransition);
+        return;
+      }
+      case "reconcile-commit": {
+        const commitSha = getArg(args, "--commit") ?? await (deps.getHead ?? getHead)({ cwd: ctx.repoRoot });
+        const commitMessage = await (deps.getCommitMessage ?? getCommitMessage)(commitSha, { cwd: ctx.repoRoot });
+        const payload = await reconcileCommitTickets(ctx, config, insight, {
+          commitSha,
+          commitMessage,
+          actorLabel: getArg(args, "--actor-label") ?? "post-commit",
+        }, deps);
+        printTicketOutput(payload, args.includes("--json"), formatTicketCommitReconcile);
         return;
       }
       default:
@@ -200,6 +247,33 @@ export function formatTicketTransition(payload: TicketTransitionPayload): string
   return `${payload.ticketId}: ${payload.previousStatus} -> ${payload.status}`;
 }
 
+export function formatTicketCommitReconcile(payload: TicketCommitReconcilePayload): string {
+  if (payload.ticketIds.length === 0) {
+    return `Commit ${payload.commitShortSha}: no ticket references found.`;
+  }
+
+  const lines = [
+    `Commit ${payload.commitShortSha}`,
+    `Referenced tickets: ${payload.ticketIds.join(", ")}`,
+    `Resolved: ${payload.resolved.length}`,
+    `Skipped: ${payload.skipped.length}`,
+  ];
+
+  if (payload.resolved.length > 0) {
+    lines.push("", "Resolved:");
+    lines.push(...payload.resolved.map(formatTicketTransition));
+  }
+
+  if (payload.skipped.length > 0) {
+    lines.push("", "Skipped:");
+    lines.push(...payload.skipped.map((entry) => (
+      `${entry.ticketId}: ${entry.reason}${entry.status ? ` (${entry.status})` : ""}`
+    )));
+  }
+
+  return lines.join("\n");
+}
+
 function formatCompactTicket(ticket: { ticketId: string; title: string; status: string; severity: string; priority: number; assigneeAgentId: string | null; updatedAt: string }): string {
   return `${ticket.ticketId} [${ticket.status}] ${ticket.title} | ${ticket.severity} | P${ticket.priority} | ${ticket.assigneeAgentId ?? "unassigned"} | ${ticket.updatedAt}`;
 }
@@ -216,6 +290,68 @@ function printTicketOutput<T>(payload: T, asJson: boolean, formatter: (payload: 
     return;
   }
   console.log(formatter(payload));
+}
+
+export function extractTicketIdsFromText(text: string): string[] {
+  const seen = new Set<string>();
+  const matches = text.match(TICKET_ID_PATTERN) ?? [];
+  const ids: string[] = [];
+
+  for (const match of matches) {
+    const normalized = `TKT-${match.slice(4).toLowerCase()}`;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    ids.push(normalized);
+  }
+
+  return ids;
+}
+
+export async function reconcileCommitTickets(
+  ctx: TicketCliContext,
+  config: TicketCliConfig,
+  insight: InsightStream,
+  input: { commitSha: string; commitMessage: string; actorLabel: string },
+  deps: TicketCliDeps = {},
+): Promise<TicketCommitReconcilePayload> {
+  const commitShortSha = await (deps.getShortSha ?? getShortSha)(input.commitSha, { cwd: ctx.repoRoot });
+  const ticketIds = extractTicketIdsFromText(input.commitMessage);
+  const payload: TicketCommitReconcilePayload = {
+    commitSha: input.commitSha,
+    commitShortSha,
+    ticketIds,
+    resolved: [],
+    skipped: [],
+  };
+
+  const getTicketByTicketId = deps.getTicketByTicketId ?? queries.getTicketByTicketId;
+  const transitionTicket = deps.transitionTicket ?? defaultTransitionTicket;
+
+  for (const ticketId of ticketIds) {
+    const ticket = getTicketByTicketId(ctx.db, ticketId, ctx.repoId);
+    if (!ticket) {
+      payload.skipped.push({ ticketId, reason: "not_found" });
+      continue;
+    }
+    if (ticket.status !== "ready_for_commit") {
+      payload.skipped.push({ ticketId, reason: "not_ready_for_commit", status: ticket.status });
+      continue;
+    }
+
+    const result = transitionTicket(ctx, config, insight, {
+      ticketId,
+      comment: `Auto-resolved after commit ${commitShortSha}.`,
+      actorLabel: input.actorLabel,
+    });
+
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+
+    payload.resolved.push(toTicketTransitionPayload(result.data));
+  }
+
+  return payload;
 }
 
 function parseTicketListFilters(args: string[]) {
@@ -245,7 +381,7 @@ function parseTicketListFilters(args: string[]) {
   };
 }
 
-async function loadTicketCliContext(config: TicketCliConfig, insight: InsightStream): Promise<TicketCliContext> {
+async function loadTicketCliContext(config: TicketCliConfig, _insight: InsightStream): Promise<TicketCliContext> {
   if (!(await isGitRepo({ cwd: config.repoPath }))) {
     throw new Error("Not a git repository");
   }
@@ -293,6 +429,7 @@ function printTicketHelp(): void {
   console.error("  agora ticket list [--status <status>] [--severity <severity>] [--assignee <agent-id>] [--creator <agent-id>] [--tags a,b] [--limit <n>] [--json]");
   console.error("  agora ticket show <ticket-id> [--json]");
   console.error("  agora ticket transition <ticket-id> <status> [--comment <text>] [--skip-knowledge-capture] [--actor-label <label>] [--json]");
+  console.error("  agora ticket reconcile-commit [--commit <sha>] [--actor-label <label>] [--json]");
 }
 
 function parseTagsArg(raw: string | undefined): string[] | undefined {
@@ -320,4 +457,27 @@ function getArg(args: string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
   if (index === -1 || index + 1 >= args.length) return undefined;
   return args[index + 1];
+}
+
+function defaultTransitionTicket(
+  ctx: TicketCliContext,
+  config: TicketCliConfig,
+  insight: InsightStream,
+  input: { ticketId: string; comment: string; actorLabel: string },
+): ReturnType<typeof updateTicketStatusRecord> {
+  return updateTicketStatusRecord({
+    db: ctx.db,
+    repoId: ctx.repoId,
+    repoPath: ctx.repoRoot,
+    insight,
+    ticketQuorum: config.ticketQuorum,
+    system: true,
+    actorLabel: input.actorLabel,
+    refreshTicketSearch: buildTicketSearchRefresher(ctx.sqlite, ctx.db, ctx.repoId, insight),
+    refreshKnowledgeSearch: buildKnowledgeSearchRefresher(ctx.sqlite, ctx.db, insight),
+  }, {
+    ticketId: input.ticketId,
+    status: "resolved",
+    comment: input.comment,
+  });
 }
