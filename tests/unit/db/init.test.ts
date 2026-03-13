@@ -44,6 +44,9 @@ describe("initDatabase", () => {
     const indexNames = indexes.map((index) => index.name);
     expect(indexNames).toContain("idx_review_verdicts_ticket_specialization");
     expect(indexNames).toContain("idx_council_assignments_ticket_specialization");
+    expect(indexNames).toContain("idx_ticket_history_ticket_id");
+    expect(indexNames).toContain("idx_ticket_comments_ticket_id");
+    expect(indexNames).toContain("idx_patches_ticket_id");
 
     const agentColumns = sqlite
       .prepare("PRAGMA table_info(agents)")

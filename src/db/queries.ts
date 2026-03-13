@@ -457,6 +457,7 @@ export function upsertKnowledge(
 ): typeof tables.knowledge.$inferSelect {
   const existing = db.select().from(tables.knowledge).where(eq(tables.knowledge.key, entry.key)).get();
   if (existing) {
+    // Re-resolve/close updates the distilled content, but preserves the original actor/session attribution.
     db.update(tables.knowledge)
       .set({
         title: entry.title,

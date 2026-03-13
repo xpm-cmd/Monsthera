@@ -273,4 +273,46 @@ describe("knowledge lifecycle integration", () => {
     const oldResults = fts5.searchKnowledge(sqlite, "simpler usage");
     expect(oldResults.length).toBe(0);
   });
+
+  it("incrementally refreshes a single knowledge row in FTS5", () => {
+    const ts = now();
+
+    queries.upsertKnowledge(db, {
+      key: "solution:incremental-refresh",
+      type: "solution",
+      scope: "repo",
+      title: "Incremental refresh baseline",
+      content: "Initial indexed content",
+      createdAt: ts,
+      updatedAt: ts,
+    });
+
+    const initial = queries.getKnowledgeByKey(db, "solution:incremental-refresh");
+    expect(initial).toBeTruthy();
+    if (!initial) return;
+
+    const fts5 = new FTS5Backend(sqlite, db);
+    fts5.initKnowledgeFts(sqlite);
+    fts5.rebuildKnowledgeFts(sqlite);
+    expect(fts5.searchKnowledge(sqlite, "baseline", 10)).toHaveLength(1);
+
+    queries.upsertKnowledge(db, {
+      key: "solution:incremental-refresh",
+      type: "solution",
+      scope: "repo",
+      title: "Incremental refresh updated",
+      content: "Updated content only visible after single-row upsert",
+      createdAt: ts,
+      updatedAt: now(),
+    });
+
+    const updated = queries.getKnowledgeByKey(db, "solution:incremental-refresh");
+    expect(updated).toBeTruthy();
+    if (!updated) return;
+
+    fts5.upsertKnowledgeFts(sqlite, updated.id);
+
+    expect(fts5.searchKnowledge(sqlite, "single-row upsert", 10)).toHaveLength(1);
+    expect(fts5.searchKnowledge(sqlite, "baseline", 10)).toHaveLength(0);
+  });
 });

@@ -149,7 +149,15 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
           searchRouter,
         }, params),
         refreshTicketSearch: () => searchRouter.rebuildTicketFts(repoId),
-        refreshKnowledgeSearch: () => searchRouter.rebuildKnowledgeFts(sqlite),
+        refreshKnowledgeSearch: (knowledgeIds?: number[]) => {
+          if (knowledgeIds && knowledgeIds.length > 0) {
+            for (const knowledgeId of knowledgeIds) {
+              searchRouter.upsertKnowledgeFts(sqlite, knowledgeId);
+            }
+            return;
+          }
+          searchRouter.rebuildKnowledgeFts(sqlite);
+        },
         searchDebug: {
           searchCode: (params) => buildCodeSearchDebug({
             sqlite,

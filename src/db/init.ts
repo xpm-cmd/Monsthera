@@ -395,4 +395,9 @@ function runMigrations(sqlite: Database.Database): void {
   sqlite.prepare(
     "CREATE INDEX IF NOT EXISTS idx_council_assignments_ticket_agent ON council_assignments(ticket_id, agent_id)",
   ).run();
+
+  // Migration 13: Add FK lookup indexes for ticket knowledge capture reads
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_ticket_history_ticket_id ON ticket_history(ticket_id)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_ticket_comments_ticket_id ON ticket_comments(ticket_id)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_patches_ticket_id ON patches(ticket_id)").run();
 }

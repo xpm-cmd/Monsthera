@@ -39,7 +39,7 @@ interface TicketServiceBaseContext {
   governance?: GovernanceConfig;
   bus?: CoordinationBus;
   refreshTicketSearch?: () => void;
-  refreshKnowledgeSearch?: () => void;
+  refreshKnowledgeSearch?: (knowledgeIds?: number[]) => void;
 }
 
 export type TicketServiceContext = TicketServiceBaseContext;
@@ -117,6 +117,10 @@ interface UpdateTicketStatusFields {
 }
 
 export type UpdateTicketStatusInput = UpdateTicketStatusFields & TicketActorInput;
+
+interface UpdateTicketStatusOptions {
+  deferKnowledgeSearchRefresh?: boolean;
+}
 
 interface CommentTicketFields {
   ticketId: string;
@@ -281,6 +285,7 @@ export function assignTicketRecord(
 export function updateTicketStatusRecord(
   ctx: TicketContext,
   input: UpdateTicketStatusInput,
+  options?: UpdateTicketStatusOptions,
 ): TicketServiceResult<Record<string, unknown>> {
   const auth = authorizeTicketActor(ctx, input, "update_ticket_status");
   if (!auth.ok) return auth;
@@ -370,6 +375,7 @@ export function updateTicketStatusRecord(
   if (input.status === "resolved") updates.resolvedByAgentId = resolved.agentId;
   if (current === "resolved" && input.status === "in_progress") updates.resolvedByAgentId = null;
 
+  let knowledgeId: number | null = null;
   ctx.db.transaction((tx) => {
     tx.update(tables.tickets)
       .set({ ...updates, updatedAt: now })
@@ -385,11 +391,13 @@ export function updateTicketStatusRecord(
       timestamp: now,
     }).run();
     if (knowledgeEntry) {
-      queries.upsertKnowledge(tx, knowledgeEntry);
+      knowledgeId = queries.upsertKnowledge(tx, knowledgeEntry).id;
     }
   });
   refreshTicketSearch(ctx);
-  if (knowledgeEntry) refreshKnowledgeSearch(ctx);
+  if (knowledgeEntry && !options?.deferKnowledgeSearchRefresh) {
+    refreshKnowledgeSearch(ctx, knowledgeId != null ? [knowledgeId] : undefined);
+  }
 
   ctx.insight.info(`Ticket ${input.ticketId}: ${current} → ${input.status} by ${resolved.agentId}`);
   recordDashboardEvent(ctx.db, ctx.repoId, {
@@ -474,18 +482,28 @@ export function batchTransitionTickets(
   }
 
   const results: BatchItemResult[] = [];
+  let needsKnowledgeRefresh = false;
   for (const ticketId of ticketIds) {
     const update = updateTicketStatusRecord(ctx, {
       ...copyTicketActorInput(input),
       ticketId,
       status: input.toStatus,
       comment: input.comment,
+    }, {
+      deferKnowledgeSearchRefresh: true,
     });
     if (update.ok) {
       results.push({ ticketId, ok: true });
+      if (update.data.knowledgeCaptured === true) {
+        needsKnowledgeRefresh = true;
+      }
     } else {
       results.push({ ticketId, ok: false, error: update.message });
     }
+  }
+
+  if (needsKnowledgeRefresh) {
+    refreshKnowledgeSearch(ctx);
   }
 
   const succeeded = results.filter((r) => r.ok).length;
@@ -759,9 +777,9 @@ function refreshTicketSearch(ctx: TicketContext): void {
   }
 }
 
-function refreshKnowledgeSearch(ctx: TicketContext): void {
+function refreshKnowledgeSearch(ctx: TicketContext, knowledgeIds?: number[]): void {
   try {
-    ctx.refreshKnowledgeSearch?.();
+    ctx.refreshKnowledgeSearch?.(knowledgeIds);
   } catch (error) {
     ctx.insight.warn(`Knowledge search refresh failed: ${error}`);
   }

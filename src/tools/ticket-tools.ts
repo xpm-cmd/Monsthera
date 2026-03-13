@@ -138,7 +138,15 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         governance: c.config?.governance,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
-        refreshKnowledgeSearch: () => c.searchRouter?.rebuildKnowledgeFts?.(c.sqlite),
+        refreshKnowledgeSearch: (knowledgeIds?: number[]) => {
+          if (knowledgeIds && knowledgeIds.length > 0) {
+            for (const knowledgeId of knowledgeIds) {
+              c.searchRouter?.upsertKnowledgeFts?.(c.sqlite, knowledgeId);
+            }
+            return;
+          }
+          c.searchRouter?.rebuildKnowledgeFts?.(c.sqlite);
+        },
       }, {
         ticketId,
         status: targetStatus as TicketStatusType,
@@ -495,7 +503,15 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
             governance: c.config?.governance,
             bus: c.bus,
             refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
-            refreshKnowledgeSearch: () => c.searchRouter?.rebuildKnowledgeFts?.(c.sqlite),
+            refreshKnowledgeSearch: (knowledgeIds?: number[]) => {
+              if (knowledgeIds && knowledgeIds.length > 0) {
+                for (const knowledgeId of knowledgeIds) {
+                  c.searchRouter?.upsertKnowledgeFts?.(c.sqlite, knowledgeId);
+                }
+                return;
+              }
+              c.searchRouter?.rebuildKnowledgeFts?.(c.sqlite);
+            },
             system: true,
             actorLabel: "council-auto-advance",
           }, {

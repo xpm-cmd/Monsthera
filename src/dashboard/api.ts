@@ -30,7 +30,7 @@ export interface DashboardDeps {
   globalDb: DB | null;
   ticketQuorum?: TicketQuorumConfig;
   refreshTicketSearch?: () => void;
-  refreshKnowledgeSearch?: () => void;
+  refreshKnowledgeSearch?: (knowledgeIds?: number[]) => void;
   searchDebug?: DashboardSearchDebugProvider;
   knowledgeSearch?: (params: SearchKnowledgeOptions) => Promise<KnowledgeSearchEntry[]>;
 }

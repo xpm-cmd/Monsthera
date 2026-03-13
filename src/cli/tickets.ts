@@ -273,10 +273,18 @@ function buildKnowledgeSearchRefresher(
   sqlite: DatabaseType,
   db: DB,
   insight: InsightStream,
-): () => void {
+): (knowledgeIds?: number[]) => void {
   const fts5 = new FTS5Backend(sqlite, db, (message) => insight.warn(message));
   fts5.initKnowledgeFts(sqlite);
-  return () => fts5.rebuildKnowledgeFts(sqlite);
+  return (knowledgeIds) => {
+    if (knowledgeIds && knowledgeIds.length > 0) {
+      for (const knowledgeId of knowledgeIds) {
+        fts5.upsertKnowledgeFts(sqlite, knowledgeId);
+      }
+      return;
+    }
+    fts5.rebuildKnowledgeFts(sqlite);
+  };
 }
 
 function printTicketHelp(): void {

@@ -180,6 +180,10 @@ export class SearchRouter {
     this.fts5.rebuildKnowledgeFts(sqlite);
   }
 
+  upsertKnowledgeFts(sqlite: DatabaseType, knowledgeId: number): void {
+    this.fts5.upsertKnowledgeFts(sqlite, knowledgeId);
+  }
+
   /** Search knowledge entries via FTS5. Works regardless of semantic model status. */
   searchKnowledge(sqlite: DatabaseType, query: string, limit?: number, type?: string): KnowledgeFtsResult[] {
     return this.fts5.searchKnowledge(sqlite, query, limit, type);

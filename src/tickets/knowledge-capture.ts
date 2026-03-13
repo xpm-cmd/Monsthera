@@ -10,6 +10,7 @@ const MAX_COMMENT_SNIPPETS = 5;
 const MAX_HISTORY_ENTRIES = 8;
 const MAX_PATCH_SUMMARIES = 5;
 const MAX_AFFECTED_PATHS = 20;
+const MAX_CONTENT_LENGTH = 15_000;
 const MAX_TEXT_LENGTH = 320;
 
 export interface TicketKnowledgeCaptureInput {
@@ -87,7 +88,7 @@ export function buildTicketResolutionKnowledgeEntry(
     type: "solution",
     scope: "repo",
     title: `Ticket ${input.ticket.ticketId}: ${input.ticket.title}`,
-    content,
+    content: clipText(content, MAX_CONTENT_LENGTH),
     tagsJson: JSON.stringify(tags),
     status: "active",
     agentId: input.actorAgentId,
@@ -123,7 +124,7 @@ function buildHistorySummary(history: TicketHistoryRow[]): string[] {
   }
   return history.map((entry) => {
     const comment = entry.comment ? ` - ${clipText(entry.comment, MAX_TEXT_LENGTH)}` : "";
-    return `- ${entry.timestamp}: ${entry.fromStatus ?? "null"} -> ${entry.toStatus} by ${entry.agentId}${comment}`;
+    return `- ${entry.timestamp}: ${entry.fromStatus ?? "(created)"} -> ${entry.toStatus} by ${entry.agentId}${comment}`;
   });
 }
 

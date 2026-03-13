@@ -110,6 +110,8 @@ describe("ticket tools", () => {
       searchRouter: {
         rebuildTicketFts: () => fts5.rebuildTicketFts(repoId),
         rebuildKnowledgeFts: () => fts5.rebuildKnowledgeFts(sqlite),
+        upsertKnowledgeFts: (_targetSqlite: InstanceType<typeof Database>, knowledgeId: number) =>
+          fts5.upsertKnowledgeFts(sqlite, knowledgeId),
         searchTickets: (query: string, searchRepoId: number, limit?: number, opts?: {
           status?: string;
           severity?: string;

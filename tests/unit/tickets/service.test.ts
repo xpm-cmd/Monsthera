@@ -95,6 +95,7 @@ describe("ticket service system context", () => {
   let bus: CoordinationBus;
   let refreshCount: number;
   let knowledgeRefreshCount: number;
+  let knowledgeRefreshArgs: Array<number[] | undefined>;
   let knowledgeFts: FTS5Backend;
   let ctx: TicketSystemContext;
 
@@ -104,6 +105,7 @@ describe("ticket service system context", () => {
     bus = new CoordinationBus("hub-spoke", 200, db, repoId);
     refreshCount = 0;
     knowledgeRefreshCount = 0;
+    knowledgeRefreshArgs = [];
     knowledgeFts = new FTS5Backend(sqlite, db);
     knowledgeFts.initKnowledgeFts(sqlite);
 
@@ -127,8 +129,15 @@ describe("ticket service system context", () => {
       refreshTicketSearch: () => {
         refreshCount += 1;
       },
-      refreshKnowledgeSearch: () => {
+      refreshKnowledgeSearch: (knowledgeIds) => {
         knowledgeRefreshCount += 1;
+        knowledgeRefreshArgs.push(knowledgeIds);
+        if (knowledgeIds && knowledgeIds.length > 0) {
+          for (const knowledgeId of knowledgeIds) {
+            knowledgeFts.upsertKnowledgeFts(sqlite, knowledgeId);
+          }
+          return;
+        }
         knowledgeFts.rebuildKnowledgeFts(sqlite);
       },
     };
@@ -250,6 +259,8 @@ describe("ticket service system context", () => {
       knowledgeKey: `solution:ticket:${ticketId.toLowerCase()}`,
     });
     expect(knowledgeRefreshCount).toBe(1);
+    expect(knowledgeRefreshArgs).toHaveLength(1);
+    expect(knowledgeRefreshArgs[0]).toHaveLength(1);
 
     const knowledge = queries.getKnowledgeByKey(db, `solution:ticket:${ticketId.toLowerCase()}`);
     expect(knowledge).toBeTruthy();
@@ -571,6 +582,60 @@ describe("ticket service system context", () => {
       "ticket_created",
       "ticket_commented",
     ]);
+  });
+
+  it("batch resolves tickets with a single deferred knowledge refresh", async () => {
+    const first = await createTicketRecord(ctx, {
+      title: "First knowledge batch ticket",
+      description: "Batch resolution target A",
+      severity: "medium",
+      priority: 8,
+      tags: ["knowledge"],
+      affectedPaths: ["src/tickets/service.ts"],
+      acceptanceCriteria: null,
+    });
+    const second = await createTicketRecord(ctx, {
+      title: "Second knowledge batch ticket",
+      description: "Batch resolution target B",
+      severity: "medium",
+      priority: 8,
+      tags: ["knowledge"],
+      affectedPaths: ["src/search/fts5.ts"],
+      acceptanceCriteria: null,
+    });
+    const firstTicketId = first.ok ? String(first.data.ticketId) : "";
+    const secondTicketId = second.ok ? String(second.data.ticketId) : "";
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: firstTicketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: secondTicketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+
+    knowledgeRefreshCount = 0;
+    knowledgeRefreshArgs = [];
+
+    const result = batchTransitionTickets(ctx, {
+      actorLabel: "batch-resolver",
+      ticketIds: [firstTicketId, secondTicketId],
+      toStatus: "resolved",
+      comment: "Bulk resolution capture",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.data.ok).toBe(true);
+    expect(knowledgeRefreshCount).toBe(1);
+    expect(knowledgeRefreshArgs).toEqual([undefined]);
+    expect(queries.getKnowledgeByKey(db, `solution:ticket:${firstTicketId.toLowerCase()}`)).toBeTruthy();
+    expect(queries.getKnowledgeByKey(db, `solution:ticket:${secondTicketId.toLowerCase()}`)).toBeTruthy();
+
+    const results = knowledgeFts.searchKnowledge(sqlite, "Bulk resolution capture", 10);
+    expect(results).toHaveLength(2);
   });
 
   it("supports the agreed recovery and non-implementation transitions", async () => {

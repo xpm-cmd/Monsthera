@@ -148,6 +148,23 @@ export class FTS5Backend implements SearchBackend {
     batch();
   }
 
+  /**
+   * Refresh a single knowledge entry in the FTS index.
+   * Falls back to delete-only behavior when the source row is no longer active.
+   */
+  upsertKnowledgeFts(sqlite: DatabaseType, knowledgeId: number): void {
+    sqlite.prepare(`DELETE FROM ${KNOWLEDGE_FTS_TABLE} WHERE knowledge_id = ?`).run(knowledgeId);
+
+    const row = sqlite
+      .prepare("SELECT id, title, content, type, tags_json FROM knowledge WHERE id = ? AND status = 'active'")
+      .get(knowledgeId) as { id: number; title: string; content: string; type: string; tags_json: string | null } | undefined;
+    if (!row) return;
+
+    sqlite.prepare(
+      `INSERT INTO ${KNOWLEDGE_FTS_TABLE}(knowledge_id, title, content, type, tags) VALUES (?, ?, ?, ?, ?)`,
+    ).run(row.id, row.title, row.content, row.type, row.tags_json ?? "");
+  }
+
   isKnowledgeIndexCurrent(sqlite: DatabaseType): boolean {
     const indexedRows = sqlite.prepare(`SELECT COUNT(*) AS count FROM ${KNOWLEDGE_FTS_TABLE}`)
       .get() as { count: number } | undefined;
