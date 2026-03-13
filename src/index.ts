@@ -85,6 +85,9 @@ async function main() {
     case "loops":
       await cmdLoop(config, insight, args.slice(1));
       break;
+    case "facilitator":
+      await cmdLoop(config, insight, ["plan", ...args.slice(1)]);
+      break;
     case "serve":
     case undefined:
       await cmdServe(config, insight);
@@ -663,6 +666,7 @@ function printHelp() {
   console.error("  patch          Repo-scoped patch inspection");
   console.error("  knowledge      Repo/global knowledge inspection");
   console.error("  loop           Run a repo-local planner/developer/council workflow");
+  console.error("  facilitator    Alias for `agora loop plan`");
   console.error("  tool           Invoke a local Agora MCP tool from CLI");
   console.error("");
   console.error("Options:");
@@ -699,6 +703,7 @@ function printHelp() {
   console.error("  agora loop plan --json");
   console.error("  agora loop dev --limit 3 --json");
   console.error("  agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json");
+  console.error("  agora facilitator --watch");
   console.error("");
   console.error("Agent access preference:");
   console.error("  Prefer `agora ticket|patch|knowledge ... --json` or `agora tool ... --json`");

@@ -15,6 +15,7 @@ Run:
 
 ```bash
 agora loop plan --json
+agora facilitator --json
 ```
 
 Use this when you want a quick answer to:
@@ -53,6 +54,8 @@ Use this when you want Agora to:
 - rank approved work
 - surface the most likely next ticket
 - preload compact code context
+
+If you keep `agora loop dev --watch` running, it can also auto-take the top recommended approved ticket by assigning it, claiming paths, and moving it to `in_progress`.
 
 What to do next:
 
@@ -148,6 +151,7 @@ Use watch mode:
 
 ```bash
 agora loop plan --watch
+agora facilitator --watch
 agora loop dev --watch
 agora loop council --watch
 ```
@@ -165,6 +169,18 @@ Council watch behavior:
 - if that queue is empty, looks at `technical_analysis`
 - if that is also empty, falls back to backlog planning candidates
 
+Planner watch behavior:
+
+- inspects queues every cycle
+- if there is `in_review` work, triggers `deep-review-v2`
+- otherwise, if there is `technical_analysis` work, triggers `ta-review`
+
+Developer watch behavior:
+
+- inspects approved work every cycle
+- if the top suggestion is unambiguous, auto-assigns it
+- claims the ticket paths and moves it to `in_progress`
+
 ## 7. Recommended Operating Model
 
 If you want separate agents working in parallel, use:
@@ -181,12 +197,12 @@ Map them to these commands:
 
 ## 8. What These Commands Do Not Yet Do
 
-These loop commands now support both one-shot use and persistent watch mode.
+These loop commands now support both one-shot use and persistent watch mode, and planner/developer watch can now advance some queue state automatically.
 
-They do not yet:
+They still do not:
 
-- keep a long-lived autonomous agent running by themselves
-- automatically continue across multiple tool calls after the command returns
+- synthesize review verdicts without a live reviewer agent
 - replace human judgment for ambiguous product or design decisions
+- fully implement code changes by themselves after a ticket reaches `in_progress`
 
-They are designed to make the next step obvious and consistent, not to hide the workflow.
+They reduce manual orchestration, but council analysis and implementation still need real agents behind the loops.

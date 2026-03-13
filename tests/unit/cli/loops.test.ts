@@ -217,6 +217,8 @@ describe("loop CLI", () => {
         ticketId: "TKT-1234abcd",
         transition: "technical_analysis→approved",
         sinceCommit: "abc1234",
+        targetStatus: "approved",
+        callerAgentId: "agent-review",
       },
       agentId: "agent-review",
       sessionId: "session-review",
@@ -395,6 +397,83 @@ describe("loop CLI", () => {
     expect(messages.some((message: string) => message.includes("Stopped planner-loop after 2 cycle(s) (max_runs)"))).toBe(true);
   });
 
+  it("routes technical analysis tickets through ta-review in planner watch mode", async () => {
+    const insight = createInsight();
+    const callTool = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "register_agent",
+        result: toolTextPayload({
+          agentId: "agent-plan",
+          sessionId: "session-plan",
+          role: "facilitator",
+          resumed: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "poll_coordination",
+        result: toolTextPayload({ topology: "hub-spoke", count: 0, messages: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "run_workflow",
+        result: toolTextPayload({
+          name: "custom:planner-loop",
+          status: "completed",
+          outputs: {
+            in_review: { tickets: [] },
+            technical_analysis: {
+              tickets: [{
+                ticketId: "TKT-ta111",
+                title: "Needs council",
+                status: "technical_analysis",
+                priority: 9,
+                severity: "high",
+              }],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "run_workflow",
+        result: toolTextPayload({
+          name: "ta-review",
+          status: "partial",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "end_session",
+        result: toolTextPayload({ ended: true }),
+      });
+
+    await cmdLoop(config, insight, [
+      "plan",
+      "--watch",
+      "--interval-ms",
+      "1000",
+      "--max-runs",
+      "1",
+    ], {
+      createServer: (() => ({} as any)) as any,
+      getRunner: () => ({ callTool } as any),
+      sleep: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(callTool).toHaveBeenNthCalledWith(4, "run_workflow", {
+      name: "ta-review",
+      params: {
+        ticketId: "TKT-ta111",
+        timeoutSeconds: 5,
+      },
+      agentId: "agent-plan",
+      sessionId: "session-plan",
+    });
+    expect(process.exitCode).toBeUndefined();
+  });
+
   it("processes council review requests in watch mode without a fixed ticket", async () => {
     const insight = createInsight();
     const callTool = vi.fn()
@@ -461,6 +540,8 @@ describe("loop CLI", () => {
       params: {
         ticketId: "TKT-1234abcd",
         transition: "technical_analysis→approved",
+        targetStatus: "approved",
+        callerAgentId: "agent-review",
       },
       agentId: "agent-review",
       sessionId: "session-review",
@@ -468,6 +549,113 @@ describe("loop CLI", () => {
 
     const jsonEvents = logSpy.mock.calls.map((call: unknown[]) => JSON.parse(String(call[0])));
     expect(jsonEvents.some((event: any) => event.event === "workflow_result" && event.reason === "review_request")).toBe(true);
+  });
+
+  it("auto-assigns and starts the top approved ticket in developer watch mode", async () => {
+    const insight = createInsight();
+    const callTool = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "register_agent",
+        result: toolTextPayload({
+          agentId: "agent-dev",
+          sessionId: "session-dev",
+          role: "developer",
+          resumed: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "poll_coordination",
+        result: toolTextPayload({ topology: "hub-spoke", count: 0, messages: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "run_workflow",
+        result: toolTextPayload({
+          name: "custom:developer-loop",
+          status: "completed",
+          outputs: {
+            suggestions: {
+              routingRecommendation: { action: "recommend", confidence: "high" },
+              suggestions: [{
+                ticketId: "TKT-dev111",
+                title: "Implement feature",
+                affectedPaths: ["src/feature.ts"],
+              }],
+            },
+            ticket: {
+              ticketId: "TKT-dev111",
+              title: "Implement feature",
+              affectedPaths: ["src/feature.ts"],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "assign_ticket",
+        result: toolTextPayload({
+          ticketId: "TKT-dev111",
+          assigneeAgentId: "agent-dev",
+          status: "approved",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "claim_files",
+        result: toolTextPayload({
+          claimed: ["src/feature.ts"],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "update_ticket_status",
+        result: toolTextPayload({
+          ticketId: "TKT-dev111",
+          status: "in_progress",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "end_session",
+        result: toolTextPayload({ ended: true }),
+      });
+
+    await cmdLoop(config, insight, [
+      "dev",
+      "--watch",
+      "--interval-ms",
+      "1000",
+      "--max-runs",
+      "1",
+    ], {
+      createServer: (() => ({} as any)) as any,
+      getRunner: () => ({ callTool } as any),
+      sleep: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(callTool).toHaveBeenNthCalledWith(4, "assign_ticket", {
+      ticketId: "TKT-dev111",
+      assigneeAgentId: "agent-dev",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(callTool).toHaveBeenNthCalledWith(5, "claim_files", {
+      paths: ["src/feature.ts"],
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(callTool).toHaveBeenNthCalledWith(6, "update_ticket_status", {
+      ticketId: "TKT-dev111",
+      status: "in_progress",
+      comment: "Developer loop auto-take: claimed approved work for implementation",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    const messages = logSpy.mock.calls.map((call: unknown[]) => String(call[0]));
+    expect(messages.some((message: string) => message.includes("Auto-took TKT-dev111 for implementation"))).toBe(true);
   });
 
   it("falls back to backlog planning in council watch mode when review and TA queues are empty", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { InsightStream } from "../../../src/core/insight-stream.js";
 import { extractTicketIdsFromText, reconcileCommitTickets } from "../../../src/cli/tickets.js";
+import { pathOverlaps } from "../../../src/db/queries.js";
 
 function createInsight(): InsightStream {
   return {
@@ -60,7 +61,10 @@ describe("ticket CLI commit reconciliation", () => {
       actorLabel: "post-commit",
     }, {
       getShortSha: vi.fn().mockResolvedValue("abc123d"),
+      getChangedFiles: vi.fn().mockResolvedValue([]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
       getTicketByTicketId: getTicketByTicketId as unknown as NonNullable<Parameters<typeof reconcileCommitTickets>[4]>["getTicketByTicketId"],
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
       transitionTicket,
     });
 
@@ -74,15 +78,280 @@ describe("ticket CLI commit reconciliation", () => {
       commitSha: "abc123def456",
       commitShortSha: "abc123d",
       ticketIds: ["TKT-ready111", "TKT-review222", "TKT-missing333"],
+      inferredTicketIds: [],
+      cascadedTicketIds: [],
       resolved: [{
         ticketId: "TKT-ready111",
         previousStatus: "ready_for_commit",
         status: "resolved",
+        source: "commit_message",
       }],
       skipped: [
         { ticketId: "TKT-review222", reason: "not_ready_for_commit", status: "in_review" },
         { ticketId: "TKT-missing333", reason: "not_found" },
       ],
     });
+  });
+
+  it("infers ticket from affected paths when not in commit message", async () => {
+    const insight = createInsight();
+    const getTicketByTicketId = vi.fn((_db: unknown, ticketId: string) => {
+      if (ticketId === "TKT-pathticket") return { id: 10, ticketId: "TKT-pathticket", status: "ready_for_commit" };
+      return null;
+    });
+    const transitionTicket = vi.fn().mockReturnValue({
+      ok: true,
+      data: { ticketId: "TKT-pathticket", previousStatus: "ready_for_commit", status: "resolved" },
+    });
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "aaa111",
+      commitMessage: "chore: refactor utils",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("aaa111"),
+      getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "src/foo.ts" }]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([
+        { ticketId: "TKT-pathticket", status: "ready_for_commit" },
+      ]),
+      getTicketByTicketId: getTicketByTicketId as never,
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
+      transitionTicket,
+    });
+
+    expect(payload.inferredTicketIds).toEqual(["TKT-pathticket"]);
+    expect(payload.resolved).toHaveLength(1);
+    expect(payload.resolved[0]!.source).toBe("path_match");
+    expect(transitionTicket).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not duplicate ticket already in commit message during path inference", async () => {
+    const insight = createInsight();
+    const getTicketByTicketId = vi.fn((_db: unknown, ticketId: string) => {
+      if (ticketId === "TKT-dupeticket") return { id: 11, ticketId: "TKT-dupeticket", status: "ready_for_commit" };
+      return null;
+    });
+    const transitionTicket = vi.fn().mockReturnValue({
+      ok: true,
+      data: { ticketId: "TKT-dupeticket", previousStatus: "ready_for_commit", status: "resolved" },
+    });
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "bbb222",
+      commitMessage: "feat: close TKT-dupeticket",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("bbb222"),
+      getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "src/foo.ts" }]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([
+        { ticketId: "TKT-dupeticket", status: "ready_for_commit" },
+      ]),
+      getTicketByTicketId: getTicketByTicketId as never,
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
+      transitionTicket,
+    });
+
+    expect(payload.ticketIds).toEqual(["TKT-dupeticket"]);
+    expect(payload.inferredTicketIds).toEqual([]);
+    expect(transitionTicket).toHaveBeenCalledTimes(1);
+  });
+
+  it("matches tickets by directory prefix in affectedPaths", async () => {
+    const insight = createInsight();
+    const getTicketByTicketId = vi.fn((_db: unknown, ticketId: string) => {
+      if (ticketId === "TKT-dirticket") return { id: 12, ticketId: "TKT-dirticket", status: "ready_for_commit" };
+      return null;
+    });
+    const transitionTicket = vi.fn().mockReturnValue({
+      ok: true,
+      data: { ticketId: "TKT-dirticket", previousStatus: "ready_for_commit", status: "resolved" },
+    });
+
+    // getReadyTicketsByAffectedPaths delegates to pathOverlaps internally;
+    // here we test the integration by simulating a match from the query
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "ccc333",
+      commitMessage: "fix: lifecycle bug",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("ccc333"),
+      getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "src/tickets/lifecycle.ts" }]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([
+        { ticketId: "TKT-dirticket", status: "ready_for_commit" },
+      ]),
+      getTicketByTicketId: getTicketByTicketId as never,
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
+      transitionTicket,
+    });
+
+    expect(payload.inferredTicketIds).toEqual(["TKT-dirticket"]);
+    expect(payload.resolved[0]!.source).toBe("path_match");
+  });
+
+  it("cascades resolution to ready_for_commit dependents", async () => {
+    const insight = createInsight();
+    const getTicketByTicketId = vi.fn((_db: unknown, ticketId: string) => {
+      if (ticketId === "TKT-parent01") return { id: 20, ticketId: "TKT-parent01", status: "ready_for_commit" };
+      if (ticketId === "TKT-child01") return { id: 21, ticketId: "TKT-child01", status: "ready_for_commit" };
+      return null;
+    });
+    let callCount = 0;
+    const transitionTicket = vi.fn().mockImplementation((_ctx, _cfg, _insight, input) => {
+      callCount++;
+      return {
+        ok: true,
+        data: { ticketId: input.ticketId, previousStatus: "ready_for_commit", status: "resolved" },
+      };
+    });
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "ddd444",
+      commitMessage: "feat: complete TKT-parent01",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("ddd444"),
+      getChangedFiles: vi.fn().mockResolvedValue([]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
+      getTicketByTicketId: getTicketByTicketId as never,
+      getTicketById: vi.fn().mockImplementation((_db: unknown, id: number) => {
+        if (id === 21) return { ticketId: "TKT-child01", status: "ready_for_commit" };
+        return null;
+      }),
+      getTicketDependencies: vi.fn().mockImplementation((_db: unknown, ticketId: number) => {
+        if (ticketId === 20) {
+          return { outgoing: [], incoming: [{ relationType: "blocked_by", fromTicketId: 21 }] };
+        }
+        return { outgoing: [], incoming: [] };
+      }),
+      transitionTicket,
+    });
+
+    expect(payload.cascadedTicketIds).toEqual(["TKT-child01"]);
+    expect(payload.resolved).toHaveLength(2);
+    expect(payload.resolved[0]!.source).toBe("commit_message");
+    expect(payload.resolved[1]!.source).toBe("dependency_cascade");
+    expect(callCount).toBe(2);
+  });
+
+  it("does not cascade to dependents not in ready_for_commit", async () => {
+    const insight = createInsight();
+    const getTicketByTicketId = vi.fn((_db: unknown, ticketId: string) => {
+      if (ticketId === "TKT-parent02") return { id: 30, ticketId: "TKT-parent02", status: "ready_for_commit" };
+      return null;
+    });
+    const transitionTicket = vi.fn().mockReturnValue({
+      ok: true,
+      data: { ticketId: "TKT-parent02", previousStatus: "ready_for_commit", status: "resolved" },
+    });
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "eee555",
+      commitMessage: "feat: complete TKT-parent02",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("eee555"),
+      getChangedFiles: vi.fn().mockResolvedValue([]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
+      getTicketByTicketId: getTicketByTicketId as never,
+      getTicketById: vi.fn().mockImplementation((_db: unknown, id: number) => {
+        if (id === 31) return { ticketId: "TKT-child02", status: "in_progress" };
+        return null;
+      }),
+      getTicketDependencies: vi.fn().mockReturnValue({
+        outgoing: [], incoming: [{ relationType: "blocked_by", fromTicketId: 31 }],
+      }),
+      transitionTicket,
+    });
+
+    expect(payload.cascadedTicketIds).toEqual([]);
+    expect(payload.resolved).toHaveLength(1);
+    expect(transitionTicket).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns empty inferredTicketIds when no paths match", async () => {
+    const insight = createInsight();
+    const transitionTicket = vi.fn();
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "fff666",
+      commitMessage: "chore: update readme",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("fff666"),
+      getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "README.md" }]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
+      getTicketByTicketId: vi.fn().mockReturnValue(null) as never,
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
+      transitionTicket,
+    });
+
+    expect(payload.inferredTicketIds).toEqual([]);
+    expect(payload.cascadedTicketIds).toEqual([]);
+    expect(payload.resolved).toEqual([]);
+    expect(transitionTicket).not.toHaveBeenCalled();
+  });
+
+  it("includes source in payload for each resolution type", async () => {
+    const insight = createInsight();
+    const getTicketByTicketId = vi.fn((_db: unknown, ticketId: string) => {
+      if (ticketId === "TKT-explicit") return { id: 40, ticketId: "TKT-explicit", status: "ready_for_commit" };
+      if (ticketId === "TKT-inferred") return { id: 41, ticketId: "TKT-inferred", status: "ready_for_commit" };
+      return null;
+    });
+    const transitionTicket = vi.fn().mockImplementation((_ctx, _cfg, _insight, input) => ({
+      ok: true,
+      data: { ticketId: input.ticketId, previousStatus: "ready_for_commit", status: "resolved" },
+    }));
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "ggg777",
+      commitMessage: "feat: finish TKT-explicit",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("ggg777"),
+      getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "src/bar.ts" }]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([
+        { ticketId: "TKT-inferred", status: "ready_for_commit" },
+      ]),
+      getTicketByTicketId: getTicketByTicketId as never,
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
+      transitionTicket,
+    });
+
+    expect(payload.resolved).toHaveLength(2);
+    expect(payload.resolved[0]!.source).toBe("commit_message");
+    expect(payload.resolved[1]!.source).toBe("path_match");
+  });
+});
+
+describe("pathOverlaps", () => {
+  it("matches exact file paths", () => {
+    expect(pathOverlaps("src/foo.ts", "src/foo.ts")).toBe(true);
+  });
+
+  it("rejects different file paths", () => {
+    expect(pathOverlaps("src/foo.ts", "src/bar.ts")).toBe(false);
+  });
+
+  it("matches changed file inside directory prefix (trailing slash)", () => {
+    expect(pathOverlaps("src/tickets/lifecycle.ts", "src/tickets/")).toBe(true);
+  });
+
+  it("matches changed file inside directory prefix (no trailing slash)", () => {
+    expect(pathOverlaps("src/tickets/lifecycle.ts", "src/tickets")).toBe(true);
+  });
+
+  it("rejects partial directory name match", () => {
+    // "src/tick" should not match "src/tickets/lifecycle.ts"
+    expect(pathOverlaps("src/tickets/lifecycle.ts", "src/tick")).toBe(false);
+  });
+
+  it("normalizes leading ./", () => {
+    expect(pathOverlaps("./src/foo.ts", "src/foo.ts")).toBe(true);
+    expect(pathOverlaps("src/foo.ts", "./src/foo.ts")).toBe(true);
+  });
+
+  it("normalizes backslashes to forward slashes", () => {
+    expect(pathOverlaps("src\\foo.ts", "src/foo.ts")).toBe(true);
   });
 });

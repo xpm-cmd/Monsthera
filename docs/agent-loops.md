@@ -16,10 +16,13 @@ Under the hood, it wraps the repo-local workflows in `.agora/workflows/` and the
 ### Planner loop
 
 Use this when you want Agora to inspect queues and tell the facilitator what needs orchestration next.
+In watch mode it can also route the top `technical_analysis` or `in_review` ticket into the built-in quorum workflows.
 
 ```bash
 agora loop plan
 agora loop plan --limit 5 --json
+agora facilitator
+agora facilitator --watch
 ```
 
 What it runs:
@@ -27,6 +30,10 @@ What it runs:
 - workflow: `planner-loop`
 - role: `facilitator`
 - default agent name: `Planner Loop Facilitator`
+
+Alias:
+
+- `agora facilitator ...` maps to `agora loop plan ...`
 
 What it returns:
 
@@ -41,6 +48,7 @@ What it returns:
 ### Developer loop
 
 Use this when you want Agora to pick the next approved work item and preload implementation context.
+In watch mode it can also auto-assign the top recommended approved ticket, claim its paths, and move it to `in_progress`.
 
 ```bash
 agora loop dev
@@ -104,6 +112,7 @@ agora loop plan
 
 ```bash
 agora loop plan --json
+agora facilitator --json
 ```
 
 The JSON output includes:
@@ -176,6 +185,7 @@ Use this before a reviewer starts writing findings or submitting a verdict.
 
 ```bash
 agora loop plan --watch
+agora facilitator --watch
 agora loop dev --watch
 agora loop council --watch
 ```
@@ -186,6 +196,13 @@ What watch mode does:
 - polls coordination to maintain heartbeat
 - repeats the loop every interval
 - stops cleanly on `Ctrl+C`
+
+Additional autonomous behavior in watch mode:
+
+- planner watch can trigger `ta-review` for the top `technical_analysis` ticket
+- planner watch can trigger `deep-review-v2` for the top `in_review` ticket
+- developer watch can auto-take the top recommended `approved` ticket
+- council watch still focuses on quorum gates and review requests; it does not synthesize verdicts by itself
 
 Council watch priority order:
 
@@ -199,6 +216,8 @@ Council watch priority order:
 - The loop command now supports both one-shot runs and lightweight persistent watch workers.
 - One-shot mode ends the session automatically after each invocation.
 - Watch mode keeps the session active until you stop it.
+- Planner and developer watch now perform safe state transitions where the underlying workflow/tooling already supports them.
+- Council autonomy still depends on live reviewer agents submitting verdicts; the loop does not invent verdicts on its own.
 - This CLI entrypoint keeps lifecycle hooks available but skips the background sweep timer, so loop workers do not inherit a shared interval.
 
 ## Related Files

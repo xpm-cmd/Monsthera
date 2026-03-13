@@ -16,6 +16,13 @@ type GetContext = () => Promise<AgoraContext>;
 
 const WorkflowParamsSchema = z.record(z.string(), z.unknown()).default({});
 
+interface LiveReviewerCandidate {
+  agentId: string;
+  agentName: string;
+  roleId: string;
+  sessionId: string;
+}
+
 export function registerWorkflowTools(server: McpServer, getContext: GetContext): void {
   server.tool(
     "run_workflow",
@@ -94,44 +101,27 @@ export function registerWorkflowTools(server: McpServer, getContext: GetContext)
               new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString(),
             );
             const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
+            const resolutions = resolveReviewerAssignments({
+              roles,
+              availableReviewRoles: catalog.availableReviewRoles,
+              liveSessions,
+              getAgent: (reviewerAgentId) => queries.getAgent(c.db, reviewerAgentId),
+            });
 
-            return roles.map((role): ReviewerResolution => {
-              const candidates = catalog.availableReviewRoles[role as keyof typeof catalog.availableReviewRoles] ?? [];
-
-              for (const candidateName of candidates) {
-                const liveSession = liveSessions.find((s) => {
-                  const agent = queries.getAgent(c.db, s.agentId);
-                  return agent?.name === candidateName;
-                });
-
-                if (!liveSession || !ticket) continue;
-
-                // Auto-assign council member
+            if (ticket) {
+              for (const resolution of resolutions) {
+                if (resolution.status !== "resolved" || !resolution.agentId) continue;
                 queries.upsertCouncilAssignment(c.db, {
                   ticketId: ticket.id,
-                  agentId: liveSession.agentId,
-                  specialization: role,
+                  agentId: resolution.agentId,
+                  specialization: resolution.specialization,
                   assignedByAgentId: agentId,
                   assignedAt: new Date().toISOString(),
                 });
-
-                return {
-                  specialization: role,
-                  agentId: liveSession.agentId,
-                  agentName: candidateName,
-                  sessionId: liveSession.id,
-                  status: "resolved",
-                };
               }
+            }
 
-              return {
-                specialization: role,
-                agentId: null,
-                agentName: null,
-                sessionId: null,
-                status: "no_candidate",
-              };
-            });
+            return resolutions;
           },
         },
         params,
@@ -185,4 +175,76 @@ function buildMissingWorkflowResult(
     outputs: {},
     durationMs: 0,
   };
+}
+
+export function resolveReviewerAssignments(input: {
+  roles: string[];
+  availableReviewRoles: Record<string, string[]>;
+  liveSessions: Array<{ id: string; agentId: string }>;
+  getAgent: (agentId: string) => { name: string; roleId: string } | undefined;
+}): ReviewerResolution[] {
+  const liveCandidates = input.liveSessions.flatMap((session) => {
+    const agent = input.getAgent(session.agentId);
+    if (!agent || !canServeAsReviewer(agent.roleId)) return [];
+    return [{
+      agentId: session.agentId,
+      agentName: agent.name,
+      roleId: agent.roleId,
+      sessionId: session.id,
+    } satisfies LiveReviewerCandidate];
+  });
+  const reservedSessions = new Set<string>();
+
+  return input.roles.map((role): ReviewerResolution => {
+    const preferredNames = input.availableReviewRoles[role] ?? [];
+    const resolved = pickReviewerCandidate(liveCandidates, preferredNames, reservedSessions);
+    if (!resolved) {
+      return {
+        specialization: role,
+        agentId: null,
+        agentName: null,
+        sessionId: null,
+        status: "no_candidate",
+      };
+    }
+
+    reservedSessions.add(resolved.sessionId);
+    return {
+      specialization: role,
+      agentId: resolved.agentId,
+      agentName: resolved.agentName,
+      sessionId: resolved.sessionId,
+      status: "resolved",
+    };
+  });
+}
+
+function canServeAsReviewer(roleId: string): boolean {
+  return roleId === "reviewer" || roleId === "admin";
+}
+
+function pickReviewerCandidate(
+  liveCandidates: LiveReviewerCandidate[],
+  preferredNames: string[],
+  reservedSessions: Set<string>,
+): LiveReviewerCandidate | null {
+  const preferred = pickCandidate(liveCandidates, preferredNames, reservedSessions, true)
+    ?? pickCandidate(liveCandidates, preferredNames, reservedSessions, false);
+  if (preferred) return preferred;
+
+  return pickCandidate(liveCandidates, [], reservedSessions, true)
+    ?? pickCandidate(liveCandidates, [], reservedSessions, false);
+}
+
+function pickCandidate(
+  liveCandidates: LiveReviewerCandidate[],
+  preferredNames: string[],
+  reservedSessions: Set<string>,
+  preferUnreserved: boolean,
+): LiveReviewerCandidate | null {
+  const pool = liveCandidates.filter((candidate) => (
+    (!preferUnreserved || !reservedSessions.has(candidate.sessionId))
+    && (preferredNames.length === 0 || preferredNames.includes(candidate.agentName))
+  ));
+  return pool[0] ?? null;
 }

@@ -10,6 +10,7 @@ type LoopCommand = "plan" | "dev" | "council";
 type LoopRole = "facilitator" | "developer" | "reviewer";
 type WatchStopReason = "signal" | "max_runs" | "workflow_failed";
 type WorkflowPrintReason = "initial" | "changed" | "review_request" | "in_review_queue" | "technical_analysis_queue";
+type PlannerAutonomousActionReason = Extract<WorkflowPrintReason, "in_review_queue" | "technical_analysis_queue">;
 
 interface LoopSpec {
   workflowName: string;
@@ -79,6 +80,18 @@ interface QueueTicketSummary {
   severity?: string;
 }
 
+interface PlannerAutonomousAction {
+  workflowName: "ta-review" | "deep-review-v2";
+  params: Record<string, unknown>;
+  queueTicket: QueueTicketSummary;
+  reason: PlannerAutonomousActionReason;
+}
+
+interface DeveloperAutoTakeCandidate {
+  ticketId: string;
+  affectedPaths: string[];
+}
+
 export interface LoopExecutionPayload {
   loop: LoopCommand;
   workflowName: string;
@@ -116,8 +129,14 @@ const COUNCIL_TRANSITIONS = new Set([
   "in_review→ready_for_commit",
 ]);
 
+const COUNCIL_TARGET_STATUS: Record<string, string> = {
+  "technical_analysis→approved": "approved",
+  "in_review→ready_for_commit": "ready_for_commit",
+};
+
 const DEFAULT_WATCH_INTERVAL_MS = 30_000;
 const DEFAULT_QUEUE_LIMIT = 5;
+const AUTONOMOUS_QUEUE_TIMEOUT_SECONDS = 5;
 const VOLATILE_RESULT_KEYS = new Set(["durationMs", "elapsedMs"]);
 
 export async function cmdLoop(
@@ -204,7 +223,10 @@ export async function cmdLoop(
       return;
     }
 
-    const workflowExecution = await executeWorkflow(runner, spec.workflowName, agent, invocation.workflowParams);
+    const effectiveParams = loop === "council"
+      ? enrichCouncilParams(invocation.workflowParams, agent)
+      : invocation.workflowParams;
+    const workflowExecution = await executeWorkflow(runner, spec.workflowName, agent, effectiveParams);
     if (!workflowExecution.call.ok) {
       process.exitCode = 1;
       printLoopFailure(workflowExecution.call, workflowExecution.payload, asJson, agent, loop, spec.workflowName);
@@ -311,7 +333,7 @@ async function runWatchLoop(input: {
         if (!handledRequest) {
           const inReviewTicket = await getTopQueueTicket(runner, agent, "in_review", invocation.queueLimit);
           if (inReviewTicket) {
-            const params = { ticketId: inReviewTicket.ticketId, transition: "in_review→ready_for_commit" };
+            const params = enrichCouncilParams({ ticketId: inReviewTicket.ticketId, transition: "in_review→ready_for_commit" }, agent);
             const execution = await executeWorkflow(runner, spec.workflowName, agent, params);
             const handled = printWatchWorkflowEvent({
               loop,
@@ -334,7 +356,7 @@ async function runWatchLoop(input: {
           } else {
             const technicalAnalysisTicket = await getTopQueueTicket(runner, agent, "technical_analysis", invocation.queueLimit);
             if (technicalAnalysisTicket) {
-              const params = { ticketId: technicalAnalysisTicket.ticketId, transition: "technical_analysis→approved" };
+              const params = enrichCouncilParams({ ticketId: technicalAnalysisTicket.ticketId, transition: "technical_analysis→approved" }, agent);
               const execution = await executeWorkflow(runner, spec.workflowName, agent, params);
               const handled = printWatchWorkflowEvent({
                 loop,
@@ -370,7 +392,7 @@ async function runWatchLoop(input: {
             }
           }
         }
-      } else {
+      } else if (loop === "plan") {
         const execution = await executeWorkflow(runner, spec.workflowName, agent, invocation.workflowParams);
         const handled = printWatchWorkflowEvent({
           loop,
@@ -388,6 +410,61 @@ async function runWatchLoop(input: {
           process.exitCode = 1;
           stopReason = "workflow_failed";
           break;
+        }
+
+        const autonomousAction = selectPlannerAutonomousAction(execution.payload);
+        if (autonomousAction) {
+          const routeExecution = await executeWorkflow(
+            runner,
+            autonomousAction.workflowName,
+            agent,
+            autonomousAction.params,
+          );
+          printWatchWorkflowEvent({
+            loop,
+            workflowName: autonomousAction.workflowName,
+            cycle: cycles,
+            reason: autonomousAction.reason,
+            params: autonomousAction.params,
+            agent,
+            execution: routeExecution,
+            asJson,
+            fingerprintKey: `plan:auto:${autonomousAction.workflowName}:${autonomousAction.queueTicket.ticketId}`,
+            fingerprints,
+            queueTicket: autonomousAction.queueTicket,
+          });
+        }
+      } else {
+        const effectiveParams = loop === "council"
+          ? enrichCouncilParams(invocation.workflowParams, agent)
+          : invocation.workflowParams;
+        const execution = await executeWorkflow(runner, spec.workflowName, agent, effectiveParams);
+        const handled = printWatchWorkflowEvent({
+          loop,
+          workflowName: spec.workflowName,
+          cycle: cycles,
+          reason: fingerprints.size === 0 ? "initial" : "changed",
+          params: effectiveParams,
+          agent,
+          execution,
+          asJson,
+          fingerprintKey: `${loop}:fixed`,
+          fingerprints,
+        });
+        if (!handled.ok) {
+          process.exitCode = 1;
+          stopReason = "workflow_failed";
+          break;
+        }
+
+        if (loop === "dev") {
+          await maybeAutoTakeDeveloperWork({
+            runner,
+            agent,
+            cycle: cycles,
+            asJson,
+            payload: execution.payload,
+          });
         }
       }
 
@@ -681,9 +758,21 @@ async function resolveCouncilRequestParams(
     ?? await inferCouncilTransitionFromTicket(runner, agent, request.ticketId);
   if (!transition) return null;
 
-  return {
+  return enrichCouncilParams({
     ticketId: request.ticketId,
     transition,
+  }, agent);
+}
+
+function enrichCouncilParams(
+  params: Record<string, unknown>,
+  agent: LoopAgentPayload,
+): Record<string, unknown> {
+  const transition = typeof params.transition === "string" ? params.transition : "";
+  return {
+    ...params,
+    targetStatus: COUNCIL_TARGET_STATUS[transition] ?? "approved",
+    callerAgentId: agent.agentId,
   };
 }
 
@@ -749,6 +838,163 @@ async function getTopQueueTicket(
 ): Promise<QueueTicketSummary | null> {
   const tickets = await listTickets(runner, agent, status, limit);
   return tickets[0] ?? null;
+}
+
+function selectPlannerAutonomousAction(payload: unknown): PlannerAutonomousAction | null {
+  const outputs = isRecord(payload) && isRecord(payload.outputs) ? payload.outputs : null;
+  if (!outputs) return null;
+
+  const inReviewTicket = readTopQueueTicket(outputs.in_review);
+  if (inReviewTicket) {
+    return {
+      workflowName: "deep-review-v2",
+      params: {
+        ticketId: inReviewTicket.ticketId,
+        timeoutSeconds: AUTONOMOUS_QUEUE_TIMEOUT_SECONDS,
+      },
+      queueTicket: inReviewTicket,
+      reason: "in_review_queue",
+    };
+  }
+
+  const technicalAnalysisTicket = readTopQueueTicket(outputs.technical_analysis);
+  if (technicalAnalysisTicket) {
+    return {
+      workflowName: "ta-review",
+      params: {
+        ticketId: technicalAnalysisTicket.ticketId,
+        timeoutSeconds: AUTONOMOUS_QUEUE_TIMEOUT_SECONDS,
+      },
+      queueTicket: technicalAnalysisTicket,
+      reason: "technical_analysis_queue",
+    };
+  }
+
+  return null;
+}
+
+async function maybeAutoTakeDeveloperWork(input: {
+  runner: ToolRunner;
+  agent: LoopAgentPayload;
+  cycle: number;
+  asJson: boolean;
+  payload: unknown;
+}): Promise<void> {
+  const candidate = selectDeveloperAutoTakeCandidate(input.payload);
+  if (!candidate) return;
+
+  const assignResult = await input.runner.callTool("assign_ticket", {
+    ticketId: candidate.ticketId,
+    assigneeAgentId: input.agent.agentId,
+    agentId: input.agent.agentId,
+    sessionId: input.agent.sessionId,
+  });
+  if (!assignResult.ok) {
+    printWatchEvent({
+      event: "ticket_take_failed",
+      loop: "dev",
+      cycle: input.cycle,
+      ticketId: candidate.ticketId,
+      message: formatToolFailure(assignResult),
+    }, input.asJson);
+    return;
+  }
+
+  let claimPayload: unknown = null;
+  if (candidate.affectedPaths.length > 0) {
+    const claimResult = await input.runner.callTool("claim_files", {
+      paths: candidate.affectedPaths,
+      agentId: input.agent.agentId,
+      sessionId: input.agent.sessionId,
+    });
+    if (!claimResult.ok) {
+      printWatchEvent({
+        event: "ticket_take_failed",
+        loop: "dev",
+        cycle: input.cycle,
+        ticketId: candidate.ticketId,
+        message: formatToolFailure(claimResult),
+      }, input.asJson);
+      return;
+    }
+    claimPayload = parseToolPayload(claimResult);
+  }
+
+  const transitionResult = await input.runner.callTool("update_ticket_status", {
+    ticketId: candidate.ticketId,
+    status: "in_progress",
+    comment: "Developer loop auto-take: claimed approved work for implementation",
+    agentId: input.agent.agentId,
+    sessionId: input.agent.sessionId,
+  });
+  if (!transitionResult.ok) {
+    printWatchEvent({
+      event: "ticket_take_failed",
+      loop: "dev",
+      cycle: input.cycle,
+      ticketId: candidate.ticketId,
+      message: formatToolFailure(transitionResult),
+    }, input.asJson);
+    return;
+  }
+
+  printWatchEvent({
+    event: "ticket_taken",
+    loop: "dev",
+    cycle: input.cycle,
+    ticketId: candidate.ticketId,
+    affectedPaths: candidate.affectedPaths,
+    assignment: parseToolPayload(assignResult),
+    claims: claimPayload,
+    transition: parseToolPayload(transitionResult),
+  }, input.asJson);
+}
+
+function selectDeveloperAutoTakeCandidate(payload: unknown): DeveloperAutoTakeCandidate | null {
+  const outputs = isRecord(payload) && isRecord(payload.outputs) ? payload.outputs : null;
+  if (!outputs) return null;
+
+  const ticket = isRecord(outputs.ticket) ? outputs.ticket : null;
+  if (!ticket || typeof ticket.ticketId !== "string") return null;
+
+  const suggestions = isRecord(outputs.suggestions) ? outputs.suggestions : null;
+  const suggestionRows = Array.isArray(suggestions?.suggestions)
+    ? suggestions.suggestions.filter((entry): entry is Record<string, unknown> => isRecord(entry))
+    : [];
+  const topSuggestion = suggestionRows[0];
+  if (!topSuggestion || typeof topSuggestion.ticketId !== "string" || topSuggestion.ticketId !== ticket.ticketId) {
+    return null;
+  }
+
+  const routingRecommendation = isRecord(suggestions?.routingRecommendation)
+    ? suggestions.routingRecommendation
+    : null;
+  const recommendationAction = typeof routingRecommendation?.action === "string"
+    ? routingRecommendation.action
+    : null;
+  const canAutoTake = recommendationAction === "recommend" || suggestionRows.length === 1;
+  if (!canAutoTake) return null;
+
+  const affectedPaths = Array.isArray(ticket.affectedPaths)
+    ? ticket.affectedPaths.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  return {
+    ticketId: ticket.ticketId,
+    affectedPaths,
+  };
+}
+
+function readTopQueueTicket(value: unknown): QueueTicketSummary | null {
+  if (!isRecord(value) || !Array.isArray(value.tickets)) return null;
+  const [first] = value.tickets;
+  if (!isRecord(first) || typeof first.ticketId !== "string") return null;
+  return {
+    ticketId: first.ticketId,
+    title: typeof first.title === "string" ? first.title : undefined,
+    status: typeof first.status === "string" ? first.status : undefined,
+    priority: typeof first.priority === "number" ? first.priority : undefined,
+    severity: typeof first.severity === "string" ? first.severity : undefined,
+  };
 }
 
 function parseRegisteredAgent(result: ToolRunnerCallResult): RegisteredLoopAgent {
@@ -870,6 +1116,20 @@ function printWatchEvent(event: Record<string, unknown>, asJson: boolean): void 
         String(event.message),
         formatDisplayValue(event.tickets),
       ].join("\n"));
+      return;
+    case "ticket_taken":
+      console.log([
+        `Auto-took ${String(event.ticketId)} for implementation`,
+        formatDisplayValue({
+          affectedPaths: event.affectedPaths,
+          assignment: event.assignment,
+          claims: event.claims,
+          transition: event.transition,
+        }),
+      ].join("\n"));
+      return;
+    case "ticket_take_failed":
+      console.log(`Auto-take failed for ${String(event.ticketId)}: ${String(event.message)}`);
       return;
     case "watch_warning":
       console.log(`Warning: ${String(event.message)}`);

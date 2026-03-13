@@ -5,7 +5,7 @@ import { FTS5Backend } from "../search/fts5.js";
 import { initDatabase } from "../db/init.js";
 import { buildTicketDetailPayload, buildTicketListPayload, buildTicketSummaryPayload } from "../tickets/read-model.js";
 import { updateTicketStatusRecord } from "../tickets/service.js";
-import { getCommitMessage, getHead, getMainRepoRoot, getRepoRoot, getShortSha, isGitRepo } from "../git/operations.js";
+import { getChangedFiles, getCommitMessage, getHead, getMainRepoRoot, getRepoRoot, getShortSha, isGitRepo } from "../git/operations.js";
 import * as queries from "../db/queries.js";
 import type * as schema from "../db/schema.js";
 import type { InsightStream } from "../core/insight-stream.js";
@@ -25,6 +25,7 @@ interface TicketTransitionPayload {
   ticketId: string;
   previousStatus: string;
   status: string;
+  source?: "commit_message" | "path_match" | "dependency_cascade";
 }
 
 interface TicketCommitSkippedPayload {
@@ -37,6 +38,8 @@ export interface TicketCommitReconcilePayload {
   commitSha: string;
   commitShortSha: string;
   ticketIds: string[];
+  inferredTicketIds: string[];
+  cascadedTicketIds: string[];
   resolved: TicketTransitionPayload[];
   skipped: TicketCommitSkippedPayload[];
 }
@@ -53,7 +56,11 @@ interface TicketCliDeps {
   getHead?: typeof getHead;
   getCommitMessage?: typeof getCommitMessage;
   getShortSha?: typeof getShortSha;
+  getChangedFiles?: typeof getChangedFiles;
   getTicketByTicketId?: typeof queries.getTicketByTicketId;
+  getTicketById?: typeof queries.getTicketById;
+  getReadyTicketsByAffectedPaths?: typeof queries.getReadyTicketsByAffectedPaths;
+  getTicketDependencies?: typeof queries.getTicketDependencies;
   transitionTicket?: (
     ctx: TicketCliContext,
     config: TicketCliConfig,
@@ -248,16 +255,22 @@ export function formatTicketTransition(payload: TicketTransitionPayload): string
 }
 
 export function formatTicketCommitReconcile(payload: TicketCommitReconcilePayload): string {
-  if (payload.ticketIds.length === 0) {
+  const totalRefs = payload.ticketIds.length + payload.inferredTicketIds.length + payload.cascadedTicketIds.length;
+  if (totalRefs === 0 && payload.resolved.length === 0) {
     return `Commit ${payload.commitShortSha}: no ticket references found.`;
   }
 
   const lines = [
     `Commit ${payload.commitShortSha}`,
-    `Referenced tickets: ${payload.ticketIds.join(", ")}`,
-    `Resolved: ${payload.resolved.length}`,
-    `Skipped: ${payload.skipped.length}`,
+    `Referenced tickets: ${payload.ticketIds.join(", ") || "(none)"}`,
   ];
+  if (payload.inferredTicketIds.length > 0) {
+    lines.push(`Inferred (path match): ${payload.inferredTicketIds.join(", ")}`);
+  }
+  if (payload.cascadedTicketIds.length > 0) {
+    lines.push(`Cascaded (dependency): ${payload.cascadedTicketIds.join(", ")}`);
+  }
+  lines.push(`Resolved: ${payload.resolved.length}`, `Skipped: ${payload.skipped.length}`);
 
   if (payload.resolved.length > 0) {
     lines.push("", "Resolved:");
@@ -320,6 +333,8 @@ export async function reconcileCommitTickets(
     commitSha: input.commitSha,
     commitShortSha,
     ticketIds,
+    inferredTicketIds: [],
+    cascadedTicketIds: [],
     resolved: [],
     skipped: [],
   };
@@ -327,20 +342,74 @@ export async function reconcileCommitTickets(
   const getTicketByTicketId = deps.getTicketByTicketId ?? queries.getTicketByTicketId;
   const transitionTicket = deps.transitionTicket ?? defaultTransitionTicket;
 
+  // Phase A: explicit ticket IDs from commit message
   for (const ticketId of ticketIds) {
+    resolveTicket(ticketId, "commit_message", `Auto-resolved after commit ${commitShortSha}.`);
+  }
+
+  // Phase B: path-based inference
+  const alreadyProcessed = new Set([...ticketIds.map((id) => id.toLowerCase())]);
+  try {
+    const changedFiles = await (deps.getChangedFiles ?? getChangedFiles)(
+      `${input.commitSha}^`, input.commitSha, { cwd: ctx.repoRoot },
+    );
+    const changedPaths = changedFiles.map((f) => f.path);
+
+    if (changedPaths.length > 0) {
+      const getReady = deps.getReadyTicketsByAffectedPaths ?? queries.getReadyTicketsByAffectedPaths;
+      const pathMatches = getReady(ctx.db, ctx.repoId, changedPaths);
+      for (const ticket of pathMatches) {
+        if (alreadyProcessed.has(ticket.ticketId.toLowerCase())) continue;
+        alreadyProcessed.add(ticket.ticketId.toLowerCase());
+        payload.inferredTicketIds.push(ticket.ticketId);
+        const matchCount = changedPaths.length;
+        resolveTicket(ticket.ticketId, "path_match", `Auto-resolved: commit ${commitShortSha} touched ${matchCount} affected path(s).`);
+      }
+    }
+  } catch {
+    // Non-fatal: path inference is supplementary (e.g. initial commit has no parent)
+  }
+
+  // Phase C: dependency chain cascade (1-level only)
+  const getDeps = deps.getTicketDependencies ?? queries.getTicketDependencies;
+  const getById = deps.getTicketById ?? queries.getTicketById;
+  const resolvedSet = new Set(payload.resolved.map((r) => r.ticketId.toLowerCase()));
+
+  for (const resolved of [...payload.resolved]) {
+    const ticket = getTicketByTicketId(ctx.db, resolved.ticketId, ctx.repoId);
+    if (!ticket) continue;
+    const depInfo = getDeps(ctx.db, ticket.id);
+    const dependentIds = depInfo.incoming
+      .filter((d) => d.relationType === "blocked_by")
+      .map((d) => d.fromTicketId);
+
+    for (const depId of dependentIds) {
+      const depTicket = getById(ctx.db, depId);
+      if (!depTicket || depTicket.status !== "ready_for_commit") continue;
+      if (resolvedSet.has(depTicket.ticketId.toLowerCase())) continue;
+      if (alreadyProcessed.has(depTicket.ticketId.toLowerCase())) continue;
+      alreadyProcessed.add(depTicket.ticketId.toLowerCase());
+      payload.cascadedTicketIds.push(depTicket.ticketId);
+      resolveTicket(depTicket.ticketId, "dependency_cascade", `Auto-resolved: dependency ${resolved.ticketId} resolved in commit ${commitShortSha}.`);
+    }
+  }
+
+  return payload;
+
+  function resolveTicket(ticketId: string, source: TicketTransitionPayload["source"], comment: string): void {
     const ticket = getTicketByTicketId(ctx.db, ticketId, ctx.repoId);
     if (!ticket) {
       payload.skipped.push({ ticketId, reason: "not_found" });
-      continue;
+      return;
     }
     if (ticket.status !== "ready_for_commit") {
       payload.skipped.push({ ticketId, reason: "not_ready_for_commit", status: ticket.status });
-      continue;
+      return;
     }
 
     const result = transitionTicket(ctx, config, insight, {
       ticketId,
-      comment: `Auto-resolved after commit ${commitShortSha}.`,
+      comment,
       actorLabel: input.actorLabel,
     });
 
@@ -348,10 +417,8 @@ export async function reconcileCommitTickets(
       throw new Error(result.message);
     }
 
-    payload.resolved.push(toTicketTransitionPayload(result.data));
+    payload.resolved.push({ ...toTicketTransitionPayload(result.data), source });
   }
-
-  return payload;
 }
 
 function parseTicketListFilters(args: string[]) {

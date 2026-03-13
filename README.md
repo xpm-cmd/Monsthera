@@ -141,6 +141,7 @@ agora patch show patch-123 --json
 agora knowledge search "ticket workflow" --scope all --json
 agora loop plan --json
 agora loop plan --watch
+agora facilitator --watch
 agora loop dev --limit 3 --json
 agora loop dev --watch
 agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json

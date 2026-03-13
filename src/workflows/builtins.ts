@@ -98,6 +98,9 @@ export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
     name: "ta-review",
     description: "Collect ticket context, wait for council quorum, then approve the ticket once the checkpoint passes.",
     requiredParams: ["ticketId"],
+    defaults: {
+      timeoutSeconds: 120,
+    },
     steps: [
       {
         key: "ticket",
@@ -114,7 +117,7 @@ export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
         description: "Wait for analytical council quorum with architect/security veto enforcement.",
         input: {
           ticketId: "{{params.ticketId}}",
-          timeout: 120,
+          timeout: "{{params.timeoutSeconds}}",
           onFail: "block",
         },
       },
@@ -135,6 +138,9 @@ export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
     name: "deep-review-v2",
     description: "Run deep-review context gathering, then gate ready_for_commit on the council quorum checkpoint.",
     requiredParams: ["ticketId"],
+    defaults: {
+      timeoutSeconds: 120,
+    },
     steps: [
       {
         key: "changes",
@@ -152,7 +158,7 @@ export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
         description: "Wait for analytical council quorum with architect/security veto enforcement.",
         input: {
           ticketId: "{{params.ticketId}}",
-          timeout: 120,
+          timeout: "{{params.timeoutSeconds}}",
           onFail: "block",
         },
       },

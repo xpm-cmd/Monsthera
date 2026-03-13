@@ -13,7 +13,7 @@ import {
   installToolRuntimeInstrumentation,
   resetToolRateLimitState,
 } from "../../../src/tools/runtime-instrumentation.js";
-import { registerWorkflowTools } from "../../../src/tools/workflow-tools.js";
+import { registerWorkflowTools, resolveReviewerAssignments } from "../../../src/tools/workflow-tools.js";
 
 class FakeServer {
   handlers = new Map<string, (input: unknown) => Promise<any>>();
@@ -411,6 +411,87 @@ steps:
       changedPaths: ["src/alpha.ts", "src/beta.ts"],
       recommendedTools: ["analyze_complexity", "analyze_test_coverage"],
     });
+  });
+
+  it("falls back to generic live reviewers when no specialization-specific reviewer is connected", () => {
+    const resolutions = resolveReviewerAssignments({
+      roles: ["architect", "security"],
+      availableReviewRoles: {
+        architect: ["Architect Reviewer"],
+        security: ["Security Reviewer"],
+      },
+      liveSessions: [{ id: "session-review", agentId: "agent-review" }],
+      getAgent: (agentId) => {
+        if (agentId !== "agent-review") return undefined;
+        return {
+          name: "Council Loop Reviewer",
+          roleId: "reviewer",
+        };
+      },
+    });
+
+    expect(resolutions).toEqual([
+      {
+        specialization: "architect",
+        agentId: "agent-review",
+        agentName: "Council Loop Reviewer",
+        sessionId: "session-review",
+        status: "resolved",
+      },
+      {
+        specialization: "security",
+        agentId: "agent-review",
+        agentName: "Council Loop Reviewer",
+        sessionId: "session-review",
+        status: "resolved",
+      },
+    ]);
+  });
+
+  it("prefers specialization-specific live reviewers before generic fallback", () => {
+    const resolutions = resolveReviewerAssignments({
+      roles: ["architect", "security"],
+      availableReviewRoles: {
+        architect: ["Architect Reviewer"],
+        security: ["Security Reviewer"],
+      },
+      liveSessions: [
+        { id: "session-architect", agentId: "agent-architect" },
+        { id: "session-generic", agentId: "agent-review" },
+      ],
+      getAgent: (agentId) => {
+        if (agentId === "agent-architect") {
+          return {
+            name: "Architect Reviewer",
+            roleId: "reviewer",
+          };
+        }
+        if (agentId === "agent-review") {
+          return {
+            name: "Council Loop Reviewer",
+            roleId: "reviewer",
+          };
+        }
+        return undefined;
+      },
+    });
+
+    expect(resolutions).toEqual([
+      {
+        specialization: "architect",
+        agentId: "agent-architect",
+        agentName: "Architect Reviewer",
+        sessionId: "session-architect",
+        status: "resolved",
+      },
+      {
+        specialization: "security",
+        agentId: "agent-review",
+        agentName: "Council Loop Reviewer",
+        sessionId: "session-generic",
+        status: "resolved",
+      },
+    ]);
   });
 });
 

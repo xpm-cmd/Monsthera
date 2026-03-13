@@ -95,8 +95,12 @@ export async function runWorkflow(
     }
 
     if (outcome.stepResult.status === "failed") {
-      status = "failed";
-      break;
+      if ((step.onError ?? "stop") === "continue") {
+        status = status === "failed" ? "failed" : "partial";
+      } else {
+        status = "failed";
+        break;
+      }
     }
     if (outcome.stepResult.status === "partial") {
       status = status === "failed" ? "failed" : "partial";

@@ -955,6 +955,49 @@ export function getTicketDependencies(db: DB, ticketInternalId: number) {
   return { outgoing, incoming };
 }
 
+/**
+ * Determine whether a changed file path overlaps with a ticket's affected path.
+ * Handles exact matches and directory prefix matches (e.g. "src/tickets/" matches "src/tickets/lifecycle.ts").
+ */
+export function pathOverlaps(changedFile: string, ticketPath: string): boolean {
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/^\.\//, "");
+  const a = norm(changedFile);
+  const b = norm(ticketPath);
+  if (a === b) return true;
+  // Directory prefix: ticketPath ends with "/" and changedFile starts with it
+  if (b.endsWith("/") && a.startsWith(b)) return true;
+  // Also match if changedFile is inside the ticketPath directory (no trailing slash)
+  if (!b.includes(".") && a.startsWith(b.endsWith("/") ? b : `${b}/`)) return true;
+  return false;
+}
+
+/**
+ * Find all ready_for_commit tickets whose affectedPaths overlap with the given changed files.
+ * Uses application-side filtering since affectedPathsJson is unindexed JSON text.
+ */
+export function getReadyTicketsByAffectedPaths(
+  db: DB,
+  repoId: number,
+  changedPaths: string[],
+) {
+  const candidates = db
+    .select()
+    .from(tables.tickets)
+    .where(and(
+      eq(tables.tickets.repoId, repoId),
+      eq(tables.tickets.status, "ready_for_commit"),
+    ))
+    .all();
+
+  return candidates.filter((ticket) => {
+    const paths = parseStringArrayJson(ticket.affectedPathsJson, { maxItems: 100, maxItemLength: 500 });
+    if (paths.length === 0) return false;
+    return paths.some((ticketPath) =>
+      changedPaths.some((changed) => pathOverlaps(changed, ticketPath)),
+    );
+  });
+}
+
 /** Get all "blocks" edges for cycle detection (DAG validation). */
 export function getAllBlocksEdges(db: DB) {
   return db
