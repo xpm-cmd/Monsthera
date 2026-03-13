@@ -19,7 +19,8 @@ export interface DashboardEvent {
     | "ticket_commented"
     | "ticket_linked"
     | "ticket_external_sync"
-    | "ticket_auto_transitioned";
+    | "ticket_auto_transitioned"
+    | "ticket_repair_spawned";
   data: Record<string, unknown>;
 }
 

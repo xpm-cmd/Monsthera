@@ -86,6 +86,11 @@ export const LifecycleConfigSchema = z.object({
   sweepIntervalMs: z.number().int().min(10_000).max(600_000).default(60_000),
 }).default(DEFAULT_LIFECYCLE_CONFIG);
 
+export const RepairSpawnerConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  allowedSources: z.array(z.enum(["council_veto", "lifecycle_suppression"])).default(["council_veto"]),
+});
+
 export const SearchFileBm25WeightsSchema = z.object({
   path: z.number().positive().max(10).default(DEFAULT_FILE_BM25_WEIGHTS.path),
   summary: z.number().positive().max(10).default(DEFAULT_FILE_BM25_WEIGHTS.summary),
@@ -244,6 +249,7 @@ export const AgoraConfigSchema = z.object({
     overrides: {},
   }),
   lifecycle: LifecycleConfigSchema.default(DEFAULT_LIFECYCLE_CONFIG),
+  repairSpawner: RepairSpawnerConfigSchema.default({ enabled: false, allowedSources: ["council_veto"] }),
 });
 
 export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
@@ -258,6 +264,7 @@ export type CrossInstancePeer = z.infer<typeof CrossInstancePeerSchema>;
 export type CrossInstanceConfig = z.infer<typeof CrossInstanceConfigSchema>;
 export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
 export type LifecycleConfig = z.infer<typeof LifecycleConfigSchema>;
+export type RepairSpawnerConfig = z.infer<typeof RepairSpawnerConfigSchema>;
 
 export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
   return AgoraConfigSchema.parse(partial);

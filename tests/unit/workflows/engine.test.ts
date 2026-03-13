@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runWorkflow } from "../../../src/workflows/engine.js";
-import type { WorkflowSpec } from "../../../src/workflows/types.js";
+import type { ReviewerResolution, WorkflowSpec } from "../../../src/workflows/types.js";
 
 class FakeRunner {
   readonly calls: Array<{ tool: string; input: Record<string, unknown> }> = [];
@@ -413,5 +413,197 @@ describe("workflow engine", () => {
       key: "after",
       status: "completed",
     });
+  });
+
+  it("sends targeted dispatch when resolveReviewers resolves roles to agents", async () => {
+    const spec: WorkflowSpec = {
+      name: "dispatch-resolved",
+      description: "demo",
+      steps: [
+        {
+          key: "quorum",
+          type: "quorum_checkpoint",
+          tool: "quorum_checkpoint",
+          input: {
+            ticketId: "TKT-dispatch",
+            roles: ["architect", "security"],
+            timeout: 5,
+            pollIntervalMs: 10,
+          },
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({});
+    const sent: Array<Record<string, unknown>> = [];
+    const resolutions: ReviewerResolution[] = [
+      { specialization: "architect", agentId: "agent-arch", agentName: "Architect Bot", sessionId: "s-arch", status: "resolved" },
+      { specialization: "security", agentId: "agent-sec", agentName: "Security Bot", sessionId: "s-sec", status: "resolved" },
+    ];
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      workflowName: spec.name,
+      loadReviewVerdicts: async () => [
+        verdict("architect", "pass"),
+        verdict("security", "pass"),
+      ],
+      sendCoordination: async (request) => {
+        sent.push(request as unknown as Record<string, unknown>);
+      },
+      resolveReviewers: async () => resolutions,
+      now: () => 0,
+      sleep: async () => {},
+    });
+
+    expect(result.status).toBe("completed");
+    // Two targeted messages, one per resolved agent
+    expect(sent).toHaveLength(2);
+    expect(sent[0]).toMatchObject({ targetAgentId: "agent-arch", roles: ["architect"] });
+    expect(sent[1]).toMatchObject({ targetAgentId: "agent-sec", roles: ["security"] });
+    // Output includes dispatch report
+    expect((result.outputs.quorum as any).dispatch).toEqual(resolutions);
+  });
+
+  it("blocks with dispatch_blocked when all roles have no candidate", async () => {
+    const spec: WorkflowSpec = {
+      name: "dispatch-blocked",
+      description: "demo",
+      steps: [
+        {
+          key: "quorum",
+          type: "quorum_checkpoint",
+          tool: "quorum_checkpoint",
+          input: {
+            ticketId: "TKT-no-reviewers",
+            roles: ["architect", "security"],
+            timeout: 5,
+          },
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({});
+    const sent: Array<Record<string, unknown>> = [];
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      workflowName: spec.name,
+      loadReviewVerdicts: async () => [],
+      sendCoordination: async (request) => {
+        sent.push(request as unknown as Record<string, unknown>);
+      },
+      resolveReviewers: async () => [
+        { specialization: "architect", agentId: null, agentName: null, sessionId: null, status: "no_candidate" },
+        { specialization: "security", agentId: null, agentName: null, sessionId: null, status: "no_candidate" },
+      ],
+      now: () => 0,
+      sleep: async () => {},
+    });
+
+    expect(result.status).toBe("failed");
+    expect(sent).toHaveLength(0); // No messages sent
+    expect(result.steps[0]).toMatchObject({
+      key: "quorum",
+      status: "failed",
+      errorCode: "workflow_dispatch_blocked",
+      output: expect.objectContaining({ status: "blocked_on_dispatch" }),
+    });
+  });
+
+  it("sends targeted dispatch only for resolved roles, broadcasts nothing for missing ones", async () => {
+    const spec: WorkflowSpec = {
+      name: "dispatch-partial",
+      description: "demo",
+      steps: [
+        {
+          key: "quorum",
+          type: "quorum_checkpoint",
+          tool: "quorum_checkpoint",
+          input: {
+            ticketId: "TKT-partial",
+            roles: ["architect", "security"],
+            timeout: 5,
+            pollIntervalMs: 10,
+          },
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({});
+    const sent: Array<Record<string, unknown>> = [];
+    let nowMs = 0;
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      workflowName: spec.name,
+      loadReviewVerdicts: async () => [
+        verdict("architect", "pass"),
+        verdict("security", "pass"),
+      ],
+      sendCoordination: async (request) => {
+        sent.push(request as unknown as Record<string, unknown>);
+      },
+      resolveReviewers: async () => [
+        { specialization: "architect", agentId: "agent-arch", agentName: "Arch Bot", sessionId: "s-1", status: "resolved" },
+        { specialization: "security", agentId: null, agentName: null, sessionId: null, status: "no_candidate" },
+      ],
+      now: () => nowMs,
+      sleep: async (ms) => { nowMs += ms; },
+    });
+
+    // Only one targeted message sent (for architect)
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ targetAgentId: "agent-arch", roles: ["architect"] });
+    // Still completes because verdicts satisfy quorum
+    expect(result.status).toBe("completed");
+  });
+
+  it("falls back to broadcast when resolveReviewers is not provided", async () => {
+    const spec: WorkflowSpec = {
+      name: "dispatch-fallback",
+      description: "demo",
+      steps: [
+        {
+          key: "quorum",
+          type: "quorum_checkpoint",
+          tool: "quorum_checkpoint",
+          input: {
+            ticketId: "TKT-fallback",
+            timeout: 5,
+            pollIntervalMs: 10,
+          },
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({});
+    const sent: Array<Record<string, unknown>> = [];
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      workflowName: spec.name,
+      loadReviewVerdicts: async () => [
+        verdict("architect", "pass"),
+        verdict("simplifier", "pass"),
+        verdict("security", "pass"),
+        verdict("performance", "pass"),
+      ],
+      sendCoordination: async (request) => {
+        sent.push(request as unknown as Record<string, unknown>);
+      },
+      // No resolveReviewers — should use broadcast fallback
+      now: () => 0,
+      sleep: async () => {},
+    });
+
+    expect(result.status).toBe("completed");
+    // Single broadcast (no targetAgentId)
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toHaveProperty("targetAgentId");
   });
 });

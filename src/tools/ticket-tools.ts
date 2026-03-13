@@ -38,6 +38,7 @@ import {
   GATED_TICKET_TRANSITIONS,
   inferConsensusTransitionForTicketStatus,
 } from "../tickets/consensus.js";
+import { spawnRepairTicket } from "../tickets/repair-spawner.js";
 
 type GetContext = () => Promise<AgoraContext>;
 const ConsensusTransitionSchema = z.enum(GATED_TICKET_TRANSITIONS);
@@ -529,6 +530,42 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         }
       }
 
+      // Auto-spawn repair ticket on veto
+      let repairSpawned: { ticketId: string } | null = null;
+      if (consensus.blockedByVeto && c.config?.repairSpawner?.enabled) {
+        const vetoReasons = consensus.vetoes
+          .map((v) => `${v.specialization}: ${v.reasoning ?? "no reasoning"}`)
+          .join("; ");
+        const spawnResult = await spawnRepairTicket(
+          {
+            db: c.db,
+            repoId: c.repoId,
+            repoPath: c.repoPath,
+            insight: c.insight,
+            ticketQuorum: c.config?.ticketQuorum,
+            governance: c.config?.governance,
+            bus: c.bus,
+            refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
+            lifecycle: c.lifecycle,
+            system: true,
+            actorLabel: "repair:council-veto",
+          },
+          {
+            type: "council_veto",
+            parentTicketId: ticketId,
+            parentTicketTitle: ticket.title,
+            reason: vetoReasons,
+            sourceSpecializations: consensus.vetoes.map((v) => v.specialization),
+            affectedPaths: parseStringArrayJson(ticket.affectedPathsJson, { maxItems: 100, maxItemLength: 500 }),
+            severity: ticket.severity,
+          },
+          c.config.repairSpawner,
+        );
+        if (spawnResult.spawned && spawnResult.ticketId) {
+          repairSpawned = { ticketId: spawnResult.ticketId };
+        }
+      }
+
       return okJson({
         ticketId,
         verdict: {
@@ -541,6 +578,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         },
         consensus,
         autoAdvanced,
+        repairSpawned,
       });
     },
   );

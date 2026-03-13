@@ -17,6 +17,15 @@ export interface WorkflowQuorumRequest {
   stepKey: string;
   requestedBy: string;
   timeoutSeconds: number;
+  targetAgentId?: string | null;
+}
+
+export interface ReviewerResolution {
+  specialization: string;
+  agentId: string | null;
+  agentName: string | null;
+  sessionId: string | null;
+  status: "resolved" | "no_candidate";
 }
 
 export interface WorkflowRuntime {
@@ -28,6 +37,7 @@ export interface WorkflowRuntime {
   workflowName?: string;
   loadReviewVerdicts?: (ticketId: string) => Promise<ReviewVerdictRecord[] | null> | ReviewVerdictRecord[] | null;
   sendCoordination?: (request: WorkflowQuorumRequest) => void | Promise<void>;
+  resolveReviewers?: (roles: string[], ticketId: string) => Promise<ReviewerResolution[]>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }

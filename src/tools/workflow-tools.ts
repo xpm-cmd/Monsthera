@@ -8,7 +8,9 @@ import { getToolRunner } from "./tool-runner.js";
 import { BUILTIN_WORKFLOW_NAMES, getBuiltInWorkflow, isBuiltInWorkflowName } from "../workflows/builtins.js";
 import { runWorkflow } from "../workflows/engine.js";
 import { findCustomWorkflow, loadCustomWorkflows, type LoadedCustomWorkflow } from "../workflows/loader.js";
-import type { WorkflowResult, WorkflowSpec } from "../workflows/types.js";
+import type { ReviewerResolution, WorkflowResult, WorkflowSpec } from "../workflows/types.js";
+import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
+import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -72,7 +74,7 @@ export function registerWorkflowTools(server: McpServer, getContext: GetContext)
           sendCoordination: async (request) => {
             c.bus.send({
               from: agentId,
-              to: null,
+              to: request.targetAgentId ?? null,
               type: "broadcast",
               payload: {
                 kind: "review_request",
@@ -83,6 +85,52 @@ export function registerWorkflowTools(server: McpServer, getContext: GetContext)
                 requestedBy: request.requestedBy,
                 timeoutSeconds: request.timeoutSeconds,
               },
+            });
+          },
+          resolveReviewers: async (roles, ticketId) => {
+            const catalog = await loadRepoAgentCatalog(c.repoPath);
+            const liveSessions = queries.getLiveSessions(
+              c.db,
+              new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString(),
+            );
+            const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
+
+            return roles.map((role): ReviewerResolution => {
+              const candidates = catalog.availableReviewRoles[role as keyof typeof catalog.availableReviewRoles] ?? [];
+
+              for (const candidateName of candidates) {
+                const liveSession = liveSessions.find((s) => {
+                  const agent = queries.getAgent(c.db, s.agentId);
+                  return agent?.name === candidateName;
+                });
+
+                if (!liveSession || !ticket) continue;
+
+                // Auto-assign council member
+                queries.upsertCouncilAssignment(c.db, {
+                  ticketId: ticket.id,
+                  agentId: liveSession.agentId,
+                  specialization: role,
+                  assignedByAgentId: agentId,
+                  assignedAt: new Date().toISOString(),
+                });
+
+                return {
+                  specialization: role,
+                  agentId: liveSession.agentId,
+                  agentName: candidateName,
+                  sessionId: liveSession.id,
+                  status: "resolved",
+                };
+              }
+
+              return {
+                specialization: role,
+                agentId: null,
+                agentName: null,
+                sessionId: null,
+                status: "no_candidate",
+              };
             });
           },
         },
