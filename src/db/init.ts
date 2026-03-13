@@ -178,7 +178,7 @@ function createTables(sqlite: Database.Database): void {
       verdict TEXT NOT NULL,
       reasoning TEXT,
       created_at TEXT NOT NULL,
-      UNIQUE(ticket_id, specialization)
+      superseded_by INTEGER
     )`,
     `CREATE TABLE IF NOT EXISTS council_assignments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -363,7 +363,7 @@ function runMigrations(sqlite: Database.Database): void {
     }
   }
 
-  // Migration 11: Create review_verdicts table
+  // Migration 11: Create/upgrade review_verdicts table for append-only verdict history
   sqlite.prepare(`CREATE TABLE IF NOT EXISTS review_verdicts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL REFERENCES tickets(id),
@@ -373,10 +373,42 @@ function runMigrations(sqlite: Database.Database): void {
     verdict TEXT NOT NULL,
     reasoning TEXT,
     created_at TEXT NOT NULL,
-    UNIQUE(ticket_id, specialization)
+    superseded_by INTEGER
   )`).run();
+  const reviewVerdictsSql = sqlite
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'review_verdicts'")
+    .get() as { sql: string | null } | undefined;
+  const reviewVerdictsNeedsRebuild = (reviewVerdictsSql?.sql?.includes("UNIQUE(ticket_id, specialization)") ?? false)
+    || !(sqlite.prepare("PRAGMA table_info(review_verdicts)").all() as Array<{ name: string }>)
+      .some((column) => column.name === "superseded_by");
+  if (reviewVerdictsNeedsRebuild) {
+    sqlite.prepare("DROP INDEX IF EXISTS idx_review_verdicts_ticket_specialization").run();
+    sqlite.prepare("DROP INDEX IF EXISTS idx_review_verdicts_ticket_specialization_history").run();
+    sqlite.prepare(`CREATE TABLE review_verdicts_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+      agent_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      specialization TEXT NOT NULL,
+      verdict TEXT NOT NULL,
+      reasoning TEXT,
+      created_at TEXT NOT NULL,
+      superseded_by INTEGER
+    )`).run();
+    sqlite.prepare(`
+      INSERT INTO review_verdicts_new (id, ticket_id, agent_id, session_id, specialization, verdict, reasoning, created_at, superseded_by)
+      SELECT id, ticket_id, agent_id, session_id, specialization, verdict, reasoning, created_at, NULL
+      FROM review_verdicts
+    `).run();
+    sqlite.prepare("DROP TABLE review_verdicts").run();
+    sqlite.prepare("ALTER TABLE review_verdicts_new RENAME TO review_verdicts").run();
+  }
+  sqlite.prepare("DROP INDEX IF EXISTS idx_review_verdicts_ticket_specialization").run();
   sqlite.prepare(
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_review_verdicts_ticket_specialization ON review_verdicts(ticket_id, specialization)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_review_verdicts_ticket_specialization ON review_verdicts(ticket_id, specialization) WHERE superseded_by IS NULL",
+  ).run();
+  sqlite.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_review_verdicts_ticket_specialization_history ON review_verdicts(ticket_id, specialization, id)",
   ).run();
 
   // Migration 12: Create council_assignments table

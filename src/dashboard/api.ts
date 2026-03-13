@@ -1205,7 +1205,7 @@ function buildDashboardTicketQuorum(
   const transition = inferConsensusTransitionForTicketStatus(ticket.status as TicketStatus);
   if (!transition) return null;
 
-  const verdictRows = queries.getReviewVerdicts(deps.db, ticket.id);
+  const verdictRows = queries.getActiveReviewVerdicts(deps.db, ticket.id);
   const agentCache = new Map<string, ReturnType<typeof queries.getAgent> | null>();
   const resolveAgent = (agentId: string) => {
     if (!agentCache.has(agentId)) {

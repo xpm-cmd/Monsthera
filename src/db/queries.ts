@@ -1,4 +1,4 @@
-import { eq, and, like, desc, or, sql, notInArray } from "drizzle-orm";
+import { eq, and, like, desc, or, sql, notInArray, isNull } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { posix as pathPosix } from "node:path";
 import { parseStringArrayJson } from "../core/input-hardening.js";
@@ -799,44 +799,84 @@ export function getCouncilAssignmentsForTicket(db: DB, ticketInternalId: number)
 
 // --- Review Verdicts ---
 
-export function upsertReviewVerdict(
+export function insertReviewVerdict(
   db: DB,
   verdict: typeof tables.reviewVerdicts.$inferInsert,
 ): typeof tables.reviewVerdicts.$inferSelect {
-  const existing = db
-    .select()
-    .from(tables.reviewVerdicts)
-    .where(and(
-      eq(tables.reviewVerdicts.ticketId, verdict.ticketId),
-      eq(tables.reviewVerdicts.specialization, verdict.specialization),
-    ))
-    .get();
+  return db.transaction((tx) => {
+    const existing = tx
+      .select()
+      .from(tables.reviewVerdicts)
+      .where(and(
+        eq(tables.reviewVerdicts.ticketId, verdict.ticketId),
+        eq(tables.reviewVerdicts.specialization, verdict.specialization),
+        isNull(tables.reviewVerdicts.supersededBy),
+      ))
+      .orderBy(desc(tables.reviewVerdicts.id))
+      .get();
 
-  if (!existing) {
-    return db.insert(tables.reviewVerdicts).values(verdict).returning().get();
-  }
+    // Mark the previous active row as non-active before inserting the replacement.
+    // The placeholder is only visible inside this transaction and is immediately rewritten.
+    if (existing) {
+      tx.update(tables.reviewVerdicts)
+        .set({ supersededBy: -1 })
+        .where(eq(tables.reviewVerdicts.id, existing.id))
+        .run();
+    }
 
-  return db
-    .update(tables.reviewVerdicts)
-    .set({
-      agentId: verdict.agentId,
-      sessionId: verdict.sessionId,
-      verdict: verdict.verdict,
-      reasoning: verdict.reasoning ?? null,
-      createdAt: verdict.createdAt,
-    })
-    .where(eq(tables.reviewVerdicts.id, existing.id))
-    .returning()
-    .get();
+    const inserted = tx.insert(tables.reviewVerdicts).values({
+      ...verdict,
+      supersededBy: null,
+    }).returning().get();
+
+    if (existing) {
+      tx.update(tables.reviewVerdicts)
+        .set({ supersededBy: inserted.id })
+        .where(eq(tables.reviewVerdicts.id, existing.id))
+        .run();
+    }
+
+    return inserted;
+  });
 }
 
-export function getReviewVerdicts(db: DB, ticketInternalId: number) {
+export const upsertReviewVerdict = insertReviewVerdict;
+
+export function getActiveReviewVerdicts(db: DB, ticketInternalId: number) {
   try {
     return db
       .select()
       .from(tables.reviewVerdicts)
-      .where(eq(tables.reviewVerdicts.ticketId, ticketInternalId))
+      .where(and(
+        eq(tables.reviewVerdicts.ticketId, ticketInternalId),
+        isNull(tables.reviewVerdicts.supersededBy),
+      ))
       .orderBy(
+        sql`coalesce(julianday(${tables.reviewVerdicts.createdAt}), 0)`,
+        tables.reviewVerdicts.id,
+      )
+      .all();
+  } catch (error) {
+    if (isMissingTableError(error, "review_verdicts")) return [];
+    throw error;
+  }
+}
+
+export const getReviewVerdicts = getActiveReviewVerdicts;
+
+export function getVerdictHistory(db: DB, ticketInternalId: number, specialization?: string) {
+  try {
+    const conditions = [eq(tables.reviewVerdicts.ticketId, ticketInternalId)];
+    if (specialization) {
+      conditions.push(eq(tables.reviewVerdicts.specialization, specialization));
+    }
+
+    return db
+      .select()
+      .from(tables.reviewVerdicts)
+      .where(and(...conditions))
+      .orderBy(
+        tables.reviewVerdicts.specialization,
         sql`coalesce(julianday(${tables.reviewVerdicts.createdAt}), 0)`,
         tables.reviewVerdicts.id,
       )

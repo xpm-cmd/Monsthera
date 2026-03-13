@@ -316,7 +316,7 @@ export function updateTicketStatusRecord(
 
   if (resolved.role !== "admin") {
     const quorumRule = resolveTicketQuorumRule(current, input.status, ctx.ticketQuorum);
-    const verdictRows = quorumRule ? queries.getReviewVerdicts(ctx.db, ticket.id) : [];
+    const verdictRows = quorumRule ? queries.getActiveReviewVerdicts(ctx.db, ticket.id) : [];
     const governanceOpts = quorumRule
       ? buildGovernanceOptions(ctx.governance, verdictRows, (agentId) => {
           const agent = queries.getAgent(ctx.db, agentId);

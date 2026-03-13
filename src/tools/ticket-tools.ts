@@ -466,7 +466,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       }
 
       const now = new Date().toISOString();
-      const stored = queries.upsertReviewVerdict(c.db, {
+      const stored = queries.insertReviewVerdict(c.db, {
         ticketId: ticket.id,
         agentId: resolved.agentId,
         sessionId: resolved.sessionId,
@@ -476,7 +476,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         createdAt: now,
       });
       queries.updateTicket(c.db, ticket.id, {});
-      const verdictRows = queries.getReviewVerdicts(c.db, ticket.id);
+      const verdictRows = queries.getActiveReviewVerdicts(c.db, ticket.id);
       const govOpts = buildGovernanceOptions(c.config?.governance, verdictRows, (aid) => {
         const a = queries.getAgent(c.db, aid);
         return a ? { roleId: a.roleId, provider: a.provider, model: a.model } : undefined;
@@ -564,7 +564,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
       if (!ticket) return errText(`Ticket not found: ${ticketId}`);
 
-      const verdictRows = queries.getReviewVerdicts(c.db, ticket.id);
+      const verdictRows = queries.getActiveReviewVerdicts(c.db, ticket.id);
       const govOpts = buildGovernanceOptions(c.config?.governance, verdictRows, (aid) => {
         const a = queries.getAgent(c.db, aid);
         return a ? { roleId: a.roleId, provider: a.provider, model: a.model } : undefined;

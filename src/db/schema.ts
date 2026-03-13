@@ -137,9 +137,10 @@ export const reviewVerdicts = sqliteTable("review_verdicts", {
   verdict: text("verdict").notNull(),
   reasoning: text("reasoning"),
   createdAt: text("created_at").notNull(),
+  supersededBy: integer("superseded_by"),
 }, (table) => ({
-  ticketSpecializationUniqueIdx: uniqueIndex("idx_review_verdicts_ticket_specialization")
-    .on(table.ticketId, table.specialization),
+  ticketSpecializationHistoryIdx: index("idx_review_verdicts_ticket_specialization_history")
+    .on(table.ticketId, table.specialization, table.id),
 }));
 
 export const councilAssignments = sqliteTable("council_assignments", {
