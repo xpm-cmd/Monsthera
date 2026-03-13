@@ -18,6 +18,7 @@ import { validateCrossInstanceRequest } from "./trust/cross-instance-request-gua
 import { cmdTicket } from "./cli/tickets.js";
 import { cmdPatch } from "./cli/patches.js";
 import { cmdKnowledge } from "./cli/knowledge.js";
+import { cmdLoop } from "./cli/loops.js";
 import { cmdTool } from "./cli/tools.js";
 import {
   CROSS_INSTANCE_SEARCH_PATH,
@@ -79,6 +80,10 @@ async function main() {
     case "tool":
     case "tools":
       await cmdTool(config, insight, args.slice(1));
+      break;
+    case "loop":
+    case "loops":
+      await cmdLoop(config, insight, args.slice(1));
       break;
     case "serve":
     case undefined:
@@ -657,6 +662,7 @@ function printHelp() {
   console.error("  ticket         Repo-scoped ticket operations");
   console.error("  patch          Repo-scoped patch inspection");
   console.error("  knowledge      Repo/global knowledge inspection");
+  console.error("  loop           Run a repo-local planner/developer/council workflow");
   console.error("  tool           Invoke a local Agora MCP tool from CLI");
   console.error("");
   console.error("Options:");
@@ -690,6 +696,9 @@ function printHelp() {
   console.error("  agora tool inspect propose_patch --json");
   console.error("  agora tool status --json");
   console.error("  agora tool claim_files --input '{\"agentId\":\"agent-dev\",\"sessionId\":\"session-dev\",\"paths\":[\"src/index.ts\"]}' --json");
+  console.error("  agora loop plan --json");
+  console.error("  agora loop dev --limit 3 --json");
+  console.error("  agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json");
   console.error("");
   console.error("Agent access preference:");
   console.error("  Prefer `agora ticket|patch|knowledge ... --json` or `agora tool ... --json`");

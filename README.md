@@ -139,11 +139,20 @@ agora ticket summary --json
 agora patch list --json
 agora patch show patch-123 --json
 agora knowledge search "ticket workflow" --scope all --json
+agora loop plan --json
+agora loop plan --watch
+agora loop dev --limit 3 --json
+agora loop dev --watch
+agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json
+agora loop council --watch
 agora tool list
 agora tool inspect propose_patch --json
 agora tool status --json
 agora tool claim_files --input '{"agentId":"agent-dev","sessionId":"session-dev","paths":["src/index.ts"]}' --json
 ```
+
+Loop command guide: [docs/agent-loops.md](docs/agent-loops.md)
+Operational playbooks: [docs/playbooks.md](docs/playbooks.md)
 
 Patch review guidance:
 
