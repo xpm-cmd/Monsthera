@@ -18,7 +18,7 @@ export const MAX_DIFF_LINES_PER_FILE = 50; // Truncate per-file diffs in get_cha
 export const DEFAULT_TRUST_TIER = "B" as const;
 
 // Sessions
-export const HEARTBEAT_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
+export const HEARTBEAT_TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3 hours
 export const CLAIM_RELEASE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 // Logging
