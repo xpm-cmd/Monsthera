@@ -5,6 +5,7 @@ import type { AgoraConfig } from "./config.js";
 import type { SearchRouter } from "../search/router.js";
 import type { InsightStream } from "./insight-stream.js";
 import type { CoordinationBus } from "../coordination/bus.js";
+import type { TicketLifecycleReactor } from "../tickets/lifecycle.js";
 
 /**
  * Shared runtime context available to all MCP tool handlers.
@@ -21,4 +22,5 @@ export interface AgoraContext {
   bus: CoordinationBus;
   globalDb: BetterSQLite3Database<typeof schema> | null;
   globalSqlite: DatabaseType | null;
+  lifecycle?: TicketLifecycleReactor;
 }

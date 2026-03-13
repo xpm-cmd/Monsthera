@@ -69,6 +69,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         governance: c.config?.governance,
         bus: c.bus,
         refreshTicketSearch: () => c.searchRouter?.rebuildTicketFts?.(c.repoId),
+        lifecycle: c.lifecycle,
       }, {
         title,
         description,
@@ -147,6 +148,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
           }
           c.searchRouter?.rebuildKnowledgeFts?.(c.sqlite);
         },
+        lifecycle: c.lifecycle,
       }, {
         ticketId,
         status: targetStatus as TicketStatusType,
@@ -512,6 +514,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
               }
               c.searchRouter?.rebuildKnowledgeFts?.(c.sqlite);
             },
+            lifecycle: c.lifecycle,
             system: true,
             actorLabel: "council-auto-advance",
           }, {

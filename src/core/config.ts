@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { z } from "zod/v4";
 import { CouncilSpecializationId, COUNCIL_SPECIALIZATIONS } from "../../schemas/council.js";
 import { GovernanceConfigSchema } from "../../schemas/governance.js";
+import { TicketSeverity } from "../../schemas/ticket.js";
 import { DEFAULT_AGORA_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_DB_NAME } from "./constants.js";
 import {
   DEFAULT_CONFIG_FILE_PENALTY_FACTOR,
@@ -62,6 +63,28 @@ export const TicketQuorumConfigSchema = z.object({
   technicalAnalysisToApproved: TicketQuorumTransitionRuleSchema.default(DEFAULT_TICKET_QUORUM_RULE),
   inReviewToReadyForCommit: TicketQuorumTransitionRuleSchema.default(DEFAULT_TICKET_QUORUM_RULE),
 }).default(DEFAULT_TICKET_QUORUM_CONFIG);
+
+const DEFAULT_LIFECYCLE_CONFIG = {
+  enabled: false,
+  autoTriageOnCreate: true,
+  autoTriageSeverityThreshold: "medium" as const,
+  autoTriagePriorityThreshold: 5,
+  autoCloseResolvedAfterMs: 0,
+  autoReviewOnPatch: false,
+  autoCascadeBlocked: true,
+  sweepIntervalMs: 60_000,
+};
+
+export const LifecycleConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  autoTriageOnCreate: z.boolean().default(true),
+  autoTriageSeverityThreshold: TicketSeverity.default("medium"),
+  autoTriagePriorityThreshold: z.number().int().min(0).max(10).default(5),
+  autoCloseResolvedAfterMs: z.number().int().min(0).default(0),
+  autoReviewOnPatch: z.boolean().default(false),
+  autoCascadeBlocked: z.boolean().default(true),
+  sweepIntervalMs: z.number().int().min(10_000).max(600_000).default(60_000),
+}).default(DEFAULT_LIFECYCLE_CONFIG);
 
 export const SearchFileBm25WeightsSchema = z.object({
   path: z.number().positive().max(10).default(DEFAULT_FILE_BM25_WEIGHTS.path),
@@ -219,6 +242,7 @@ export const AgoraConfigSchema = z.object({
     defaultPerMinute: 10,
     overrides: {},
   }),
+  lifecycle: LifecycleConfigSchema.default(DEFAULT_LIFECYCLE_CONFIG),
 });
 
 export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
@@ -232,6 +256,7 @@ export type CrossInstanceCapability = z.infer<typeof CrossInstanceCapabilitySche
 export type CrossInstancePeer = z.infer<typeof CrossInstancePeerSchema>;
 export type CrossInstanceConfig = z.infer<typeof CrossInstanceConfigSchema>;
 export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
+export type LifecycleConfig = z.infer<typeof LifecycleConfigSchema>;
 
 export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
   return AgoraConfigSchema.parse(partial);
@@ -259,7 +284,7 @@ export function mergeConfigSources(
   for (const source of sources) {
     if (!source) continue;
 
-    const { registrationAuth, crossInstance, ticketQuorum, governance, toolRateLimits, search, ...rest } = source;
+    const { registrationAuth, crossInstance, ticketQuorum, governance, toolRateLimits, search, lifecycle, ...rest } = source;
     Object.assign(merged, rest);
 
     if (registrationAuth) {
@@ -327,6 +352,13 @@ export function mergeConfigSources(
           ...(merged.toolRateLimits?.overrides ?? {}),
           ...(toolRateLimits.overrides ?? {}),
         },
+      };
+    }
+
+    if (lifecycle) {
+      merged.lifecycle = {
+        ...(merged.lifecycle ?? {}),
+        ...lifecycle,
       };
     }
 

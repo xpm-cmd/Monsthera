@@ -40,6 +40,7 @@ interface TicketServiceBaseContext {
   bus?: CoordinationBus;
   refreshTicketSearch?: () => void;
   refreshKnowledgeSearch?: (knowledgeIds?: number[]) => void;
+  lifecycle?: import("./lifecycle.js").LifecycleHook;
 }
 
 export type TicketServiceContext = TicketServiceBaseContext;
@@ -213,6 +214,12 @@ export async function createTicketRecord(
     status: "backlog",
     severity: input.severity,
     creatorAgentId: resolved.agentId,
+  });
+
+  ctx.lifecycle?.onTicketCreated({
+    ticketId,
+    severity: input.severity,
+    priority: input.priority,
   });
 
   return ok({
@@ -413,6 +420,13 @@ export function updateTicketStatusRecord(
     ticketId: input.ticketId,
     previousStatus: current,
     status: input.status,
+  });
+
+  ctx.lifecycle?.onTicketStatusChanged({
+    ticketId: input.ticketId,
+    previousStatus: current,
+    status: input.status,
+    actorLabel: resolved.agentId,
   });
 
   return ok({

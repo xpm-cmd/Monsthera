@@ -99,6 +99,7 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
       // Link patch to ticket (already validated above)
       if (resolvedTicket) {
         queries.linkPatchToTicket(c.db, patch.id, resolvedTicket.id);
+        c.lifecycle?.onPatchLinked({ ticketId: ticketId!, patchState: state });
       }
 
       c.insight.info(`Patch ${validation.proposalId} by ${agentId}: ${state}`);

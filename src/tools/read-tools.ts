@@ -281,6 +281,15 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           connectedAgents: activeSessions.length,
           searchBackend: c.searchRouter.getActiveBackendName(),
           debugLogging: c.config.debugLogging,
+          lifecycle: {
+            enabled: c.config.lifecycle?.enabled ?? false,
+            rules: {
+              autoTriage: c.config.lifecycle?.autoTriageOnCreate ?? false,
+              autoClose: (c.config.lifecycle?.autoCloseResolvedAfterMs ?? 0) > 0,
+              autoReview: c.config.lifecycle?.autoReviewOnPatch ?? false,
+              autoCascade: c.config.lifecycle?.autoCascadeBlocked ?? false,
+            },
+          },
         }, null, 2),
       }],
     };

@@ -173,6 +173,19 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
           }, params),
         },
       }, config.dashboardPort, insight);
+
+      // Start lifecycle sweep timer if enabled
+      if (config.lifecycle?.enabled) {
+        const { TicketLifecycleReactor } = await import("./tickets/lifecycle.js");
+        const lifecycleReactor = new TicketLifecycleReactor({
+          config, db, sqlite, repoId, repoPath: repoRoot, insight, searchRouter, bus,
+        });
+        setInterval(() => {
+          try { lifecycleReactor.sweep(); }
+          catch (e) { insight.warn(`Lifecycle sweep failed: ${e}`); }
+        }, config.lifecycle.sweepIntervalMs);
+        insight.info(`Lifecycle sweep timer started (interval: ${config.lifecycle.sweepIntervalMs}ms)`);
+      }
     }
   } catch (err) {
     insight.warn(`Dashboard failed to start: ${err}`);
@@ -430,7 +443,6 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
     process.exit(1);
   }
 
-  const repoRoot = await getRepoRoot({ cwd: config.repoPath });
   const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
   const agoraDir = join(mainRepoRoot, config.agoraDir);
 
@@ -680,6 +692,7 @@ function printHelp() {
   console.error("  agora ticket list --status in_progress");
   console.error("  agora ticket show TKT-1234abcd --json");
   console.error("  agora ticket transition TKT-1234abcd in_review --comment \"Implementation complete\"");
+  console.error("  agora ticket reconcile-commit --json");
   console.error("  agora patch summary --json");
   console.error("  agora patch show patch_abcd1234 --json");
   console.error("  agora knowledge query --scope all --type decision --json");

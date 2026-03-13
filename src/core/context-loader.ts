@@ -8,6 +8,7 @@ import { SearchRouter } from "../search/router.js";
 import { InsightStream } from "./insight-stream.js";
 import { isGitRepo, getRepoRoot, getMainRepoRoot } from "../git/operations.js";
 import { CoordinationBus } from "../coordination/bus.js";
+import { TicketLifecycleReactor } from "../tickets/lifecycle.js";
 
 export function createAgoraContextLoader(
   config: AgoraConfig,
@@ -62,7 +63,13 @@ export function createAgoraContextLoader(
       insight.warn(`Global knowledge DB init failed: ${err}`);
     }
 
-    ctx = { config, db, sqlite, repoId, repoPath: repoRoot, searchRouter, insight, bus, globalDb, globalSqlite };
+    let lifecycle: TicketLifecycleReactor | undefined;
+    if (config.lifecycle?.enabled) {
+      lifecycle = new TicketLifecycleReactor({ config, db, sqlite, repoId, repoPath: repoRoot, insight, searchRouter, bus });
+      insight.info("Lifecycle automation enabled");
+    }
+
+    ctx = { config, db, sqlite, repoId, repoPath: repoRoot, searchRouter, insight, bus, globalDb, globalSqlite, lifecycle };
     insight.info(`Initialized for ${repoRoot} (search: ${searchRouter.getActiveBackendName()})`);
     return ctx;
   };
