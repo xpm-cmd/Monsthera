@@ -324,7 +324,7 @@ describe("Agent Registry", () => {
   });
 
   it("rolls back stale-session reaping when claim cleanup fails", () => {
-    const now = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const now = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS - 60_000).toISOString();
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run("agent-1", "Dev", "test", "developer", "A", now);
     sqlite.prepare(`
