@@ -2,6 +2,12 @@
 
 All notable changes to Agora are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- **Session heartbeat timeout** — `HEARTBEAT_TIMEOUT_MS` now defaults to 3 hours so long-running implementation sessions keep the same agent identity across review and commit workflows (`c4bbcef`)
+
 ## [1.0.0] — 2026-03-09
 
 ### QA Evolution (v1 → v12)
@@ -12,7 +18,7 @@ The v1.0.0 release went through 12 QA iterations improving search quality, agent
 
 - **Semantic embeddings + CamelCase tokenization** — ONNX MiniLM-L6-v2 wired to `agora index`, CamelCase identifiers tokenized for FTS5 matching (`04313d7`)
 - **Independent vector search for knowledge** — `search_knowledge` runs a full vector scan over all embeddings (cosine ≥ 0.6) in parallel with FTS5, discovering entries with zero keyword overlap (`a132110`)
-- **Session lifecycle cleanup** — `end_session` tool for explicit session disconnect, `reapStaleSessions()` for automatic stale session expiry after HEARTBEAT_TIMEOUT_MS (10 min), claim release on disconnect (`3d789c4`)
+- **Session lifecycle cleanup** — `end_session` tool for explicit session disconnect, `reapStaleSessions()` for automatic stale session expiry after `HEARTBEAT_TIMEOUT_MS` (initially 10 min in v1.0.0), claim release on disconnect (`3d789c4`)
 - **Agent timestamps + diff stats** — `agent_status` includes session timestamps; `get_change_pack` includes per-commit diff stats (`1a4b491`)
 - **Per-file diffs** — `get_change_pack` returns per-file unified diffs truncated to MAX_DIFF_LINES_PER_FILE = 50 lines (`2500a99`)
 - **Observational `agent_status`** — no longer disconnects sessions as side effect; reaps stale sessions explicitly before building response (`a02dce6`, `3d789c4`)
@@ -29,7 +35,7 @@ The v1.0.0 release went through 12 QA iterations improving search quality, agent
 
 - **Nonsense guard** — MIN_RELEVANCE_SCORE = 0.35 filters low-confidence results from evidence bundles (`eee95b8`)
 - **WebSocket knowledge regression** — FTS5 AND semantics returned only 1 of 5 relevant knowledge entries; hybrid vector search recovered full recall (`a132110`)
-- **Stale session accumulation** — swarm agents registered sessions but never disconnected; lifecycle cleanup reaps sessions inactive > 10 min (`3d789c4`)
+- **Stale session accumulation** — swarm agents registered sessions but never disconnected; lifecycle cleanup reaps sessions inactive > 10 min in v1.0.0 (`3d789c4`)
 
 ### Constants Reference
 
@@ -41,7 +47,7 @@ The v1.0.0 release went through 12 QA iterations improving search quality, agent
 | MIN_RELEVANCE_SCORE | 0.35 |
 | MIN_RELEVANCE_SCORE_SCOPED | 0.15 |
 | MAX_DIFF_LINES_PER_FILE | 50 |
-| HEARTBEAT_TIMEOUT_MS | 600,000 (10 min) |
+| HEARTBEAT_TIMEOUT_MS | 600,000 (10 min in v1.0.0) |
 | CLAIM_RELEASE_TIMEOUT_MS | 300,000 (5 min) |
 
 ## [1.0.0-rc] — 2026-03-08

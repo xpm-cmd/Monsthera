@@ -120,7 +120,7 @@ all refresh the active session clock when they pass through `resolveAgent()`.
 
 ### Stale reaping
 
-`HEARTBEAT_TIMEOUT_MS` is currently 60 minutes.
+`HEARTBEAT_TIMEOUT_MS` is currently 3 hours.
 
 Stale session reaping happens in two places:
 
