@@ -1,14 +1,11 @@
 import { z } from "zod/v4";
-import { type CouncilSpecializationId as CouncilSpecializationIdValue } from "./council.js";
+import { COUNCIL_SPECIALIZATIONS, type CouncilSpecializationId as CouncilSpecializationIdValue } from "./council.js";
 import { RoleId } from "./agent.js";
 
-export const GOVERNANCE_ANALYTICAL_SPECIALIZATIONS = [
-  "architect",
-  "simplifier",
-  "security",
-  "performance",
-  "patterns",
-] as const satisfies readonly CouncilSpecializationIdValue[];
+const NON_ANALYTICAL_SPECIALIZATIONS = new Set<CouncilSpecializationIdValue>(["design"]);
+
+export const GOVERNANCE_ANALYTICAL_SPECIALIZATIONS: CouncilSpecializationIdValue[] =
+  COUNCIL_SPECIALIZATIONS.filter((s) => !NON_ANALYTICAL_SPECIALIZATIONS.has(s));
 
 /**
  * Model diversity configuration for council governance.

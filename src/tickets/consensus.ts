@@ -232,7 +232,9 @@ export function buildTicketConsensusReport(input: {
     };
   }
 
-  const requiredPasses = rule?.requiredPasses ?? getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length);
+  const requiredPasses = rule?.requiredPasses ?? (input.governance
+    ? Math.max(1, GOVERNANCE_ANALYTICAL_SPECIALIZATIONS.length - 1)
+    : getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length));
   const vetoSpecializations = dedupeSpecializations(rule?.vetoSpecializations ?? DEFAULT_VETO_SPECIALIZATIONS);
   return {
     ...buildConsensusPayload(input.ticketId, input.verdictRows, {
@@ -270,6 +272,7 @@ export function resolveTicketQuorumRule(
   fromStatus: TicketStatus,
   toStatus: TicketStatus,
   config?: TicketQuorumConfig | null,
+  options?: { governanceEnabled?: boolean },
 ): ResolvedTicketQuorumRule | null {
   const transition = `${fromStatus}→${toStatus}`;
   if (!isGatedTicketTransition(transition)) {
@@ -285,7 +288,9 @@ export function resolveTicketQuorumRule(
   return {
     transition,
     key,
-    requiredPasses: rule?.requiredPasses ?? getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length),
+    requiredPasses: rule?.requiredPasses ?? (options?.governanceEnabled
+      ? Math.max(1, GOVERNANCE_ANALYTICAL_SPECIALIZATIONS.length - 1)
+      : getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length)),
     vetoSpecializations: dedupeSpecializations(rule?.vetoSpecializations ?? DEFAULT_VETO_SPECIALIZATIONS),
   };
 }
@@ -298,7 +303,9 @@ export function evaluateTicketTransitionConsensus(input: {
   config?: TicketQuorumConfig | null;
   governance?: ConsensusGovernanceOptions;
 }): TransitionConsensusPayload | null {
-  const rule = resolveTicketQuorumRule(input.fromStatus, input.toStatus, input.config);
+  const rule = resolveTicketQuorumRule(input.fromStatus, input.toStatus, input.config, {
+    governanceEnabled: !!input.governance,
+  });
   if (!rule) return null;
 
   return {
