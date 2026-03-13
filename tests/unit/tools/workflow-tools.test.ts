@@ -1,3 +1,6 @@
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -106,6 +109,7 @@ describe("workflow tools", () => {
   let sqlite: InstanceType<typeof Database>;
   let db: ReturnType<typeof createTestDb>["db"];
   let server: FakeServer;
+  const tempDirs: string[] = [];
   const calls: Array<{ tool: string; input: Record<string, unknown> }> = [];
 
   beforeEach(() => {
@@ -213,8 +217,10 @@ describe("workflow tools", () => {
     } as any));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     resetToolRateLimitState();
+    await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+    tempDirs.length = 0;
     sqlite.close();
   });
 
@@ -299,6 +305,111 @@ describe("workflow tools", () => {
       key: "knowledge_entry",
       status: "failed",
       errorCode: "denied",
+    });
+  });
+
+  it("executes repo-local custom workflows discovered from .agora/workflows", async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), "agora-workflow-tools-"));
+    tempDirs.push(repoPath);
+    const workflowDir = join(repoPath, ".agora", "workflows");
+    await mkdir(workflowDir, { recursive: true });
+    await writeFile(join(workflowDir, "review.yaml"), `name: repo-review
+description: Repo-local review workflow
+params: [sinceCommit]
+steps:
+  - tool: get_change_pack
+    input: { sinceCommit: "{{params.sinceCommit}}" }
+    output: changes
+  - tool: suggest_actions
+    input:
+      changedPaths: "{{steps.changes.changedFiles.path}}"
+    output: suggestions
+`, "utf-8");
+
+    const scopedServer = new FakeServer();
+    installToolRuntimeInstrumentation(scopedServer as unknown as McpServer, async () => ({
+      config: {
+        debugLogging: false,
+        secretPatterns: [],
+        toolRateLimits: {
+          defaultPerMinute: 50,
+        },
+      },
+      db,
+      sqlite,
+      repoId: 1,
+      repoPath,
+      globalDb: null,
+      globalSqlite: null,
+      searchRouter: {
+        getSemanticReranker: () => null,
+        rebuildKnowledgeFts: vi.fn(),
+      },
+      insight: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        debug: vi.fn(),
+      },
+    } as any));
+    registerPublicWorkflowFixtures(scopedServer, calls);
+    registerKnowledgeTools(scopedServer as unknown as McpServer, async () => ({
+      db,
+      sqlite,
+      globalDb: null,
+      globalSqlite: null,
+      searchRouter: {
+        getSemanticReranker: () => null,
+        rebuildKnowledgeFts: vi.fn(),
+      },
+      insight: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        debug: vi.fn(),
+      },
+    } as any));
+    registerWorkflowTools(scopedServer as unknown as McpServer, async () => ({
+      db,
+      sqlite,
+      repoId: 1,
+      repoPath,
+      globalDb: null,
+      globalSqlite: null,
+      config: {
+        debugLogging: false,
+        secretPatterns: [],
+        toolRateLimits: {
+          defaultPerMinute: 50,
+        },
+      },
+      insight: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        debug: vi.fn(),
+      },
+      searchRouter: {
+        getSemanticReranker: () => null,
+        rebuildKnowledgeFts: vi.fn(),
+      },
+    } as any));
+
+    const result = await scopedServer.handlers.get("run_workflow")!({
+      name: "repo-review",
+      params: {
+        sinceCommit: "base1234",
+      },
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.isError).toBeUndefined();
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload).toMatchObject({
+      name: "custom:repo-review",
+      status: "completed",
+    });
+    expect(payload.outputs.suggestions).toEqual({
+      changedPaths: ["src/alpha.ts", "src/beta.ts"],
+      recommendedTools: ["analyze_complexity", "analyze_test_coverage"],
     });
   });
 });

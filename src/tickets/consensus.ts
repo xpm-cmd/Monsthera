@@ -129,15 +129,16 @@ export function buildConsensusPayload(
   options?: {
     requiredPasses?: number;
     vetoSpecializations?: readonly CouncilSpecializationIdValue[];
+    councilSpecializations?: readonly CouncilSpecializationIdValue[];
     governance?: ConsensusGovernanceOptions;
   },
 ): ConsensusPayload {
   const vetoSpecializations = dedupeSpecializations(options?.vetoSpecializations ?? DEFAULT_VETO_SPECIALIZATIONS);
   const allNormalized = normalizeVerdictRows(verdictRows);
   const gov = options?.governance;
-  const councilSpecializations = gov
+  const councilSpecializations = dedupeSpecializations(options?.councilSpecializations ?? (gov
     ? GOVERNANCE_ANALYTICAL_SPECIALIZATIONS
-    : COUNCIL_SPECIALIZATIONS;
+    : COUNCIL_SPECIALIZATIONS));
 
   // Governance: filter out non-voting roles (e.g. facilitator)
   const nonVotingIds = gov?.nonVotingAgentIds ?? [];
@@ -178,7 +179,9 @@ export function buildConsensusPayload(
     missing: missingSpecializations.length,
   };
   const requiredPasses = options?.requiredPasses
-    ?? (gov ? Math.max(1, councilSpecializations.length - 1) : getDefaultAdvisoryPasses(councilSpecializations.length));
+    ?? (gov || options?.councilSpecializations
+      ? Math.max(1, councilSpecializations.length - 1)
+      : getDefaultAdvisoryPasses(councilSpecializations.length));
   const quorumMet = counts.pass >= requiredPasses;
   const blockedByVeto = vetoes.length > 0;
   const diversityBlocked = gov?.strictDiversity === true && diversityResult != null && !diversityResult.diversityMet;

@@ -1,6 +1,6 @@
-import type { WorkflowSpec } from "./types.js";
+import type { WorkflowCatalogEntry, WorkflowSpec } from "./types.js";
 
-export const BUILTIN_WORKFLOW_NAMES = ["onboard", "deep-review"] as const;
+export const BUILTIN_WORKFLOW_NAMES = ["onboard", "deep-review", "ta-review", "deep-review-v2"] as const;
 export type BuiltInWorkflowName = (typeof BUILTIN_WORKFLOW_NAMES)[number];
 
 export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
@@ -94,20 +94,96 @@ export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
       },
     ],
   },
+  "ta-review": {
+    name: "ta-review",
+    description: "Collect ticket context, wait for council quorum, then approve the ticket once the checkpoint passes.",
+    requiredParams: ["ticketId"],
+    steps: [
+      {
+        key: "ticket",
+        tool: "get_ticket",
+        description: "Load the target ticket before requesting council review.",
+        input: {
+          ticketId: "{{params.ticketId}}",
+        },
+      },
+      {
+        key: "quorum",
+        type: "quorum_checkpoint",
+        tool: "quorum_checkpoint",
+        description: "Wait for analytical council quorum with architect/security veto enforcement.",
+        input: {
+          ticketId: "{{params.ticketId}}",
+          timeout: 120,
+          onFail: "block",
+        },
+      },
+      {
+        key: "approval",
+        tool: "update_ticket_status",
+        description: "Approve the ticket when the quorum checkpoint is satisfied.",
+        condition: "steps.quorum.advisoryReady",
+        input: {
+          ticketId: "{{params.ticketId}}",
+          status: "approved",
+          comment: "Workflow ta-review: quorum checkpoint satisfied",
+        },
+      },
+    ],
+  },
+  "deep-review-v2": {
+    name: "deep-review-v2",
+    description: "Run deep-review context gathering, then gate ready_for_commit on the council quorum checkpoint.",
+    requiredParams: ["ticketId"],
+    steps: [
+      {
+        key: "changes",
+        tool: "get_change_pack",
+        description: "Capture the current change pack before the quorum checkpoint.",
+        input: {
+          sinceCommit: "{{params.sinceCommit}}",
+          verbosity: "compact",
+        },
+      },
+      {
+        key: "quorum",
+        type: "quorum_checkpoint",
+        tool: "quorum_checkpoint",
+        description: "Wait for analytical council quorum with architect/security veto enforcement.",
+        input: {
+          ticketId: "{{params.ticketId}}",
+          timeout: 120,
+          onFail: "block",
+        },
+      },
+      {
+        key: "ready_for_commit",
+        tool: "update_ticket_status",
+        description: "Advance the ticket when the quorum checkpoint is satisfied.",
+        condition: "steps.quorum.advisoryReady",
+        input: {
+          ticketId: "{{params.ticketId}}",
+          status: "ready_for_commit",
+          comment: "Workflow deep-review-v2: quorum checkpoint satisfied",
+        },
+      },
+    ],
+  },
 };
 
 export function getBuiltInWorkflow(name: BuiltInWorkflowName): WorkflowSpec {
   return BUILTIN_WORKFLOWS[name];
 }
 
-export function listBuiltInWorkflows(): Array<{
-  name: BuiltInWorkflowName;
-  description: string;
-  tools: string[];
-}> {
+export function isBuiltInWorkflowName(name: string): name is BuiltInWorkflowName {
+  return (BUILTIN_WORKFLOW_NAMES as readonly string[]).includes(name);
+}
+
+export function listBuiltInWorkflows(): WorkflowCatalogEntry[] {
   return BUILTIN_WORKFLOW_NAMES.map((name) => ({
     name,
     description: BUILTIN_WORKFLOWS[name].description,
     tools: BUILTIN_WORKFLOWS[name].steps.map((step) => step.tool),
+    source: "builtin",
   }));
 }

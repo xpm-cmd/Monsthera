@@ -47,6 +47,20 @@ function fail(tool: string, errorCode: "denied" | "execution_failed", message: s
   };
 }
 
+function verdict(
+  specialization: string,
+  value: "pass" | "fail" | "abstain",
+) {
+  return {
+    specialization,
+    verdict: value,
+    agentId: `agent-${specialization}`,
+    sessionId: `session-${specialization}`,
+    reasoning: null,
+    createdAt: "2026-03-13T00:00:00.000Z",
+  };
+}
+
 describe("workflow engine", () => {
   it("executes sequential steps with projection-based output piping", async () => {
     const spec: WorkflowSpec = {
@@ -209,6 +223,195 @@ describe("workflow engine", () => {
       key: "knowledge",
       status: "failed",
       errorCode: "denied",
+    });
+  });
+
+  it("proceeds once a quorum checkpoint reaches analytical quorum", async () => {
+    const spec: WorkflowSpec = {
+      name: "quorum-ready",
+      description: "demo",
+      steps: [
+        {
+          key: "quorum",
+          type: "quorum_checkpoint",
+          tool: "quorum_checkpoint",
+          input: {
+            ticketId: "TKT-ready",
+            timeout: 5,
+            pollIntervalMs: 10,
+          },
+        },
+        {
+          key: "after",
+          tool: "capabilities",
+          input: {},
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({
+      capabilities: async () => ok("capabilities", { tools: ["run_workflow"] }),
+    });
+    const sent: Array<Record<string, unknown>> = [];
+    let nowMs = 0;
+    let polls = 0;
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      workflowName: spec.name,
+      loadReviewVerdicts: async () => {
+        polls += 1;
+        return polls === 1
+          ? []
+          : [
+              verdict("architect", "pass"),
+              verdict("simplifier", "pass"),
+              verdict("security", "pass"),
+              verdict("performance", "pass"),
+            ];
+      },
+      sendCoordination: async (request) => {
+        sent.push(request as unknown as Record<string, unknown>);
+      },
+      now: () => nowMs,
+      sleep: async (ms) => {
+        nowMs += ms;
+      },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.steps[0]).toMatchObject({
+      key: "quorum",
+      status: "completed",
+    });
+    expect(result.outputs.quorum).toMatchObject({
+      status: "ready",
+      advisoryReady: true,
+      requiredPasses: 4,
+      counts: {
+        pass: 4,
+      },
+    });
+    expect(result.steps[1]).toMatchObject({
+      key: "after",
+      status: "completed",
+    });
+    expect(sent).toEqual([
+      expect.objectContaining({
+        ticketId: "TKT-ready",
+        workflowName: "quorum-ready",
+        stepKey: "quorum",
+      }),
+    ]);
+  });
+
+  it("blocks when a quorum checkpoint can no longer reach quorum", async () => {
+    const spec: WorkflowSpec = {
+      name: "quorum-blocked",
+      description: "demo",
+      steps: [
+        {
+          key: "quorum",
+          type: "quorum_checkpoint",
+          tool: "quorum_checkpoint",
+          input: {
+            ticketId: "TKT-blocked",
+            timeout: 5,
+            pollIntervalMs: 10,
+          },
+        },
+        {
+          key: "after",
+          tool: "capabilities",
+          input: {},
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({
+      capabilities: async () => ok("capabilities", { tools: [] }),
+    });
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      workflowName: spec.name,
+      loadReviewVerdicts: async () => [
+        verdict("architect", "pass"),
+        verdict("simplifier", "fail"),
+        verdict("security", "abstain"),
+        verdict("performance", "fail"),
+        verdict("patterns", "abstain"),
+      ],
+      sendCoordination: async () => {},
+      now: () => 0,
+      sleep: async () => {},
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.steps).toHaveLength(1);
+    expect(result.steps[0]).toMatchObject({
+      key: "quorum",
+      status: "failed",
+      errorCode: "workflow_quorum_blocked",
+      output: expect.objectContaining({
+        status: "blocked_on_quorum",
+        advisoryReady: false,
+        blockedByVeto: false,
+      }),
+    });
+  });
+
+  it("continues with warning after a quorum timeout when configured", async () => {
+    const spec: WorkflowSpec = {
+      name: "quorum-timeout",
+      description: "demo",
+      steps: [
+        {
+          key: "quorum",
+          type: "quorum_checkpoint",
+          tool: "quorum_checkpoint",
+          input: {
+            ticketId: "TKT-timeout",
+            timeout: 0,
+            onFail: "continue_with_warning",
+          },
+        },
+        {
+          key: "after",
+          tool: "capabilities",
+          input: {},
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({
+      capabilities: async () => ok("capabilities", { tools: ["capabilities"] }),
+    });
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      workflowName: spec.name,
+      loadReviewVerdicts: async () => [],
+      sendCoordination: async () => {},
+      now: () => 0,
+      sleep: async () => {},
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.steps[0]).toMatchObject({
+      key: "quorum",
+      status: "partial",
+      output: expect.objectContaining({
+        status: "timed_out",
+        advisoryReady: false,
+      }),
+    });
+    expect(result.steps[1]).toMatchObject({
+      key: "after",
+      status: "completed",
     });
   });
 });

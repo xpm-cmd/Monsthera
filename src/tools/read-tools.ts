@@ -21,6 +21,7 @@ import { analyzeTestCoverage } from "../analysis/test-coverage.js";
 import { suggestActionsForChanges } from "../dispatch/rules.js";
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import { BUILTIN_WORKFLOW_NAMES, listBuiltInWorkflows } from "../workflows/builtins.js";
+import { loadCustomWorkflows, summarizeCustomWorkflows } from "../workflows/loader.js";
 import {
   CrossInstanceSearchSurfaceSchema,
   searchAcrossRemoteInstances,
@@ -289,13 +290,17 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
   server.tool("capabilities", "List Agora capabilities and supported features", {}, async () => {
     const c = await getContext();
     const repoAgentCatalog = await loadRepoAgentCatalog(c.repoPath);
+    const customWorkflowCatalog = await loadCustomWorkflows(c.repoPath);
+    const customWorkflows = summarizeCustomWorkflows(customWorkflowCatalog.workflows);
     return {
       content: [{
         type: "text" as const,
         text: JSON.stringify({
           version: VERSION,
           tools: [...CAPABILITY_TOOL_NAMES],
-          workflows: listBuiltInWorkflows(),
+          workflows: [...listBuiltInWorkflows(), ...customWorkflows],
+          customWorkflows,
+          customWorkflowWarnings: customWorkflowCatalog.warnings,
           ticketStatuses: ["backlog", "technical_analysis", "approved", "in_progress", "in_review", "ready_for_commit", "blocked", "resolved", "closed", "wont_fix"],
           ticketSeverities: ["critical", "high", "medium", "low"],
           languages: [...SUPPORTED_LANGUAGES],
@@ -337,6 +342,12 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     "Get the input schema for a specific Agora tool",
     { toolName: z.string().describe("Tool name") },
     async ({ toolName }) => {
+      const c = await getContext();
+      const customWorkflows = await loadCustomWorkflows(c.repoPath);
+      const discoveredCustomNames = customWorkflows.workflows.map((workflow) => workflow.name);
+      const runWorkflowNameSchema = discoveredCustomNames.length > 0
+        ? `string (built-in: ${BUILTIN_WORKFLOW_NAMES.join("|")}; custom: ${discoveredCustomNames.join("|")})`
+        : `string (built-in: ${BUILTIN_WORKFLOW_NAMES.join("|")}; custom: custom:<name>)`;
       const schemas: Record<string, object> = {
         // ── read tools ──
         status: {},
@@ -367,7 +378,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           peerIds: "string[] (optional peer filter)",
         },
         run_workflow: {
-          name: `enum: ${BUILTIN_WORKFLOW_NAMES.join("|")}`,
+          name: runWorkflowNameSchema,
           params: "object (optional workflow parameters)",
           agentId: "string (required)",
           sessionId: "string (required)",

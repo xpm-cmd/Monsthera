@@ -8,7 +8,6 @@ import { detectLanguage } from "../git/language.js";
 import { parseFile, isParserAvailable } from "./parser.js";
 import { generateSummary, generateRawSummary, generateMarkdownSummary } from "./summary.js";
 import { scanForSecrets, isSensitiveFile, type SecretPattern } from "../trust/secret-patterns.js";
-import { IndexError } from "../core/errors.js";
 import type { SemanticReranker } from "../search/semantic.js";
 import { buildEmbeddingText, type EmbeddingTextOptions } from "../search/semantic.js";
 import {
@@ -17,6 +16,7 @@ import {
   isRepoAgentManifestPath,
   parseRepoAgentManifest,
 } from "../repo-agents/catalog.js";
+import { loadCustomWorkflows } from "../workflows/loader.js";
 
 export interface IndexOptions {
   repoPath: string;
@@ -81,6 +81,8 @@ export async function fullIndex(opts: IndexOptions): Promise<IndexResult> {
       filesSkipped++;
     }
   }
+
+  await validateCustomWorkflows(repoPath, onProgress);
 
   // Update index state
   const now = new Date().toISOString();
@@ -158,6 +160,8 @@ export async function incrementalIndex(lastCommit: string, opts: IndexOptions): 
     }
   }
 
+  await validateCustomWorkflows(repoPath, onProgress);
+
   // Update index state
   const now = new Date().toISOString();
   db.update(tables.indexState)
@@ -172,6 +176,23 @@ export async function incrementalIndex(lastCommit: string, opts: IndexOptions): 
     errors,
     durationMs: Date.now() - start,
   };
+}
+
+async function validateCustomWorkflows(
+  repoPath: string,
+  onProgress?: (msg: string) => void,
+): Promise<void> {
+  try {
+    const result = await loadCustomWorkflows(repoPath);
+    if (result.workflows.length > 0) {
+      onProgress?.(`Validated ${result.workflows.length} custom workflows`);
+    }
+    for (const warning of result.warnings) {
+      onProgress?.(`Workflow warning (${warning.filePath}): ${warning.message}`);
+    }
+  } catch (error) {
+    onProgress?.(`Workflow validation skipped: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 async function indexSingleFile(

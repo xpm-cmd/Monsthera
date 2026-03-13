@@ -1,10 +1,13 @@
-import type { ToolRunner, ToolRunnerCallResult } from "../tools/tool-runner.js";
+import type { ToolRunnerCallResult } from "../tools/tool-runner.js";
+import { CouncilSpecializationId, type CouncilSpecializationId as CouncilSpecialization } from "../../schemas/council.js";
+import { GOVERNANCE_ANALYTICAL_SPECIALIZATIONS } from "../../schemas/governance.js";
+import { buildConsensusPayload } from "../tickets/consensus.js";
 import type {
-  WorkflowActor,
   WorkflowItemResult,
   WorkflowResult,
   WorkflowSpec,
   WorkflowStatus,
+  WorkflowRuntime,
   WorkflowStepResult,
   WorkflowStepSpec,
   WorkflowStepStatus,
@@ -13,6 +16,9 @@ import type {
 const TEMPLATE_PATTERN = /\{\{\s*([^}]+?)\s*\}\}/g;
 const FULL_TEMPLATE_PATTERN = /^\{\{\s*([^}]+?)\s*\}\}$/;
 const MAX_WORKFLOW_STEPS = 20;
+const DEFAULT_QUORUM_ROLES = [...GOVERNANCE_ANALYTICAL_SPECIALIZATIONS];
+const DEFAULT_QUORUM_POLL_INTERVAL_MS = 2_000;
+const MAX_QUORUM_TIMEOUT_MS = 120_000;
 
 type WorkflowContext = {
   params: Record<string, unknown>;
@@ -21,8 +27,6 @@ type WorkflowContext = {
   item?: unknown;
   itemIndex?: number;
 };
-
-type RunnerLike = Pick<ToolRunner, "callTool" | "has">;
 
 type StepCallResult = {
   status: Exclude<WorkflowStepStatus, "skipped" | "partial">;
@@ -35,10 +39,7 @@ type StepCallResult = {
 
 export async function runWorkflow(
   spec: WorkflowSpec,
-  runtime: {
-    runner: RunnerLike;
-    actor: WorkflowActor;
-  },
+  runtime: WorkflowRuntime,
   params: Record<string, unknown> = {},
 ): Promise<WorkflowResult> {
   const startedAt = Date.now();
@@ -115,10 +116,7 @@ export async function runWorkflow(
 async function executeStep(
   step: WorkflowStepSpec,
   context: WorkflowContext,
-  runtime: {
-    runner: RunnerLike;
-    actor: WorkflowActor;
-  },
+  runtime: WorkflowRuntime,
 ): Promise<{ stepResult: WorkflowStepResult; output?: unknown }> {
   if (step.condition && !evaluateCondition(step.condition, context)) {
     return {
@@ -131,6 +129,10 @@ async function executeStep(
         message: `Condition not met: ${step.condition}`,
       },
     };
+  }
+
+  if (step.type === "quorum_checkpoint") {
+    return executeQuorumCheckpoint(step, context, runtime);
   }
 
   if (step.forEach) {
@@ -157,10 +159,7 @@ async function executeStep(
 async function executeStepForEach(
   step: WorkflowStepSpec,
   context: WorkflowContext,
-  runtime: {
-    runner: RunnerLike;
-    actor: WorkflowActor;
-  },
+  runtime: WorkflowRuntime,
 ): Promise<{ stepResult: WorkflowStepResult; output?: unknown }> {
   const startedAt = Date.now();
   const collection = resolvePath(step.forEach ?? "", context);
@@ -236,10 +235,7 @@ async function executeStepForEach(
 async function executeSingleCall(
   step: WorkflowStepSpec,
   context: WorkflowContext,
-  runtime: {
-    runner: RunnerLike;
-    actor: WorkflowActor;
-  },
+  runtime: WorkflowRuntime,
 ): Promise<StepCallResult> {
   const resolvedInput = resolveTemplateValue(step.input, context);
   if (!isRecord(resolvedInput)) {
@@ -269,6 +265,158 @@ async function executeSingleCall(
       } satisfies ToolRunnerCallResult);
 
   return normalizeStepCall(result, input, Date.now() - startedAt);
+}
+
+async function executeQuorumCheckpoint(
+  step: WorkflowStepSpec,
+  context: WorkflowContext,
+  runtime: WorkflowRuntime,
+): Promise<{ stepResult: WorkflowStepResult; output?: unknown }> {
+  const resolvedInput = resolveTemplateValue(step.input, context);
+  if (!isRecord(resolvedInput)) {
+    return {
+      stepResult: {
+        key: step.key,
+        tool: step.tool,
+        description: step.description,
+        status: "failed",
+        durationMs: 0,
+        errorCode: "workflow_invalid_input",
+        message: `Workflow step ${step.key} did not resolve to a quorum input object`,
+      },
+    };
+  }
+
+  const parsed = parseQuorumCheckpointInput(step.key, resolvedInput);
+  if (!parsed.ok) {
+    return {
+      stepResult: {
+        key: step.key,
+        tool: step.tool,
+        description: step.description,
+        status: "failed",
+        durationMs: 0,
+        input: resolvedInput,
+        errorCode: parsed.errorCode,
+        message: parsed.message,
+      },
+    };
+  }
+
+  if (!runtime.loadReviewVerdicts || !runtime.sendCoordination) {
+    return {
+      stepResult: {
+        key: step.key,
+        tool: step.tool,
+        description: step.description,
+        status: "failed",
+        durationMs: 0,
+        input: resolvedInput,
+        errorCode: "workflow_runtime_unavailable",
+        message: "Workflow runtime does not provide quorum checkpoint hooks",
+      },
+    };
+  }
+
+  const now = runtime.now ?? Date.now;
+  const sleep = runtime.sleep ?? defaultSleep;
+  const startedAt = now();
+
+  await runtime.sendCoordination({
+    ticketId: parsed.ticketId,
+    roles: parsed.roles,
+    workflowName: runtime.workflowName ?? "workflow",
+    stepKey: step.key,
+    requestedBy: runtime.actor.agentId,
+    timeoutSeconds: Math.ceil(parsed.timeoutMs / 1000),
+  });
+
+  while (true) {
+    const verdictRows = await runtime.loadReviewVerdicts(parsed.ticketId);
+    if (verdictRows === null) {
+      return {
+        stepResult: {
+          key: step.key,
+          tool: step.tool,
+          description: step.description,
+          status: "failed",
+          durationMs: now() - startedAt,
+          input: resolvedInput,
+          errorCode: "workflow_ticket_not_found",
+          message: `Ticket not found: ${parsed.ticketId}`,
+        },
+      };
+    }
+
+    const consensus = buildConsensusPayload(parsed.ticketId, verdictRows, {
+      councilSpecializations: parsed.roles,
+      requiredPasses: parsed.requiredPasses,
+      vetoSpecializations: parsed.roles.filter((role) => role === "architect" || role === "security"),
+    });
+    const elapsedMs = now() - startedAt;
+    const blockedOnQuorum = !consensus.advisoryReady
+      && !consensus.blockedByVeto
+      && (consensus.counts.pass + consensus.counts.missing) < consensus.requiredPasses;
+    const timedOut = elapsedMs >= parsed.timeoutMs;
+    const checkpointStatus = consensus.advisoryReady
+      ? "ready"
+      : consensus.blockedByVeto
+        ? "blocked_on_veto"
+        : blockedOnQuorum
+          ? "blocked_on_quorum"
+          : timedOut
+            ? "timed_out"
+            : "waiting";
+    const output = {
+      ...consensus,
+      roles: parsed.roles,
+      timeoutMs: parsed.timeoutMs,
+      pollIntervalMs: parsed.pollIntervalMs,
+      onFail: parsed.onFail,
+      status: checkpointStatus,
+      elapsedMs,
+    };
+
+    if (consensus.advisoryReady) {
+      return {
+        stepResult: {
+          key: step.key,
+          tool: step.tool,
+          description: step.description,
+          status: "completed",
+          durationMs: elapsedMs,
+          input: resolvedInput,
+          output,
+        },
+        output,
+      };
+    }
+
+    if (consensus.blockedByVeto || blockedOnQuorum || timedOut) {
+      const status = parsed.onFail === "continue_with_warning" ? "partial" : "failed";
+      const message = consensus.blockedByVeto
+        ? `Workflow step ${step.key} blocked by veto`
+        : timedOut
+          ? `Workflow step ${step.key} timed out waiting for quorum`
+          : `Workflow step ${step.key} cannot reach quorum with current verdicts`;
+      return {
+        stepResult: {
+          key: step.key,
+          tool: step.tool,
+          description: step.description,
+          status,
+          durationMs: elapsedMs,
+          input: resolvedInput,
+          output,
+          errorCode: status === "failed" ? "workflow_quorum_blocked" : undefined,
+          message,
+        },
+        output,
+      };
+    }
+
+    await sleep(parsed.pollIntervalMs);
+  }
 }
 
 function normalizeStepCall(
@@ -409,4 +557,123 @@ function stringifyTemplateValue(value: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseQuorumCheckpointInput(
+  stepKey: string,
+  input: Record<string, unknown>,
+): (
+  | {
+      ok: true;
+      ticketId: string;
+      roles: CouncilSpecialization[];
+      requiredPasses?: number;
+      timeoutMs: number;
+      pollIntervalMs: number;
+      onFail: "block" | "continue_with_warning";
+    }
+  | {
+      ok: false;
+      errorCode: string;
+      message: string;
+    }
+) {
+  const ticketId = normalizeString(input.ticketId);
+  if (!ticketId) {
+    return {
+      ok: false,
+      errorCode: "workflow_invalid_quorum_input",
+      message: `Workflow step ${stepKey} requires a ticketId`,
+    };
+  }
+
+  const requestedRoles = Array.isArray(input.roles) ? input.roles : DEFAULT_QUORUM_ROLES;
+  const roles = requestedRoles.flatMap((entry) => {
+    const parsed = CouncilSpecializationId.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
+  });
+  const uniqueRoles = [...new Set(roles)];
+  if (uniqueRoles.length === 0) {
+    return {
+      ok: false,
+      errorCode: "workflow_invalid_quorum_input",
+      message: `Workflow step ${stepKey} requires at least one valid council specialization`,
+    };
+  }
+
+  const timeoutMs = clampTimeoutMs(asNonNegativeInteger(input.timeout));
+  if (timeoutMs == null) {
+    return {
+      ok: false,
+      errorCode: "workflow_invalid_quorum_input",
+      message: `Workflow step ${stepKey} requires a non-negative timeout in seconds`,
+    };
+  }
+
+  const requiredPasses = input.requiredPasses == null ? undefined : asPositiveInteger(input.requiredPasses);
+  if (input.requiredPasses != null && requiredPasses == null) {
+    return {
+      ok: false,
+      errorCode: "workflow_invalid_quorum_input",
+      message: `Workflow step ${stepKey} requires requiredPasses to be a positive integer`,
+    };
+  }
+
+  const pollIntervalMs = input.pollIntervalMs == null
+    ? DEFAULT_QUORUM_POLL_INTERVAL_MS
+    : asPositiveInteger(input.pollIntervalMs);
+  if (pollIntervalMs == null) {
+    return {
+      ok: false,
+      errorCode: "workflow_invalid_quorum_input",
+      message: `Workflow step ${stepKey} requires pollIntervalMs to be a positive integer`,
+    };
+  }
+
+  const onFail = input.onFail === "continue_with_warning" ? "continue_with_warning" : "block";
+
+  return {
+    ok: true,
+    ticketId,
+    roles: uniqueRoles,
+    requiredPasses: requiredPasses ?? undefined,
+    timeoutMs,
+    pollIntervalMs,
+    onFail,
+  };
+}
+
+function clampTimeoutMs(timeoutSeconds: number | null): number | null {
+  if (timeoutSeconds == null) return null;
+  return Math.min(timeoutSeconds * 1000, MAX_QUORUM_TIMEOUT_MS);
+}
+
+function asPositiveInteger(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim()) && Number(value.trim()) > 0) {
+    return Number(value.trim());
+  }
+  return null;
+}
+
+function asNonNegativeInteger(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    return Number(value.trim());
+  }
+  return null;
+}
+
+function normalizeString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function defaultSleep(ms: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

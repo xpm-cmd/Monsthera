@@ -2,10 +2,13 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
 import { AgentIdSchema, SessionIdSchema } from "../core/input-hardening.js";
+import * as queries from "../db/queries.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { getToolRunner } from "./tool-runner.js";
-import { BUILTIN_WORKFLOW_NAMES, getBuiltInWorkflow } from "../workflows/builtins.js";
+import { BUILTIN_WORKFLOW_NAMES, getBuiltInWorkflow, isBuiltInWorkflowName } from "../workflows/builtins.js";
 import { runWorkflow } from "../workflows/engine.js";
+import { findCustomWorkflow, loadCustomWorkflows, type LoadedCustomWorkflow } from "../workflows/loader.js";
+import type { WorkflowResult, WorkflowSpec } from "../workflows/types.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -14,9 +17,9 @@ const WorkflowParamsSchema = z.record(z.string(), z.unknown()).default({});
 export function registerWorkflowTools(server: McpServer, getContext: GetContext): void {
   server.tool(
     "run_workflow",
-    "Execute a built-in sequential workflow by name with static parameter mapping and per-step trust enforcement.",
+    "Execute a sequential workflow by name with static parameter mapping and per-step trust enforcement.",
     {
-      name: z.enum(BUILTIN_WORKFLOW_NAMES).describe("Built-in workflow name"),
+      name: z.string().trim().min(1).describe("Workflow name (built-in or custom:<name>)"),
       params: WorkflowParamsSchema.describe("Workflow parameters"),
       agentId: AgentIdSchema.describe("Agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
@@ -31,11 +34,57 @@ export function registerWorkflowTools(server: McpServer, getContext: GetContext)
         };
       }
 
+      const runner = getToolRunner(server);
+      const customWorkflows = await loadCustomWorkflows(c.repoPath, {
+        validateTool: (toolName) => runner.has(toolName),
+      });
+      for (const warning of customWorkflows.warnings) {
+        c.insight.warn(`Workflow warning in ${warning.filePath}: ${warning.message}`);
+      }
+
+      const spec = resolveWorkflowSpec(name, customWorkflows.workflows);
+      if (!spec) {
+        const missing = buildMissingWorkflowResult(
+          name,
+          params,
+          customWorkflows.workflows.map((workflow) => workflow.name),
+        );
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify(missing, null, 2),
+          }],
+          isError: true,
+        };
+      }
+
       const result = await runWorkflow(
-        getBuiltInWorkflow(name),
+        spec,
         {
-          runner: getToolRunner(server),
+          runner,
           actor: { agentId, sessionId },
+          workflowName: spec.name,
+          loadReviewVerdicts: async (ticketId) => {
+            const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
+            if (!ticket) return null;
+            return queries.getActiveReviewVerdicts(c.db, ticket.id);
+          },
+          sendCoordination: async (request) => {
+            c.bus.send({
+              from: agentId,
+              to: null,
+              type: "broadcast",
+              payload: {
+                kind: "review_request",
+                ticketId: request.ticketId,
+                roles: request.roles,
+                workflowName: request.workflowName,
+                stepKey: request.stepKey,
+                requestedBy: request.requestedBy,
+                timeoutSeconds: request.timeoutSeconds,
+              },
+            });
+          },
         },
         params,
       );
@@ -51,4 +100,41 @@ export function registerWorkflowTools(server: McpServer, getContext: GetContext)
       };
     },
   );
+}
+
+function resolveWorkflowSpec(
+  name: string,
+  customWorkflows: LoadedCustomWorkflow[],
+): WorkflowSpec | null {
+  if (isBuiltInWorkflowName(name)) {
+    return getBuiltInWorkflow(name);
+  }
+
+  return findCustomWorkflow(customWorkflows, name)?.spec ?? null;
+}
+
+function buildMissingWorkflowResult(
+  name: string,
+  params: Record<string, unknown>,
+  customWorkflowNames: string[],
+): WorkflowResult {
+  const availableNames = [...BUILTIN_WORKFLOW_NAMES, ...customWorkflowNames];
+  return {
+    name,
+    description: "",
+    status: "failed",
+    params,
+    steps: [{
+      key: "__workflow__",
+      tool: "run_workflow",
+      status: "failed",
+      durationMs: 0,
+      errorCode: "workflow_not_found",
+      message: availableNames.length > 0
+        ? `Workflow ${name} was not found. Available workflows: ${availableNames.join(", ")}`
+        : `Workflow ${name} was not found`,
+    }],
+    outputs: {},
+    durationMs: 0,
+  };
 }

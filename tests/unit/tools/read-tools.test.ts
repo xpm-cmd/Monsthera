@@ -88,6 +88,8 @@ describe("read tool discovery", () => {
       uniquenessKey: "provider+model",
       strictDiversityEligibility: "requires both provider and model",
     });
+    expect(payload.customWorkflows).toEqual([]);
+    expect(payload.customWorkflowWarnings).toEqual([]);
   });
 
   it("describes required actor fields for protected knowledge and coordination tools", async () => {
@@ -142,7 +144,7 @@ describe("read tool discovery", () => {
       query: "string (1-1000 chars)",
     });
     expect(JSON.parse(runWorkflow.content[0].text).inputSchema).toMatchObject({
-      name: "enum: onboard|deep-review",
+      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2; custom: custom:<name>)",
       params: "object (optional workflow parameters)",
       agentId: "string (required)",
       sessionId: "string (required)",
@@ -273,6 +275,56 @@ Inspect auth and trust surfaces.
     ]);
     expect(payload.availableReviewRoles.security).toEqual(["Security Reviewer"]);
     expect(payload.repoAgentWarnings).toEqual([]);
+  });
+
+  it("includes custom repo-local workflows in capabilities and run_workflow schema discovery", async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), "agora-read-tools-"));
+    tempDirs.push(repoPath);
+    const workflowDir = join(repoPath, ".agora", "workflows");
+    await mkdir(workflowDir, { recursive: true });
+    await writeFile(
+      join(workflowDir, "review.yaml"),
+      `name: repo-review
+description: Repo local workflow
+steps:
+  - tool: get_change_pack
+    input: {}
+    output: changes
+`,
+      "utf-8",
+    );
+
+    const scopedServer = new FakeServer();
+    registerReadTools(scopedServer as unknown as McpServer, async () => ({
+      repoId: 1,
+      repoPath,
+      config: {
+        coordinationTopology: "hub-spoke",
+        debugLogging: false,
+      },
+      searchRouter: {
+        getSemanticReranker: () => null,
+      },
+    } as any));
+
+    const capabilities = await scopedServer.handlers.get("capabilities")!({});
+    const schema = await scopedServer.handlers.get("schema")!({ toolName: "run_workflow" });
+    const capabilitiesPayload = JSON.parse(capabilities.content[0].text);
+    const schemaPayload = JSON.parse(schema.content[0].text);
+
+    expect(capabilitiesPayload.customWorkflows).toEqual([
+      expect.objectContaining({
+        name: "custom:repo-review",
+        filePath: ".agora/workflows/review.yaml",
+        source: "custom",
+      }),
+    ]);
+    expect(capabilitiesPayload.workflows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "custom:repo-review" }),
+    ]));
+    expect(schemaPayload.inputSchema).toMatchObject({
+      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2; custom: custom:repo-review)",
+    });
   });
 
   it("runs suggest_actions against repo-local dispatch rules", async () => {
