@@ -1,4 +1,4 @@
-import { eq, and, like, desc, or, sql, notInArray, isNull } from "drizzle-orm";
+import { eq, and, like, desc, or, sql, notInArray, isNull, inArray } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { posix as pathPosix } from "node:path";
 import { parseStringArrayJson } from "../core/input-hardening.js";
@@ -995,6 +995,47 @@ export function getReadyTicketsByAffectedPaths(
     return paths.some((ticketPath) =>
       changedPaths.some((changed) => pathOverlaps(changed, ticketPath)),
     );
+  });
+}
+
+/**
+ * Compute path overlap score: fraction of ticket's affectedPaths covered by changed files.
+ * Returns 0-1 where 1 means all affected paths were touched.
+ */
+export function computePathOverlapScore(changedPaths: string[], ticketPaths: string[]): number {
+  if (ticketPaths.length === 0) return 0;
+  const matched = ticketPaths.filter((tp) =>
+    changedPaths.some((cp) => pathOverlaps(cp, tp)),
+  );
+  return matched.length / ticketPaths.length;
+}
+
+/**
+ * Find tickets in the given statuses whose affectedPaths overlap with changed files.
+ * Returns tickets with their overlap score for confidence-based filtering.
+ */
+export function getTicketsByStatusesAndAffectedPaths(
+  db: DB,
+  repoId: number,
+  changedPaths: string[],
+  statuses: string[],
+) {
+  if (statuses.length === 0) return [];
+  const candidates = db
+    .select()
+    .from(tables.tickets)
+    .where(and(
+      eq(tables.tickets.repoId, repoId),
+      inArray(tables.tickets.status, statuses),
+    ))
+    .all();
+
+  return candidates.flatMap((ticket) => {
+    const paths = parseStringArrayJson(ticket.affectedPathsJson, { maxItems: 100, maxItemLength: 500 });
+    if (paths.length === 0) return [];
+    const overlapScore = computePathOverlapScore(changedPaths, paths);
+    if (overlapScore === 0) return [];
+    return [{ ...ticket, overlapScore }];
   });
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { InsightStream } from "../../../src/core/insight-stream.js";
 import { extractTicketIdsFromText, reconcileCommitTickets } from "../../../src/cli/tickets.js";
-import { pathOverlaps } from "../../../src/db/queries.js";
+import { pathOverlaps, computePathOverlapScore } from "../../../src/db/queries.js";
 
 function createInsight(): InsightStream {
   return {
@@ -86,6 +86,7 @@ describe("ticket CLI commit reconciliation", () => {
         status: "resolved",
         source: "commit_message",
       }],
+      advanced: [],
       skipped: [
         { ticketId: "TKT-review222", reason: "not_ready_for_commit", status: "in_review" },
         { ticketId: "TKT-missing333", reason: "not_found" },
@@ -233,7 +234,7 @@ describe("ticket CLI commit reconciliation", () => {
     expect(callCount).toBe(2);
   });
 
-  it("does not cascade to dependents not in ready_for_commit", async () => {
+  it("cascades advance to in_progress dependents when parent is resolved", async () => {
     const insight = createInsight();
     const getTicketByTicketId = vi.fn((_db: unknown, ticketId: string) => {
       if (ticketId === "TKT-parent02") return { id: 30, ticketId: "TKT-parent02", status: "ready_for_commit" };
@@ -242,6 +243,10 @@ describe("ticket CLI commit reconciliation", () => {
     const transitionTicket = vi.fn().mockReturnValue({
       ok: true,
       data: { ticketId: "TKT-parent02", previousStatus: "ready_for_commit", status: "resolved" },
+    });
+    const advanceTicketDep = vi.fn().mockReturnValue({
+      ok: true,
+      data: { ticketId: "TKT-child02", previousStatus: "in_progress", status: "in_review" },
     });
 
     const payload = await reconcileCommitTickets(ctx, config, insight, {
@@ -252,6 +257,7 @@ describe("ticket CLI commit reconciliation", () => {
       getShortSha: vi.fn().mockResolvedValue("eee555"),
       getChangedFiles: vi.fn().mockResolvedValue([]),
       getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
+      getTicketsByStatusesAndAffectedPaths: vi.fn().mockReturnValue([]),
       getTicketByTicketId: getTicketByTicketId as never,
       getTicketById: vi.fn().mockImplementation((_db: unknown, id: number) => {
         if (id === 31) return { ticketId: "TKT-child02", status: "in_progress" };
@@ -261,11 +267,15 @@ describe("ticket CLI commit reconciliation", () => {
         outgoing: [], incoming: [{ relationType: "blocked_by", fromTicketId: 31 }],
       }),
       transitionTicket,
+      advanceTicket: advanceTicketDep,
     });
 
-    expect(payload.cascadedTicketIds).toEqual([]);
+    expect(payload.cascadedTicketIds).toEqual(["TKT-child02"]);
     expect(payload.resolved).toHaveLength(1);
+    expect(payload.advanced).toHaveLength(1);
+    expect(payload.advanced[0]!.source).toBe("dependency_cascade");
     expect(transitionTicket).toHaveBeenCalledTimes(1);
+    expect(advanceTicketDep).toHaveBeenCalledTimes(1);
   });
 
   it("returns empty inferredTicketIds when no paths match", async () => {
@@ -322,6 +332,102 @@ describe("ticket CLI commit reconciliation", () => {
     expect(payload.resolved[0]!.source).toBe("commit_message");
     expect(payload.resolved[1]!.source).toBe("path_match");
   });
+
+  it("advances approved ticket to in_progress when path overlap exceeds threshold", async () => {
+    const insight = createInsight();
+    const transitionTicket = vi.fn();
+    const advanceTicketDep = vi.fn().mockReturnValue({
+      ok: true,
+      data: { ticketId: "TKT-approved01", previousStatus: "approved", status: "in_progress" },
+    });
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "hhh888",
+      commitMessage: "feat: implement feature",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("hhh888"),
+      getChangedFiles: vi.fn().mockResolvedValue([
+        { status: "M", path: "src/api/handler.ts" },
+        { status: "M", path: "src/api/types.ts" },
+      ]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
+      getTicketsByStatusesAndAffectedPaths: vi.fn().mockReturnValue([
+        { ticketId: "TKT-approved01", status: "approved", overlapScore: 0.75 },
+      ]),
+      getTicketByTicketId: vi.fn().mockReturnValue(null) as never,
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
+      transitionTicket,
+      advanceTicket: advanceTicketDep,
+    });
+
+    expect(payload.advanced).toHaveLength(1);
+    expect(payload.advanced[0]!.ticketId).toBe("TKT-approved01");
+    expect(payload.advanced[0]!.source).toBe("path_match");
+    expect(advanceTicketDep).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips ticket with overlap below confidence threshold", async () => {
+    const insight = createInsight();
+    const transitionTicket = vi.fn();
+    const advanceTicketDep = vi.fn();
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "iii999",
+      commitMessage: "chore: minor fix",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("iii999"),
+      getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "src/utils.ts" }]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
+      getTicketsByStatusesAndAffectedPaths: vi.fn().mockReturnValue([
+        { ticketId: "TKT-lowoverlap", status: "approved", overlapScore: 0.25 },
+      ]),
+      getTicketByTicketId: vi.fn().mockReturnValue(null) as never,
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
+      transitionTicket,
+      advanceTicket: advanceTicketDep,
+    });
+
+    expect(payload.advanced).toEqual([]);
+    expect(payload.skipped).toContainEqual({
+      ticketId: "TKT-lowoverlap",
+      reason: "below_confidence",
+      status: "approved",
+      overlapScore: 0.25,
+    });
+    expect(advanceTicketDep).not.toHaveBeenCalled();
+  });
+
+  it("advances in_progress ticket to in_review via path match", async () => {
+    const insight = createInsight();
+    const transitionTicket = vi.fn();
+    const advanceTicketDep = vi.fn().mockReturnValue({
+      ok: true,
+      data: { ticketId: "TKT-inprog01", previousStatus: "in_progress", status: "in_review" },
+    });
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "jjj000",
+      commitMessage: "fix: resolve bug",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("jjj000"),
+      getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "src/core/engine.ts" }]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
+      getTicketsByStatusesAndAffectedPaths: vi.fn().mockReturnValue([
+        { ticketId: "TKT-inprog01", status: "in_progress", overlapScore: 1.0 },
+      ]),
+      getTicketByTicketId: vi.fn().mockReturnValue(null) as never,
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
+      transitionTicket,
+      advanceTicket: advanceTicketDep,
+    });
+
+    expect(payload.advanced).toHaveLength(1);
+    expect(payload.advanced[0]!.status).toBe("in_review");
+    expect(payload.advanced[0]!.source).toBe("path_match");
+  });
 });
 
 describe("pathOverlaps", () => {
@@ -353,5 +459,32 @@ describe("pathOverlaps", () => {
 
   it("normalizes backslashes to forward slashes", () => {
     expect(pathOverlaps("src\\foo.ts", "src/foo.ts")).toBe(true);
+  });
+});
+
+describe("computePathOverlapScore", () => {
+  it("returns 1.0 when all ticket paths are covered", () => {
+    expect(computePathOverlapScore(
+      ["src/api/handler.ts", "src/api/types.ts"],
+      ["src/api/"],
+    )).toBe(1.0);
+  });
+
+  it("returns 0 when no paths match", () => {
+    expect(computePathOverlapScore(
+      ["src/cli/main.ts"],
+      ["src/api/", "src/db/"],
+    )).toBe(0);
+  });
+
+  it("returns fractional score for partial overlap", () => {
+    expect(computePathOverlapScore(
+      ["src/api/handler.ts"],
+      ["src/api/", "src/db/"],
+    )).toBe(0.5);
+  });
+
+  it("returns 0 for empty ticket paths", () => {
+    expect(computePathOverlapScore(["src/foo.ts"], [])).toBe(0);
   });
 });

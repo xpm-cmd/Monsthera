@@ -30,8 +30,9 @@ interface TicketTransitionPayload {
 
 interface TicketCommitSkippedPayload {
   ticketId: string;
-  reason: "not_found" | "not_ready_for_commit";
+  reason: "not_found" | "not_ready_for_commit" | "below_confidence" | "not_actionable";
   status?: string;
+  overlapScore?: number;
 }
 
 export interface TicketCommitReconcilePayload {
@@ -41,6 +42,7 @@ export interface TicketCommitReconcilePayload {
   inferredTicketIds: string[];
   cascadedTicketIds: string[];
   resolved: TicketTransitionPayload[];
+  advanced: TicketTransitionPayload[];
   skipped: TicketCommitSkippedPayload[];
 }
 
@@ -60,7 +62,14 @@ interface TicketCliDeps {
   getTicketByTicketId?: typeof queries.getTicketByTicketId;
   getTicketById?: typeof queries.getTicketById;
   getReadyTicketsByAffectedPaths?: typeof queries.getReadyTicketsByAffectedPaths;
+  getTicketsByStatusesAndAffectedPaths?: typeof queries.getTicketsByStatusesAndAffectedPaths;
   getTicketDependencies?: typeof queries.getTicketDependencies;
+  advanceTicket?: (
+    ctx: TicketCliContext,
+    config: TicketCliConfig,
+    insight: InsightStream,
+    input: { ticketId: string; targetStatus: string; comment: string; actorLabel: string },
+  ) => ReturnType<typeof updateTicketStatusRecord>;
   transitionTicket?: (
     ctx: TicketCliContext,
     config: TicketCliConfig,
@@ -70,6 +79,11 @@ interface TicketCliDeps {
 }
 
 const TICKET_ID_PATTERN = /\bTKT-[A-Za-z0-9]+\b/gi;
+const PATH_ADVANCE_MIN_OVERLAP = 0.5;
+const ADVANCE_STATUS_MAP: Record<string, string> = {
+  approved: "in_progress",
+  in_progress: "in_review",
+};
 
 export async function cmdTicket(
   config: TicketCliConfig,
@@ -270,18 +284,26 @@ export function formatTicketCommitReconcile(payload: TicketCommitReconcilePayloa
   if (payload.cascadedTicketIds.length > 0) {
     lines.push(`Cascaded (dependency): ${payload.cascadedTicketIds.join(", ")}`);
   }
-  lines.push(`Resolved: ${payload.resolved.length}`, `Skipped: ${payload.skipped.length}`);
+  lines.push(`Resolved: ${payload.resolved.length}`, `Advanced: ${payload.advanced.length}`, `Skipped: ${payload.skipped.length}`);
 
   if (payload.resolved.length > 0) {
     lines.push("", "Resolved:");
     lines.push(...payload.resolved.map(formatTicketTransition));
   }
 
+  if (payload.advanced.length > 0) {
+    lines.push("", "Advanced:");
+    lines.push(...payload.advanced.map(formatTicketTransition));
+  }
+
   if (payload.skipped.length > 0) {
     lines.push("", "Skipped:");
-    lines.push(...payload.skipped.map((entry) => (
-      `${entry.ticketId}: ${entry.reason}${entry.status ? ` (${entry.status})` : ""}`
-    )));
+    lines.push(...payload.skipped.map((entry) => {
+      const parts: string[] = [entry.reason];
+      if (entry.status) parts.push(`(${entry.status})`);
+      if (entry.overlapScore !== undefined) parts.push(`overlap=${Math.round(entry.overlapScore * 100)}%`);
+      return `${entry.ticketId}: ${parts.join(" ")}`;
+    }));
   }
 
   return lines.join("\n");
@@ -336,11 +358,13 @@ export async function reconcileCommitTickets(
     inferredTicketIds: [],
     cascadedTicketIds: [],
     resolved: [],
+    advanced: [],
     skipped: [],
   };
 
   const getTicketByTicketId = deps.getTicketByTicketId ?? queries.getTicketByTicketId;
   const transitionTicket = deps.transitionTicket ?? defaultTransitionTicket;
+  const advanceTicketFn = deps.advanceTicket ?? advanceTicketStatus;
 
   // Phase A: explicit ticket IDs from commit message
   for (const ticketId of ticketIds) {
@@ -349,21 +373,45 @@ export async function reconcileCommitTickets(
 
   // Phase B: path-based inference
   const alreadyProcessed = new Set([...ticketIds.map((id) => id.toLowerCase())]);
+  let changedPaths: string[] = [];
   try {
     const changedFiles = await (deps.getChangedFiles ?? getChangedFiles)(
       `${input.commitSha}^`, input.commitSha, { cwd: ctx.repoRoot },
     );
-    const changedPaths = changedFiles.map((f) => f.path);
+    changedPaths = changedFiles.map((f) => f.path);
 
     if (changedPaths.length > 0) {
+      // Phase B.1: resolve ready_for_commit tickets (existing behavior)
       const getReady = deps.getReadyTicketsByAffectedPaths ?? queries.getReadyTicketsByAffectedPaths;
       const pathMatches = getReady(ctx.db, ctx.repoId, changedPaths);
       for (const ticket of pathMatches) {
         if (alreadyProcessed.has(ticket.ticketId.toLowerCase())) continue;
         alreadyProcessed.add(ticket.ticketId.toLowerCase());
         payload.inferredTicketIds.push(ticket.ticketId);
-        const matchCount = changedPaths.length;
-        resolveTicket(ticket.ticketId, "path_match", `Auto-resolved: commit ${commitShortSha} touched ${matchCount} affected path(s).`);
+        resolveTicket(ticket.ticketId, "path_match", `Auto-resolved: commit ${commitShortSha} touched affected path(s).`);
+      }
+
+      // Phase B.2: advance approved/in_progress tickets with sufficient path overlap
+      const getByStatuses = deps.getTicketsByStatusesAndAffectedPaths ?? queries.getTicketsByStatusesAndAffectedPaths;
+      const advanceCandidates = getByStatuses(ctx.db, ctx.repoId, changedPaths, ["approved", "in_progress"]);
+      for (const candidate of advanceCandidates) {
+        if (alreadyProcessed.has(candidate.ticketId.toLowerCase())) continue;
+        if (candidate.overlapScore < PATH_ADVANCE_MIN_OVERLAP) {
+          payload.skipped.push({
+            ticketId: candidate.ticketId,
+            reason: "below_confidence",
+            status: candidate.status,
+            overlapScore: candidate.overlapScore,
+          });
+          continue;
+        }
+        alreadyProcessed.add(candidate.ticketId.toLowerCase());
+        payload.inferredTicketIds.push(candidate.ticketId);
+        const targetStatus = ADVANCE_STATUS_MAP[candidate.status];
+        if (targetStatus) {
+          advanceTicket(candidate.ticketId, targetStatus, "path_match", candidate.overlapScore,
+            `Auto-advanced: commit ${commitShortSha} covers ${Math.round(candidate.overlapScore * 100)}% of affected paths.`);
+        }
       }
     }
   } catch {
@@ -385,12 +433,22 @@ export async function reconcileCommitTickets(
 
     for (const depId of dependentIds) {
       const depTicket = getById(ctx.db, depId);
-      if (!depTicket || depTicket.status !== "ready_for_commit") continue;
+      if (!depTicket) continue;
       if (resolvedSet.has(depTicket.ticketId.toLowerCase())) continue;
       if (alreadyProcessed.has(depTicket.ticketId.toLowerCase())) continue;
       alreadyProcessed.add(depTicket.ticketId.toLowerCase());
       payload.cascadedTicketIds.push(depTicket.ticketId);
-      resolveTicket(depTicket.ticketId, "dependency_cascade", `Auto-resolved: dependency ${resolved.ticketId} resolved in commit ${commitShortSha}.`);
+
+      if (depTicket.status === "ready_for_commit") {
+        resolveTicket(depTicket.ticketId, "dependency_cascade",
+          `Auto-resolved: dependency ${resolved.ticketId} resolved in commit ${commitShortSha}.`);
+      } else {
+        const cascadeTarget = ADVANCE_STATUS_MAP[depTicket.status];
+        if (cascadeTarget) {
+          advanceTicket(depTicket.ticketId, cascadeTarget, "dependency_cascade", undefined,
+            `Auto-advanced: dependency ${resolved.ticketId} resolved in commit ${commitShortSha}.`);
+        }
+      }
     }
   }
 
@@ -418,6 +476,28 @@ export async function reconcileCommitTickets(
     }
 
     payload.resolved.push({ ...toTicketTransitionPayload(result.data), source });
+  }
+
+  function advanceTicket(
+    ticketId: string,
+    targetStatus: string,
+    source: TicketTransitionPayload["source"],
+    overlapScore: number | undefined,
+    comment: string,
+  ): void {
+    const result = advanceTicketFn(ctx, config, insight, {
+      ticketId,
+      targetStatus,
+      comment,
+      actorLabel: input.actorLabel,
+    });
+
+    if (!result.ok) {
+      payload.skipped.push({ ticketId, reason: "not_actionable", status: targetStatus, overlapScore });
+      return;
+    }
+
+    payload.advanced.push({ ...toTicketTransitionPayload(result.data), source });
   }
 }
 
@@ -488,6 +568,29 @@ function buildKnowledgeSearchRefresher(
     }
     fts5.rebuildKnowledgeFts(sqlite);
   };
+}
+
+function advanceTicketStatus(
+  ctx: TicketCliContext,
+  config: TicketCliConfig,
+  insight: InsightStream,
+  input: { ticketId: string; targetStatus: string; comment: string; actorLabel: string },
+): ReturnType<typeof updateTicketStatusRecord> {
+  return updateTicketStatusRecord({
+    db: ctx.db,
+    repoId: ctx.repoId,
+    repoPath: ctx.repoRoot,
+    insight,
+    ticketQuorum: config.ticketQuorum,
+    system: true,
+    actorLabel: input.actorLabel,
+    refreshTicketSearch: buildTicketSearchRefresher(ctx.sqlite, ctx.db, ctx.repoId, insight),
+    refreshKnowledgeSearch: buildKnowledgeSearchRefresher(ctx.sqlite, ctx.db, insight),
+  }, {
+    ticketId: input.ticketId,
+    status: input.targetStatus as TicketStatusType,
+    comment: input.comment,
+  });
 }
 
 function printTicketHelp(): void {
