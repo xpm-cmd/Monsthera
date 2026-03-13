@@ -1,7 +1,7 @@
 import type { ToolRunnerCallResult } from "../tools/tool-runner.js";
 import { CouncilSpecializationId, type CouncilSpecializationId as CouncilSpecialization } from "../../schemas/council.js";
 import { GOVERNANCE_ANALYTICAL_SPECIALIZATIONS } from "../../schemas/governance.js";
-import { buildConsensusPayload } from "../tickets/consensus.js";
+import { buildConsensusPayload, type ReviewVerdictRecord } from "../tickets/consensus.js";
 import type {
   WorkflowItemResult,
   WorkflowResult,
@@ -322,79 +322,28 @@ async function executeQuorumCheckpoint(
   const now = runtime.now ?? Date.now;
   const sleep = runtime.sleep ?? defaultSleep;
   const startedAt = now();
-
-  // Resolve specializations to concrete reviewers if hook is provided
-  let dispatchReport: ReviewerResolution[] = [];
-  if (runtime.resolveReviewers) {
-    dispatchReport = await runtime.resolveReviewers(parsed.roles, parsed.ticketId);
-
-    // Send targeted messages to each resolved agent
-    for (const resolved of dispatchReport.filter((r) => r.status === "resolved")) {
-      await runtime.sendCoordination({
-        ticketId: parsed.ticketId,
-        roles: [resolved.specialization],
-        workflowName: runtime.workflowName ?? "workflow",
-        stepKey: step.key,
-        requestedBy: runtime.actor.agentId,
-        timeoutSeconds: Math.ceil(parsed.timeoutMs / 1000),
-        targetAgentId: resolved.agentId,
-      });
-    }
-
-    // Check if all required roles are unresolved
-    const allMissing = dispatchReport.every((r) => r.status === "no_candidate");
-    if (allMissing && dispatchReport.length > 0) {
-      const status = parsed.onFail === "continue_with_warning" ? "partial" : "failed";
-      return {
-        stepResult: {
-          key: step.key,
-          tool: step.tool,
-          description: step.description,
-          status,
-          durationMs: now() - startedAt,
-          input: resolvedInput,
-          output: { status: "blocked_on_dispatch", dispatch: dispatchReport, roles: parsed.roles },
-          errorCode: status === "failed" ? "workflow_dispatch_blocked" : undefined,
-          message: `No active reviewers found for: ${parsed.roles.join(", ")}`,
-        },
-        output: { status: "blocked_on_dispatch", dispatch: dispatchReport, roles: parsed.roles },
-      };
-    }
-  } else {
-    // Fallback: broadcast to all agents
-    await runtime.sendCoordination({
-      ticketId: parsed.ticketId,
-      roles: parsed.roles,
-      workflowName: runtime.workflowName ?? "workflow",
-      stepKey: step.key,
-      requestedBy: runtime.actor.agentId,
-      timeoutSeconds: Math.ceil(parsed.timeoutMs / 1000),
-    });
+  let verdictRows = await runtime.loadReviewVerdicts(parsed.ticketId);
+  if (verdictRows === null) {
+    return {
+      stepResult: {
+        key: step.key,
+        tool: step.tool,
+        description: step.description,
+        status: "failed",
+        durationMs: now() - startedAt,
+        input: resolvedInput,
+        errorCode: "workflow_ticket_not_found",
+        message: `Ticket not found: ${parsed.ticketId}`,
+      },
+    };
   }
 
-  while (true) {
-    const verdictRows = await runtime.loadReviewVerdicts(parsed.ticketId);
-    if (verdictRows === null) {
-      return {
-        stepResult: {
-          key: step.key,
-          tool: step.tool,
-          description: step.description,
-          status: "failed",
-          durationMs: now() - startedAt,
-          input: resolvedInput,
-          errorCode: "workflow_ticket_not_found",
-          message: `Ticket not found: ${parsed.ticketId}`,
-        },
-      };
-    }
-
-    const consensus = buildConsensusPayload(parsed.ticketId, verdictRows, {
+  const summarizeCheckpoint = (rows: ReviewVerdictRecord[], elapsedMs: number, dispatch: ReviewerResolution[]) => {
+    const consensus = buildConsensusPayload(parsed.ticketId, rows, {
       councilSpecializations: parsed.roles,
       requiredPasses: parsed.requiredPasses,
       vetoSpecializations: parsed.roles.filter((role) => role === "architect" || role === "security"),
     });
-    const elapsedMs = now() - startedAt;
     const blockedOnQuorum = !consensus.advisoryReady
       && !consensus.blockedByVeto
       && (consensus.counts.pass + consensus.counts.missing) < consensus.requiredPasses;
@@ -416,10 +365,93 @@ async function executeQuorumCheckpoint(
       onFail: parsed.onFail,
       status: checkpointStatus,
       elapsedMs,
-      ...(dispatchReport.length > 0 ? { dispatch: dispatchReport } : {}),
+      ...(dispatch.length > 0 ? { dispatch } : {}),
     };
+    return { consensus, blockedOnQuorum, timedOut, output };
+  };
 
-    if (consensus.advisoryReady) {
+  const initialCheckpoint = summarizeCheckpoint(verdictRows, now() - startedAt, []);
+  if (initialCheckpoint.consensus.advisoryReady) {
+    return {
+      stepResult: {
+        key: step.key,
+        tool: step.tool,
+        description: step.description,
+        status: "completed",
+        durationMs: now() - startedAt,
+        input: resolvedInput,
+        output: initialCheckpoint.output,
+      },
+      output: initialCheckpoint.output,
+    };
+  }
+
+  // Resolve specializations to concrete reviewers if hook is provided
+  let dispatchReport: ReviewerResolution[] = [];
+  const rolesNeedingDispatch = initialCheckpoint.consensus.missingSpecializations.length > 0
+    ? initialCheckpoint.consensus.missingSpecializations
+    : parsed.roles;
+  if (runtime.resolveReviewers) {
+    if (rolesNeedingDispatch.length > 0) {
+      dispatchReport = await runtime.resolveReviewers(rolesNeedingDispatch, parsed.ticketId);
+
+      // Send targeted messages to each resolved agent for unresolved roles only.
+      for (const resolved of dispatchReport.filter((r) => r.status === "resolved")) {
+        await runtime.sendCoordination({
+          ticketId: parsed.ticketId,
+          roles: [resolved.specialization],
+          workflowName: runtime.workflowName ?? "workflow",
+          stepKey: step.key,
+          requestedBy: runtime.actor.agentId,
+          timeoutSeconds: Math.ceil(parsed.timeoutMs / 1000),
+          targetAgentId: resolved.agentId,
+        });
+      }
+
+      const missingRoles = dispatchReport
+        .filter((resolution) => resolution.status === "no_candidate")
+        .map((resolution) => resolution.specialization);
+      if (missingRoles.length > 0) {
+        const status = parsed.onFail === "continue_with_warning" ? "partial" : "failed";
+        const blockedOutput = {
+          status: "blocked_on_dispatch",
+          dispatch: dispatchReport,
+          roles: parsed.roles,
+          requestedRoles: rolesNeedingDispatch,
+          missingRoles,
+        };
+        return {
+          stepResult: {
+            key: step.key,
+            tool: step.tool,
+            description: step.description,
+            status,
+            durationMs: now() - startedAt,
+            input: resolvedInput,
+            output: blockedOutput,
+            errorCode: status === "failed" ? "workflow_dispatch_blocked" : undefined,
+            message: `No active reviewers found for: ${missingRoles.join(", ")}`,
+          },
+          output: blockedOutput,
+        };
+      }
+    }
+  } else if (rolesNeedingDispatch.length > 0) {
+    // Fallback: broadcast to all agents
+    await runtime.sendCoordination({
+      ticketId: parsed.ticketId,
+      roles: rolesNeedingDispatch,
+      workflowName: runtime.workflowName ?? "workflow",
+      stepKey: step.key,
+      requestedBy: runtime.actor.agentId,
+      timeoutSeconds: Math.ceil(parsed.timeoutMs / 1000),
+    });
+  }
+
+  while (true) {
+    const elapsedMs = now() - startedAt;
+    const checkpoint = summarizeCheckpoint(verdictRows, elapsedMs, dispatchReport);
+    if (checkpoint.consensus.advisoryReady) {
       return {
         stepResult: {
           key: step.key,
@@ -428,17 +460,17 @@ async function executeQuorumCheckpoint(
           status: "completed",
           durationMs: elapsedMs,
           input: resolvedInput,
-          output,
+          output: checkpoint.output,
         },
-        output,
+        output: checkpoint.output,
       };
     }
 
-    if (consensus.blockedByVeto || blockedOnQuorum || timedOut) {
+    if (checkpoint.consensus.blockedByVeto || checkpoint.blockedOnQuorum || checkpoint.timedOut) {
       const status = parsed.onFail === "continue_with_warning" ? "partial" : "failed";
-      const message = consensus.blockedByVeto
+      const message = checkpoint.consensus.blockedByVeto
         ? `Workflow step ${step.key} blocked by veto`
-        : timedOut
+        : checkpoint.timedOut
           ? `Workflow step ${step.key} timed out waiting for quorum`
           : `Workflow step ${step.key} cannot reach quorum with current verdicts`;
       return {
@@ -449,15 +481,30 @@ async function executeQuorumCheckpoint(
           status,
           durationMs: elapsedMs,
           input: resolvedInput,
-          output,
+          output: checkpoint.output,
           errorCode: status === "failed" ? "workflow_quorum_blocked" : undefined,
           message,
         },
-        output,
+        output: checkpoint.output,
       };
     }
 
     await sleep(parsed.pollIntervalMs);
+    verdictRows = await runtime.loadReviewVerdicts(parsed.ticketId);
+    if (verdictRows === null) {
+      return {
+        stepResult: {
+          key: step.key,
+          tool: step.tool,
+          description: step.description,
+          status: "failed",
+          durationMs: now() - startedAt,
+          input: resolvedInput,
+          errorCode: "workflow_ticket_not_found",
+          message: `Ticket not found: ${parsed.ticketId}`,
+        },
+      };
+    }
   }
 }
 

@@ -198,8 +198,9 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
       agentId: AgentIdSchema.describe("Your agent ID"),
       sessionId: SessionIdSchema.describe("Your session ID"),
       paths: ClaimPathsSchema.describe("File paths to claim"),
+      override: z.boolean().default(false).describe("Override conflicting claims (facilitator/admin only)"),
     },
-    async ({ agentId, sessionId, paths }) => {
+    async ({ agentId, sessionId, paths, override }) => {
       const c = await getContext();
       const result = resolveAgent(c, agentId, sessionId);
       if (!result.ok) {
@@ -235,14 +236,29 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
           maxItemLength: 500,
         });
         for (const p of paths) {
-          if (claimed.includes(p)) {
+          const conflictPath = claimed.find((existing) => pathsOverlap(existing, p));
+          if (conflictPath) {
             conflicts.push({ path: p, claimedBy: s.agentId });
           }
         }
       }
 
+      if (override && !["facilitator", "admin"].includes(resolved.role)) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              denied: true,
+              reason: "Only facilitators or admins may override claim conflicts",
+              conflicts,
+            }, null, 2),
+          }],
+          isError: true,
+        };
+      }
+
       // Strict mode: reject if any conflict exists
-      if (c.config.claimEnforceMode === "strict" && conflicts.length > 0) {
+      if (c.config.claimEnforceMode === "strict" && conflicts.length > 0 && !override) {
         return {
           content: [{
             type: "text" as const,
@@ -265,6 +281,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
           text: JSON.stringify({
             claimed: paths,
             conflicts,
+            overridden: override && conflicts.length > 0,
             warning: conflicts.length > 0 ? "Some files are already claimed by other agents" : null,
           }, null, 2),
         }],
@@ -312,4 +329,14 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
       };
     },
   );
+}
+
+function pathsOverlap(left: string, right: string): boolean {
+  const a = normalizeClaimPath(left);
+  const b = normalizeClaimPath(right);
+  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
+function normalizeClaimPath(path: string): string {
+  return path.trim().replace(/^\.\/+/, "").replace(/\/+$/, "");
 }

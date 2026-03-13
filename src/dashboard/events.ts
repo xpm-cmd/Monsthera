@@ -20,7 +20,8 @@ export interface DashboardEvent {
     | "ticket_linked"
     | "ticket_external_sync"
     | "ticket_auto_transitioned"
-    | "ticket_repair_spawned";
+    | "ticket_repair_spawned"
+    | "ticket_repair_resolved";
   data: Record<string, unknown>;
 }
 

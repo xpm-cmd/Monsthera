@@ -10,11 +10,17 @@ import { isGitRepo, getRepoRoot, getMainRepoRoot } from "../git/operations.js";
 import { CoordinationBus } from "../coordination/bus.js";
 import { TicketLifecycleReactor } from "../tickets/lifecycle.js";
 
+export interface ContextLoaderOptions {
+  startLifecycleSweep?: boolean;
+}
+
 export function createAgoraContextLoader(
   config: AgoraConfig,
   insight: InsightStream,
+  options: ContextLoaderOptions = {},
 ): () => Promise<AgoraContext> {
   let ctx: AgoraContext | null = null;
+  let lifecycleSweepTimer: ReturnType<typeof setInterval> | null = null;
 
   return async function getContext(): Promise<AgoraContext> {
     if (ctx) return ctx;
@@ -66,14 +72,36 @@ export function createAgoraContextLoader(
     let lifecycle: TicketLifecycleReactor | undefined;
     if (config.lifecycle?.enabled) {
       lifecycle = new TicketLifecycleReactor({ config, db, sqlite, repoId, repoPath: repoRoot, insight, searchRouter, bus });
-      setInterval(() => {
-        try { lifecycle!.sweep(); }
-        catch (e) { insight.warn(`Lifecycle sweep failed: ${e}`); }
-      }, config.lifecycle.sweepIntervalMs);
-      insight.info(`Lifecycle automation enabled (sweep interval: ${config.lifecycle.sweepIntervalMs}ms)`);
+      if (options.startLifecycleSweep !== false) {
+        lifecycleSweepTimer = setInterval(() => {
+          try { lifecycle!.sweep(); }
+          catch (e) { insight.warn(`Lifecycle sweep failed: ${e}`); }
+        }, config.lifecycle.sweepIntervalMs);
+        lifecycleSweepTimer.unref?.();
+        insight.info(`Lifecycle automation enabled (sweep interval: ${config.lifecycle.sweepIntervalMs}ms)`);
+      } else {
+        insight.info("Lifecycle automation enabled without background sweep for one-shot runtime");
+      }
     }
 
-    ctx = { config, db, sqlite, repoId, repoPath: repoRoot, searchRouter, insight, bus, globalDb, globalSqlite, lifecycle };
+    ctx = {
+      config,
+      db,
+      sqlite,
+      repoId,
+      repoPath: repoRoot,
+      searchRouter,
+      insight,
+      bus,
+      globalDb,
+      globalSqlite,
+      lifecycle,
+      dispose: () => {
+        if (!lifecycleSweepTimer) return;
+        clearInterval(lifecycleSweepTimer);
+        lifecycleSweepTimer = null;
+      },
+    };
     insight.info(`Initialized for ${repoRoot} (search: ${searchRouter.getActiveBackendName()})`);
     return ctx;
   };

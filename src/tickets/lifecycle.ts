@@ -5,12 +5,14 @@ import * as tables from "../db/schema.js";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
 import type { AgoraConfig } from "../core/config.js";
+import { parseStringArrayJson } from "../core/input-hardening.js";
 import type { InsightStream } from "../core/insight-stream.js";
 import type { SearchRouter } from "../search/router.js";
 import type { CoordinationBus } from "../coordination/bus.js";
 import type { TicketStatus as TicketStatusType } from "../../schemas/ticket.js";
 import { recordDashboardEvent } from "../dashboard/events.js";
-import { updateTicketStatusRecord } from "./service.js";
+import { spawnRepairTicket } from "./repair-spawner.js";
+import { commentTicketRecord, updateTicketStatusRecord } from "./service.js";
 import {
   shouldAutoTriage,
   shouldAutoClose,
@@ -19,6 +21,15 @@ import {
 } from "./lifecycle-rules.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
+const TERMINAL_TICKET_STATUSES = new Set(["resolved", "closed", "wont_fix"]);
+const REPAIR_TAG_PREFIX = "repair:";
+const PARENT_TAG_PREFIX = "parent:";
+
+function isLifecycleActorLabel(actorLabel?: string | null): boolean {
+  if (!actorLabel) return false;
+  return actorLabel.startsWith("lifecycle-")
+    || actorLabel.startsWith("system:lifecycle-");
+}
 
 export interface LifecycleHook {
   onTicketCreated(event: { ticketId: string; severity: string; priority: number }): void;
@@ -59,11 +70,12 @@ export class TicketLifecycleReactor implements LifecycleHook {
 
   onTicketStatusChanged(event: { ticketId: string; previousStatus: string; status: string; actorLabel?: string }): void {
     if (!this.lifecycle?.enabled) return;
-    if (this.isLifecycleActor(event)) return;
 
     // When a ticket reaches a terminal state, check if any blocked tickets can be unblocked
-    const terminalStatuses = new Set(["resolved", "closed", "wont_fix"]);
-    if (!terminalStatuses.has(event.status)) return;
+    if (!TERMINAL_TICKET_STATUSES.has(event.status)) return;
+
+    this.handleResolvedRepairTicket(event.ticketId, event.status);
+    if (this.isLifecycleActor(event)) return;
 
     this.checkCascadeUnblock(event.ticketId);
   }
@@ -133,7 +145,14 @@ export class TicketLifecycleReactor implements LifecycleHook {
     }
   }
 
-  private checkUnblockTicket(ticket: { id: number; ticketId: string; status: string }): void {
+  private checkUnblockTicket(ticket: {
+    id: number;
+    ticketId: string;
+    title: string;
+    status: string;
+    severity: string;
+    affectedPathsJson?: string | null;
+  }): void {
     const deps = queries.getTicketDependencies(this.ctx.db, ticket.id);
     // "blockedBy" = outgoing with relationType "blocked_by", or incoming "blocks"
     const blockerIds = [
@@ -148,7 +167,7 @@ export class TicketLifecycleReactor implements LifecycleHook {
     const blockedEntry = history
       .filter((h) => h.toStatus === "blocked")
       .pop(); // most recent
-    const wasLifecycleBlocked = blockedEntry?.agentId?.includes("lifecycle-") === true;
+    const wasLifecycleBlocked = isLifecycleActorLabel(blockedEntry?.agentId);
 
     const blockerStatuses = blockerIds.map((id) => {
       const t = this.ctx.db
@@ -158,6 +177,8 @@ export class TicketLifecycleReactor implements LifecycleHook {
         .get();
       return t?.status ?? "unknown";
     });
+    const allBlockersTerminal = blockerStatuses.length > 0
+      && blockerStatuses.every((status) => TERMINAL_TICKET_STATUSES.has(status));
 
     const result = shouldAutoUnblock(
       { status: ticket.status },
@@ -168,6 +189,11 @@ export class TicketLifecycleReactor implements LifecycleHook {
 
     if (result.shouldFire) {
       this.applyTransition(ticket.ticketId, result.targetStatus, "lifecycle-auto-unblock", result.reason);
+      return;
+    }
+
+    if (allBlockersTerminal && !wasLifecycleBlocked) {
+      this.spawnLifecycleRepairTicket(ticket, "Auto-unblock suppressed because the latest blocked transition was not lifecycle-owned.");
     }
   }
 
@@ -205,12 +231,111 @@ export class TicketLifecycleReactor implements LifecycleHook {
         type: "ticket_auto_transitioned",
         data: { ticketId, status: targetStatus, rule: actorLabel, reason: comment },
       });
+      return;
     }
+
+    const ticket = queries.getTicketByTicketId(this.ctx.db, ticketId, this.ctx.repoId);
+    if (!ticket) return;
+    this.spawnLifecycleRepairTicket(
+      ticket,
+      `Lifecycle transition ${ticket.status} → ${targetStatus} failed (${actorLabel}): ${result.message}`,
+    );
   }
 
   private isLifecycleActor(event: { actorLabel?: string }): boolean {
-    if (!event.actorLabel) return false;
-    return event.actorLabel.startsWith("lifecycle-")
-      || event.actorLabel.startsWith("system:lifecycle-");
+    return isLifecycleActorLabel(event.actorLabel);
+  }
+
+  private handleResolvedRepairTicket(ticketId: string, status: string): void {
+    const ticket = queries.getTicketByTicketId(this.ctx.db, ticketId, this.ctx.repoId);
+    if (!ticket) return;
+
+    const tags = parseStringArrayJson(ticket.tagsJson, { maxItems: 50, maxItemLength: 200 });
+    const repairTag = tags.find((tag) => tag.startsWith(REPAIR_TAG_PREFIX));
+    if (!repairTag) return;
+
+    const parentTicketId = this.getRepairParentTicketId(ticket.id, tags);
+    if (!parentTicketId) return;
+
+    const nextStep = repairTag === "repair:council_veto"
+      ? "Resume in_review validation and reconsider the blocked veto path."
+      : "Re-run the suppressed lifecycle path and validate that automation can continue.";
+    commentTicketRecord(
+      { ...this.baseSystemContext("repair-follow-up"), system: true },
+      {
+        ticketId: parentTicketId,
+        content: `[Auto-Repair] Follow-up ${ticket.ticketId} reached ${status}. ${nextStep}`,
+        agentId: "system",
+        sessionId: "system",
+      },
+    );
+    recordDashboardEvent(this.ctx.db, this.ctx.repoId, {
+      type: "ticket_repair_resolved",
+      data: { parentTicketId, repairTicketId: ticket.ticketId, status, source: repairTag.slice(REPAIR_TAG_PREFIX.length) },
+    });
+  }
+
+  private getRepairParentTicketId(ticketInternalId: number, tags: string[]): string | null {
+    const parentTag = tags.find((tag) => tag.startsWith(PARENT_TAG_PREFIX));
+    if (parentTag) return parentTag.slice(PARENT_TAG_PREFIX.length);
+
+    const deps = queries.getTicketDependencies(this.ctx.db, ticketInternalId);
+    const parentDep = deps.incoming.find((dep) => dep.relationType === "relates_to");
+    if (!parentDep) return null;
+    return queries.getTicketById(this.ctx.db, parentDep.fromTicketId)?.ticketId ?? null;
+  }
+
+  private spawnLifecycleRepairTicket(
+    ticket: {
+      ticketId: string;
+      title: string;
+      severity: string;
+      affectedPathsJson?: string | null;
+    },
+    reason: string,
+  ): void {
+    if (!this.ctx.config.repairSpawner?.enabled) return;
+
+    void spawnRepairTicket(
+      { ...this.baseSystemContext("repair:lifecycle-suppression"), system: true },
+      {
+        type: "lifecycle_suppression",
+        parentTicketId: ticket.ticketId,
+        parentTicketTitle: ticket.title,
+        reason,
+        affectedPaths: parseStringArrayJson(ticket.affectedPathsJson, {
+          maxItems: 100,
+          maxItemLength: 500,
+        }),
+        severity: ticket.severity,
+      },
+      this.ctx.config.repairSpawner,
+    ).catch((error) => {
+      this.ctx.insight.warn(`Lifecycle repair spawning failed for ${ticket.ticketId}: ${error}`);
+    });
+  }
+
+  private baseSystemContext(actorLabel: string) {
+    return {
+      db: this.ctx.db,
+      repoId: this.ctx.repoId,
+      repoPath: this.ctx.repoPath,
+      insight: this.ctx.insight,
+      ticketQuorum: this.ctx.config.ticketQuorum,
+      governance: this.ctx.config.governance,
+      bus: this.ctx.bus,
+      refreshTicketSearch: () => this.ctx.searchRouter?.rebuildTicketFts?.(this.ctx.repoId),
+      refreshKnowledgeSearch: (knowledgeIds?: number[]) => {
+        if (knowledgeIds && knowledgeIds.length > 0) {
+          for (const knowledgeId of knowledgeIds) {
+            this.ctx.searchRouter?.upsertKnowledgeFts?.(this.ctx.sqlite, knowledgeId);
+          }
+          return;
+        }
+        this.ctx.searchRouter?.rebuildKnowledgeFts?.(this.ctx.sqlite);
+      },
+      lifecycle: this,
+      actorLabel,
+    };
   }
 }

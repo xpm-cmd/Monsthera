@@ -716,6 +716,74 @@ describe("Dashboard API", () => {
     });
   });
 
+  it("surfaces structured human-action reasons across ticket states", () => {
+    const now = new Date().toISOString();
+    deps.ticketQuorum = {
+      technicalAnalysisToApproved: {
+        enabled: true,
+        requiredPasses: 2,
+        vetoSpecializations: ["architect", "security"],
+      },
+      inReviewToReadyForCommit: {
+        enabled: true,
+        requiredPasses: 2,
+        vetoSpecializations: ["architect", "security"],
+      },
+    };
+
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-security", "Security Review", "codex", "reviewer", "A", now);
+    const insertTicket = sqlite.prepare(`
+      INSERT INTO tickets (
+        id, repo_id, ticket_id, title, description, status, severity, priority,
+        creator_agent_id, creator_session_id, assignee_agent_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    insertTicket.run(41, 1, "TKT-ready-human", "Ready human", "Desc", "ready_for_commit", "high", 8, "agent-1", "s-1", null, "abc1234", now, now);
+    insertTicket.run(42, 1, "TKT-active-human", "Active human", "Desc", "in_progress", "medium", 5, "agent-1", "s-1", null, "abc1234", now, now);
+    insertTicket.run(43, 1, "TKT-blocked-human", "Blocked human", "Desc", "blocked", "high", 7, "agent-1", "s-1", "agent-1", "abc1234", now, now);
+    insertTicket.run(44, 1, "TKT-waiting-human", "Waiting human", "Desc", "technical_analysis", "medium", 5, "agent-1", "s-1", "agent-1", "abc1234", now, now);
+    insertTicket.run(45, 1, "TKT-veto-human", "Veto human", "Desc", "in_review", "critical", 9, "agent-1", "s-1", "agent-1", "abc1234", now, now);
+
+    sqlite.prepare(`
+      INSERT INTO ticket_history (ticket_id, from_status, to_status, agent_id, session_id, comment, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(43, "in_progress", "blocked", "system:lifecycle-auto-unblock", "system", "Lifecycle guard blocked progress", now);
+
+    sqlite.prepare(`
+      INSERT INTO review_verdicts (ticket_id, agent_id, session_id, specialization, verdict, reasoning, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(45, "agent-security", "session-security", "security", "fail", "Manual review required", now);
+
+    const tickets = getTicketsList(deps);
+
+    expect(tickets.find((ticket) => ticket.ticketId === "TKT-ready-human")).toMatchObject({
+      humanActionRequired: true,
+      humanActionReason: "ready_for_commit_unassigned",
+    });
+    expect(tickets.find((ticket) => ticket.ticketId === "TKT-active-human")).toMatchObject({
+      humanActionRequired: true,
+      humanActionReason: "active_unassigned",
+    });
+    expect(tickets.find((ticket) => ticket.ticketId === "TKT-blocked-human")).toMatchObject({
+      humanActionRequired: true,
+      humanActionReason: "lifecycle_guard_blocked",
+    });
+    expect(tickets.find((ticket) => ticket.ticketId === "TKT-waiting-human")).toMatchObject({
+      humanActionRequired: true,
+      humanActionReason: "quorum_waiting_on_human",
+    });
+    expect(tickets.find((ticket) => ticket.ticketId === "TKT-veto-human")).toMatchObject({
+      humanActionRequired: true,
+      humanActionReason: "veto_blocked",
+    });
+
+    expect(getTicketDetail(deps, "TKT-blocked-human")).toMatchObject({
+      humanActionRequired: true,
+      humanActionReason: "lifecycle_guard_blocked",
+    });
+  });
+
   it("returns dependency graph with resolved internal edges", () => {
     const now = new Date().toISOString();
     sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)

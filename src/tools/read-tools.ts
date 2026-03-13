@@ -103,6 +103,16 @@ function isTruncated(total: number, limit: number): boolean {
   return total > limit;
 }
 
+function pathsOverlap(left: string, right: string): boolean {
+  const a = normalizeClaimPath(left);
+  const b = normalizeClaimPath(right);
+  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
+function normalizeClaimPath(path: string): string {
+  return path.trim().replace(/^\.\/+/, "").replace(/\/+$/, "");
+}
+
 export function shapeCodePackResult(
   payload: CodePackPayload,
   verbosity: ReadToolVerbosity,
@@ -1036,27 +1046,67 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           maxItems: 100,
           maxItemLength: 500,
         });
-        const overlapPaths = claimed.filter((cp) =>
-          affected.some((ap) => cp.startsWith(ap) || ap.startsWith(cp)),
-        );
+        const overlapPaths = [...new Set(claimed.filter((cp) =>
+          affected.some((ap) => pathsOverlap(cp, ap)),
+        ))];
+        const rankingScore = overlapPaths.length * 100 + ticket.priority;
         return {
           ticketId: ticket.ticketId,
           title: ticket.title,
+          status: ticket.status,
           severity: ticket.severity,
           priority: ticket.priority,
           affectedPaths: affected,
           overlapPaths,
           overlapScore: overlapPaths.length,
+          rankingScore,
         };
       });
 
-      scored.sort((a, b) => b.overlapScore - a.overlapScore || b.priority - a.priority);
+      scored.sort((a, b) => b.rankingScore - a.rankingScore || a.ticketId.localeCompare(b.ticketId));
+
+      const top = scored[0] ?? null;
+      const topScore = top?.rankingScore ?? 0;
+      const topOverlap = top?.overlapScore ?? 0;
+      const tiedTop = scored.filter((ticket) => ticket.rankingScore === topScore && ticket.overlapScore === topOverlap);
+      const matchKind = topOverlap === 0
+        ? "no_match"
+        : tiedTop.length > 1
+          ? "ambiguous_match"
+          : "clear_match";
+      const matchReason = matchKind === "clear_match" && top
+        ? `${top.ticketId} has the strongest overlap (${top.overlapScore}) and priority (${top.priority}).`
+        : matchKind === "ambiguous_match"
+          ? `${tiedTop.length} approved tickets share the same top overlap/priority score.`
+          : claimed.length === 0
+            ? "No claimed files on this session, so suggestions are priority-only."
+            : "No approved tickets overlap the currently claimed files.";
+      const routingRecommendation = matchKind === "clear_match" && top
+        ? { action: "recommend", ticketId: top.ticketId, confidence: "high" as const }
+        : matchKind === "ambiguous_match"
+          ? { action: "review_manually", ticketIds: tiedTop.map((ticket) => ticket.ticketId), confidence: "medium" as const }
+          : { action: "review_manually", ticketIds: [] as string[], confidence: "low" as const };
 
       return {
         content: [{
           type: "text" as const,
           text: JSON.stringify({
-            suggestions: scored.slice(0, limit),
+            match: {
+              kind: matchKind,
+              reason: matchReason,
+            },
+            routingRecommendation,
+            suggestions: scored.slice(0, limit).map((ticket) => ({
+              ...ticket,
+              matchKind: ticket.overlapScore === 0
+                ? "no_match"
+                : ticket.rankingScore === topScore
+                  ? matchKind
+                  : "possible_match",
+              reason: ticket.overlapScore > 0
+                ? `${ticket.overlapScore} claimed path(s) overlap affected paths; priority=${ticket.priority}.`
+                : `No claimed-path overlap; priority=${ticket.priority}.`,
+            })),
             totalApprovedUnassigned: unassigned.length,
             claimedPaths: claimed,
           }, null, 2),

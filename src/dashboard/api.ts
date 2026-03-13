@@ -316,8 +316,9 @@ export function getTicketsList(deps: DashboardDeps) {
   const now = Date.now();
   return queries.getTicketsByRepo(deps.db, deps.repoId).map((ticket) => {
     const visibility = getTicketVisibilitySignals(deps, ticket, now);
+    const history = queries.getTicketHistory(deps.db, ticket.id);
     const quorum = buildDashboardTicketQuorum(deps, ticket);
-    const humanAction = getHumanActionRequired(ticket, quorum);
+    const humanAction = getHumanActionRequired(ticket, quorum, history);
 
     return {
       ticketId: ticket.ticketId,
@@ -357,7 +358,7 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
   const linkedPatches = queries.getPatchesByTicketId(deps.db, ticket.id);
   const ticketDeps = queries.getTicketDependencies(deps.db, ticket.id);
   const quorum = buildDashboardTicketQuorum(deps, ticket);
-  const humanAction = getHumanActionRequired(ticket, quorum);
+  const humanAction = getHumanActionRequired(ticket, quorum, history);
 
   const resolvePublicId = (internalId: number) => {
     const t = queries.getTicketById(deps.db, internalId);
@@ -1167,13 +1168,25 @@ function getTicketVisibilitySignals(
 function getHumanActionRequired(
   ticket: typeof schema.tickets.$inferSelect,
   quorum: ReturnType<typeof buildDashboardTicketQuorum>,
+  history: Array<typeof schema.ticketHistory.$inferSelect>,
 ): { required: boolean; reason: string | null } {
-  // Execution state but unassigned → human must assign
+  if (ticket.status === "ready_for_commit" && !ticket.assigneeAgentId) {
+    return { required: true, reason: "ready_for_commit_unassigned" };
+  }
+
+  if (["approved", "in_progress"].includes(ticket.status) && !ticket.assigneeAgentId) {
+    return { required: true, reason: "active_unassigned" };
+  }
+
+  const latestBlockedEntry = history
+    .filter((entry) => entry.toStatus === "blocked")
+    .at(-1);
   if (
-    ["approved", "in_progress", "ready_for_commit"].includes(ticket.status) &&
-    !ticket.assigneeAgentId
+    ticket.status === "blocked"
+    && latestBlockedEntry?.agentId
+    && latestBlockedEntry.agentId.startsWith("system:lifecycle-")
   ) {
-    return { required: true, reason: "unassigned_execution" };
+    return { required: true, reason: "lifecycle_guard_blocked" };
   }
 
   // Council veto blocks progress → human must resolve
@@ -1185,9 +1198,9 @@ function getHumanActionRequired(
   if (
     ["technical_analysis", "in_review"].includes(ticket.status) &&
     quorum &&
-    quorum.progress.responded === 0
+    (quorum.progress.responded === 0 || quorum.missingSpecializations.length > 0)
   ) {
-    return { required: true, reason: "awaiting_council" };
+    return { required: true, reason: "quorum_waiting_on_human" };
   }
 
   return { required: false, reason: null };

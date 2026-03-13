@@ -101,7 +101,7 @@ describe("agent tools", () => {
     });
   }
 
-  function setupActionServer() {
+  function setupActionServer(configOverrides: Record<string, unknown> = {}) {
     const server = new FakeServer();
     const insight = {
       info: vi.fn(),
@@ -116,6 +116,8 @@ describe("agent tools", () => {
           observerOpenRegistration: true,
           roleTokens: {},
         },
+        claimEnforceMode: "advisory",
+        ...configOverrides,
       },
       insight,
     } as any));
@@ -345,6 +347,66 @@ describe("agent tools", () => {
 
     const session = queries.getSession(db, "session-dev");
     expect(JSON.parse(session?.claimedFilesJson ?? "[]")).toEqual(["src/conflict.ts", "src/owned.ts"]);
+  });
+
+  it("rejects overlapping claims in strict mode even when the conflict is a parent path", async () => {
+    insertAgentWithSession("agent-dev", "session-dev", "developer");
+    insertAgentWithSession("agent-peer", "session-peer", "developer");
+    queries.updateSessionClaims(db, "session-peer", ["src/conflict"]);
+    const { handlers } = setupActionServer({ claimEnforceMode: "strict" });
+
+    const result = await handlers.get("claim_files")!({
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+      paths: ["src/conflict/child.ts"],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      denied: true,
+      conflicts: [{ path: "src/conflict/child.ts", claimedBy: "agent-peer" }],
+    });
+  });
+
+  it("allows admin overrides of strict claim conflicts and marks the response", async () => {
+    insertAgentWithSession("agent-admin", "session-admin", "admin");
+    insertAgentWithSession("agent-peer", "session-peer", "developer");
+    queries.updateSessionClaims(db, "session-peer", ["src/conflict.ts"]);
+    const { handlers } = setupActionServer({ claimEnforceMode: "strict" });
+
+    const result = await handlers.get("claim_files")!({
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+      paths: ["src/conflict.ts"],
+      override: true,
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      claimed: ["src/conflict.ts"],
+      overridden: true,
+      conflicts: [{ path: "src/conflict.ts", claimedBy: "agent-peer" }],
+    });
+  });
+
+  it("rejects override attempts from non-privileged roles", async () => {
+    insertAgentWithSession("agent-dev", "session-dev", "developer");
+    insertAgentWithSession("agent-peer", "session-peer", "developer");
+    queries.updateSessionClaims(db, "session-peer", ["src/conflict.ts"]);
+    const { handlers } = setupActionServer({ claimEnforceMode: "strict" });
+
+    const result = await handlers.get("claim_files")!({
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+      paths: ["src/conflict.ts"],
+      override: true,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      denied: true,
+      reason: "Only facilitators or admins may override claim conflicts",
+    });
   });
 
   it("rejects claim_files when the session does not belong to the caller", async () => {

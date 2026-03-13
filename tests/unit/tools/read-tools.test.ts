@@ -2,7 +2,11 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import * as schema from "../../../src/db/schema.js";
+import * as queries from "../../../src/db/queries.js";
 import {
   registerReadTools,
   shapeChangePackResult,
@@ -389,6 +393,161 @@ steps:
         matchedPaths: ["src/db/schema.ts", "docs/architecture.md"],
       }),
     ]));
+  });
+});
+
+describe("suggest_next_work", () => {
+  function createSuggestDb() {
+    const sqlite = new Database(":memory:");
+    sqlite.pragma("journal_mode = WAL");
+    sqlite.pragma("foreign_keys = ON");
+    sqlite.exec(`
+      CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
+      CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', provider TEXT, model TEXT, model_family TEXT, model_version TEXT, identity_source TEXT, role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL);
+      CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT);
+      CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    `);
+    const db = drizzle(sqlite, { schema });
+    queries.upsertRepo(db, "/test", "test");
+    return { db, sqlite };
+  }
+
+  function insertAgentSession(db: ReturnType<typeof createSuggestDb>["db"], agentId: string, sessionId: string, claimedFiles: string[]) {
+    const now = new Date().toISOString();
+    queries.upsertAgent(db, {
+      id: agentId,
+      name: agentId,
+      type: "test",
+      roleId: "developer",
+      trustTier: "A",
+      registeredAt: now,
+    });
+    queries.insertSession(db, {
+      id: sessionId,
+      agentId,
+      state: "active",
+      connectedAt: now,
+      lastActivity: now,
+    });
+    queries.updateSessionClaims(db, sessionId, claimedFiles);
+  }
+
+  function insertApprovedTicket(
+    sqlite: InstanceType<typeof Database>,
+    ticketId: string,
+    title: string,
+    priority: number,
+    affectedPaths: string[],
+  ) {
+    const now = new Date().toISOString();
+    sqlite.prepare(`
+      INSERT INTO tickets (
+        repo_id, ticket_id, title, description, status, severity, priority,
+        tags_json, affected_paths_json, creator_agent_id, creator_session_id,
+        assignee_agent_id, resolved_by_agent_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      1,
+      ticketId,
+      title,
+      "Desc",
+      "approved",
+      "high",
+      priority,
+      "[]",
+      JSON.stringify(affectedPaths),
+      "agent-dev",
+      "session-dev",
+      null,
+      null,
+      "abc1234",
+      now,
+      now,
+    );
+  }
+
+  function setupSuggestServer(db: ReturnType<typeof createSuggestDb>["db"]) {
+    const server = new FakeServer();
+    registerReadTools(server as unknown as McpServer, async () => ({
+      db,
+      repoId: 1,
+      repoPath: "/test",
+      config: {
+        coordinationTopology: "hub-spoke",
+        debugLogging: false,
+      },
+      searchRouter: {
+        getSemanticReranker: () => null,
+      },
+    } as any));
+    return server.handlers.get("suggest_next_work")!;
+  }
+
+  it("returns a clear match when one ticket has the strongest overlap and ranking", async () => {
+    const { db, sqlite } = createSuggestDb();
+    try {
+      insertAgentSession(db, "agent-dev", "session-dev", ["src/auth/index.ts"]);
+      insertApprovedTicket(sqlite, "TKT-auth", "Auth work", 8, ["src/auth"]);
+      insertApprovedTicket(sqlite, "TKT-ui", "UI work", 10, ["src/ui"]);
+
+      const suggestNextWork = setupSuggestServer(db);
+      const result = await suggestNextWork({ agentId: "agent-dev", sessionId: "session-dev", limit: 5 });
+      const payload = JSON.parse(result.content[0].text);
+
+      expect(payload.match).toMatchObject({ kind: "clear_match" });
+      expect(payload.routingRecommendation).toMatchObject({ action: "recommend", ticketId: "TKT-auth" });
+      expect(payload.suggestions[0]).toMatchObject({
+        ticketId: "TKT-auth",
+        matchKind: "clear_match",
+        overlapScore: 1,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("flags ambiguous matches when multiple tickets tie for the top score", async () => {
+    const { db, sqlite } = createSuggestDb();
+    try {
+      insertAgentSession(db, "agent-dev", "session-dev", ["src/shared/button.ts"]);
+      insertApprovedTicket(sqlite, "TKT-shared-a", "Shared A", 7, ["src/shared"]);
+      insertApprovedTicket(sqlite, "TKT-shared-b", "Shared B", 7, ["src/shared/button.ts"]);
+
+      const suggestNextWork = setupSuggestServer(db);
+      const result = await suggestNextWork({ agentId: "agent-dev", sessionId: "session-dev", limit: 5 });
+      const payload = JSON.parse(result.content[0].text);
+
+      expect(payload.match).toMatchObject({ kind: "ambiguous_match" });
+      expect(payload.routingRecommendation).toMatchObject({
+        action: "review_manually",
+        ticketIds: ["TKT-shared-a", "TKT-shared-b"],
+      });
+      expect(payload.suggestions.slice(0, 2).map((entry: any) => entry.matchKind)).toEqual([
+        "ambiguous_match",
+        "ambiguous_match",
+      ]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("reports no_match when claimed files do not overlap approved work", async () => {
+    const { db, sqlite } = createSuggestDb();
+    try {
+      insertAgentSession(db, "agent-dev", "session-dev", ["src/api/client.ts"]);
+      insertApprovedTicket(sqlite, "TKT-ui", "UI work", 8, ["src/ui"]);
+      insertApprovedTicket(sqlite, "TKT-docs", "Docs work", 6, ["docs"]);
+
+      const suggestNextWork = setupSuggestServer(db);
+      const result = await suggestNextWork({ agentId: "agent-dev", sessionId: "session-dev", limit: 5 });
+      const payload = JSON.parse(result.content[0].text);
+
+      expect(payload.match).toMatchObject({ kind: "no_match" });
+      expect(payload.routingRecommendation).toMatchObject({ action: "review_manually", confidence: "low" });
+      expect(payload.suggestions[0]).toMatchObject({ matchKind: "no_match", overlapScore: 0 });
+    } finally {
+      sqlite.close();
+    }
   });
 });
 

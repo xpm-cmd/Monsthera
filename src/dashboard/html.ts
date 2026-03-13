@@ -1156,7 +1156,7 @@ function renderTicketDetail(error){
     +'<div class="detail-block"><div class="detail-label">Ownership</div><div class="detail-value">Creator: '+esc(t.creatorAgentId||'-')+'<br>Assignee: '+esc(t.assigneeAgentId||'-')+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Context</div><div class="detail-value">Severity: '+esc(t.severity||'-')+'<br>Priority: '+esc(String(t.priority??'-'))+'<br>Commit: '+esc((t.commitSha||'-').slice(0,7))+'</div></div>'
     +(function(){var hint=t.nextActionHint;if(!hint)return '';var cls=hint.kind==='reviewer'?'purple':hint.kind==='assignee'?'blue':'orange';var actorName=hint.agentName?' · '+hint.agentName:'';return '<div class="detail-block"><div class="detail-label">Next Action (Heuristic)</div><div class="detail-value"><span class="badge badge-'+cls+'">'+esc(hint.label+actorName)+'</span><br>'+esc(hint.reason||'')+'</div></div>';})()
-    +(t.humanActionRequired?'<div class="detail-block"><div class="detail-label">Human Action Required</div><div class="detail-value"><span class="badge badge-orange">'+esc(t.humanActionReason==='veto_blocked'?'Veto blocked':t.humanActionReason==='awaiting_council'?'Awaiting council':'Needs assignment')+'</span></div></div>':'')
+    +(t.humanActionRequired?'<div class="detail-block"><div class="detail-label">Human Action Required</div><div class="detail-value"><span class="badge badge-orange">'+esc(humanActionReasonLabel(t.humanActionReason))+'</span></div></div>':'')
     +'<div class="detail-block"><div class="detail-label">Tags</div><div class="detail-value">'+esc(tags)+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Affected Paths</div><div class="detail-value">'+esc(affectedPaths)+'</div></div>'
     +(function(){var deps=t.dependencies;if(!deps)return '';var parts=[];if(deps.blocking&&deps.blocking.length)parts.push('Blocks: '+deps.blocking.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.blockedBy&&deps.blockedBy.length)parts.push('Blocked by: '+deps.blockedBy.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.relatedTo&&deps.relatedTo.length)parts.push('Related: '+deps.relatedTo.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(!parts.length)return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">-</div></div>';return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">'+parts.join('<br>')+'</div></div>';})()
@@ -1228,7 +1228,7 @@ function renderTicketsSection(tickets,metrics){
             flags.push('<span class="badge badge-'+esc(ticket.quorumState||'blue')+'" title="'+esc(ticket.quorumTitle||ticket.quorumBadge)+'">'+esc(ticket.quorumBadge)+'</span>');
           }
           if(ticket.humanActionRequired){
-            var har=ticket.humanActionReason==='veto_blocked'?'Veto blocked':ticket.humanActionReason==='awaiting_council'?'Awaiting council':'Needs assignment';
+            var har=humanActionReasonLabel(ticket.humanActionReason);
             flags.push('<span class="badge badge-orange" title="'+esc(har)+'">Human action</span>');
           }
           card.innerHTML='<div class="board-card-sub">'+esc(ticket.ticketId)+'</div>'
@@ -1246,12 +1246,13 @@ function renderTicketsSection(tickets,metrics){
     section.appendChild(board);
   }else{
     var showQuorumColumn=filteredTickets.some(function(ticket){return !!ticket.quorumBadge});
+    var showHumanActionColumn=filteredTickets.some(function(ticket){return !!ticket.humanActionRequired});
     var wrap=document.createElement('div');
     wrap.className='table-wrap';
     var table=document.createElement('table');
     var thead=document.createElement('thead');
     var hr=document.createElement('tr');
-    ['ID','Title','Status'].concat(showQuorumColumn?['Quorum']:[]).concat(['Severity','Priority','Assignee','Creator','Age','Updated']).forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
+    ['ID','Title','Status'].concat(showQuorumColumn?['Quorum']:[]).concat(showHumanActionColumn?['Human Action']:[]).concat(['Severity','Priority','Assignee','Creator','Age','Updated']).forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
     thead.appendChild(hr);
     table.appendChild(thead);
     var tbody=document.createElement('tbody');
@@ -1267,9 +1268,10 @@ function renderTicketsSection(tickets,metrics){
       if(showQuorumColumn){
         cells.push(t.quorumBadge?{badge:t.quorumBadge,cls:t.quorumState||'blue',title:t.quorumTitle||t.quorumBadge}:'-');
       }
-      if(t.humanActionRequired){
-        var har=t.humanActionReason==='veto_blocked'?'Veto blocked':t.humanActionReason==='awaiting_council'?'Awaiting council':'Needs assignment';
-        cells.push({badge:'Human action',cls:'orange',title:har});
+      if(showHumanActionColumn){
+        cells.push(t.humanActionRequired
+          ? {badge:'Human action',cls:'orange',title:humanActionReasonLabel(t.humanActionReason)}
+          : '-');
       }
       cells=cells.concat([
         b(t.severity,t.severity==='critical'?'red':t.severity==='high'?'orange':'blue'),
@@ -1298,6 +1300,17 @@ function renderTicketsSection(tickets,metrics){
   attachTicketToolbarListeners();
   renderTicketDetail();
   return filteredTickets;
+}
+
+function humanActionReasonLabel(reason){
+  switch(reason){
+    case 'active_unassigned': return 'Needs assignment';
+    case 'ready_for_commit_unassigned': return 'Commit owner needed';
+    case 'lifecycle_guard_blocked': return 'Lifecycle guard blocked';
+    case 'quorum_waiting_on_human': return 'Awaiting council';
+    case 'veto_blocked': return 'Veto blocked';
+    default: return 'Human action required';
+  }
 }
 
 function attachTicketDetailListeners(ticket){

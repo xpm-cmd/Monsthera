@@ -25,7 +25,7 @@ export async function cmdTool(
   }
 
   let context: AgoraContext | null = null;
-  const baseGetContext = createAgoraContextLoader(config, insight);
+  const baseGetContext = createAgoraContextLoader(config, insight, { startLifecycleSweep: false });
   const getContext = async () => {
     context ??= await baseGetContext();
     return context;
@@ -168,6 +168,7 @@ function printToolHelp(): void {
 }
 
 function closeToolContext(context: AgoraContext | null): void {
+  context?.dispose?.();
   context?.sqlite.close();
   context?.globalSqlite?.close();
 }

@@ -23,4 +23,5 @@ export interface AgoraContext {
   globalDb: BetterSQLite3Database<typeof schema> | null;
   globalSqlite: DatabaseType | null;
   lifecycle?: TicketLifecycleReactor;
+  dispose?: () => void;
 }
