@@ -149,6 +149,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
         bus,
         globalDb,
         ticketQuorum: config.ticketQuorum,
+        governance: config.governance,
         knowledgeSearch: (params) => searchKnowledgeEntries({
           db,
           sqlite,

@@ -10,5 +10,7 @@ describe("dashboard html", () => {
     expect(html).toContain(`id="ticket-comment-content" maxlength="${MAX_TICKET_LONG_TEXT_LENGTH}"`);
     expect(html).toContain("Council Verdicts");
     expect(html).toContain("Quorum");
+    expect(html).toContain('id="governance-panel"');
+    expect(html).toContain("governance-model-diversity-toggle");
   });
 });

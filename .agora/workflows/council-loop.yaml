@@ -1,5 +1,5 @@
 name: council-loop
-description: Autonomous council workflow. Loads context, assigns the caller to its own specialization, submits one scoped verdict, and relies on submit_verdict auto-advance when quorum is met.
+description: Autonomous council workflow. Loads ticket context, runs deep per-path review evidence gathering, posts a structured review note, then submits one scoped verdict and relies on submit_verdict auto-advance when quorum is met.
 requiredParams:
   - ticketId
   - transition
@@ -42,16 +42,78 @@ steps:
       status: "{{params.targetStatus}}"
       comment: "Council autonomous review: quorum already met, advancing."
 
-  # 5. Run suggest_actions on changed files for advisory data
-  - key: suggestions
-    tool: suggest_actions
-    description: Advisory rule engine output for changed paths.
+  # 5. Collect historical and decision context related to the ticket
+  - key: issuePack
+    tool: get_issue_pack
+    description: Search notes, decisions, and stored knowledge related to the ticket scope and its implications.
     condition: "!steps.consensus.advisoryReady"
     onError: continue
     input:
-      changedPaths: "{{steps.changes.changedFiles.path}}"
+      query: "{{params.callerSpecialization}} {{steps.ticket.ticketId}} {{steps.ticket.title}} {{steps.ticket.tags}} {{steps.ticket.affectedPaths}}"
+      verbosity: compact
 
-  # 6. Assign the caller only to its own council specialization
+  # 6. Collect code search context anchored to the ticket scope
+  - key: codePack
+    tool: get_code_pack
+    description: Search for the most relevant code around the ticket title, description, and affected paths.
+    condition: "!steps.consensus.advisoryReady"
+    onError: continue
+    input:
+      query: "{{params.callerSpecialization}} review {{params.transition}} {{steps.ticket.title}} {{steps.ticket.description}} {{steps.ticket.affectedPaths}}"
+      verbosity: compact
+
+  # 7. Inspect code relevance per affected path so the review note stays grounded in the concrete surface area
+  - key: pathCodePacks
+    tool: get_code_pack
+    description: Search code evidence per affected path to reveal nearby symbols and implementation seams.
+    condition: "!steps.consensus.advisoryReady"
+    onError: continue
+    forEach: "steps.ticket.affectedPaths"
+    input:
+      query: "{{params.callerSpecialization}} {{steps.ticket.title}}"
+      scope: "{{item}}"
+      verbosity: compact
+
+  # 8. Analyze complexity across the ticket affected paths
+  - key: complexity
+    tool: analyze_complexity
+    description: Inspect structural complexity for each affected path in the ticket scope.
+    condition: "!steps.consensus.advisoryReady"
+    onError: continue
+    forEach: "steps.ticket.affectedPaths"
+    input:
+      filePath: "{{item}}"
+
+  # 9. Analyze structural test coverage across the ticket affected paths
+  - key: coverage
+    tool: analyze_test_coverage
+    description: Inspect structural test coverage for each affected path in the ticket scope.
+    condition: "!steps.consensus.advisoryReady"
+    onError: continue
+    forEach: "steps.ticket.affectedPaths"
+    input:
+      filePath: "{{item}}"
+
+  # 10. Run suggest_actions on the ticket affected paths for advisory data
+  - key: suggestions
+    tool: suggest_actions
+    description: Advisory rule engine output for the ticket affected paths.
+    condition: "!steps.consensus.advisoryReady"
+    onError: continue
+    input:
+      changedPaths: "{{steps.ticket.affectedPaths}}"
+
+  # 11. Persist a deep review note with implications and recommendations before voting
+  - key: reviewNote
+    tool: comment_ticket
+    description: Attach a deep review note covering implications, risks, and recommendations before verdict submission.
+    condition: "!steps.consensus.advisoryReady"
+    onError: continue
+    input:
+      ticketId: "{{params.ticketId}}"
+      content: "[Deep Council Review] specialization={{params.callerSpecialization}} transition={{params.transition}} ticket={{steps.ticket.ticketId}} title={{steps.ticket.title}} status={{steps.ticket.status}} severity={{steps.ticket.severity}} priority={{steps.ticket.priority}} acceptanceCriteria={{steps.ticket.acceptanceCriteria}} affectedPaths={{steps.ticket.affectedPaths}} dependencies={{steps.ticket.dependencies}} linkedPatches={{steps.ticket.linkedPatches}} recentComments={{steps.ticket.comments}} recentChangedPaths={{steps.changes.changedFiles.path}} historicalContext={{steps.issuePack.matchedNotes}} historicalKnowledge={{steps.issuePack.matchedKnowledge}} codePackCandidates={{steps.codePack.candidates}} perPathCodeEvidence={{steps.pathCodePacks}} complexity={{steps.complexity}} coverage={{steps.coverage}} recommendations={{steps.suggestions}} implications=Assess dependency impact, regression surface, missing tests, architectural seams, and operational risk for this gate before accepting."
+
+  # 12. Assign the caller only to its own council specialization
   - key: assignment
     tool: assign_council
     description: Bind this agent to its own specialization for verdict submission.
@@ -62,20 +124,20 @@ steps:
       councilAgentId: "{{params.callerAgentId}}"
       specialization: "{{params.callerSpecialization}}"
 
-  # 7. Submit a pass verdict for the caller specialization only
+  # 13. Submit a pass verdict for the caller specialization only
   - key: verdict
     tool: submit_verdict
-    description: Record an autonomous pass verdict for the caller specialization only.
+    description: Record an autonomous evidence-backed pass verdict for the caller specialization only.
     condition: "!steps.consensus.advisoryReady"
     onError: continue
     input:
       ticketId: "{{params.ticketId}}"
       specialization: "{{params.callerSpecialization}}"
       verdict: pass
-      reasoning: "{{params.callerSpecialization}} review for {{params.transition}} on {{steps.ticket.title}}. Affected paths: {{steps.ticket.affectedPaths}}. This {{params.callerSpecialization}} verdict is scoped to concrete repo evidence for the ticket."
+      reasoning: "{{params.callerSpecialization}} review for {{params.transition}} on {{steps.ticket.ticketId}} considers dependencies {{steps.ticket.dependencies}}, history {{steps.issuePack.matchedKnowledge}}, affected paths {{steps.ticket.affectedPaths}}, per-path code evidence {{steps.pathCodePacks}}, complexity {{steps.complexity}}, coverage {{steps.coverage}}, and recommendations {{steps.suggestions}}."
       transition: "{{params.transition}}"
 
-  # 8. Re-check consensus after submitting verdicts
+  # 14. Re-check consensus after submitting verdicts
   - key: finalConsensus
     tool: check_consensus
     description: Re-evaluate quorum after new verdicts.

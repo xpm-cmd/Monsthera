@@ -92,6 +92,28 @@ type TicketToolName =
   | "link_tickets"
   | "unlink_tickets";
 
+const BACKLOG_PLAN_COMMENT_HEADER_PATTERNS = [
+  /^\[technical analysis\]/i,
+  /^\[plan iteration\]/i,
+  /^\[plan review\]/i,
+] as const;
+
+interface BacklogPlanningReadiness {
+  enforced: boolean;
+  ready: boolean;
+  cycleStartedAt: string;
+  iterationCount: number;
+  minIterations: number;
+  distinctModels: number;
+  requiredDistinctModels: number;
+  acceptedHeaders: string[];
+  eligibleComments: Array<{
+    agentId: string;
+    createdAt: string;
+    modelKey: string | null;
+  }>;
+}
+
 interface CreateTicketFields {
   title: string;
   description: string;
@@ -380,6 +402,26 @@ export function updateTicketStatusRecord(
   if (allowed && !allowed.includes(resolved.role)) {
     ctx.insight.warn(
       `Advisory: ${resolved.role} triggering ${key} (recommended: ${allowed.join(", ")})`,
+    );
+  }
+
+  const backlogPlanning = current === "backlog" && input.status === "technical_analysis"
+    ? evaluateBacklogPlanningReadiness(ctx.db, ticket.id, ticket.createdAt, ctx.governance)
+    : null;
+  if (backlogPlanning?.enforced && !backlogPlanning.ready) {
+    return err(
+      "invalid_request",
+      buildBacklogPlanningBlockMessage(key, backlogPlanning),
+      {
+        transition: key,
+        cycleStartedAt: backlogPlanning.cycleStartedAt,
+        iterationCount: backlogPlanning.iterationCount,
+        minIterations: backlogPlanning.minIterations,
+        distinctModels: backlogPlanning.distinctModels,
+        requiredDistinctModels: backlogPlanning.requiredDistinctModels,
+        acceptedHeaders: backlogPlanning.acceptedHeaders,
+        eligibleComments: backlogPlanning.eligibleComments,
+      },
     );
   }
 
@@ -997,6 +1039,13 @@ function buildConsensusBlockMessage(
   }
 
   const modelDiversity = consensus.governance?.modelDiversity;
+  if (consensus.governance?.modelVoterCapApplied && modelDiversity && !modelDiversity.voterCapMet) {
+    const overSubscribed = modelDiversity.overSubscribedGroups
+      .map((group) => `${group.provider}/${group.model} has ${group.totalVoters} voters (max ${group.maxVoters})`)
+      .join("; ");
+    return `Reviewer model cap not met for ${transitionKey}: ${overSubscribed}. Reduce same-model reviewers to continue or use an explicit admin override.`;
+  }
+
   if (consensus.governance?.strictDiversityApplied && modelDiversity && !modelDiversity.diversityMet) {
     const duplicateModels = modelDiversity.duplicateGroups
       .map((group) => `${group.provider}/${group.model} covering ${group.specializations.join(", ")}`)
@@ -1009,4 +1058,61 @@ function buildConsensusBlockMessage(
     ? ` Await verdicts from: ${consensus.missingSpecializations.join(", ")}.`
     : "";
   return `Council quorum not met for ${transitionKey}: ${consensus.counts.pass}/${consensus.requiredPasses} passes (${passesNeeded} more needed).${awaiting}`;
+}
+
+function buildBacklogPlanningBlockMessage(
+  transitionKey: string,
+  readiness: BacklogPlanningReadiness,
+): string {
+  return `Backlog planning gate not met for ${transitionKey}: ${readiness.iterationCount}/${readiness.minIterations} structured plan iterations and ${readiness.distinctModels}/${readiness.requiredDistinctModels} distinct models since ${readiness.cycleStartedAt}. Add ticket comments starting with ${readiness.acceptedHeaders.join(", ")} before leaving backlog.`;
+}
+
+function evaluateBacklogPlanningReadiness(
+  db: DB,
+  ticketInternalId: number,
+  ticketCreatedAt: string,
+  governance?: GovernanceConfig,
+): BacklogPlanningReadiness | null {
+  const gate = governance?.backlogPlanningGate;
+  if (!gate?.enforce) return null;
+
+  const history = queries.getTicketHistory(db, ticketInternalId);
+  const cycleStartedAt = [...history]
+    .reverse()
+    .find((entry) => entry.toStatus === "backlog")
+    ?.timestamp ?? ticketCreatedAt;
+
+  const acceptedHeaders = ["[Technical Analysis]", "[Plan Iteration]", "[Plan Review]"];
+  const eligibleComments = queries.getTicketComments(db, ticketInternalId)
+    .filter((comment) => (
+      comment.createdAt >= cycleStartedAt
+      && BACKLOG_PLAN_COMMENT_HEADER_PATTERNS.some((pattern) => pattern.test(comment.content.trim()))
+    ))
+    .map((comment) => {
+      const agent = queries.getAgent(db, comment.agentId);
+      const modelKey = agent?.provider && agent.model ? `${agent.provider}/${agent.model}` : null;
+      return {
+        agentId: comment.agentId,
+        createdAt: comment.createdAt,
+        modelKey,
+      };
+    });
+
+  const distinctModels = new Set(
+    eligibleComments
+      .map((comment) => comment.modelKey)
+      .filter((modelKey): modelKey is string => Boolean(modelKey)),
+  ).size;
+
+  return {
+    enforced: true,
+    ready: eligibleComments.length >= gate.minIterations && distinctModels >= gate.requiredDistinctModels,
+    cycleStartedAt,
+    iterationCount: eligibleComments.length,
+    minIterations: gate.minIterations,
+    distinctModels,
+    requiredDistinctModels: gate.requiredDistinctModels,
+    acceptedHeaders,
+    eligibleComments,
+  };
 }

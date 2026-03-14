@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { CoordinationBus } from "../../../src/coordination/bus.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../../../src/core/constants.js";
-import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, getAgentTimeline, getEventLogsList, getDependencyGraph, getKnowledgeGraph, getKnowledgeList, type DashboardDeps } from "../../../src/dashboard/api.js";
+import { getOverview, getAgentsList, getTicketsList, getTicketDetail, getIndexedFilesMetrics, getPresence, getTicketMetrics, getAgentTimeline, getEventLogsList, getDependencyGraph, getGovernanceSettings, getKnowledgeGraph, getKnowledgeList, isStrictModelDiversityEnabled, type DashboardDeps } from "../../../src/dashboard/api.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -179,6 +179,80 @@ describe("Dashboard API", () => {
     expect(overview.totalAgents).toBe(0);
     expect(overview.totalPatches).toBe(0);
     expect(overview.fileCount).toBe(0);
+  });
+
+  it("surfaces strict model diversity governance settings for the dashboard", () => {
+    deps.governance = {
+      modelDiversity: {
+        strict: true,
+        maxVotersPerModel: 3,
+      },
+      reviewerIndependence: {
+        strict: true,
+        identityKey: "agent",
+      },
+      backlogPlanningGate: {
+        enforce: true,
+        minIterations: 3,
+        requiredDistinctModels: 2,
+      },
+      nonVotingRoles: ["facilitator"],
+      requireBinding: false,
+      autoAdvance: true,
+      autoAdvanceExcludedTags: [],
+    };
+
+    expect(isStrictModelDiversityEnabled(deps.governance)).toBe(true);
+    expect(getGovernanceSettings(deps)).toMatchObject({
+      modelDiversity: {
+        enabled: true,
+        council: {
+          strict: true,
+          maxVotersPerModel: 3,
+        },
+        backlogPlanning: {
+          enforce: true,
+          minIterations: 3,
+          requiredDistinctModels: 2,
+        },
+      },
+    });
+  });
+
+  it("marks strict model diversity as disabled when backlog review no longer requires multiple models", () => {
+    deps.governance = {
+      modelDiversity: {
+        strict: false,
+        maxVotersPerModel: 6,
+      },
+      reviewerIndependence: {
+        strict: true,
+        identityKey: "agent",
+      },
+      backlogPlanningGate: {
+        enforce: true,
+        minIterations: 3,
+        requiredDistinctModels: 1,
+      },
+      nonVotingRoles: ["facilitator"],
+      requireBinding: false,
+      autoAdvance: true,
+      autoAdvanceExcludedTags: [],
+    };
+
+    expect(isStrictModelDiversityEnabled(deps.governance)).toBe(false);
+    expect(getGovernanceSettings(deps)).toMatchObject({
+      modelDiversity: {
+        enabled: false,
+        council: {
+          strict: false,
+          maxVotersPerModel: 6,
+        },
+        backlogPlanning: {
+          requiredDistinctModels: 1,
+        },
+      },
+    });
   });
 
   it("surfaces error detail in event log payloads", () => {

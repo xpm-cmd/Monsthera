@@ -856,8 +856,28 @@ describe("ticket service system context", () => {
     }).ok).toBe(true);
     expect(updateTicketStatusRecord(ctx, {
       ticketId: reviewReadyTicketId,
+      status: "blocked",
+      comment: "Waiting on release dependency before pickup",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reviewReadyTicketId,
+      status: "approved",
+      comment: "Dependency cleared, return to ready queue",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reviewReadyTicketId,
       status: "in_review",
       comment: "Change already landed, review directly",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reviewReadyTicketId,
+      status: "blocked",
+      comment: "External sign-off pending",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reviewReadyTicketId,
+      status: "in_review",
+      comment: "Sign-off arrived, resume review",
     }).ok).toBe(true);
 
     const abandoned = await createTicketRecord(ctx, {
@@ -947,6 +967,16 @@ describe("ticket service system context", () => {
     expect(updateTicketStatusRecord(ctx, {
       ticketId: reopenedTicketId,
       status: "ready_for_commit",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "blocked",
+      comment: "Release window paused",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reopenedTicketId,
+      status: "ready_for_commit",
+      comment: "Release window reopened",
     }).ok).toBe(true);
     expect(updateTicketStatusRecord(ctx, {
       ticketId: reopenedTicketId,
@@ -1559,10 +1589,12 @@ describe("ticket service governance: facilitator non-voting", () => {
       ...reviewerCtx,
       governance: {
         nonVotingRoles: ["facilitator"],
-        modelDiversity: { strict: false },
+        modelDiversity: { strict: false, maxVotersPerModel: 3 },
         reviewerIndependence: { strict: true, identityKey: "agent" },
+        backlogPlanningGate: { enforce: true, minIterations: 3, requiredDistinctModels: 2 },
         requireBinding: false,
         autoAdvance: true,
+        autoAdvanceExcludedTags: [],
       },
     };
 
@@ -1621,5 +1653,169 @@ describe("ticket service governance: facilitator non-voting", () => {
     });
 
     expect(resultNoGov.ok).toBe(true);
+  });
+});
+
+describe("ticket service governance: backlog planning gate", () => {
+  let sqlite: InstanceType<typeof Database>;
+  let db: ReturnType<typeof createTestDb>["db"];
+  let repoId: number;
+  let governanceCtx: TicketServiceContext;
+  let reviewerCtx: TicketServiceContext;
+  let systemCtx: TicketSystemContext;
+
+  beforeEach(() => {
+    ({ db, sqlite } = createTestDb());
+    repoId = queries.upsertRepo(db, "/test", "test").id;
+
+    registerActor(db, { agentId: "agent-review", sessionId: "session-review", roleId: "reviewer" });
+    registerActor(db, { agentId: "agent-review-2", sessionId: "session-review-2", roleId: "reviewer" });
+
+    const now = new Date().toISOString();
+    queries.upsertAgent(db, {
+      ...(queries.getAgent(db, "agent-review") ?? {
+        id: "agent-review",
+        name: "agent-review",
+        type: "test",
+        roleId: "reviewer",
+        trustTier: "A",
+        registeredAt: now,
+      }),
+      provider: "openai",
+      model: "gpt-5",
+    });
+    queries.upsertAgent(db, {
+      ...(queries.getAgent(db, "agent-review-2") ?? {
+        id: "agent-review-2",
+        name: "agent-review-2",
+        type: "test",
+        roleId: "reviewer",
+        trustTier: "A",
+        registeredAt: now,
+      }),
+      provider: "anthropic",
+      model: "sonnet",
+    });
+
+    reviewerCtx = {
+      db,
+      repoId,
+      repoPath: "/test",
+      insight: { info: () => undefined, warn: () => undefined },
+    };
+    governanceCtx = {
+      ...reviewerCtx,
+      governance: {
+        nonVotingRoles: ["facilitator"],
+        modelDiversity: { strict: true, maxVotersPerModel: 3 },
+        reviewerIndependence: { strict: true, identityKey: "agent" },
+        backlogPlanningGate: { enforce: true, minIterations: 3, requiredDistinctModels: 2 },
+        requireBinding: false,
+        autoAdvance: true,
+        autoAdvanceExcludedTags: [],
+      },
+    };
+    systemCtx = {
+      ...reviewerCtx,
+      system: true,
+      actorLabel: "cli admin",
+    };
+  });
+
+  afterEach(() => sqlite.close());
+
+  async function createBacklogTicket() {
+    const created = await createTicketRecord(systemCtx, {
+      title: "Planning gate",
+      description: "Needs structured backlog planning before TA",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(created.ok).toBe(true);
+    return created.ok ? String(created.data.ticketId) : "";
+  }
+
+  async function addPlanComment(ticketId: string, actor: { agentId: string; sessionId: string }, content: string) {
+    const result = commentTicketRecord(reviewerCtx, {
+      ticketId,
+      content,
+      agentId: actor.agentId,
+      sessionId: actor.sessionId,
+    });
+    expect(result.ok).toBe(true);
+  }
+
+  it("blocks backlog to technical_analysis when there are fewer than three structured plan iterations", async () => {
+    const ticketId = await createBacklogTicket();
+
+    await addPlanComment(ticketId, { agentId: "agent-review", sessionId: "session-review" }, "[Technical Analysis]\nSummary\nDraft one");
+    await addPlanComment(ticketId, { agentId: "agent-review-2", sessionId: "session-review-2" }, "[Plan Review]\nConcern\nDraft two");
+
+    const result = updateTicketStatusRecord(governanceCtx, {
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("2/3 structured plan iterations");
+      expect(result.data?.distinctModels).toBe(2);
+    }
+  });
+
+  it("blocks backlog to technical_analysis when plan iterations do not span two distinct models", async () => {
+    const ticketId = await createBacklogTicket();
+
+    queries.upsertAgent(db, {
+      ...(queries.getAgent(db, "agent-review-2") ?? {
+        id: "agent-review-2",
+        name: "agent-review-2",
+        type: "test",
+        roleId: "reviewer",
+        trustTier: "A",
+        registeredAt: new Date().toISOString(),
+      }),
+      provider: "openai",
+      model: "gpt-5",
+    });
+
+    await addPlanComment(ticketId, { agentId: "agent-review", sessionId: "session-review" }, "[Technical Analysis]\nSummary\nDraft one");
+    await addPlanComment(ticketId, { agentId: "agent-review-2", sessionId: "session-review-2" }, "[Plan Iteration]\nRevision\nDraft two");
+    await addPlanComment(ticketId, { agentId: "agent-review", sessionId: "session-review" }, "[Plan Review]\nFeedback\nDraft three");
+
+    const result = updateTicketStatusRecord(governanceCtx, {
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("1/2 distinct models");
+      expect(result.data?.iterationCount).toBe(3);
+    }
+  });
+
+  it("allows backlog to technical_analysis after three structured iterations across two models", async () => {
+    const ticketId = await createBacklogTicket();
+
+    await addPlanComment(ticketId, { agentId: "agent-review", sessionId: "session-review" }, "[Technical Analysis]\nSummary\nDraft one");
+    await addPlanComment(ticketId, { agentId: "agent-review-2", sessionId: "session-review-2" }, "[Plan Review]\nConcerns\nDraft two");
+    await addPlanComment(ticketId, { agentId: "agent-review", sessionId: "session-review" }, "[Plan Iteration]\nRevision\nDraft three");
+
+    const result = updateTicketStatusRecord(governanceCtx, {
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.ok).toBe(true);
   });
 });

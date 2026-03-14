@@ -113,6 +113,68 @@ describe("loop CLI", () => {
     }, null, 2));
   });
 
+  it("posts loop feedback to the retrospective ticket after a one-shot cycle", async () => {
+    const insight = createInsight();
+    const callTool = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "register_agent",
+        result: toolTextPayload({
+          agentId: "agent-plan",
+          sessionId: "session-plan",
+          role: "facilitator",
+          resumed: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "run_workflow",
+        result: toolTextPayload({
+          name: "planner-loop",
+          status: "completed",
+          outputs: {
+            approved: { tickets: [] },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "comment_ticket",
+        result: toolTextPayload({
+          ticketId: "TKT-ce4deff5",
+          commentId: 42,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "end_session",
+        result: toolTextPayload({ ended: true }),
+      });
+
+    await cmdLoop({
+      ...config,
+      retrospective: {
+        enabled: true,
+        ticketId: "TKT-ce4deff5",
+        commentOnIdle: false,
+      },
+    } as any, insight, ["plan", "--json"], {
+      createServer: (() => ({} as any)) as any,
+      getRunner: () => ({ callTool } as any),
+    });
+
+    expect(callTool).toHaveBeenNthCalledWith(3, "comment_ticket", {
+      ticketId: "TKT-ce4deff5",
+      content: expect.stringContaining("[Loop Retrospective]"),
+      agentId: "agent-plan",
+      sessionId: "session-plan",
+    });
+    expect(callTool).toHaveBeenNthCalledWith(4, "end_session", {
+      agentId: "agent-plan",
+      sessionId: "session-plan",
+    });
+  });
+
   it("creates loop context without starting the lifecycle sweep timer", async () => {
     const insight = createInsight();
     const createContextLoader = vi.fn().mockReturnValue(async () => ({
@@ -398,6 +460,93 @@ describe("loop CLI", () => {
     expect(messages.filter((message: string) => message.includes("[cycle 1] planner-loop (initial)"))).toHaveLength(1);
     expect(messages.filter((message: string) => message.includes("[cycle 2] planner-loop"))).toHaveLength(0);
     expect(messages.some((message: string) => message.includes("Stopped planner-loop after 2 cycle(s) (max_runs)"))).toBe(true);
+  });
+
+  it("posts retrospective feedback only for meaningful watch cycles", async () => {
+    const insight = createInsight();
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const callTool = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "register_agent",
+        result: toolTextPayload({
+          agentId: "agent-plan",
+          sessionId: "session-plan",
+          role: "facilitator",
+          resumed: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "poll_coordination",
+        result: toolTextPayload({ topology: "hub-spoke", count: 0, messages: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "run_workflow",
+        result: toolTextPayload({
+          name: "custom:planner-loop",
+          status: "completed",
+          durationMs: 11,
+          outputs: { approved: { tickets: [] } },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "comment_ticket",
+        result: toolTextPayload({
+          ticketId: "TKT-ce4deff5",
+          commentId: 101,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "poll_coordination",
+        result: toolTextPayload({ topology: "hub-spoke", count: 0, messages: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "run_workflow",
+        result: toolTextPayload({
+          name: "custom:planner-loop",
+          status: "completed",
+          durationMs: 29,
+          outputs: { approved: { tickets: [] } },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "end_session",
+        result: toolTextPayload({ ended: true }),
+      });
+
+    await cmdLoop({
+      ...config,
+      retrospective: {
+        enabled: true,
+        ticketId: "TKT-ce4deff5",
+        commentOnIdle: false,
+      },
+    } as any, insight, [
+      "plan",
+      "--watch",
+      "--interval-ms",
+      "1000",
+      "--max-runs",
+      "2",
+    ], {
+      createServer: (() => ({} as any)) as any,
+      getRunner: () => ({ callTool } as any),
+      sleep,
+    });
+
+    expect(callTool).toHaveBeenNthCalledWith(4, "comment_ticket", {
+      ticketId: "TKT-ce4deff5",
+      content: expect.stringContaining("Cycle: 1"),
+      agentId: "agent-plan",
+      sessionId: "session-plan",
+    });
+    expect(callTool.mock.calls.filter((call) => call[0] === "comment_ticket")).toHaveLength(1);
   });
 
   it("routes technical analysis tickets through ta-review in planner watch mode", async () => {

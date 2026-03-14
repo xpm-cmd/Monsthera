@@ -1,4 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { InsightStream } from "../core/insight-stream.js";
 import { renderDashboard } from "./html.js";
 import { cleanupExpiredPayloads } from "../logging/event-logger.js";
@@ -6,7 +8,10 @@ import {
   getOverview, getAgentsList, getEventLogsList,
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence,
   getIndexedFilesMetrics, getTicketMetrics, getAgentTimeline, getTicketTemplates, getSearchDebug,
-  getDependencyGraph, getKnowledgeGraph,
+  getDependencyGraph, getGovernanceSettings, getKnowledgeGraph,
+  STRICT_MODEL_DIVERSITY_DISABLED_REQUIRED_DISTINCT_MODELS,
+  STRICT_MODEL_DIVERSITY_ENABLED_MAX_VOTERS_PER_MODEL,
+  STRICT_MODEL_DIVERSITY_ENABLED_REQUIRED_DISTINCT_MODELS,
   type DashboardDeps,
 } from "./api.js";
 import { exportToObsidian } from "../export/obsidian.js";
@@ -35,6 +40,8 @@ import {
   MAX_TICKET_LONG_TEXT_LENGTH,
 } from "../core/input-hardening.js";
 import { TicketSeverity, TicketStatus } from "../../schemas/ticket.js";
+import { COUNCIL_SPECIALIZATIONS } from "../../schemas/council.js";
+import { loadConfigFile, resolveConfig, type AgoraConfig } from "../core/config.js";
 
 export class DashboardSSE {
   private clients = new Set<ServerResponse>();
@@ -113,6 +120,10 @@ const UpdateStatusBodySchema = z.object({
   skipKnowledgeCapture: z.boolean().optional(),
   agentId: AgentIdSchema,
   sessionId: SessionIdSchema,
+});
+
+const UpdateModelDiversityBodySchema = z.object({
+  enabled: z.boolean(),
 });
 
 export function startDashboard(
@@ -238,6 +249,23 @@ export function startDashboard(
           startedAt,
         });
         return writeTicketMutationResult(res, result);
+      }
+
+      if (path === "/api/settings/governance/model-diversity" && req.method === "POST") {
+        const raw = await readJsonBody(req);
+        const parsed = validateBody(res, UpdateModelDiversityBodySchema, raw);
+        if (!parsed) return;
+        const startedAt = Date.now();
+        const settings = persistDashboardGovernanceSettings(deps, parsed.enabled);
+        await logDashboardMutation(deps, {
+          tool: "dashboard.update_governance.model_diversity",
+          input: raw,
+          result: { ok: true, data: settings },
+          startedAt,
+        });
+        res.writeHead(200, { "Content-Type": "application/json", ...SECURITY_HEADERS });
+        res.end(JSON.stringify(settings));
+        return;
       }
 
       if (path.startsWith("/api/tickets/") && req.method === "POST") {
@@ -431,11 +459,18 @@ async function logDashboardMutation(
   args: {
     tool: string;
     input: Record<string, unknown>;
-    result: Awaited<ReturnType<typeof createTicketRecord>> | ReturnType<typeof assignTicketRecord> | ReturnType<typeof commentTicketRecord> | ReturnType<typeof updateTicketStatusRecord>;
+    result: {
+      ok: boolean;
+      data?: Record<string, unknown>;
+      message?: string;
+    };
     startedAt: number;
   },
 ): Promise<void> {
-  const output = JSON.stringify(args.result.ok ? args.result.data : { error: args.result.message, ...args.result.data });
+  const outputPayload = args.result.ok
+    ? (args.result.data ?? {})
+    : (args.result.data ? { error: args.result.message, ...args.result.data } : { error: args.result.message ?? "Dashboard mutation failed" });
+  const output = JSON.stringify(outputPayload);
   await recordRuntimeEventWithContext({
     config: { debugLogging: false, secretPatterns: [] },
     db: deps.db,
@@ -526,6 +561,62 @@ export function summarizeDashboardReadOutput(data: unknown): Record<string, unkn
   return { shape: typeof data };
 }
 
+function dashboardConfigPath(deps: DashboardDeps): string {
+  const repoRoot = deps.mainRepoPath ?? deps.repoPath;
+  return join(repoRoot, ".agora", "config.json");
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return { ...(value as Record<string, unknown>) };
+}
+
+export function applyStrictModelDiversityToggleToConfig(
+  config: Record<string, unknown>,
+  enabled: boolean,
+): Partial<AgoraConfig> {
+  const next = { ...config } as Record<string, unknown>;
+  const governance = asRecord(next.governance);
+  const modelDiversity = asRecord(governance.modelDiversity);
+  const backlogPlanningGate = asRecord(governance.backlogPlanningGate);
+
+  next.governance = {
+    ...governance,
+    modelDiversity: {
+      ...modelDiversity,
+      strict: enabled,
+      maxVotersPerModel: enabled
+        ? STRICT_MODEL_DIVERSITY_ENABLED_MAX_VOTERS_PER_MODEL
+        : COUNCIL_SPECIALIZATIONS.length,
+    },
+    backlogPlanningGate: {
+      ...backlogPlanningGate,
+      ...(enabled ? { enforce: true } : {}),
+      requiredDistinctModels: enabled
+        ? STRICT_MODEL_DIVERSITY_ENABLED_REQUIRED_DISTINCT_MODELS
+        : STRICT_MODEL_DIVERSITY_DISABLED_REQUIRED_DISTINCT_MODELS,
+    },
+  };
+
+  return next as Partial<AgoraConfig>;
+}
+
+function persistDashboardGovernanceSettings(
+  deps: DashboardDeps,
+  enabled: boolean,
+) {
+  const configRepoPath = deps.mainRepoPath ?? deps.repoPath;
+  const configPath = dashboardConfigPath(deps);
+  const rawConfig = loadConfigFile(configRepoPath);
+  const nextConfig = applyStrictModelDiversityToggleToConfig(rawConfig, enabled);
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, "utf-8");
+  deps.governance = resolveConfig({ repoPath: configRepoPath, ...nextConfig }).governance;
+  return getGovernanceSettings(deps);
+}
+
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -613,6 +704,7 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
     }
     case "tickets": return getTicketsList(deps);
     case "ticket-templates": return getTicketTemplates(deps);
+    case "settings/governance": return getGovernanceSettings(deps);
     case "files": return getIndexedFilesMetrics(deps);
     case "presence": return getPresence(deps);
     case "dependency-graph": {

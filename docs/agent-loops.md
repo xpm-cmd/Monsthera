@@ -70,7 +70,7 @@ What it returns:
 
 ### Council loop
 
-Use this when a reviewer should enter a ticket review gate with ticket context and current consensus state already loaded.
+Use this when a reviewer should enter a ticket review gate with ticket context, deep evidence, and current consensus state already loaded.
 
 ```bash
 agora loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer"
@@ -99,6 +99,7 @@ Notes:
 - ASCII `->` is accepted and normalized internally to the canonical `→` transition form.
 - Council reviewers are specialization-scoped. Use either a specialized `--agent-name` such as `Architect Reviewer` or an explicit `--specialization`.
 - `--since-commit` is optional and preloads recent change context when provided.
+- The council workflow now performs a deep ticket review before voting: `get_issue_pack` for historical context, `get_code_pack` across the ticket and per affected path, per-path complexity and coverage analysis over `affectedPaths`, advisory `suggest_actions`, and a `[Deep Council Review]` ticket comment with implications and recommendations.
 - `agora loop council --watch` can run without a fixed ticket and operate from the queue, but autonomous queue picking still requires a concrete specialization.
 
 ## Output Modes
@@ -197,13 +198,14 @@ What watch mode does:
 - polls coordination to maintain heartbeat
 - repeats the loop every interval
 - stops cleanly on `Ctrl+C`
+- can post a structured feedback note to the configured `Retrospective` ticket after meaningful completed cycles
 
 Additional autonomous behavior in watch mode:
 
 - planner watch can trigger `ta-review` for the top `technical_analysis` ticket
 - planner watch can trigger `deep-review-v2` for the top `in_review` ticket
 - developer watch can auto-take the top recommended `approved` ticket
-- council watch still focuses on quorum gates and review requests; it does not synthesize verdicts by itself
+- council watch focuses on quorum gates and review requests, and each live reviewer now posts a deep evidence note covering history, implications, risks, and recommendations before its specialization-scoped verdict
 
 Council watch priority order:
 
@@ -218,7 +220,7 @@ Council watch priority order:
 - One-shot mode ends the session automatically after each invocation.
 - Watch mode keeps the session active until you stop it.
 - Planner and developer watch now perform safe state transitions where the underlying workflow/tooling already supports them.
-- Council autonomy still depends on live reviewer agents submitting verdicts; the loop does not invent verdicts on its own.
+- Council autonomy still depends on live reviewer agents; the loop deepens evidence gathering and verdict grounding, but it does not replace reviewer identity or cross-specialization judgment.
 - This CLI entrypoint keeps lifecycle hooks available but skips the background sweep timer, so loop workers do not inherit a shared interval.
 
 ## Related Files

@@ -91,6 +91,50 @@ function buildSpecializationGuidance(specialization: string): string {
   }
 }
 
+function validateReviewerModelVoterCap(input: {
+  ticketInternalId: number;
+  agentId: string;
+  db: AgoraContext["db"];
+  maxVotersPerModel?: number;
+}): VerdictReasoningValidationResult | VerdictReasoningValidationError {
+  if (!Number.isFinite(input.maxVotersPerModel) || (input.maxVotersPerModel ?? 0) < 1) {
+    return { ok: true, normalizedReasoning: null };
+  }
+
+  const currentAgent = queries.getAgent(input.db, input.agentId);
+  if (!currentAgent?.provider || !currentAgent.model) {
+    return { ok: true, normalizedReasoning: null };
+  }
+
+  const activeVerdicts = queries.getActiveReviewVerdicts(input.db, input.ticketInternalId);
+  const sameModelAgentIds = new Set<string>();
+
+  for (const verdictRow of activeVerdicts) {
+    if (verdictRow.agentId === input.agentId) continue;
+    const agent = queries.getAgent(input.db, verdictRow.agentId);
+    if (!agent?.provider || !agent.model) continue;
+    if (agent.provider === currentAgent.provider && agent.model === currentAgent.model) {
+      sameModelAgentIds.add(agent.id);
+    }
+  }
+
+  if (sameModelAgentIds.size >= input.maxVotersPerModel!) {
+    return {
+      ok: false,
+      message: `Model voter cap exceeded for ${currentAgent.provider}/${currentAgent.model}. This council gate allows at most ${input.maxVotersPerModel} distinct reviewers on the same model.`,
+      data: {
+        validation: "model_voter_cap",
+        provider: currentAgent.provider,
+        model: currentAgent.model,
+        maxVotersPerModel: input.maxVotersPerModel,
+        activeSameModelVoters: [...sameModelAgentIds],
+      },
+    };
+  }
+
+  return { ok: true, normalizedReasoning: null };
+}
+
 function validateVerdictReasoning(input: {
   reasoning: string | null | undefined;
   verdict: string;
@@ -608,6 +652,19 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         });
       }
 
+      const modelVoterCapValidation = validateReviewerModelVoterCap({
+        ticketInternalId: ticket.id,
+        agentId: resolved.agentId,
+        db: c.db,
+        maxVotersPerModel: c.config?.governance?.modelDiversity?.maxVotersPerModel ?? 3,
+      });
+      if (!modelVoterCapValidation.ok) {
+        return errJson({
+          error: modelVoterCapValidation.message,
+          ...(modelVoterCapValidation.data ?? {}),
+        });
+      }
+
       const now = new Date().toISOString();
       const stored = queries.insertReviewVerdict(c.db, {
         ticketId: ticket.id,
@@ -634,7 +691,10 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       });
 
       let autoAdvanced: { previousStatus: string; status: string } | null = null;
-      if (consensus.advisoryReady && c.config?.governance?.autoAdvance !== false) {
+      const ticketTags = parseStringArrayJson(ticket.tagsJson, { maxItems: 25, maxItemLength: 64 });
+      const excludedTags = c.config?.governance?.autoAdvanceExcludedTags ?? ["umbrella", "tracking", "discussion"];
+      const hasExcludedTag = excludedTags.length > 0 && ticketTags.some((tag) => excludedTags.includes(tag));
+      if (consensus.advisoryReady && c.config?.governance?.autoAdvance !== false && !hasExcludedTag) {
         const target = GATED_ADVANCE_TARGET[ticket.status as TicketStatusType];
         if (target) {
           const advanceResult = updateTicketStatusRecord({

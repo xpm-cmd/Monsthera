@@ -31,6 +31,7 @@ What to do next:
 - if there is `approved` work, route it to a developer
 - if there is `in_review` work, route it to council
 - if there is `blocked` work, inspect whether a child fix ticket is needed
+- if a ticket is still in `backlog`, do not push it to `technical_analysis` until the plan has at least 3 structured iterations across 2 distinct models
 
 Prompt for a facilitator agent:
 
@@ -87,11 +88,12 @@ Or for technical analysis:
 agora loop council TKT-1234abcd --transition technical_analysis->approved --specialization security --json
 ```
 
-Use this when a reviewer needs the current ticket context and consensus state before writing findings or submitting a verdict.
+Use this when a reviewer needs the current ticket context, deep evidence, and consensus state before writing findings or submitting a verdict.
 
 What to do next:
 
 - review only the current transition gate
+- inspect the deep review note, historical context, code-pack hits, per-path complexity/coverage evidence, and generated recommendations first
 - leave findings if there are concrete defects or risks
 - submit a verdict only if the gate is actually ready
 
@@ -170,6 +172,7 @@ Council watch behavior:
 - if that queue is empty, looks at `technical_analysis`
 - if that is also empty, falls back to backlog planning candidates
 - each council worker only assigns and votes for its own specialization
+- before voting, each council worker gathers historical context, dependency implications, code evidence, and per-path analysis, then posts a `[Deep Council Review]` note with recommendations
 
 Planner watch behavior:
 
@@ -182,6 +185,7 @@ Developer watch behavior:
 - inspects approved work every cycle
 - if the top suggestion is unambiguous, auto-assigns it
 - claims the ticket paths and moves it to `in_progress`
+- meaningful completed cycles can append feedback to the configured `Retrospective` ticket
 
 ## 7. Recommended Operating Model
 
@@ -203,7 +207,8 @@ These loop commands now support both one-shot use and persistent watch mode, and
 
 They still do not:
 
-- synthesize review verdicts without a live reviewer agent
+- replace the need for a live reviewer identity behind each specialization
+- infer product intent or business tradeoffs that are not present in the repo, ticket, or stored knowledge
 - replace human judgment for ambiguous product or design decisions
 - fully implement code changes by themselves after a ticket reaches `in_progress`
 

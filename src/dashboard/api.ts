@@ -9,6 +9,7 @@ import type { CoordinationBus } from "../coordination/bus.js";
 import type { GovernanceConfig, TicketQuorumConfig } from "../core/config.js";
 import { getAgentPresenceSummary } from "../agents/registry.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
+import { GovernanceConfigSchema } from "../../schemas/governance.js";
 import { loadTicketTemplates, type TicketTemplate } from "../tickets/templates.js";
 import type { CodeSearchDebugResult } from "../search/debug.js";
 import type { KnowledgeScope, SearchKnowledgeOptions, KnowledgeSearchEntry } from "../knowledge/search.js";
@@ -35,6 +36,37 @@ export interface DashboardDeps {
   refreshKnowledgeSearch?: (knowledgeIds?: number[]) => void;
   searchDebug?: DashboardSearchDebugProvider;
   knowledgeSearch?: (params: SearchKnowledgeOptions) => Promise<KnowledgeSearchEntry[]>;
+}
+
+export const STRICT_MODEL_DIVERSITY_ENABLED_MAX_VOTERS_PER_MODEL = 3;
+export const STRICT_MODEL_DIVERSITY_DISABLED_REQUIRED_DISTINCT_MODELS = 1;
+export const STRICT_MODEL_DIVERSITY_ENABLED_REQUIRED_DISTINCT_MODELS = 2;
+
+export function isStrictModelDiversityEnabled(governance?: GovernanceConfig): boolean {
+  const resolved = GovernanceConfigSchema.parse(governance ?? {});
+  return resolved.modelDiversity.strict
+    && resolved.modelDiversity.maxVotersPerModel <= STRICT_MODEL_DIVERSITY_ENABLED_MAX_VOTERS_PER_MODEL
+    && resolved.backlogPlanningGate.enforce
+    && resolved.backlogPlanningGate.requiredDistinctModels >= STRICT_MODEL_DIVERSITY_ENABLED_REQUIRED_DISTINCT_MODELS;
+}
+
+export function getGovernanceSettings(deps: DashboardDeps) {
+  const governance = GovernanceConfigSchema.parse(deps.governance ?? {});
+  return {
+    modelDiversity: {
+      enabled: isStrictModelDiversityEnabled(governance),
+      council: {
+        strict: governance.modelDiversity.strict,
+        maxVotersPerModel: governance.modelDiversity.maxVotersPerModel,
+      },
+      backlogPlanning: {
+        enforce: governance.backlogPlanningGate.enforce,
+        minIterations: governance.backlogPlanningGate.minIterations,
+        requiredDistinctModels: governance.backlogPlanningGate.requiredDistinctModels,
+      },
+      reviewerIndependence: governance.reviewerIndependence,
+    },
+  };
 }
 
 const IN_REVIEW_STALE_HOURS = 72;
@@ -1390,6 +1422,19 @@ function summarizeDashboardQuorumProgress(consensus: ReturnType<typeof buildTick
       label: `${progressLabel} !`,
       state: "orange",
       title: `${baseTitle} · reviewer independence blocked (${duplicateSummary})`,
+      responded,
+      total,
+    };
+  }
+
+  if (consensus.governance?.modelVoterCapApplied && consensus.governance?.modelDiversity && !consensus.governance.modelDiversity.voterCapMet) {
+    const overSubscribedModels = consensus.governance.modelDiversity.overSubscribedGroups
+      .map((group) => `${group.provider}/${group.model}:${group.totalVoters}/${group.maxVoters}`)
+      .join(", ");
+    return {
+      label: `${progressLabel} !`,
+      state: "orange",
+      title: `${baseTitle} · model voter cap blocked (${overSubscribedModels})`,
       responded,
       total,
     };

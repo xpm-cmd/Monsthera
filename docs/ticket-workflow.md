@@ -19,7 +19,7 @@ The state machine exists in code, but the human workflow matters just as much:
 | `in_progress` | An agent is actively implementing | developer |
 | `in_review` | Implementation is done and waiting for QA or reviewer validation | developer hands off, reviewer validates |
 | `ready_for_commit` | Review passed and the slice is approved to land | reviewer / admin |
-| `blocked` | Cannot move because of dependency or missing input | developer / admin |
+| `blocked` | Temporarily parked because of dependency, missing input, release hold, or external wait | developer / reviewer / admin |
 | `resolved` | Accepted as complete | reviewer / admin |
 | `closed` | Fully finished and no further action expected | reviewer / admin |
 | `wont_fix` | Explicitly not being pursued | reviewer / admin |
@@ -35,10 +35,13 @@ flowchart LR
 
     technical_analysis --> backlog
     technical_analysis --> approved
+    technical_analysis --> blocked
     technical_analysis --> wont_fix
 
     approved --> technical_analysis
     approved --> in_progress
+    approved --> in_review
+    approved --> blocked
     approved --> backlog
     approved --> wont_fix
 
@@ -47,7 +50,14 @@ flowchart LR
     in_progress --> blocked
     in_progress --> wont_fix
 
+    in_review --> blocked
+    ready_for_commit --> blocked
     blocked --> in_progress
+    blocked --> technical_analysis
+    blocked --> approved
+    blocked --> in_review
+    blocked --> ready_for_commit
+    blocked --> backlog
 
     in_review --> in_progress
     in_review --> ready_for_commit
@@ -127,6 +137,7 @@ Administrative correction:
 
 - use `in_progress -> approved` when a ticket was auto-started incorrectly and should return to the ready queue without being marked blocked
 - use `approved -> technical_analysis` when an approval must be invalidated and sent back to council/design review
+- use `* -> blocked` for a real temporary hold, not as a substitute for `backlog`; blocked tickets should carry a comment explaining the wait condition and be resumed to the appropriate queue once the blocker clears
 
 ## Technical Analysis Convention
 
@@ -144,6 +155,12 @@ Risks
 Open Questions
 Compound Output
 ```
+
+Backlog exit gate:
+
+- a ticket must not leave `backlog` until the plan has at least `3` structured planning iterations
+- those planning iterations must be authored by at least `2` distinct `provider/model` combinations
+- Agora counts comments beginning with `[Technical Analysis]`, `[Plan Iteration]`, or `[Plan Review]` toward this gate
 
 Only propose a ticket for implementation after analysis and review converge.
 

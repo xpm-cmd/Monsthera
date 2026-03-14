@@ -161,6 +161,7 @@ describe("governance: model diversity evaluation", () => {
     expect(result.distinctModels).toBe(4);
     expect(result.duplicateGroups).toHaveLength(0);
     expect(result.ineligibleAgentIds).toHaveLength(0);
+    expect(result.voterCapMet).toBe(true);
   });
 
   it("detects duplicate provider+model pairs", () => {
@@ -229,6 +230,36 @@ describe("governance: model diversity evaluation", () => {
     expect(result.diversityMet).toBe(true);
     expect(result.totalVoters).toBe(1);
     expect(result.distinctModels).toBe(1);
+  });
+
+  it("detects when more than three council voters share the same model", () => {
+    const verdicts = [
+      makeNormalizedVerdict("architect", "pass", "agent-1"),
+      makeNormalizedVerdict("simplifier", "pass", "agent-2"),
+      makeNormalizedVerdict("security", "pass", "agent-3"),
+      makeNormalizedVerdict("performance", "fail", "agent-4"),
+    ];
+
+    const identities = new Map<string, AgentIdentity>([
+      ["agent-1", { provider: "openai", model: "gpt-5" }],
+      ["agent-2", { provider: "openai", model: "gpt-5" }],
+      ["agent-3", { provider: "openai", model: "gpt-5" }],
+      ["agent-4", { provider: "openai", model: "gpt-5" }],
+    ]);
+
+    const result = evaluateModelDiversity(verdicts, identities, { maxVotersPerModel: 3 });
+
+    expect(result.voterCapMet).toBe(false);
+    expect(result.maxVotersPerModel).toBe(3);
+    expect(result.overSubscribedGroups).toEqual([
+      expect.objectContaining({
+        provider: "openai",
+        model: "gpt-5",
+        totalVoters: 4,
+        maxVoters: 3,
+      }),
+    ]);
+    expect(result.diversityMet).toBe(false);
   });
 });
 
@@ -362,6 +393,38 @@ describe("governance: strict diversity enforcement", () => {
     );
     expect(result.advisoryReady).toBe(false);
   });
+
+  it("blocks advisory readiness when the same model sends more than three voters, even if strict diversity is relaxed", () => {
+    const verdicts = [
+      makeVerdict("architect", "pass", "agent-1"),
+      makeVerdict("simplifier", "pass", "agent-2"),
+      makeVerdict("security", "pass", "agent-3"),
+      makeVerdict("performance", "pass", "agent-4"),
+      makeVerdict("patterns", "pass", "agent-5"),
+    ];
+
+    const identities = new Map<string, AgentIdentity>([
+      ["agent-1", { provider: "openai", model: "gpt-5" }],
+      ["agent-2", { provider: "openai", model: "gpt-5" }],
+      ["agent-3", { provider: "openai", model: "gpt-5" }],
+      ["agent-4", { provider: "openai", model: "gpt-5" }],
+      ["agent-5", { provider: "anthropic", model: "opus" }],
+    ]);
+
+    const result = buildConsensusPayload("TKT-test", verdicts, {
+      requiredPasses: 4,
+      governance: {
+        agentIdentities: identities,
+        strictDiversity: false,
+        maxVotersPerModel: 3,
+      },
+    });
+
+    expect(result.counts.pass).toBe(4);
+    expect(result.quorumMet).toBe(true);
+    expect(result.governance?.modelDiversity?.voterCapMet).toBe(false);
+    expect(result.advisoryReady).toBe(false);
+  });
 });
 
 describe("governance: reviewer independence", () => {
@@ -455,10 +518,12 @@ describe("buildGovernanceOptions", () => {
     const opts = buildGovernanceOptions(
       {
         nonVotingRoles: ["facilitator"],
-        modelDiversity: { strict: true },
+        modelDiversity: { strict: true, maxVotersPerModel: 3 },
         reviewerIndependence: { strict: true, identityKey: "agent" },
+        backlogPlanningGate: { enforce: true, minIterations: 3, requiredDistinctModels: 2 },
         requireBinding: false,
         autoAdvance: true,
+        autoAdvanceExcludedTags: [],
       },
       verdicts,
       (id) => agentDb[id],
@@ -468,6 +533,7 @@ describe("buildGovernanceOptions", () => {
     expect(opts!.nonVotingAgentIds).toEqual(["agent-fac"]);
     expect(opts!.agentIdentities?.get("agent-dev")).toEqual({ provider: "openai", model: "gpt-4" });
     expect(opts!.strictDiversity).toBe(true);
+    expect(opts!.maxVotersPerModel).toBe(3);
     expect(opts!.strictReviewerIndependence).toBe(true);
     expect(opts!.reviewerIdentityKey).toBe("agent");
   });
@@ -485,10 +551,12 @@ describe("buildGovernanceOptions", () => {
     const opts = buildGovernanceOptions(
       {
         nonVotingRoles: ["facilitator"],
-        modelDiversity: { strict: true },
+        modelDiversity: { strict: true, maxVotersPerModel: 3 },
         reviewerIndependence: { strict: true, identityKey: "agent" },
+        backlogPlanningGate: { enforce: true, minIterations: 3, requiredDistinctModels: 2 },
         requireBinding: false,
         autoAdvance: true,
+        autoAdvanceExcludedTags: [],
       },
       verdicts,
       () => undefined,
@@ -512,10 +580,12 @@ describe("buildGovernanceOptions", () => {
     const normal = buildGovernanceOptions(
       {
         nonVotingRoles: ["facilitator"],
-        modelDiversity: { strict: true },
+        modelDiversity: { strict: true, maxVotersPerModel: 3 },
         reviewerIndependence: { strict: true, identityKey: "agent" },
+        backlogPlanningGate: { enforce: true, minIterations: 3, requiredDistinctModels: 2 },
         requireBinding: false,
         autoAdvance: true,
+        autoAdvanceExcludedTags: [],
       },
       verdicts,
       (id) => agentDb[id],
@@ -524,10 +594,12 @@ describe("buildGovernanceOptions", () => {
     const critical = buildGovernanceOptions(
       {
         nonVotingRoles: ["facilitator"],
-        modelDiversity: { strict: true },
+        modelDiversity: { strict: true, maxVotersPerModel: 3 },
         reviewerIndependence: { strict: true, identityKey: "agent" },
+        backlogPlanningGate: { enforce: true, minIterations: 3, requiredDistinctModels: 2 },
         requireBinding: false,
         autoAdvance: true,
+        autoAdvanceExcludedTags: [],
       },
       verdicts,
       (id) => agentDb[id],

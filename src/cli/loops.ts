@@ -1,6 +1,6 @@
 import { setTimeout as sleepTimeout } from "node:timers/promises";
 import { CouncilSpecializationId, type CouncilSpecializationId as CouncilSpecialization } from "../../schemas/council.js";
-import type { AgoraConfig } from "../core/config.js";
+import type { AgoraConfig, RetrospectiveConfig } from "../core/config.js";
 import type { AgoraContext } from "../core/context.js";
 import { createAgoraContextLoader } from "../core/context-loader.js";
 import type { InsightStream } from "../core/insight-stream.js";
@@ -94,6 +94,20 @@ interface PlannerAutonomousAction {
 interface DeveloperAutoTakeCandidate {
   ticketId: string;
   affectedPaths: string[];
+}
+
+interface DeveloperAutoTakeOutcome {
+  ticketId: string;
+  outcome: "taken" | "failed";
+  affectedPaths: string[];
+  message?: string;
+}
+
+interface LoopRetrospectiveEntry {
+  mode: "one_shot" | "watch";
+  cycle?: number;
+  reason?: string;
+  feedbackLines: string[];
 }
 
 export interface LoopExecutionPayload {
@@ -239,6 +253,7 @@ export async function cmdLoop(
         runner,
         sleep,
         asJson,
+        retrospective: config.retrospective,
       });
       return;
     }
@@ -247,6 +262,26 @@ export async function cmdLoop(
       ? enrichCouncilParams(invocation.workflowParams, agent, invocation.councilSpecialization)
       : invocation.workflowParams;
     const workflowExecution = await executeWorkflow(runner, spec.workflowName, agent, effectiveParams);
+    await postLoopRetrospectiveComment({
+      runner,
+      retrospective: config.retrospective,
+      agent,
+      loop,
+      workflowName: spec.workflowName,
+      entry: {
+        mode: "one_shot",
+        feedbackLines: [
+          buildWorkflowFeedbackLine({
+            workflowName: spec.workflowName,
+            payload: workflowExecution.payload,
+            params: effectiveParams,
+            reason: "one_shot",
+            ok: workflowExecution.call.ok,
+          }),
+        ],
+      },
+      asJson,
+    });
     if (!workflowExecution.call.ok) {
       process.exitCode = 1;
       printLoopFailure(workflowExecution.call, workflowExecution.payload, asJson, agent, loop, spec.workflowName);
@@ -285,8 +320,9 @@ async function runWatchLoop(input: {
   runner: ToolRunner;
   sleep: (ms: number) => Promise<void>;
   asJson: boolean;
+  retrospective?: RetrospectiveConfig;
 }): Promise<void> {
-  const { loop, spec, agent, invocation, watch, runner, sleep, asJson } = input;
+  const { loop, spec, agent, invocation, watch, runner, sleep, asJson, retrospective } = input;
   const stopController = createStopController();
   let cycles = 0;
   // Start from "now" so watch mode behaves like a live worker, not a full bus history replay.
@@ -308,6 +344,7 @@ async function runWatchLoop(input: {
     while (!stopController.stopped) {
       cycles += 1;
       const coordination = await pollCoordination(runner, agent, lastCoordinationTimestamp);
+      const feedbackLines: string[] = [];
       if (coordination.messages.length > 0) {
         lastCoordinationTimestamp = coordination.messages[coordination.messages.length - 1]?.timestamp ?? lastCoordinationTimestamp;
         printWatchCoordinationEvent(loop, coordination.messages, asJson);
@@ -349,6 +386,14 @@ async function runWatchLoop(input: {
             request,
             forcePrint: true,
           });
+          feedbackLines.push(buildWorkflowFeedbackLine({
+            workflowName: spec.workflowName,
+            payload: execution.payload,
+            params: councilParams,
+            reason: "review_request",
+            ok: handled.ok,
+            request,
+          }));
 
           if (!handled.ok) {
             process.exitCode = 1;
@@ -388,6 +433,16 @@ async function runWatchLoop(input: {
                 fingerprints,
                 queueTicket: inReviewTicket,
               });
+              if (handled.printed) {
+                feedbackLines.push(buildWorkflowFeedbackLine({
+                  workflowName: spec.workflowName,
+                  payload: execution.payload,
+                  params,
+                  reason: "in_review_queue",
+                  ok: handled.ok,
+                  queueTicket: inReviewTicket,
+                }));
+              }
               if (!handled.ok) {
                 process.exitCode = 1;
                 stopReason = "workflow_failed";
@@ -415,6 +470,16 @@ async function runWatchLoop(input: {
                   fingerprints,
                   queueTicket: technicalAnalysisTicket,
                 });
+                if (handled.printed) {
+                  feedbackLines.push(buildWorkflowFeedbackLine({
+                    workflowName: spec.workflowName,
+                    payload: execution.payload,
+                    params,
+                    reason: "technical_analysis_queue",
+                    ok: handled.ok,
+                    queueTicket: technicalAnalysisTicket,
+                  }));
+                }
                 if (!handled.ok) {
                   process.exitCode = 1;
                   stopReason = "workflow_failed";
@@ -439,11 +504,12 @@ async function runWatchLoop(input: {
         }
       } else if (loop === "plan") {
         const execution = await executeWorkflow(runner, spec.workflowName, agent, invocation.workflowParams);
+        const fixedReason: WorkflowPrintReason = fingerprints.has(`${loop}:fixed`) ? "changed" : "initial";
         const handled = printWatchWorkflowEvent({
           loop,
           workflowName: spec.workflowName,
           cycle: cycles,
-          reason: fingerprints.size === 0 ? "initial" : "changed",
+          reason: fixedReason,
           params: invocation.workflowParams,
           agent,
           execution,
@@ -451,6 +517,15 @@ async function runWatchLoop(input: {
           fingerprintKey: `${loop}:fixed`,
           fingerprints,
         });
+        if (handled.printed) {
+          feedbackLines.push(buildWorkflowFeedbackLine({
+            workflowName: spec.workflowName,
+            payload: execution.payload,
+            params: invocation.workflowParams,
+            reason: fixedReason,
+            ok: handled.ok,
+          }));
+        }
         if (!handled.ok) {
           process.exitCode = 1;
           stopReason = "workflow_failed";
@@ -465,7 +540,7 @@ async function runWatchLoop(input: {
             agent,
             autonomousAction.params,
           );
-          printWatchWorkflowEvent({
+          const routed = printWatchWorkflowEvent({
             loop,
             workflowName: autonomousAction.workflowName,
             cycle: cycles,
@@ -478,17 +553,21 @@ async function runWatchLoop(input: {
             fingerprints,
             queueTicket: autonomousAction.queueTicket,
           });
+          if (routed.printed) {
+            feedbackLines.push(buildPlannerRouteFeedbackLine(autonomousAction, routeExecution.payload, routed.ok));
+          }
         }
       } else {
         const effectiveParams = loop === "council"
           ? enrichCouncilParams(invocation.workflowParams, agent, invocation.councilSpecialization)
           : invocation.workflowParams;
         const execution = await executeWorkflow(runner, spec.workflowName, agent, effectiveParams);
+        const fixedReason: WorkflowPrintReason = fingerprints.has(`${loop}:fixed`) ? "changed" : "initial";
         const handled = printWatchWorkflowEvent({
           loop,
           workflowName: spec.workflowName,
           cycle: cycles,
-          reason: fingerprints.size === 0 ? "initial" : "changed",
+          reason: fixedReason,
           params: effectiveParams,
           agent,
           execution,
@@ -496,6 +575,15 @@ async function runWatchLoop(input: {
           fingerprintKey: `${loop}:fixed`,
           fingerprints,
         });
+        if (handled.printed) {
+          feedbackLines.push(buildWorkflowFeedbackLine({
+            workflowName: spec.workflowName,
+            payload: execution.payload,
+            params: effectiveParams,
+            reason: fixedReason,
+            ok: handled.ok,
+          }));
+        }
         if (!handled.ok) {
           process.exitCode = 1;
           stopReason = "workflow_failed";
@@ -503,15 +591,32 @@ async function runWatchLoop(input: {
         }
 
         if (loop === "dev") {
-          await maybeAutoTakeDeveloperWork({
+          const autoTakeOutcome = await maybeAutoTakeDeveloperWork({
             runner,
             agent,
             cycle: cycles,
             asJson,
             payload: execution.payload,
           });
+          if (autoTakeOutcome) {
+            feedbackLines.push(buildDeveloperAutoTakeFeedbackLine(autoTakeOutcome));
+          }
         }
       }
+
+      await postLoopRetrospectiveComment({
+        runner,
+        retrospective,
+        agent,
+        loop,
+        workflowName: spec.workflowName,
+        entry: {
+          mode: "watch",
+          cycle: cycles,
+          feedbackLines,
+        },
+        asJson,
+      });
 
       if (watch.maxRuns && cycles >= watch.maxRuns) {
         stopReason = "max_runs";
@@ -551,7 +656,7 @@ function printWatchWorkflowEvent(input: {
   forcePrint?: boolean;
   request?: CouncilRequestContext;
   queueTicket?: QueueTicketSummary;
-}): { ok: boolean } {
+}): { ok: boolean; printed: boolean } {
   const { execution, fingerprintKey, fingerprints, forcePrint = false } = input;
   const fingerprint = fingerprintValue(execution.payload);
   const changed = fingerprints.get(fingerprintKey) !== fingerprint;
@@ -573,7 +678,7 @@ function printWatchWorkflowEvent(input: {
         message: execution.call.message,
       },
     }, input.asJson);
-    return { ok: false };
+    return { ok: false, printed: true };
   }
 
   if (forcePrint || changed) {
@@ -589,9 +694,10 @@ function printWatchWorkflowEvent(input: {
       queueTicket: input.queueTicket,
       result: execution.payload,
     }, input.asJson);
+    return { ok: true, printed: true };
   }
 
-  return { ok: true };
+  return { ok: true, printed: false };
 }
 
 function buildLoopInvocation(loop: LoopCommand, args: string[], watchEnabled: boolean): LoopInvocation {
@@ -967,9 +1073,9 @@ async function maybeAutoTakeDeveloperWork(input: {
   cycle: number;
   asJson: boolean;
   payload: unknown;
-}): Promise<void> {
+}): Promise<DeveloperAutoTakeOutcome | null> {
   const candidate = selectDeveloperAutoTakeCandidate(input.payload);
-  if (!candidate) return;
+  if (!candidate) return null;
 
   const assignResult = await input.runner.callTool("assign_ticket", {
     ticketId: candidate.ticketId,
@@ -985,7 +1091,12 @@ async function maybeAutoTakeDeveloperWork(input: {
       ticketId: candidate.ticketId,
       message: formatToolFailure(assignResult),
     }, input.asJson);
-    return;
+    return {
+      ticketId: candidate.ticketId,
+      outcome: "failed",
+      affectedPaths: candidate.affectedPaths,
+      message: formatToolFailure(assignResult),
+    };
   }
 
   let claimPayload: unknown = null;
@@ -1003,7 +1114,12 @@ async function maybeAutoTakeDeveloperWork(input: {
         ticketId: candidate.ticketId,
         message: formatToolFailure(claimResult),
       }, input.asJson);
-      return;
+      return {
+        ticketId: candidate.ticketId,
+        outcome: "failed",
+        affectedPaths: candidate.affectedPaths,
+        message: formatToolFailure(claimResult),
+      };
     }
     claimPayload = parseToolPayload(claimResult);
   }
@@ -1023,7 +1139,12 @@ async function maybeAutoTakeDeveloperWork(input: {
       ticketId: candidate.ticketId,
       message: formatToolFailure(transitionResult),
     }, input.asJson);
-    return;
+    return {
+      ticketId: candidate.ticketId,
+      outcome: "failed",
+      affectedPaths: candidate.affectedPaths,
+      message: formatToolFailure(transitionResult),
+    };
   }
 
   printWatchEvent({
@@ -1036,6 +1157,150 @@ async function maybeAutoTakeDeveloperWork(input: {
     claims: claimPayload,
     transition: parseToolPayload(transitionResult),
   }, input.asJson);
+  return {
+    ticketId: candidate.ticketId,
+    outcome: "taken",
+    affectedPaths: candidate.affectedPaths,
+  };
+}
+
+async function postLoopRetrospectiveComment(input: {
+  runner: ToolRunner;
+  retrospective?: RetrospectiveConfig;
+  agent: LoopAgentPayload;
+  loop: LoopCommand;
+  workflowName: string;
+  entry: LoopRetrospectiveEntry;
+  asJson: boolean;
+}): Promise<void> {
+  const { retrospective, entry } = input;
+  if (!retrospective?.enabled || !retrospective.ticketId) return;
+
+  const feedbackLines = entry.feedbackLines.length > 0
+    ? entry.feedbackLines
+    : retrospective.commentOnIdle
+      ? ["No actionable work or state change occurred in this cycle."]
+      : [];
+  if (feedbackLines.length === 0) return;
+
+  const comment = buildRetrospectiveComment({
+    loop: input.loop,
+    workflowName: input.workflowName,
+    agent: input.agent,
+    entry: {
+      ...entry,
+      feedbackLines,
+    },
+  });
+  const result = await input.runner.callTool("comment_ticket", {
+    ticketId: retrospective.ticketId,
+    content: comment,
+    agentId: input.agent.agentId,
+    sessionId: input.agent.sessionId,
+  });
+  if (!result.ok) {
+    printRetrospectiveFailure(input.loop, result, input.asJson);
+  }
+}
+
+function buildRetrospectiveComment(input: {
+  loop: LoopCommand;
+  workflowName: string;
+  agent: LoopAgentPayload;
+  entry: LoopRetrospectiveEntry;
+}): string {
+  const lines = [
+    "[Loop Retrospective]",
+    "",
+    `Loop: ${input.loop}`,
+    `Workflow: ${input.workflowName}`,
+    `Mode: ${input.entry.mode}`,
+    `Agent: ${input.agent.name} (${input.agent.agentId})`,
+    input.entry.cycle != null ? `Cycle: ${input.entry.cycle}` : null,
+    input.entry.reason ? `Reason: ${input.entry.reason}` : null,
+    "",
+    "Feedback:",
+    ...input.entry.feedbackLines.map((line) => `- ${line}`),
+  ];
+  return lines.filter((line): line is string => Boolean(line)).join("\n");
+}
+
+function printRetrospectiveFailure(
+  loop: LoopCommand,
+  result: Exclude<ToolRunnerCallResult, { ok: true }>,
+  asJson: boolean,
+): void {
+  if (asJson) {
+    console.log(JSON.stringify({
+      event: "retrospective_failed",
+      loop,
+      message: formatToolFailure(result),
+    }, null, 2));
+    return;
+  }
+  console.log(`Retrospective comment failed for ${loop}: ${formatToolFailure(result)}`);
+}
+
+function buildWorkflowFeedbackLine(input: {
+  workflowName: string;
+  payload: unknown;
+  params: Record<string, unknown>;
+  reason: string;
+  ok: boolean;
+  request?: CouncilRequestContext;
+  queueTicket?: QueueTicketSummary;
+}): string {
+  const status = readWorkflowStatus(input.payload) ?? (input.ok ? "completed" : "failed");
+  const ticketId = input.request?.ticketId
+    ?? input.queueTicket?.ticketId
+    ?? (typeof input.params.ticketId === "string" ? input.params.ticketId : undefined);
+  const transition = input.request?.transition
+    ?? (typeof input.params.transition === "string" ? input.params.transition : undefined);
+  const specialization = typeof input.params.callerSpecialization === "string"
+    ? input.params.callerSpecialization
+    : undefined;
+
+  const parts = [
+    `Ran ${input.workflowName}`,
+    `status ${status}`,
+    `reason ${input.reason}`,
+    ticketId ? `ticket ${ticketId}` : null,
+    transition ? `transition ${transition}` : null,
+    specialization ? `specialization ${specialization}` : null,
+  ];
+  return parts.filter((part): part is string => Boolean(part)).join("; ");
+}
+
+function buildPlannerRouteFeedbackLine(
+  action: PlannerAutonomousAction,
+  payload: unknown,
+  ok: boolean,
+): string {
+  const status = readWorkflowStatus(payload) ?? (ok ? "completed" : "failed");
+  return [
+    `Routed ${action.queueTicket.ticketId} into ${action.workflowName}`,
+    `status ${status}`,
+    `reason ${action.reason}`,
+  ].join("; ");
+}
+
+function buildDeveloperAutoTakeFeedbackLine(outcome: DeveloperAutoTakeOutcome): string {
+  if (outcome.outcome === "taken") {
+    return [
+      `Auto-took ${outcome.ticketId} for implementation`,
+      `claimed ${outcome.affectedPaths.length} path(s)`,
+    ].join("; ");
+  }
+
+  return [
+    `Auto-take failed for ${outcome.ticketId}`,
+    outcome.message ?? "unknown error",
+  ].join("; ");
+}
+
+function readWorkflowStatus(payload: unknown): string | null {
+  if (!isRecord(payload)) return null;
+  return typeof payload.status === "string" ? payload.status : null;
 }
 
 function selectDeveloperAutoTakeCandidate(payload: unknown): DeveloperAutoTakeCandidate | null {

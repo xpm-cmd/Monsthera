@@ -48,7 +48,17 @@ describe("AgoraConfigSchema", () => {
     expect(result.search).toEqual(DEFAULT_SEARCH_CONFIG);
     expect(result.ticketQuorum.enabled).toBe(true);
     expect(result.ticketQuorum.vetoSpecializations).toEqual(["architect", "security"]);
+    expect(result.governance.modelDiversity).toEqual({
+      strict: true,
+      maxVotersPerModel: 3,
+    });
+    expect(result.governance.backlogPlanningGate).toEqual({
+      enforce: true,
+      minIterations: 3,
+      requiredDistinctModels: 2,
+    });
     expect(result.governance.requireBinding).toBe(false);
+    expect(result.retrospective.enabled).toBe(false);
   });
 
   it("rejects missing repoPath", () => {
@@ -168,15 +178,49 @@ describe("AgoraConfigSchema", () => {
         requireBinding: true,
         nonVotingRoles: ["facilitator"],
         modelDiversity: { strict: true },
+        backlogPlanningGate: { minIterations: 4 },
       },
     });
 
     expect(result.governance.requireBinding).toBe(true);
-    expect(result.governance.modelDiversity.strict).toBe(true);
+    expect(result.governance.modelDiversity).toEqual({
+      strict: true,
+      maxVotersPerModel: 3,
+    });
+    expect(result.governance.backlogPlanningGate).toEqual({
+      enforce: true,
+      minIterations: 4,
+      requiredDistinctModels: 2,
+    });
     expect(result.governance.reviewerIndependence).toEqual({
       strict: true,
       identityKey: "agent",
     });
+  });
+
+  it("accepts valid retrospective config", () => {
+    const result = AgoraConfigSchema.parse({
+      repoPath: "/r",
+      retrospective: {
+        enabled: true,
+        ticketId: "TKT-ce4deff5",
+      },
+    });
+
+    expect(result.retrospective).toEqual({
+      enabled: true,
+      ticketId: "TKT-ce4deff5",
+      commentOnIdle: false,
+    });
+  });
+
+  it("rejects enabled retrospective without a ticket id", () => {
+    expect(() => AgoraConfigSchema.parse({
+      repoPath: "/r",
+      retrospective: {
+        enabled: true,
+      },
+    })).toThrow(/retrospective\.ticketId is required/i);
   });
 
   it("rejects crossInstance enabled without instanceId", () => {
@@ -403,6 +447,34 @@ describe("mergeConfigSources", () => {
     expect(result.registrationAuth).toEqual({
       enabled: true,
       roleTokens: { developer: "tok" },
+    });
+  });
+
+  it("deep-merges retrospective config", () => {
+    const result = mergeConfigSources(
+      { retrospective: { enabled: true, ticketId: "TKT-ce4deff5" } } as Partial<any>,
+      { retrospective: { commentOnIdle: true } } as Partial<any>,
+    );
+
+    expect(result.retrospective).toEqual({
+      enabled: true,
+      ticketId: "TKT-ce4deff5",
+      commentOnIdle: true,
+    });
+  });
+
+  it("deep-merges governance backlog planning gate config", () => {
+    const result = mergeConfigSources(
+      { governance: { backlogPlanningGate: { enforce: true, minIterations: 3 } } } as Partial<any>,
+      { governance: { backlogPlanningGate: { requiredDistinctModels: 4 } } } as Partial<any>,
+    );
+
+    expect(result.governance).toEqual({
+      backlogPlanningGate: {
+        enforce: true,
+        minIterations: 3,
+        requiredDistinctModels: 4,
+      },
     });
   });
 });

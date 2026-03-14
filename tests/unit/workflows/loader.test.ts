@@ -116,4 +116,64 @@ steps:
       },
     });
   });
+
+  it("ships a deep council-loop workflow in the repo", async () => {
+    const result = await loadCustomWorkflows(process.cwd());
+
+    expect(result.warnings.filter((warning) => warning.filePath === ".agora/workflows/council-loop.yaml")).toEqual([]);
+
+    const workflow = result.workflows.find((entry) => entry.localName === "council-loop");
+    expect(workflow).toBeDefined();
+    expect(workflow?.filePath).toBe(".agora/workflows/council-loop.yaml");
+    expect(workflow?.tools).toEqual(expect.arrayContaining([
+      "get_ticket",
+      "get_change_pack",
+      "get_issue_pack",
+      "get_code_pack",
+      "analyze_complexity",
+      "analyze_test_coverage",
+      "suggest_actions",
+      "comment_ticket",
+      "assign_council",
+      "submit_verdict",
+      "check_consensus",
+    ]));
+    expect(workflow?.spec.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: "issuePack",
+        tool: "get_issue_pack",
+      }),
+      expect.objectContaining({
+        key: "codePack",
+        tool: "get_code_pack",
+      }),
+      expect.objectContaining({
+        key: "pathCodePacks",
+        tool: "get_code_pack",
+        forEach: "steps.ticket.affectedPaths",
+        onError: "continue",
+      }),
+      expect.objectContaining({
+        key: "complexity",
+        tool: "analyze_complexity",
+        forEach: "steps.ticket.affectedPaths",
+        onError: "continue",
+      }),
+      expect.objectContaining({
+        key: "coverage",
+        tool: "analyze_test_coverage",
+        forEach: "steps.ticket.affectedPaths",
+        onError: "continue",
+      }),
+      expect.objectContaining({
+        key: "reviewNote",
+        tool: "comment_ticket",
+        condition: "!steps.consensus.advisoryReady",
+      }),
+      expect.objectContaining({
+        key: "verdict",
+        tool: "submit_verdict",
+      }),
+    ]));
+  });
 });

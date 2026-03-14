@@ -238,6 +238,13 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .action-submit:disabled{opacity:.55;cursor:not-allowed}
 .action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
 .actor-chip{display:inline-flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--text2);padding:.25rem .55rem;border-radius:20px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05)}
+.governance-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;margin-bottom:1.25rem}
+.governance-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:.55rem}
+.governance-panel-title{font-size:.75rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+.governance-panel-meta{font-size:.72rem;color:var(--text3);line-height:1.5}
+.governance-panel .toggle-row{display:flex;align-items:flex-start;gap:.65rem;color:var(--text2);font-size:.8rem;line-height:1.5}
+.governance-panel input[type="checkbox"]{width:16px;height:16px;margin-top:2px;accent-color:var(--blue);flex-shrink:0}
+.governance-panel-actions{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;margin-top:.75rem}
 
 /* ── Dependency graph ──────────────────────── */
 .dep-graph-toolbar{display:flex;gap:.6rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap}
@@ -277,6 +284,7 @@ footer a{color:var(--blue);text-decoration:none}
 
 <div class="main">
   <div class="stats" id="overview"></div>
+  <div class="governance-panel" id="governance-panel"><div class="empty">Loading governance policy…</div></div>
   <div class="presence-title"><span class="dot"></span> Live Agents</div>
   <div class="presence" id="presence"><div class="empty" style="width:100%">No agents registered yet</div></div>
   <div class="charts" id="charts"></div>
@@ -315,7 +323,7 @@ const TYPE_COLORS={decision:'#3b82f6',gotcha:'#f59e0b',pattern:'#a855f7',context
 const STATE_COLORS={proposed:'#f59e0b',validated:'#3b82f6',applied:'#22c55e',committed:'#22c55e',stale:'#ef4444',failed:'#ef4444'};
 const KNOWLEDGE_TYPES=['decision','gotcha','pattern','context','plan','solution','preference'];
 const TICKET_STATUS_CLS={resolved:'success',closed:'success',technical_analysis:'purple',approved:'success',in_progress:'blue',in_review:'blue',ready_for_commit:'cyan',backlog:'orange',blocked:'red',wont_fix:'red'};
-const TICKET_TRANSITIONS={backlog:['technical_analysis','wont_fix'],technical_analysis:['backlog','approved','resolved','wont_fix'],approved:['technical_analysis','in_progress','in_review','backlog','wont_fix'],in_progress:['approved','in_review','blocked','wont_fix'],in_review:['in_progress','ready_for_commit'],ready_for_commit:['in_progress','resolved'],blocked:['in_progress','wont_fix'],resolved:['in_progress','closed'],closed:['backlog'],wont_fix:['backlog']};
+const TICKET_TRANSITIONS={backlog:['technical_analysis','wont_fix'],technical_analysis:['backlog','approved','blocked','resolved','wont_fix'],approved:['technical_analysis','in_progress','in_review','blocked','backlog','wont_fix'],in_progress:['approved','in_review','blocked','wont_fix'],in_review:['in_progress','ready_for_commit','blocked'],ready_for_commit:['in_progress','blocked','resolved'],blocked:['backlog','technical_analysis','approved','in_progress','in_review','ready_for_commit','wont_fix'],resolved:['in_progress','closed'],closed:['backlog'],wont_fix:['backlog']};
 const DONE_TICKET_STATUSES=['resolved','closed','wont_fix'];
 const TICKET_BOARD_WIP_THRESHOLDS={backlog:8,technical_analysis:4,approved:6,in_progress:4,in_review:3,ready_for_commit:4,blocked:2,done:99};
 const TICKET_BOARD_COLUMNS=[
@@ -338,6 +346,7 @@ let ticketViewMode='table';
 let ticketCreateMode='agent';
 let ticketFilters={search:'',status:'all',severity:'all',assignee:'all',hideDone:true};
 let selectedTicketTemplateId='';
+let governanceSettings={loading:true,saving:false,data:null};
 let searchDebugState={query:'',scope:'',limit:10,loading:false,error:'',data:null};
 let knowledgeCatalog=[];
 let knowledgeViewState={query:'',scope:'all',type:'',limit:20,loading:false,error:'',results:[]};
@@ -804,6 +813,57 @@ function ticketAssigneeOptions(tickets){
     }
   });
   return options;
+}
+
+function renderGovernancePanel(){
+  var host=document.getElementById('governance-panel');
+  if(!host) return;
+  if(governanceSettings.loading && !governanceSettings.data){
+    host.innerHTML='<div class="empty">Loading governance policy…</div>';
+    return;
+  }
+  var settings=governanceSettings.data;
+  if(!settings||!settings.modelDiversity){
+    host.innerHTML='<div class="empty">Governance policy unavailable</div>';
+    return;
+  }
+  var modelDiversity=settings.modelDiversity;
+  var enabled=!!modelDiversity.enabled;
+  var backlogLabel=modelDiversity.backlogPlanning&&modelDiversity.backlogPlanning.enforce
+    ?String(modelDiversity.backlogPlanning.requiredDistinctModels)+' models in backlog review'
+    :'backlog distinct-model gate disabled';
+  host.innerHTML=''
+    +'<div class="governance-panel-head">'
+      +'<div><div class="governance-panel-title">Governance Controls</div><div class="governance-panel-meta">Toggle the strict model-diversity policy used by council quorum and backlog planning review. Reviewer independence stays enabled.</div></div>'
+      +'<span class="badge badge-'+(enabled?'success':'orange')+'">'+(enabled?'Strict model diversity on':'Strict model diversity off')+'</span>'
+    +'</div>'
+    +'<label class="toggle-row" for="governance-model-diversity-toggle">'
+      +'<input id="governance-model-diversity-toggle" type="checkbox"'+(enabled?' checked':'')+(governanceSettings.saving?' disabled':'')+'>'
+      +'<span>Require multi-model council quorum for non-critical tickets, cap each model at '+esc(String(modelDiversity.council.maxVotersPerModel))+' active voters, and keep backlog planning review at '+esc(backlogLabel)+'.</span>'
+    +'</label>'
+    +'<div class="governance-panel-actions">'
+      +'<span class="actor-chip">Council strict: '+esc(modelDiversity.council.strict?'on':'off')+'</span>'
+      +'<span class="actor-chip">Max voters/model: '+esc(String(modelDiversity.council.maxVotersPerModel))+'</span>'
+      +'<span class="actor-chip">Backlog distinct models: '+esc(String(modelDiversity.backlogPlanning.requiredDistinctModels))+'</span>'
+    +'</div>';
+
+  var toggle=document.getElementById('governance-model-diversity-toggle');
+  if(toggle){
+    toggle.addEventListener('change',async function(e){
+      var next=!!e.target.checked;
+      governanceSettings.saving=true;
+      renderGovernancePanel();
+      try{
+        governanceSettings.data=await apiPost('settings/governance/model-diversity',{enabled:next});
+        showToast(next?'Strict model diversity enabled':'Strict model diversity disabled','success');
+        await refresh();
+      }catch(err){
+        showToast('Governance update failed: '+String(err.message||err),'error');
+        governanceSettings.saving=false;
+        renderGovernancePanel();
+      }
+    });
+  }
 }
 
 function renderTicketToolbar(tickets,filteredTickets){
@@ -2469,13 +2529,16 @@ async function refreshPresence(){
 async function refresh(){
   try{
     var results=await Promise.all([
-      api('overview'),api('agents'),api('agent-timeline'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets'),api('tickets/metrics'),api('files'),api('ticket-templates')
+      api('overview'),api('agents'),api('agent-timeline'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets'),api('tickets/metrics'),api('files'),api('ticket-templates'),api('settings/governance')
     ]);
-    var o=results[0],agents=results[1],timeline=results[2],logs=results[3],patches=results[4],notes=results[5],knowledge=results[6],presence=results[7],tickets=results[8],ticketMetrics=results[9],files=results[10],ticketTemplates=results[11];
+    var o=results[0],agents=results[1],timeline=results[2],logs=results[3],patches=results[4],notes=results[5],knowledge=results[6],presence=results[7],tickets=results[8],ticketMetrics=results[9],files=results[10],ticketTemplates=results[11],settings=results[12];
     knowledgeCatalog=knowledge;
     await refreshKnowledgeViewData(false);
     dashboardAgents=agents;
     window.__agoraTicketTemplates=ticketTemplates;
+    governanceSettings.data=settings;
+    governanceSettings.loading=false;
+    governanceSettings.saving=false;
     ticketActors=[];
     presence.forEach(function(agent){
       (agent.sessions||[]).forEach(function(session){
@@ -2501,6 +2564,7 @@ async function refresh(){
       makeCard('&#127915;','Open Tickets',o.openTickets!=null?o.openTickets+'/'+o.totalTickets:'0'),
       makeCard('&#127793;','Indexed Commit',o.indexedCommit?o.indexedCommit.slice(0,7):'none'),
       makeCard('&#128279;','Topology',o.coordinationTopology));
+    renderGovernancePanel();
 
     /* Presence */
     renderPresence(presence);

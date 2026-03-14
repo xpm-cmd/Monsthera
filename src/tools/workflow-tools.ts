@@ -109,6 +109,7 @@ export function registerWorkflowTools(server: McpServer, getContext: GetContext)
               liveSessions,
               requireDistinctModels: (c.config?.governance?.modelDiversity?.strict ?? true)
                 && ticket?.severity !== "critical",
+              maxReviewersPerModel: c.config?.governance?.modelDiversity?.maxVotersPerModel ?? 3,
               getAgent: (reviewerAgentId) => queries.getAgent(c.db, reviewerAgentId),
             });
 
@@ -186,6 +187,7 @@ export function resolveReviewerAssignments(input: {
   availableReviewRoles: Record<string, string[]>;
   liveSessions: Array<{ id: string; agentId: string }>;
   requireDistinctModels?: boolean;
+  maxReviewersPerModel?: number;
   getAgent: (agentId: string) => {
     name: string;
     roleId: string;
@@ -208,6 +210,7 @@ export function resolveReviewerAssignments(input: {
   const reservedSessions = new Set<string>();
   const reservedAgentIds = new Set<string>();
   const reservedModels = new Set<string>();
+  const reservedModelCounts = new Map<string, number>();
 
   return input.roles.map((role): ReviewerResolution => {
     const preferredNames = input.availableReviewRoles[role] ?? [];
@@ -217,7 +220,9 @@ export function resolveReviewerAssignments(input: {
       reservedSessions,
       reservedAgentIds,
       reservedModels,
+      reservedModelCounts,
       input.requireDistinctModels === true,
+      input.maxReviewersPerModel,
     );
     if (!resolved) {
       return {
@@ -232,7 +237,10 @@ export function resolveReviewerAssignments(input: {
     reservedSessions.add(resolved.sessionId);
     reservedAgentIds.add(resolved.agentId);
     const modelKey = getReviewerModelKey(resolved);
-    if (modelKey) reservedModels.add(modelKey);
+    if (modelKey) {
+      reservedModels.add(modelKey);
+      reservedModelCounts.set(modelKey, (reservedModelCounts.get(modelKey) ?? 0) + 1);
+    }
     return {
       specialization: role,
       agentId: resolved.agentId,
@@ -253,15 +261,55 @@ function pickReviewerCandidate(
   reservedSessions: Set<string>,
   reservedAgentIds: Set<string>,
   reservedModels: Set<string>,
+  reservedModelCounts: Map<string, number>,
   requireDistinctModels: boolean,
+  maxReviewersPerModel?: number,
 ): LiveReviewerCandidate | null {
-  const preferred = pickCandidate(liveCandidates, preferredNames, reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, true)
-    ?? pickCandidate(liveCandidates, preferredNames, reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, false);
+  const preferred = pickCandidate(
+    liveCandidates,
+    preferredNames,
+    reservedSessions,
+    reservedAgentIds,
+    reservedModels,
+    reservedModelCounts,
+    requireDistinctModels,
+    maxReviewersPerModel,
+    true,
+  ) ?? pickCandidate(
+    liveCandidates,
+    preferredNames,
+    reservedSessions,
+    reservedAgentIds,
+    reservedModels,
+    reservedModelCounts,
+    requireDistinctModels,
+    maxReviewersPerModel,
+    false,
+  );
   if (preferred) return preferred;
   if (preferredNames.length > 0) return null;
 
-  return pickCandidate(liveCandidates, [], reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, true)
-    ?? pickCandidate(liveCandidates, [], reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, false);
+  return pickCandidate(
+    liveCandidates,
+    [],
+    reservedSessions,
+    reservedAgentIds,
+    reservedModels,
+    reservedModelCounts,
+    requireDistinctModels,
+    maxReviewersPerModel,
+    true,
+  ) ?? pickCandidate(
+    liveCandidates,
+    [],
+    reservedSessions,
+    reservedAgentIds,
+    reservedModels,
+    reservedModelCounts,
+    requireDistinctModels,
+    maxReviewersPerModel,
+    false,
+  );
 }
 
 function pickCandidate(
@@ -270,7 +318,9 @@ function pickCandidate(
   reservedSessions: Set<string>,
   reservedAgentIds: Set<string>,
   reservedModels: Set<string>,
+  reservedModelCounts: Map<string, number>,
   requireDistinctModels: boolean,
+  maxReviewersPerModel: number | undefined,
   preferUnreserved: boolean,
 ): LiveReviewerCandidate | null {
   const pool = liveCandidates.filter((candidate) => (
@@ -278,6 +328,7 @@ function pickCandidate(
     && !reservedAgentIds.has(candidate.agentId)
     && (preferredNames.length === 0 || preferredNames.includes(candidate.agentName))
     && (!requireDistinctModels || isDistinctModelCandidate(candidate, reservedModels))
+    && !hasReachedReviewerModelCap(candidate, reservedModelCounts, maxReviewersPerModel)
   ));
   return pool[0] ?? null;
 }
@@ -293,4 +344,16 @@ function isDistinctModelCandidate(
 ): boolean {
   const modelKey = getReviewerModelKey(candidate);
   return modelKey !== null && !reservedModels.has(modelKey);
+}
+
+function hasReachedReviewerModelCap(
+  candidate: Pick<LiveReviewerCandidate, "provider" | "model">,
+  reservedModelCounts: ReadonlyMap<string, number>,
+  maxReviewersPerModel?: number,
+): boolean {
+  const limit = typeof maxReviewersPerModel === "number" ? maxReviewersPerModel : null;
+  if (limit == null || limit < 1) return false;
+  const modelKey = getReviewerModelKey(candidate);
+  if (modelKey === null) return false;
+  return (reservedModelCounts.get(modelKey) ?? 0) >= limit;
 }

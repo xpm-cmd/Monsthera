@@ -42,6 +42,16 @@ export interface ModelDiversityResult {
   diversityEligible: number;
   ineligibleAgentIds: string[];
   duplicateGroups: Array<{ provider: string; model: string; agentIds: string[]; specializations: CouncilSpecializationIdValue[] }>;
+  maxVotersPerModel: number | null;
+  overSubscribedGroups: Array<{
+    provider: string;
+    model: string;
+    agentIds: string[];
+    specializations: CouncilSpecializationIdValue[];
+    totalVoters: number;
+    maxVoters: number;
+  }>;
+  voterCapMet: boolean;
   diversityMet: boolean;
 }
 
@@ -63,6 +73,7 @@ export interface GovernanceEvaluation {
   modelDiversity: ModelDiversityResult | null;
   reviewerIndependence: ReviewerIndependenceResult | null;
   strictDiversityApplied: boolean;
+  modelVoterCapApplied: boolean;
   strictReviewerIndependenceApplied: boolean;
 }
 
@@ -70,6 +81,7 @@ export interface ConsensusGovernanceOptions {
   nonVotingAgentIds?: string[];
   agentIdentities?: ReadonlyMap<string, AgentIdentity>;
   strictDiversity?: boolean;
+  maxVotersPerModel?: number;
   strictReviewerIndependence?: boolean;
   reviewerIdentityKey?: "agent" | "agent_session";
 }
@@ -179,6 +191,31 @@ function countDiversityAdjustedPasses(
   return count;
 }
 
+function countModelCappedPasses(
+  verdicts: NormalizedReviewVerdictRecord[],
+  agentIdentities: ReadonlyMap<string, AgentIdentity>,
+  maxVotersPerModel: number,
+): number {
+  if (!Number.isFinite(maxVotersPerModel) || maxVotersPerModel < 1) {
+    return verdicts.filter((entry) => entry.verdict === "pass").length;
+  }
+
+  const passVerdicts = verdicts.filter((entry) => entry.verdict === "pass");
+  const modelCounts = new Map<string, number>();
+  let count = 0;
+
+  for (const verdict of passVerdicts) {
+    const identity = agentIdentities.get(verdict.agentId);
+    if (!identity?.provider || !identity?.model) continue;
+    const key = `${identity.provider}::${identity.model}`;
+    const current = modelCounts.get(key) ?? 0;
+    modelCounts.set(key, current + 1);
+    if (current < maxVotersPerModel) count += 1;
+  }
+
+  return count;
+}
+
 function reviewerIdentityForVerdict(
   verdict: Pick<NormalizedReviewVerdictRecord, "agentId" | "sessionId">,
   identityKey: "agent" | "agent_session",
@@ -239,7 +276,7 @@ export function buildConsensusPayload(
   );
 
   const diversityResult = gov?.agentIdentities
-    ? evaluateModelDiversity(verdicts, gov.agentIdentities)
+    ? evaluateModelDiversity(verdicts, gov.agentIdentities, { maxVotersPerModel: gov.maxVotersPerModel })
     : null;
   const reviewerIndependence = gov
     ? evaluateReviewerIndependence(verdicts, gov.reviewerIdentityKey ?? "agent")
@@ -258,6 +295,12 @@ export function buildConsensusPayload(
       countDiversityAdjustedPasses(verdicts, gov.agentIdentities!),
     );
   }
+  if (typeof gov?.maxVotersPerModel === "number" && diversityResult) {
+    effectivePassCount = Math.min(
+      effectivePassCount,
+      countModelCappedPasses(verdicts, gov.agentIdentities!, gov.maxVotersPerModel),
+    );
+  }
 
   const counts = {
     pass: effectivePassCount,
@@ -273,6 +316,9 @@ export function buildConsensusPayload(
   const quorumMet = counts.pass >= requiredPasses;
   const blockedByVeto = vetoes.length > 0;
   const diversityBlocked = gov?.strictDiversity === true && diversityResult != null && !diversityResult.diversityMet;
+  const modelVoterCapBlocked = typeof gov?.maxVotersPerModel === "number"
+    && diversityResult != null
+    && !diversityResult.voterCapMet;
   const reviewerIndependenceBlocked = gov?.strictReviewerIndependence === true
     && reviewerIndependence != null
     && !reviewerIndependence.independenceMet;
@@ -283,6 +329,7 @@ export function buildConsensusPayload(
         modelDiversity: diversityResult,
         reviewerIndependence,
         strictDiversityApplied: gov.strictDiversity === true,
+        modelVoterCapApplied: typeof gov.maxVotersPerModel === "number",
         strictReviewerIndependenceApplied: gov.strictReviewerIndependence === true,
       }
     : undefined;
@@ -295,7 +342,7 @@ export function buildConsensusPayload(
     counts,
     quorumMet,
     blockedByVeto,
-    advisoryReady: quorumMet && !blockedByVeto && !diversityBlocked && !reviewerIndependenceBlocked,
+    advisoryReady: quorumMet && !blockedByVeto && !diversityBlocked && !modelVoterCapBlocked && !reviewerIndependenceBlocked,
     missingSpecializations,
     vetoes,
     verdicts,
@@ -403,6 +450,7 @@ export function buildGovernanceOptions(
     nonVotingAgentIds,
     agentIdentities,
     strictDiversity: (governance.modelDiversity?.strict ?? true) && ticketSeverity !== "critical",
+    maxVotersPerModel: governance.modelDiversity?.maxVotersPerModel ?? 3,
     strictReviewerIndependence: governance.reviewerIndependence?.strict ?? true,
     reviewerIdentityKey: governance.reviewerIndependence?.identityKey ?? "agent",
   };
@@ -458,10 +506,19 @@ export function evaluateReviewerIndependence(
 export function evaluateModelDiversity(
   verdicts: NormalizedReviewVerdictRecord[],
   agentIdentities: ReadonlyMap<string, AgentIdentity>,
+  options: {
+    maxVotersPerModel?: number;
+  } = {},
 ): ModelDiversityResult {
   const passVerdicts = verdicts.filter((v) => v.verdict === "pass");
   const ineligibleAgentIds: string[] = [];
   const modelMap = new Map<string, { provider: string; model: string; agentIds: string[]; specializations: CouncilSpecializationIdValue[] }>();
+  const voterMap = new Map<string, {
+    provider: string;
+    model: string;
+    agentIds: Set<string>;
+    specializations: CouncilSpecializationIdValue[];
+  }>();
 
   for (const v of passVerdicts) {
     const identity = agentIdentities.get(v.agentId);
@@ -484,8 +541,40 @@ export function evaluateModelDiversity(
     }
   }
 
+  for (const verdict of verdicts) {
+    const identity = agentIdentities.get(verdict.agentId);
+    if (!identity?.provider || !identity?.model) continue;
+    const key = `${identity.provider}::${identity.model}`;
+    const existing = voterMap.get(key);
+    if (existing) {
+      existing.agentIds.add(verdict.agentId);
+      existing.specializations.push(verdict.specialization);
+      continue;
+    }
+    voterMap.set(key, {
+      provider: identity.provider,
+      model: identity.model,
+      agentIds: new Set([verdict.agentId]),
+      specializations: [verdict.specialization],
+    });
+  }
+
   const duplicateGroups = [...modelMap.values()].filter((g) => g.specializations.length > 1);
   const diversityEligible = passVerdicts.length - ineligibleAgentIds.length;
+  const maxVotersPerModel = typeof options.maxVotersPerModel === "number" ? options.maxVotersPerModel : null;
+  const overSubscribedGroups = maxVotersPerModel == null
+    ? []
+    : [...voterMap.values()]
+      .filter((group) => group.agentIds.size > maxVotersPerModel)
+      .map((group) => ({
+        provider: group.provider,
+        model: group.model,
+        agentIds: [...group.agentIds],
+        specializations: [...group.specializations],
+        totalVoters: group.agentIds.size,
+        maxVoters: maxVotersPerModel,
+      }));
+  const voterCapMet = overSubscribedGroups.length === 0;
 
   return {
     distinctModels: modelMap.size,
@@ -493,6 +582,9 @@ export function evaluateModelDiversity(
     diversityEligible,
     ineligibleAgentIds: [...new Set(ineligibleAgentIds)],
     duplicateGroups,
-    diversityMet: duplicateGroups.length === 0 && ineligibleAgentIds.length === 0,
+    maxVotersPerModel,
+    overSubscribedGroups,
+    voterCapMet,
+    diversityMet: duplicateGroups.length === 0 && ineligibleAgentIds.length === 0 && voterCapMet,
   };
 }

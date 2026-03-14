@@ -26,12 +26,12 @@ export type TicketSeverity = z.infer<typeof TicketSeverity>;
  */
 export const VALID_TRANSITIONS: Record<TicketStatus, readonly TicketStatus[]> = {
   backlog:            ["technical_analysis", "wont_fix"],
-  technical_analysis: ["backlog", "approved", "resolved", "wont_fix"],
-  approved:           ["technical_analysis", "in_progress", "in_review", "backlog", "wont_fix"],
+  technical_analysis: ["backlog", "approved", "blocked", "resolved", "wont_fix"],
+  approved:           ["technical_analysis", "in_progress", "in_review", "blocked", "backlog", "wont_fix"],
   in_progress:        ["approved", "in_review", "blocked", "wont_fix"],
-  in_review:          ["in_progress", "ready_for_commit"],  // reject → in_progress
-  ready_for_commit:   ["in_progress", "resolved"],          // late fix or post-commit resolution
-  blocked:            ["in_progress", "wont_fix"],          // unblock or abandon
+  in_review:          ["in_progress", "ready_for_commit", "blocked"],  // reject → in_progress
+  ready_for_commit:   ["in_progress", "blocked", "resolved"],          // late fix, hold, or post-commit resolution
+  blocked:            ["backlog", "technical_analysis", "approved", "in_progress", "in_review", "ready_for_commit", "wont_fix"], // resume to the appropriate queue or abandon
   resolved:           ["in_progress", "closed"],     // reopen → in_progress
   closed:             ["backlog"],
   wont_fix:           ["backlog"],
@@ -46,11 +46,13 @@ export const TRANSITION_ROLES: Record<string, readonly string[]> = {
   "backlog→wont_fix":       ["reviewer", "facilitator", "admin"],
   "technical_analysis→backlog": ["reviewer", "facilitator", "admin"],
   "technical_analysis→approved": ["reviewer", "facilitator", "admin"],
+  "technical_analysis→blocked": ["reviewer", "facilitator", "admin"],
   "technical_analysis→resolved": ["reviewer", "facilitator", "admin"],
   "technical_analysis→wont_fix": ["reviewer", "facilitator", "admin"],
   "approved→technical_analysis": ["reviewer", "facilitator", "admin"], // re-open for fresh council review
   "approved→in_progress":   ["developer", "admin"],
   "approved→in_review":     ["developer", "admin"],
+  "approved→blocked":       ["developer", "reviewer", "facilitator", "admin"], // hold before implementation or release
   "approved→backlog":       ["reviewer", "facilitator", "admin"],       // rework
   "approved→wont_fix":      ["reviewer", "facilitator", "admin"],
   "in_progress→approved":   ["reviewer", "facilitator", "admin"],       // administrative requeue
@@ -59,9 +61,16 @@ export const TRANSITION_ROLES: Record<string, readonly string[]> = {
   "in_progress→wont_fix":   ["reviewer", "facilitator", "admin"],
   "in_review→in_progress":  ["reviewer", "facilitator", "admin"],     // reject
   "in_review→ready_for_commit": ["reviewer", "facilitator", "admin"],
+  "in_review→blocked":      ["developer", "reviewer", "facilitator", "admin"], // waiting on external input
+  "ready_for_commit→blocked": ["developer", "reviewer", "facilitator", "admin"], // release hold or late dependency
   "ready_for_commit→in_progress": ["developer", "reviewer", "facilitator", "admin"],
   "ready_for_commit→resolved": ["developer", "facilitator", "admin"],
+  "blocked→backlog":        ["reviewer", "facilitator", "admin"],     // deprioritize after waiting
+  "blocked→technical_analysis": ["reviewer", "facilitator", "admin"], // resume design work
+  "blocked→approved":       ["reviewer", "facilitator", "admin"],     // resume ready queue
   "blocked→in_progress":    ["developer", "admin"],     // unblock
+  "blocked→in_review":      ["developer", "reviewer", "facilitator", "admin"], // resume validation
+  "blocked→ready_for_commit": ["developer", "reviewer", "facilitator", "admin"], // resume pre-landing queue
   "blocked→wont_fix":       ["reviewer", "facilitator", "admin"],
   "resolved→in_progress":   ["developer", "reviewer", "facilitator", "admin"],  // reopen
   "resolved→closed":        ["reviewer", "facilitator", "admin"],

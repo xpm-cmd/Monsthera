@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyStrictModelDiversityToggleToConfig,
   getDashboardReadToolName,
   summarizeDashboardReadInput,
   summarizeDashboardReadOutput,
@@ -39,5 +40,69 @@ describe("dashboard read telemetry helpers", () => {
       keys: ["activeSessions", "extra", "totalAgents"],
     });
     expect(summarizeDashboardReadOutput(null)).toEqual({ shape: "null" });
+  });
+
+  it("rewrites config to enable strict model diversity defaults", () => {
+    expect(applyStrictModelDiversityToggleToConfig({
+      governance: {
+        modelDiversity: {
+          strict: false,
+          maxVotersPerModel: 6,
+        },
+        backlogPlanningGate: {
+          enforce: true,
+          minIterations: 4,
+          requiredDistinctModels: 1,
+        },
+      },
+    }, true)).toMatchObject({
+      governance: {
+        modelDiversity: {
+          strict: true,
+          maxVotersPerModel: 3,
+        },
+        backlogPlanningGate: {
+          enforce: true,
+          minIterations: 4,
+          requiredDistinctModels: 2,
+        },
+      },
+    });
+  });
+
+  it("rewrites config to disable strict model diversity while preserving other gates", () => {
+    expect(applyStrictModelDiversityToggleToConfig({
+      governance: {
+        modelDiversity: {
+          strict: true,
+          maxVotersPerModel: 3,
+        },
+        reviewerIndependence: {
+          strict: true,
+          identityKey: "agent",
+        },
+        backlogPlanningGate: {
+          enforce: true,
+          minIterations: 3,
+          requiredDistinctModels: 2,
+        },
+      },
+    }, false)).toMatchObject({
+      governance: {
+        modelDiversity: {
+          strict: false,
+          maxVotersPerModel: 6,
+        },
+        reviewerIndependence: {
+          strict: true,
+          identityKey: "agent",
+        },
+        backlogPlanningGate: {
+          enforce: true,
+          minIterations: 3,
+          requiredDistinctModels: 1,
+        },
+      },
+    });
   });
 });

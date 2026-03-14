@@ -81,6 +81,22 @@ export const RepairSpawnerConfigSchema = z.object({
   allowedSources: z.array(z.enum(["council_veto", "lifecycle_suppression"])).default(["council_veto"]),
 });
 
+export const RetrospectiveConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    ticketId: z.string().regex(/^TKT-[A-Za-z0-9]+$/i, "retrospective.ticketId must be a valid ticket id").optional(),
+    commentOnIdle: z.boolean().default(false),
+  })
+  .superRefine((value, ctx) => {
+    if (value.enabled && !value.ticketId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ticketId"],
+        message: "retrospective.ticketId is required when retrospective.enabled is true",
+      });
+    }
+  });
+
 export const SearchFileBm25WeightsSchema = z.object({
   path: z.number().positive().max(10).default(DEFAULT_FILE_BM25_WEIGHTS.path),
   summary: z.number().positive().max(10).default(DEFAULT_FILE_BM25_WEIGHTS.summary),
@@ -230,10 +246,12 @@ export const AgoraConfigSchema = z.object({
   ticketQuorum: TicketQuorumConfigSchema.default(DEFAULT_TICKET_QUORUM),
   governance: GovernanceConfigSchema.default({
     nonVotingRoles: ["facilitator"],
-    modelDiversity: { strict: true },
+    modelDiversity: { strict: true, maxVotersPerModel: 3 },
     reviewerIndependence: { strict: true, identityKey: "agent" },
+    backlogPlanningGate: { enforce: true, minIterations: 3, requiredDistinctModels: 2 },
     requireBinding: false,
     autoAdvance: true,
+    autoAdvanceExcludedTags: ["umbrella", "tracking", "discussion"],
   }),
   toolRateLimits: ToolRateLimitConfigSchema.default({
     defaultPerMinute: 10,
@@ -241,6 +259,7 @@ export const AgoraConfigSchema = z.object({
   }),
   lifecycle: LifecycleConfigSchema.default(DEFAULT_LIFECYCLE_CONFIG),
   repairSpawner: RepairSpawnerConfigSchema.default({ enabled: false, allowedSources: ["council_veto"] }),
+  retrospective: RetrospectiveConfigSchema.default({ enabled: false, commentOnIdle: false }),
 });
 
 export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
@@ -255,6 +274,7 @@ export type CrossInstanceConfig = z.infer<typeof CrossInstanceConfigSchema>;
 export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
 export type LifecycleConfig = z.infer<typeof LifecycleConfigSchema>;
 export type RepairSpawnerConfig = z.infer<typeof RepairSpawnerConfigSchema>;
+export type RetrospectiveConfig = z.infer<typeof RetrospectiveConfigSchema>;
 
 export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
   return AgoraConfigSchema.parse(partial);
@@ -282,7 +302,7 @@ export function mergeConfigSources(
   for (const source of sources) {
     if (!source) continue;
 
-    const { registrationAuth, crossInstance, ticketQuorum, governance, toolRateLimits, search, lifecycle, ...rest } = source;
+    const { registrationAuth, crossInstance, ticketQuorum, governance, toolRateLimits, search, lifecycle, retrospective, ...rest } = source;
     Object.assign(merged, rest);
 
     if (registrationAuth) {
@@ -331,6 +351,14 @@ export function mergeConfigSources(
               },
             }
           : {}),
+        ...(governance.backlogPlanningGate || merged.governance?.backlogPlanningGate
+          ? {
+              backlogPlanningGate: {
+                ...(merged.governance?.backlogPlanningGate ?? {}),
+                ...(governance.backlogPlanningGate ?? {}),
+              },
+            }
+          : {}),
       };
     }
 
@@ -349,6 +377,13 @@ export function mergeConfigSources(
       merged.lifecycle = {
         ...(merged.lifecycle ?? {}),
         ...lifecycle,
+      };
+    }
+
+    if (retrospective) {
+      merged.retrospective = {
+        ...(merged.retrospective ?? {}),
+        ...retrospective,
       };
     }
 

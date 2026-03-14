@@ -642,6 +642,63 @@ steps:
     ]);
   });
 
+  it("caps same-model reviewer dispatch at three voters even when strict diversity is relaxed", () => {
+    const resolutions = resolveReviewerAssignments({
+      roles: ["architect", "simplifier", "security", "performance"],
+      availableReviewRoles: {
+        architect: [],
+        simplifier: [],
+        security: [],
+        performance: [],
+      },
+      requireDistinctModels: false,
+      maxReviewersPerModel: 3,
+      liveSessions: [
+        { id: "session-a", agentId: "agent-a" },
+        { id: "session-b", agentId: "agent-b" },
+        { id: "session-c", agentId: "agent-c" },
+        { id: "session-d", agentId: "agent-d" },
+      ],
+      getAgent: (agentId) => ({
+        name: `Reviewer ${agentId}`,
+        roleId: "reviewer",
+        provider: "openai",
+        model: "gpt-5",
+      }),
+    });
+
+    expect(resolutions).toEqual([
+      {
+        specialization: "architect",
+        agentId: "agent-a",
+        agentName: "Reviewer agent-a",
+        sessionId: "session-a",
+        status: "resolved",
+      },
+      {
+        specialization: "simplifier",
+        agentId: "agent-b",
+        agentName: "Reviewer agent-b",
+        sessionId: "session-b",
+        status: "resolved",
+      },
+      {
+        specialization: "security",
+        agentId: "agent-c",
+        agentName: "Reviewer agent-c",
+        sessionId: "session-c",
+        status: "resolved",
+      },
+      {
+        specialization: "performance",
+        agentId: null,
+        agentName: null,
+        sessionId: null,
+        status: "no_candidate",
+      },
+    ]);
+  });
+
   it("does not assign two roles to different sessions of the same agent", () => {
     const resolutions = resolveReviewerAssignments({
       roles: ["architect", "security"],
