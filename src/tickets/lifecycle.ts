@@ -10,9 +10,10 @@ import type { InsightStream } from "../core/insight-stream.js";
 import type { SearchRouter } from "../search/router.js";
 import type { CoordinationBus } from "../coordination/bus.js";
 import type { TicketStatus as TicketStatusType } from "../../schemas/ticket.js";
+import { getAgentPresenceSummary } from "../agents/registry.js";
 import { recordDashboardEvent } from "../dashboard/events.js";
 import { spawnRepairTicket } from "./repair-spawner.js";
-import { commentTicketRecord, updateTicketStatusRecord } from "./service.js";
+import { assignTicketRecord, commentTicketRecord, updateTicketStatusRecord } from "./service.js";
 import {
   shouldAutoTriage,
   shouldAutoClose,
@@ -22,6 +23,7 @@ import {
 
 type DB = BetterSQLite3Database<typeof schema>;
 const TERMINAL_TICKET_STATUSES = new Set(["resolved", "closed", "wont_fix"]);
+const ORPHAN_REPAIR_STATUSES = new Set(["approved", "in_progress"]);
 const REPAIR_TAG_PREFIX = "repair:";
 const PARENT_TAG_PREFIX = "parent:";
 
@@ -97,6 +99,8 @@ export class TicketLifecycleReactor implements LifecycleHook {
     if (!this.lifecycle?.enabled) return;
     const now = Date.now();
 
+    this.repairOrphanedAssignedTickets(now);
+
     // Auto-close resolved tickets past their age threshold
     if (this.lifecycle.autoCloseResolvedAfterMs > 0) {
       const resolved = queries.getTicketsByRepo(this.ctx.db, this.ctx.repoId, { status: "resolved" });
@@ -118,6 +122,75 @@ export class TicketLifecycleReactor implements LifecycleHook {
       for (const ticket of blocked) {
         this.checkUnblockTicket(ticket);
       }
+    }
+  }
+
+  private repairOrphanedAssignedTickets(nowMs: number): void {
+    const tickets = queries.getTicketsByRepo(this.ctx.db, this.ctx.repoId)
+      .filter((ticket) => ORPHAN_REPAIR_STATUSES.has(ticket.status) && ticket.assigneeAgentId);
+
+    for (const ticket of tickets) {
+      const assigneeAgentId = ticket.assigneeAgentId;
+      if (!assigneeAgentId) continue;
+
+      const presence = getAgentPresenceSummary(this.ctx.db, assigneeAgentId, nowMs);
+      if (presence.hasLiveOwnershipEvidence) continue;
+
+      const clearResult = assignTicketRecord(
+        { ...this.baseSystemContext("lifecycle-repair-orphaned-assignee"), system: true },
+        {
+          ticketId: ticket.ticketId,
+          assigneeAgentId: null,
+          actorLabel: "lifecycle-repair-orphaned-assignee",
+        },
+      );
+      if (!clearResult.ok) {
+        this.spawnLifecycleRepairTicket(
+          ticket,
+          `Lifecycle assignee repair failed while clearing ${assigneeAgentId}: ${clearResult.message}`,
+        );
+        continue;
+      }
+
+      const comment = `Lifecycle repair cleared stale assignee ${assigneeAgentId} after all live sessions expired.`;
+      commentTicketRecord(
+        { ...this.baseSystemContext("lifecycle-repair-orphaned-assignee"), system: true },
+        {
+          ticketId: ticket.ticketId,
+          content: `[Lifecycle] ${comment}`,
+          actorLabel: "lifecycle-repair-orphaned-assignee",
+        },
+      );
+
+      if (ticket.status === "in_progress") {
+        const requeueResult = updateTicketStatusRecord(
+          { ...this.baseSystemContext("lifecycle-repair-orphaned-assignee"), system: true },
+          {
+            ticketId: ticket.ticketId,
+            status: "approved",
+            comment: `${comment} Ticket re-queued to approved for reassignment.`,
+            actorLabel: "lifecycle-repair-orphaned-assignee",
+          },
+        );
+        if (!requeueResult.ok) {
+          this.spawnLifecycleRepairTicket(
+            ticket,
+            `Lifecycle assignee repair failed while re-queuing ${ticket.ticketId}: ${requeueResult.message}`,
+          );
+          continue;
+        }
+      }
+
+      recordDashboardEvent(this.ctx.db, this.ctx.repoId, {
+        type: "ticket_orphaned_owner_repaired",
+        data: {
+          ticketId: ticket.ticketId,
+          previousStatus: ticket.status,
+          repairedStatus: ticket.status === "in_progress" ? "approved" : ticket.status,
+          previousAssigneeAgentId: assigneeAgentId,
+          liveSessionCount: presence.liveSessionCount,
+        },
+      });
     }
   }
 

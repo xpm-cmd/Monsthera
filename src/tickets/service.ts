@@ -106,7 +106,7 @@ export type CreateTicketInput = CreateTicketFields & TicketActorInput;
 
 interface AssignTicketFields {
   ticketId: string;
-  assigneeAgentId: string;
+  assigneeAgentId: string | null;
 }
 
 export type AssignTicketInput = AssignTicketFields & TicketActorInput;
@@ -115,6 +115,7 @@ interface UpdateTicketStatusFields {
   ticketId: string;
   status: TicketStatusType;
   comment?: string | null;
+  autoAssign?: boolean;
   skipKnowledgeCapture?: boolean;
   commitSha?: string | null;
   commitShas?: string[] | null;
@@ -246,6 +247,40 @@ export function assignTicketRecord(
   const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId, ctx.repoId);
   if (!ticket) return err("not_found", `Ticket not found: ${input.ticketId}`);
 
+  if (input.assigneeAgentId === null) {
+    if (resolved.role === "developer") {
+      return err("denied", "Developers cannot clear ticket assignees");
+    }
+    if (!ticket.assigneeAgentId) {
+      return err("invalid_request", "Ticket has no assignee to clear");
+    }
+
+    queries.updateTicket(ctx.db, ticket.id, { assigneeAgentId: null });
+    refreshTicketSearch(ctx);
+
+    ctx.insight.info(`Ticket ${input.ticketId} assignee cleared by ${resolved.agentId}`);
+    recordDashboardEvent(ctx.db, ctx.repoId, {
+      type: "ticket_unassigned",
+      data: {
+        ticketId: input.ticketId,
+        previousAssigneeAgentId: ticket.assigneeAgentId,
+        status: ticket.status,
+        agentId: resolved.agentId,
+      },
+    });
+    broadcastTicketRealtime(ctx, resolved.agentId, "ticket_unassigned", {
+      ticketId: input.ticketId,
+      previousAssigneeAgentId: ticket.assigneeAgentId,
+      status: ticket.status,
+    });
+
+    return ok({
+      ticketId: input.ticketId,
+      assigneeAgentId: null,
+      status: ticket.status,
+    });
+  }
+
   if (resolved.role === "developer") {
     if (input.assigneeAgentId !== resolved.agentId) {
       return err("denied", "Developers can only self-assign tickets");
@@ -304,16 +339,40 @@ export function updateTicketStatusRecord(
   const ticket = queries.getTicketByTicketId(ctx.db, input.ticketId, ctx.repoId);
   if (!ticket) return err("not_found", `Ticket not found: ${input.ticketId}`);
 
-  if (resolved.role === "developer" && ticket.assigneeAgentId !== resolved.agentId) {
-    return err("denied", "Developers can only transition tickets assigned to themselves");
-  }
-
   const current = ticket.status as TicketStatusType;
   const validTargets = VALID_TRANSITIONS[current];
   if (!validTargets?.includes(input.status)) {
     return err("invalid_request", `Invalid transition: ${current} → ${input.status}`, {
       validTransitions: validTargets,
     });
+  }
+
+  let nextAssigneeAgentId = ticket.assigneeAgentId ?? null;
+  const isSystemActor = resolved.agentId.startsWith("system:");
+  const willAutoAssign = input.status === "in_progress"
+    && !nextAssigneeAgentId
+    && input.autoAssign === true
+    && !isSystemActor;
+
+  if (willAutoAssign) {
+    nextAssigneeAgentId = resolved.agentId;
+  }
+
+  if (input.status === "in_progress" && !nextAssigneeAgentId) {
+    return err(
+      "invalid_request",
+      "Cannot move to in_progress without an assignee. Use assign_ticket first, or retry with autoAssign=true from a non-system actor.",
+      {
+        ticketId: input.ticketId,
+        transition: `${current}→${input.status}`,
+        assigneeAgentId: ticket.assigneeAgentId,
+        autoAssignAllowed: !isSystemActor,
+      },
+    );
+  }
+
+  if (resolved.role === "developer" && nextAssigneeAgentId !== resolved.agentId) {
+    return err("denied", "Developers can only transition tickets assigned to themselves");
   }
 
   const key = `${current}→${input.status}`;
@@ -389,12 +448,13 @@ export function updateTicketStatusRecord(
       })
     : null;
   const resolvedCommitSha = resolutionCommitShas[0] ?? input.commitSha?.trim() ?? null;
-  const updates: Partial<Pick<typeof tables.tickets.$inferInsert, "status" | "resolvedByAgentId" | "commitSha">> = {
+  const updates: Partial<Pick<typeof tables.tickets.$inferInsert, "status" | "resolvedByAgentId" | "commitSha" | "assigneeAgentId">> = {
     status: input.status,
   };
   if (input.status === "resolved") updates.resolvedByAgentId = resolved.agentId;
   if (input.status === "resolved" && resolvedCommitSha) updates.commitSha = resolvedCommitSha;
   if (current === "resolved" && input.status === "in_progress") updates.resolvedByAgentId = null;
+  if (nextAssigneeAgentId !== ticket.assigneeAgentId) updates.assigneeAgentId = nextAssigneeAgentId;
   const isEnteringGatedStatus = Object.prototype.hasOwnProperty.call(GATED_ADVANCE_TARGET, input.status);
 
   let knowledgeId: number | null = null;
@@ -428,6 +488,24 @@ export function updateTicketStatusRecord(
   }
 
   ctx.insight.info(`Ticket ${input.ticketId}: ${current} → ${input.status} by ${resolved.agentId}`);
+  if (nextAssigneeAgentId !== ticket.assigneeAgentId) {
+    recordDashboardEvent(ctx.db, ctx.repoId, {
+      type: "ticket_assigned",
+      data: {
+        ticketId: input.ticketId,
+        assigneeAgentId: nextAssigneeAgentId,
+        status: input.status,
+        agentId: resolved.agentId,
+        autoAssigned: true,
+      },
+    });
+    broadcastTicketRealtime(ctx, resolved.agentId, "ticket_assigned", {
+      ticketId: input.ticketId,
+      assigneeAgentId: nextAssigneeAgentId,
+      status: input.status,
+      autoAssigned: true,
+    });
+  }
   recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_status_changed",
     data: {
@@ -454,6 +532,7 @@ export function updateTicketStatusRecord(
     ticketId: input.ticketId,
     previousStatus: current,
     status: input.status,
+    assigneeAgentId: nextAssigneeAgentId,
     knowledgeCaptured: Boolean(knowledgeEntry),
     knowledgeKey: knowledgeEntry?.key ?? null,
   });
@@ -854,7 +933,7 @@ function ok<T>(data: T): TicketServiceSuccess<T> {
 function broadcastTicketRealtime(
   ctx: TicketContext,
   agentId: string,
-  eventType: "ticket_created" | "ticket_assigned" | "ticket_status_changed" | "ticket_commented" | "ticket_linked",
+  eventType: "ticket_created" | "ticket_assigned" | "ticket_unassigned" | "ticket_status_changed" | "ticket_commented" | "ticket_linked",
   data: Record<string, unknown>,
 ): void {
   ctx.bus?.send({

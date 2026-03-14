@@ -260,6 +260,30 @@ describe("ticket tools", () => {
     expect(ticket.assigneeAgentId).toBe("agent-dev");
   });
 
+  it("allows privileged actors to clear a stale assignee through assign_ticket", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("assign_ticket")({
+      ticketId,
+      assigneeAgentId: "agent-dev",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+
+    const clearResult = await handler("assign_ticket")({
+      ticketId,
+      assigneeAgentId: null,
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+
+    expect(clearResult.isError).toBeFalsy();
+    const payload = JSON.parse(clearResult.content[0].text);
+    expect(payload.assigneeAgentId).toBeNull();
+    expect(queries.getTicketByTicketId(db, ticketId)?.assigneeAgentId).toBeNull();
+  });
+
   it("denies developer assigning another agent", async () => {
     const createResult = await createTicket();
     const ticketId = JSON.parse(createResult.content[0].text).ticketId;
@@ -333,6 +357,70 @@ describe("ticket tools", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("assigned to themselves");
     expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("approved");
+  });
+
+  it("rejects entering in_progress without an assignee unless autoAssign is requested", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await grantAdvisoryQuorum(ticketId);
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const result = await handler("update_ticket_status")({
+      ticketId,
+      status: "in_progress",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Cannot move to in_progress without an assignee");
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("approved");
+    expect(queries.getTicketByTicketId(db, ticketId)?.assigneeAgentId).toBeNull();
+  });
+
+  it("supports explicit autoAssign when a non-system actor enters in_progress", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await grantAdvisoryQuorum(ticketId);
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const result = await handler("update_ticket_status")({
+      ticketId,
+      status: "in_progress",
+      autoAssign: true,
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.isError).not.toBe(true);
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.assigneeAgentId).toBe("agent-dev");
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("in_progress");
+    expect(queries.getTicketByTicketId(db, ticketId)?.assigneeAgentId).toBe("agent-dev");
   });
 
   it("updates status, writes history, and clears resolvedByAgentId on reopen", async () => {

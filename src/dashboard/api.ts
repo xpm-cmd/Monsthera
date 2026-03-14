@@ -7,6 +7,7 @@ import { VERSION } from "../core/constants.js";
 import { parseJsonWithSchema, parseStringArrayJson } from "../core/input-hardening.js";
 import type { CoordinationBus } from "../coordination/bus.js";
 import type { TicketQuorumConfig } from "../core/config.js";
+import { getAgentPresenceSummary } from "../agents/registry.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import { loadTicketTemplates, type TicketTemplate } from "../tickets/templates.js";
 import type { CodeSearchDebugResult } from "../search/debug.js";
@@ -318,7 +319,8 @@ export function getTicketsList(deps: DashboardDeps) {
     const visibility = getTicketVisibilitySignals(deps, ticket, now);
     const history = queries.getTicketHistory(deps.db, ticket.id);
     const quorum = buildDashboardTicketQuorum(deps, ticket);
-    const humanAction = getHumanActionRequired(ticket, quorum, history);
+    const assigneeHealth = getTicketAssigneeHealth(deps, ticket, now);
+    const humanAction = getHumanActionRequired(ticket, quorum, history, assigneeHealth);
 
     return {
       ticketId: ticket.ticketId,
@@ -343,6 +345,8 @@ export function getTicketsList(deps: DashboardDeps) {
       quorumState: quorum?.progress.state ?? null,
       quorumTitle: quorum?.progress.title ?? null,
       blockedByVeto: quorum?.blockedByVeto ?? false,
+      orphanedAssignee: assigneeHealth.orphaned,
+      orphanedAssigneeReason: assigneeHealth.reason,
       humanActionRequired: humanAction.required,
       humanActionReason: humanAction.reason,
     };
@@ -359,7 +363,8 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
   const ticketDeps = queries.getTicketDependencies(deps.db, ticket.id);
   const resolutionCommitShas = queries.getTicketResolutionCommitShas(deps.db, ticket.id);
   const quorum = buildDashboardTicketQuorum(deps, ticket);
-  const humanAction = getHumanActionRequired(ticket, quorum, history);
+  const assigneeHealth = getTicketAssigneeHealth(deps, ticket);
+  const humanAction = getHumanActionRequired(ticket, quorum, history, assigneeHealth);
 
   const resolvePublicId = (internalId: number) => {
     const t = queries.getTicketById(deps.db, internalId);
@@ -402,6 +407,8 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
     nextActionHint,
+    orphanedAssignee: assigneeHealth.orphaned,
+    orphanedAssigneeReason: assigneeHealth.reason,
     humanActionRequired: humanAction.required,
     humanActionReason: humanAction.reason,
     dependencies: { blocking, blockedBy, relatedTo },
@@ -1171,7 +1178,12 @@ function getHumanActionRequired(
   ticket: typeof schema.tickets.$inferSelect,
   quorum: ReturnType<typeof buildDashboardTicketQuorum>,
   history: Array<typeof schema.ticketHistory.$inferSelect>,
+  assigneeHealth: ReturnType<typeof getTicketAssigneeHealth>,
 ): { required: boolean; reason: string | null } {
+  if (assigneeHealth.orphaned) {
+    return { required: true, reason: "orphaned_assignee" };
+  }
+
   if (ticket.status === "ready_for_commit" && !ticket.assigneeAgentId) {
     return { required: true, reason: "ready_for_commit_unassigned" };
   }
@@ -1206,6 +1218,35 @@ function getHumanActionRequired(
   }
 
   return { required: false, reason: null };
+}
+
+function getTicketAssigneeHealth(
+  deps: DashboardDeps,
+  ticket: typeof schema.tickets.$inferSelect,
+  now = Date.now(),
+): {
+  orphaned: boolean;
+  reason: string | null;
+  liveSessionCount: number;
+  lastActivityAt: string | null;
+} {
+  if (!ticket.assigneeAgentId || !["approved", "in_progress"].includes(ticket.status)) {
+    return {
+      orphaned: false,
+      reason: null,
+      liveSessionCount: 0,
+      lastActivityAt: null,
+    };
+  }
+
+  const presence = getAgentPresenceSummary(deps.db, ticket.assigneeAgentId, now);
+  const orphaned = !presence.hasLiveOwnershipEvidence;
+  return {
+    orphaned,
+    reason: orphaned ? "assignee_no_live_sessions" : null,
+    liveSessionCount: presence.liveSessionCount,
+    lastActivityAt: presence.lastActivityAt,
+  };
 }
 
 function buildDashboardTicketQuorum(

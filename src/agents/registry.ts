@@ -10,6 +10,7 @@ import {
   type RoleId,
 } from "../../schemas/agent.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
+import { parseStringArrayJson } from "../core/input-hardening.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import type { RegistrationAuth } from "../core/config.js";
 
@@ -31,6 +32,14 @@ export interface RegisterResult {
 }
 
 export class AgentRegistrationError extends Error {}
+
+export interface AgentPresenceSummary {
+  activeSessionCount: number;
+  liveSessionCount: number;
+  claimedFiles: string[];
+  lastActivityAt: string | null;
+  hasLiveOwnershipEvidence: boolean;
+}
 
 type AgentLookupDb = Pick<BetterSQLite3Database<typeof schema>, "select">;
 
@@ -199,6 +208,58 @@ export function getAgentStatus(
     agent,
     sessions: allSessions,
     activeSessions: allSessions.filter((s) => s.state === "active"),
+  };
+}
+
+export function getAgentPresenceSummary(
+  db: BetterSQLite3Database<typeof schema>,
+  agentId: string,
+  nowMs = Date.now(),
+): AgentPresenceSummary {
+  const sessions = db
+    .select()
+    .from(tables.sessions)
+    .where(eq(tables.sessions.agentId, agentId))
+    .all();
+  const cutoffMs = nowMs - HEARTBEAT_TIMEOUT_MS;
+  const claimedFiles = new Set<string>();
+  let activeSessionCount = 0;
+  let liveSessionCount = 0;
+  let lastActivityAt: string | null = null;
+  let lastActivityMs = Number.NEGATIVE_INFINITY;
+
+  for (const session of sessions) {
+    if (session.state === "active") {
+      activeSessionCount += 1;
+    }
+
+    const sessionActivityMs = new Date(session.lastActivity).getTime();
+    if (!Number.isNaN(sessionActivityMs) && sessionActivityMs > lastActivityMs) {
+      lastActivityMs = sessionActivityMs;
+      lastActivityAt = session.lastActivity;
+    }
+
+    const isLive = session.state === "active"
+      && !Number.isNaN(sessionActivityMs)
+      && sessionActivityMs >= cutoffMs;
+    if (!isLive) continue;
+
+    liveSessionCount += 1;
+    for (const path of parseStringArrayJson(session.claimedFilesJson, {
+      maxItems: 200,
+      maxItemLength: 500,
+    })) {
+      claimedFiles.add(path);
+    }
+  }
+
+  const claimedFilesList = [...claimedFiles].sort((a, b) => a.localeCompare(b));
+  return {
+    activeSessionCount,
+    liveSessionCount,
+    claimedFiles: claimedFilesList,
+    lastActivityAt,
+    hasLiveOwnershipEvidence: liveSessionCount > 0 || claimedFilesList.length > 0,
   };
 }
 

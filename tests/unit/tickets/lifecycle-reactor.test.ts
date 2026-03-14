@@ -199,4 +199,55 @@ describe("TicketLifecycleReactor integration", () => {
       source: "lifecycle_suppression",
     });
   });
+
+  it("requeues orphaned in_progress tickets and clears their stale assignee during sweep", () => {
+    db.insert(schema.agents).values({
+      id: "agent-stale",
+      name: "Stale Dev",
+      type: "codex",
+      roleId: "developer",
+      trustTier: "A",
+      registeredAt: now,
+    }).run();
+    db.insert(schema.sessions).values({
+      id: "session-stale",
+      agentId: "agent-stale",
+      state: "active",
+      connectedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+      lastActivity: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+      claimedFilesJson: JSON.stringify(["src/stale.ts"]),
+    }).run();
+
+    const ticketId = insertTicket({
+      ticketId: "TKT-orphaned-progress",
+      title: "Orphaned in progress",
+      status: "in_progress",
+    });
+    queries.updateTicket(db, ticketId, { assigneeAgentId: "agent-stale" });
+
+    const reactor = createReactor();
+    reactor.sweep();
+
+    const ticket = queries.getTicketByTicketId(db, "TKT-orphaned-progress", repoId);
+    expect(ticket?.status).toBe("approved");
+    expect(ticket?.assigneeAgentId).toBeNull();
+
+    const history = db.select().from(schema.ticketHistory).all()
+      .filter((entry) => entry.ticketId === ticketId);
+    expect(history.some((entry) => entry.fromStatus === "in_progress" && entry.toStatus === "approved")).toBe(true);
+
+    const comments = db.select().from(schema.ticketComments).all()
+      .filter((entry) => entry.ticketId === ticketId);
+    expect(comments.at(-1)?.content).toContain("cleared stale assignee");
+
+    const repairEvent = db.select().from(schema.dashboardEvents).all()
+      .find((entry) => entry.eventType === "ticket_orphaned_owner_repaired");
+    expect(repairEvent).toBeTruthy();
+    expect(JSON.parse(repairEvent!.dataJson)).toMatchObject({
+      ticketId: "TKT-orphaned-progress",
+      previousStatus: "in_progress",
+      repairedStatus: "approved",
+      previousAssigneeAgentId: "agent-stale",
+    });
+  });
 });

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
-import { AgentRegistrationError, registerAgent, getAgentStatus, disconnectSession, reapStaleSessions } from "../../../src/agents/registry.js";
+import { AgentRegistrationError, registerAgent, getAgentStatus, getAgentPresenceSummary, disconnectSession, reapStaleSessions } from "../../../src/agents/registry.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../../../src/core/constants.js";
 
 function createTestDb() {
@@ -130,6 +130,67 @@ describe("Agent Registry", () => {
     expect(status!.agent.model).toBe("gpt-5");
     expect(status!.agent.identitySource).toBe("self_declared");
     expect(status!.activeSessions).toHaveLength(1);
+  });
+
+  it("summarizes live ownership evidence from sessions within the heartbeat window", () => {
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-presence", "Presence", "test", "developer", "A", new Date().toISOString());
+    sqlite.prepare(`
+      INSERT INTO sessions (id, agent_id, state, connected_at, last_activity, claimed_files_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      "session-presence-live",
+      "agent-presence",
+      "active",
+      new Date().toISOString(),
+      new Date().toISOString(),
+      JSON.stringify(["src/a.ts", "src/b.ts"]),
+    );
+    sqlite.prepare(`
+      INSERT INTO sessions (id, agent_id, state, connected_at, last_activity, claimed_files_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      "session-presence-stale",
+      "agent-presence",
+      "active",
+      new Date().toISOString(),
+      new Date(Date.now() - HEARTBEAT_TIMEOUT_MS - 60_000).toISOString(),
+      JSON.stringify(["src/stale.ts"]),
+    );
+
+    const summary = getAgentPresenceSummary(db, "agent-presence");
+
+    expect(summary).toMatchObject({
+      activeSessionCount: 2,
+      liveSessionCount: 1,
+      claimedFiles: ["src/a.ts", "src/b.ts"],
+      hasLiveOwnershipEvidence: true,
+    });
+  });
+
+  it("marks agents with only stale or disconnected sessions as having no live ownership evidence", () => {
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-orphaned", "Orphaned", "test", "developer", "A", new Date().toISOString());
+    sqlite.prepare(`
+      INSERT INTO sessions (id, agent_id, state, connected_at, last_activity, claimed_files_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      "session-orphaned",
+      "agent-orphaned",
+      "disconnected",
+      new Date().toISOString(),
+      new Date(Date.now() - HEARTBEAT_TIMEOUT_MS - 60_000).toISOString(),
+      JSON.stringify(["src/stale.ts"]),
+    );
+
+    const summary = getAgentPresenceSummary(db, "agent-orphaned");
+
+    expect(summary).toMatchObject({
+      activeSessionCount: 0,
+      liveSessionCount: 0,
+      claimedFiles: [],
+      hasLiveOwnershipEvidence: false,
+    });
   });
 
   it("returns null for unknown agents", () => {

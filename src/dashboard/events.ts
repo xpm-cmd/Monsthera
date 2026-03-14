@@ -15,11 +15,13 @@ export interface DashboardEvent {
     | "knowledge_stored"
     | "ticket_created"
     | "ticket_assigned"
+    | "ticket_unassigned"
     | "ticket_status_changed"
     | "ticket_commented"
     | "ticket_linked"
     | "ticket_external_sync"
     | "ticket_auto_transitioned"
+    | "ticket_orphaned_owner_repaired"
     | "ticket_repair_spawned"
     | "ticket_repair_resolved";
   data: Record<string, unknown>;

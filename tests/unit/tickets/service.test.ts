@@ -207,6 +207,38 @@ describe("ticket service system context", () => {
     expect(refreshCount).toBe(3);
   });
 
+  it("allows privileged actors to clear a stale assignee", async () => {
+    const createResult = await createTicketRecord(ctx, {
+      title: "Clear stale owner",
+      description: "Operator clears an orphaned assignee.",
+      severity: "medium",
+      priority: 6,
+      tags: ["ops"],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(createResult.ok).toBe(true);
+    const ticketId = createResult.ok ? String(createResult.data.ticketId) : "";
+
+    expect(assignTicketRecord(ctx, {
+      ticketId,
+      assigneeAgentId: "agent-dev",
+    }).ok).toBe(true);
+
+    const result = assignTicketRecord(ctx, {
+      ticketId,
+      assigneeAgentId: null,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(queries.getTicketByTicketId(db, ticketId)?.assigneeAgentId).toBeNull();
+    expect(queries.getDashboardEventsByRepo(db, repoId).map((event) => event.eventType)).toEqual([
+      "ticket_created",
+      "ticket_assigned",
+      "ticket_unassigned",
+    ]);
+  });
+
   it("captures repo knowledge automatically when resolving a ticket", async () => {
     const createResult = await createTicketRecord(ctx, {
       title: "Index stale after commit",
@@ -464,6 +496,48 @@ describe("ticket service system context", () => {
     expect(queries.getDashboardEventsByRepo(db, repoId)).toHaveLength(1);
     expect(bus.getMessages("agent-dev")).toHaveLength(1);
     expect(refreshCount).toBe(1);
+  });
+
+  it("blocks entering in_progress without an assignee from system context", async () => {
+    const createResult = await createTicketRecord(ctx, {
+      title: "Ownerless work item",
+      description: "System transitions should not invent implementation ownership.",
+      severity: "medium",
+      priority: 6,
+      tags: ["workflow"],
+      affectedPaths: [],
+      acceptanceCriteria: null,
+    });
+    expect(createResult.ok).toBe(true);
+    const ticketId = createResult.ok ? String(createResult.data.ticketId) : "";
+
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "approved",
+    }).ok).toBe(true);
+
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "in_progress",
+      autoAssign: true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.code).toBe("invalid_request");
+    expect(result.message).toContain("Cannot move to in_progress without an assignee");
+    expect(result.data).toMatchObject({
+      assigneeAgentId: null,
+      autoAssignAllowed: false,
+      transition: "approved→in_progress",
+    });
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("approved");
+    expect(queries.getTicketByTicketId(db, ticketId)?.assigneeAgentId).toBeNull();
   });
 
   it("does not resolve or mutate tickets outside the active repo", () => {
@@ -1131,6 +1205,84 @@ describe("ticket service quorum enforcement", () => {
 
     expect(queries.getActiveReviewVerdicts(db, ticket.id)).toHaveLength(0);
     expect(queries.getVerdictHistory(db, ticket.id).every((row) => row.supersededBy === queries.REVIEW_VERDICT_CLEARED_ON_RESET)).toBe(true);
+  });
+
+  it("can auto-assign a non-system actor when entering in_progress", async () => {
+    registerActor(db, { agentId: "agent-dev", sessionId: "session-dev", roleId: "developer" });
+    const devCtx: TicketServiceContext = {
+      ...reviewerCtx,
+    };
+    const { ticketId, ticket } = await createTechnicalAnalysisTicket();
+
+    for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
+      recordVerdict(db, ticket.id, {
+        specialization,
+        verdict: "pass",
+      });
+    }
+
+    expect(updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    }).ok).toBe(true);
+
+    const result = updateTicketStatusRecord(devCtx, {
+      ticketId,
+      status: "in_progress",
+      autoAssign: true,
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.data.assigneeAgentId : null).toBe("agent-dev");
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("in_progress");
+    expect(queries.getTicketByTicketId(db, ticketId)?.assigneeAgentId).toBe("agent-dev");
+    expect(queries.getDashboardEventsByRepo(db, repoId).map((event) => event.eventType)).toContain("ticket_assigned");
+  });
+
+  it("blocks entering in_progress without an assignee when autoAssign is not requested", async () => {
+    registerActor(db, { agentId: "agent-dev", sessionId: "session-dev", roleId: "developer" });
+    const devCtx: TicketServiceContext = {
+      ...reviewerCtx,
+    };
+    const { ticketId, ticket } = await createTechnicalAnalysisTicket();
+
+    for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
+      recordVerdict(db, ticket.id, {
+        specialization,
+        verdict: "pass",
+      });
+    }
+
+    expect(updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    }).ok).toBe(true);
+
+    const result = updateTicketStatusRecord(devCtx, {
+      ticketId,
+      status: "in_progress",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.code).toBe("invalid_request");
+    expect(result.message).toContain("Cannot move to in_progress without an assignee");
+    expect(result.data).toMatchObject({
+      assigneeAgentId: null,
+      autoAssignAllowed: true,
+      transition: "approved→in_progress",
+    });
+    expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("approved");
+    expect(queries.getTicketByTicketId(db, ticketId)?.assigneeAgentId).toBeNull();
   });
 
   it("blocks approval when architect or security veto exists even if pass quorum is met", async () => {

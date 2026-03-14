@@ -208,10 +208,10 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
   // ─── assign_ticket ──────────────────────────────────────────
   server.tool(
     "assign_ticket",
-    "Assign a ticket owner. Developers may self-assign unowned tickets from backlog, technical_analysis, or approved; privileged roles may reassign at any status.",
+    "Assign or clear a ticket owner. Developers may self-assign unowned tickets from backlog, technical_analysis, or approved; privileged roles may reassign or clear stale assignees at any status.",
     {
       ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
-      assigneeAgentId: AgentIdSchema.describe("Agent to assign"),
+      assigneeAgentId: AgentIdSchema.nullable().describe("Agent to assign, or null to clear the current assignee"),
       agentId: AgentIdSchema.describe("Requesting agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
     },
@@ -244,11 +244,12 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
       status: z.enum(TicketStatus.options).describe("Target status"),
       comment: z.string().max(500).optional(),
+      autoAssign: z.boolean().optional().describe("Auto-assign the calling non-system agent when entering in_progress without an assignee"),
       skipKnowledgeCapture: z.boolean().optional().describe("Skip automatic repo knowledge capture when transitioning to resolved or closed"),
       agentId: AgentIdSchema.describe("Requesting agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
     },
-    async ({ ticketId, status: targetStatus, comment, skipKnowledgeCapture, agentId, sessionId }) => {
+    async ({ ticketId, status: targetStatus, comment, autoAssign, skipKnowledgeCapture, agentId, sessionId }) => {
       const c = await getContext();
       const resolvedCommitSha = targetStatus === "resolved"
         ? await getHead({ cwd: c.repoPath })
@@ -276,6 +277,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         ticketId,
         status: targetStatus as TicketStatusType,
         comment,
+        autoAssign,
         skipKnowledgeCapture,
         commitSha: resolvedCommitSha,
         agentId,

@@ -766,6 +766,59 @@ describe("Dashboard API", () => {
     });
   });
 
+  it("surfaces orphaned assignees when an active owner has no live sessions", () => {
+    const now = Date.now();
+    sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run("agent-stale", "Stale Dev", "codex", "developer", "A", new Date(now).toISOString());
+    sqlite.prepare(`
+      INSERT INTO sessions (id, agent_id, state, connected_at, last_activity, claimed_files_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      "session-stale",
+      "agent-stale",
+      "active",
+      new Date(now - 2 * HEARTBEAT_TIMEOUT_MS).toISOString(),
+      new Date(now - 2 * HEARTBEAT_TIMEOUT_MS).toISOString(),
+      JSON.stringify(["src/orphaned.ts"]),
+    );
+    sqlite.prepare(`
+      INSERT INTO tickets (
+        id, repo_id, ticket_id, title, description, status, severity, priority,
+        creator_agent_id, creator_session_id, assignee_agent_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      51,
+      1,
+      "TKT-orphaned",
+      "Orphaned owner",
+      "Desc",
+      "in_progress",
+      "high",
+      8,
+      "agent-1",
+      "s-1",
+      "agent-stale",
+      "abc1234",
+      new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    );
+
+    const ticket = getTicketsList(deps).find((entry) => entry.ticketId === "TKT-orphaned");
+
+    expect(ticket).toMatchObject({
+      orphanedAssignee: true,
+      orphanedAssigneeReason: "assignee_no_live_sessions",
+      humanActionRequired: true,
+      humanActionReason: "orphaned_assignee",
+    });
+    expect(getTicketDetail(deps, "TKT-orphaned")).toMatchObject({
+      orphanedAssignee: true,
+      orphanedAssigneeReason: "assignee_no_live_sessions",
+      humanActionRequired: true,
+      humanActionReason: "orphaned_assignee",
+    });
+  });
+
   it("returns dependency graph with resolved internal edges", () => {
     const now = new Date().toISOString();
     sqlite.prepare(`INSERT INTO files (repo_id, path, language, content_hash, summary, symbols_json, indexed_at, commit_sha) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
