@@ -97,7 +97,17 @@ function createTables(sqlite: Database.Database): void {
       state TEXT NOT NULL DEFAULT 'active',
       connected_at TEXT NOT NULL,
       last_activity TEXT NOT NULL,
-      claimed_files_json TEXT
+      claimed_files_json TEXT,
+      worktree_path TEXT,
+      worktree_branch TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS commit_locks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      ticket_id TEXT,
+      acquired_at TEXT NOT NULL,
+      released_at TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS notes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -440,4 +450,26 @@ function runMigrations(sqlite: Database.Database): void {
   } catch {
     sqlite.prepare("ALTER TABLE tickets ADD COLUMN resolution_commits_json TEXT").run();
   }
+
+  // Migration 15: Add worktree columns to sessions for dev loop isolation
+  try {
+    sqlite.prepare("SELECT worktree_path FROM sessions LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE sessions ADD COLUMN worktree_path TEXT").run();
+  }
+  try {
+    sqlite.prepare("SELECT worktree_branch FROM sessions LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE sessions ADD COLUMN worktree_branch TEXT").run();
+  }
+
+  // Migration 16: Create commit_locks table for merge serialization
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS commit_locks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    ticket_id TEXT,
+    acquired_at TEXT NOT NULL,
+    released_at TEXT
+  )`).run();
 }

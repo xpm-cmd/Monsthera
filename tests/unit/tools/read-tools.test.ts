@@ -148,7 +148,7 @@ describe("read tool discovery", () => {
       query: "string (1-1000 chars)",
     });
     expect(JSON.parse(runWorkflow.content[0].text).inputSchema).toMatchObject({
-      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2; custom: custom:<name>)",
+      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2|backlog-triage; custom: custom:<name>)",
       params: "object (optional workflow parameters)",
       agentId: "string (required)",
       sessionId: "string (required)",
@@ -327,7 +327,7 @@ steps:
       expect.objectContaining({ name: "custom:repo-review" }),
     ]));
     expect(schemaPayload.inputSchema).toMatchObject({
-      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2; custom: custom:repo-review)",
+      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2|backlog-triage; custom: custom:repo-review)",
     });
   });
 
@@ -404,7 +404,7 @@ describe("suggest_next_work", () => {
     sqlite.exec(`
       CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', provider TEXT, model TEXT, model_family TEXT, model_version TEXT, identity_source TEXT, role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL);
-      CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT);
+      CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT, worktree_path TEXT, worktree_branch TEXT);
       CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     `);
     const db = drizzle(sqlite, { schema });

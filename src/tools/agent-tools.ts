@@ -13,6 +13,7 @@ import * as queries from "../db/queries.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
+import { pathsOverlap, normalizeClaimPath } from "../core/path-overlap.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -222,27 +223,6 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
         };
       }
 
-      // Check for existing claims
-      const activeSessions = queries.getLiveSessions(
-        c.db,
-        new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString(),
-      );
-      const conflicts: Array<{ path: string; claimedBy: string }> = [];
-
-      for (const s of activeSessions) {
-        if (s.id === resolved.sessionId) continue;
-        const claimed = parseStringArrayJson(s.claimedFilesJson, {
-          maxItems: 50,
-          maxItemLength: 500,
-        });
-        for (const p of paths) {
-          const conflictPath = claimed.find((existing) => pathsOverlap(existing, p));
-          if (conflictPath) {
-            conflicts.push({ path: p, claimedBy: s.agentId });
-          }
-        }
-      }
-
       if (override && !["facilitator", "admin"].includes(resolved.role)) {
         return {
           content: [{
@@ -250,29 +230,34 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
             text: JSON.stringify({
               denied: true,
               reason: "Only facilitators or admins may override claim conflicts",
-              conflicts,
             }, null, 2),
           }],
           isError: true,
         };
       }
 
-      // Strict mode: reject if any conflict exists
-      if (c.config.claimEnforceMode === "strict" && conflicts.length > 0 && !override) {
+      // Atomic claim: check + write in a single SQLite transaction (no TOCTOU gap)
+      const cutoff = new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString();
+      const claimResult = queries.claimFilesAtomic(
+        c.db, resolved.sessionId, paths,
+        override ? "advisory" : c.config.claimEnforceMode,
+        cutoff, pathsOverlap,
+      );
+
+      if (!claimResult.ok && !override) {
         return {
           content: [{
             type: "text" as const,
             text: JSON.stringify({
               denied: true,
               reason: "Strict claim enforcement: conflicting claims exist",
-              conflicts,
+              conflicts: claimResult.conflicts,
             }, null, 2),
           }],
           isError: true,
         };
       }
 
-      queries.updateSessionClaims(c.db, resolved.sessionId, paths);
       c.insight.debug(`Files claimed by ${resolved.agentId}: ${paths.join(", ")}`);
 
       return {
@@ -280,9 +265,9 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
           type: "text" as const,
           text: JSON.stringify({
             claimed: paths,
-            conflicts,
-            overridden: override && conflicts.length > 0,
-            warning: conflicts.length > 0 ? "Some files are already claimed by other agents" : null,
+            conflicts: claimResult.conflicts,
+            overridden: override && claimResult.conflicts.length > 0,
+            warning: claimResult.conflicts.length > 0 ? "Some files are already claimed by other agents" : null,
           }, null, 2),
         }],
       };
@@ -331,12 +316,4 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
   );
 }
 
-function pathsOverlap(left: string, right: string): boolean {
-  const a = normalizeClaimPath(left);
-  const b = normalizeClaimPath(right);
-  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
-}
-
-function normalizeClaimPath(path: string): string {
-  return path.trim().replace(/^\.\/+/, "").replace(/\/+$/, "");
-}
+// pathsOverlap and normalizeClaimPath imported from ../core/path-overlap.js

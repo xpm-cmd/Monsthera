@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import { parseStringArrayJson } from "../core/input-hardening.js";
+import { pathsOverlap } from "../core/path-overlap.js";
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
 import { scanForSecrets, type SecretPattern } from "../trust/secret-patterns.js";
@@ -26,7 +27,11 @@ export async function validatePatch(
   db: BetterSQLite3Database<typeof schema>,
   repoPath: string,
   repoId: number,
-  input: { diff: string; message: string; baseCommit: string; bundleId?: string; secretPatterns?: SecretPattern[] },
+  input: {
+    diff: string; message: string; baseCommit: string; bundleId?: string;
+    secretPatterns?: SecretPattern[];
+    proposingSessionId?: string;
+  },
 ): Promise<PatchValidation> {
   const currentHead = await getHead({ cwd: repoPath });
   const proposalId = `patch-${randomUUID().slice(0, 12)}`;
@@ -57,8 +62,25 @@ export async function validatePatch(
       maxItemLength: 500,
     });
     for (const path of touchedPaths) {
-      if (claimed.includes(path)) {
-        policyViolations.push(`File ${path} claimed by agent ${session.agentId}`);
+      const conflictClaim = claimed.find((existing) => pathsOverlap(existing, path));
+      if (conflictClaim) {
+        policyViolations.push(`File ${path} overlaps claim "${conflictClaim}" by agent ${session.agentId}`);
+      }
+    }
+  }
+
+  // Check that proposer has claimed all touched paths
+  if (input.proposingSessionId) {
+    const proposerSession = activeSessions.find((s) => s.id === input.proposingSessionId);
+    if (proposerSession) {
+      const proposerClaims = parseStringArrayJson(proposerSession.claimedFilesJson, {
+        maxItems: 50,
+        maxItemLength: 500,
+      });
+      for (const path of touchedPaths) {
+        if (!proposerClaims.some((claimed) => pathsOverlap(claimed, path))) {
+          policyViolations.push(`File ${path} not claimed by proposing agent — claim before patching`);
+        }
       }
     }
   }

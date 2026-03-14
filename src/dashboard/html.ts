@@ -190,6 +190,11 @@ tr.clickable.active td{background:rgba(0,255,136,.06);color:var(--text)}
 .detail-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;margin-bottom:.85rem}
 .detail-title{font-size:1rem;font-weight:700;color:var(--text)}
 .detail-sub{font-size:.72rem;color:var(--text2);margin-top:.25rem;display:flex;gap:.45rem;flex-wrap:wrap}
+.detail-controls{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
+.ticket-block-toggle{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .55rem;border-radius:999px;border:1px solid rgba(239,68,68,.24);background:rgba(239,68,68,.08);color:var(--text2);font-size:.72rem;cursor:pointer}
+.ticket-block-toggle input[type="checkbox"]{width:15px;height:15px;accent-color:var(--red);cursor:pointer}
+.ticket-block-toggle.disabled{opacity:.55;cursor:not-allowed}
+.ticket-block-toggle.disabled input[type="checkbox"]{cursor:not-allowed}
 .detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:.9rem}
 .detail-block{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);border-radius:8px;padding:.75rem}
 .detail-label{font-size:.64rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem}
@@ -600,6 +605,17 @@ function getSelectedActor(){
   if(found) return found;
   selectedActorSessionId=ticketActors[0].sessionId;
   return ticketActors[0];
+}
+
+function getBlockedRestoreStatus(ticket){
+  if(!ticket||ticket.status!=='blocked'||!Array.isArray(ticket.history)) return null;
+  for(var i=ticket.history.length-1;i>=0;i-=1){
+    var entry=ticket.history[i];
+    if(entry&&entry.toStatus==='blocked'&&entry.fromStatus&&entry.fromStatus!=='blocked'){
+      return entry.fromStatus;
+    }
+  }
+  return null;
 }
 
 function applyTemplateToCreateForm(template){
@@ -1488,19 +1504,33 @@ function renderTicketDetail(error){
   var assigneeOptions=dashboardAgents.map(function(agent){
     return '<option value="'+esc(agent.id)+'"'+(t.assigneeAgentId===agent.id?' selected':'')+'>'+esc(agent.name+' ('+agent.role+')')+'</option>';
   }).join('');
-  var statusOptions=(TICKET_TRANSITIONS[t.status]||[]).map(function(status){
+  var availableTransitions=TICKET_TRANSITIONS[t.status]||[];
+  var canBlock=availableTransitions.includes('blocked');
+  var isBlocked=t.status==='blocked';
+  var restoreStatus=isBlocked?getBlockedRestoreStatus(t):null;
+  var transitionOptions=availableTransitions.filter(function(status){return status!=='blocked';});
+  var statusOptions=transitionOptions.map(function(status){
     return '<option value="'+esc(status)+'">'+esc(status)+'</option>';
   }).join('');
-  var actionsHtml=actor
-    ?'<div class="action-grid">'
-      +'<form class="action-card" id="assign-ticket-form"><h4>Assign</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-assignee-select">Assignee</label><select id="ticket-assignee-select">'+assigneeOptions+'</select></div><button class="action-submit" type="submit">Assign Ticket</button></form>'
-      +'<form class="action-card" id="status-ticket-form"><h4>Transition</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-status-select">Next Status</label><select id="ticket-status-select"'+(statusOptions?'':' disabled')+'>'+(statusOptions||'<option value="">No transitions available</option>')+'</select></div><div class="field"><label for="ticket-status-comment">Comment</label><textarea id="ticket-status-comment" maxlength="500" placeholder="Optional transition note"></textarea></div><button class="action-submit" type="submit"'+(statusOptions?'':' disabled')+'>Update Status</button></form>'
-      +'<form class="action-card" id="comment-ticket-form"><h4>Add Comment</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-comment-content">Comment</label><textarea id="ticket-comment-content" maxlength="${MAX_TICKET_LONG_TEXT_LENGTH}" placeholder="Provide context for the next agent"></textarea></div><button class="action-submit" type="submit">Post Comment</button></form>'
-    +'</div>'
-    :'<div class="ticket-help">No active session selected. Register an agent to comment or move tickets.</div>';
+  var blockControl='<label class="ticket-block-toggle'+(((canBlock&&!isBlocked)||(isBlocked&&restoreStatus))?'':' disabled')+'" title="'+esc(
+    isBlocked
+      ?(restoreStatus?'Return ticket to '+ticketStatusLabel(restoreStatus):'This ticket is already blocked')
+      : canBlock
+        ?'Block this ticket'
+        : 'Blocking is not available from this status'
+  )+'"><input id="ticket-block-toggle" type="checkbox" aria-label="Block ticket"'+(isBlocked?' checked':'')+((((canBlock&&!isBlocked)||(isBlocked&&restoreStatus))?'':' disabled'))+'><span>Blocked</span></label>';
+  var actionCards=[];
+  if(actor){
+    actionCards.push('<form class="action-card" id="assign-ticket-form"><h4>Assign</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-assignee-select">Assignee</label><select id="ticket-assignee-select">'+assigneeOptions+'</select></div><button class="action-submit" type="submit">Assign Ticket</button></form>');
+    actionCards.push('<form class="action-card" id="status-ticket-form"><h4>Transition</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-status-select">Next Status</label><select id="ticket-status-select"'+(statusOptions?'':' disabled')+'>'+(statusOptions||'<option value="">No other transitions available</option>')+'</select></div><div class="field"><label for="ticket-status-comment">Comment</label><textarea id="ticket-status-comment" maxlength="500" placeholder="Optional transition note"></textarea></div><button class="action-submit" type="submit"'+(statusOptions?'':' disabled')+'>Update Status</button></form>');
+    actionCards.push('<form class="action-card" id="comment-ticket-form"><h4>Add Comment</h4><div class="actor-chip">Acting as '+esc(actorLabel(actor))+'</div><div class="field"><label for="ticket-comment-content">Comment</label><textarea id="ticket-comment-content" maxlength="${MAX_TICKET_LONG_TEXT_LENGTH}" placeholder="Provide context for the next agent"></textarea></div><button class="action-submit" type="submit">Post Comment</button></form>');
+  }
+  var actionsHtml=actionCards.length
+    ?'<div class="action-grid">'+actionCards.join('')+'</div>'
+    :'<div class="ticket-help">No active session selected.</div>';
   var headBadges='<span class="badge badge-'+(TICKET_STATUS_CLS[t.status]||'blue')+'">'+esc(t.status)+'</span>'+(t.quorum?(' <span class="badge badge-'+esc((t.quorum.progress&&t.quorum.progress.state)||'blue')+'" title="'+esc((t.quorum.progress&&t.quorum.progress.title)||'Quorum progress')+'">'+esc((t.quorum.progress&&t.quorum.progress.label)||'-')+'</span>'):'');
   var detailContent=''
-    +'<div class="detail-head"><div><div class="detail-title">'+esc(t.title||t.ticketId)+'</div><div class="detail-sub"><span>'+esc(t.ticketId)+'</span><span>'+esc(new Date(t.updatedAt).toLocaleString())+'</span></div></div><div>'+headBadges+'</div></div>'
+    +'<div class="detail-head"><div><div class="detail-title">'+esc(t.title||t.ticketId)+'</div><div class="detail-sub"><span>'+esc(t.ticketId)+'</span><span>'+esc(new Date(t.updatedAt).toLocaleString())+'</span></div></div><div class="detail-controls"><div>'+headBadges+'</div>'+blockControl+'</div></div>'
     +'<div class="detail-grid">'
     +'<div class="detail-block"><div class="detail-label">Description</div><div class="detail-value">'+esc(t.description||'-')+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Acceptance Criteria</div><div class="detail-value">'+esc(t.acceptanceCriteria||'-')+'</div></div>'
@@ -1677,6 +1707,37 @@ function attachTicketDetailListeners(ticket){
     });
   });
   var actor=getSelectedActor();
+  var blockToggle=document.getElementById('ticket-block-toggle');
+  if(blockToggle&&!blockToggle.disabled){
+    blockToggle.addEventListener('change',async function(){
+      var restoreStatus=getBlockedRestoreStatus(ticket);
+      var wasBlocked=ticket.status==='blocked';
+      var targetStatus=blockToggle.checked?'blocked':restoreStatus;
+      if(!targetStatus){
+        blockToggle.checked=wasBlocked;
+        return;
+      }
+      blockToggle.disabled=true;
+      try{
+        await apiPost('tickets/'+encodeURIComponent(ticket.ticketId)+'/status',{
+          status:targetStatus,
+          ...(actor
+            ?{
+                agentId:actor.agentId,
+                sessionId:actor.sessionId,
+              }
+            :{humanName:'dashboard operator'}),
+        });
+        showToast('Updated '+ticket.ticketId+' to '+targetStatus,'success');
+        await refresh();
+      }catch(err){
+        blockToggle.checked=wasBlocked;
+        blockToggle.disabled=false;
+        showToast('Blocked toggle failed: '+String(err.message||err),'error');
+      }
+    });
+  }
+
   if(!actor) return;
 
   var assignForm=document.getElementById('assign-ticket-form');

@@ -38,7 +38,9 @@ function createTestDb() {
       state TEXT NOT NULL DEFAULT 'active',
       connected_at TEXT NOT NULL,
       last_activity TEXT NOT NULL,
-      claimed_files_json TEXT
+      claimed_files_json TEXT,
+      worktree_path TEXT,
+      worktree_branch TEXT
     );
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
@@ -343,7 +345,7 @@ describe("agent tools", () => {
     expect(result.isError).toBeUndefined();
     const payload = JSON.parse(result.content[0].text);
     expect(payload.claimed).toEqual(["src/conflict.ts", "src/owned.ts"]);
-    expect(payload.conflicts).toEqual([{ path: "src/conflict.ts", claimedBy: "agent-peer" }]);
+    expect(payload.conflicts).toEqual([{ path: "src/conflict.ts", claimedBy: "agent-peer", existingClaim: "src/conflict.ts" }]);
 
     const session = queries.getSession(db, "session-dev");
     expect(JSON.parse(session?.claimedFilesJson ?? "[]")).toEqual(["src/conflict.ts", "src/owned.ts"]);

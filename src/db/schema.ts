@@ -227,6 +227,19 @@ export const sessions = sqliteTable("sessions", {
   connectedAt: text("connected_at").notNull(),
   lastActivity: text("last_activity").notNull(),
   claimedFilesJson: text("claimed_files_json"), // JSON array
+  worktreePath: text("worktree_path"),      // null for non-dev sessions
+  worktreeBranch: text("worktree_branch"),   // null for non-dev sessions
+});
+
+// --- Commit Locks (serializes merge-to-main across agents) ---
+
+export const commitLocks = sqliteTable("commit_locks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: text("session_id").notNull(),
+  agentId: text("agent_id").notNull(),
+  ticketId: text("ticket_id"),
+  acquiredAt: text("acquired_at").notNull(),
+  releasedAt: text("released_at"),
 });
 
 // --- Event Logs (metadata-only by default) ---

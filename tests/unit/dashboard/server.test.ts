@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DashboardUpdateStatusBodySchema,
   applyStrictModelDiversityToggleToConfig,
   getDashboardReadToolName,
   summarizeDashboardReadInput,
@@ -104,5 +105,44 @@ describe("dashboard read telemetry helpers", () => {
         },
       },
     });
+  });
+
+  it("accepts a human block action without agent session credentials", () => {
+    const parsed = DashboardUpdateStatusBodySchema.parse({
+      status: "blocked",
+      comment: "Waiting on external approval",
+      humanName: "Product Owner",
+    });
+
+    expect(parsed).toMatchObject({
+      status: "blocked",
+      humanName: "Product Owner",
+      comment: "Waiting on external approval",
+    });
+  });
+
+  it("accepts human dashboard status actions without agent session credentials", () => {
+    const parsed = DashboardUpdateStatusBodySchema.parse({
+      status: "approved",
+      humanName: "Dashboard Operator",
+    });
+
+    expect(parsed).toMatchObject({
+      status: "approved",
+      humanName: "Dashboard Operator",
+    });
+  });
+
+  it("still requires agent credentials for non-human status actions", () => {
+    const result = DashboardUpdateStatusBodySchema.safeParse({
+      status: "approved",
+      comment: "Advance after review",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.success ? [] : result.error.issues.map((issue) => issue.path.join("."))).toEqual([
+      "agentId",
+      "sessionId",
+    ]);
   });
 });

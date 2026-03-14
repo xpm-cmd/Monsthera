@@ -1,6 +1,6 @@
 import type { WorkflowCatalogEntry, WorkflowSpec } from "./types.js";
 
-export const BUILTIN_WORKFLOW_NAMES = ["onboard", "deep-review", "ta-review", "deep-review-v2"] as const;
+export const BUILTIN_WORKFLOW_NAMES = ["onboard", "deep-review", "ta-review", "deep-review-v2", "backlog-triage"] as const;
 export type BuiltInWorkflowName = (typeof BUILTIN_WORKFLOW_NAMES)[number];
 
 export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
@@ -171,6 +171,31 @@ export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
           ticketId: "{{params.ticketId}}",
           status: "ready_for_commit",
           comment: "Workflow deep-review-v2: quorum checkpoint satisfied",
+        },
+      },
+    ],
+  },
+  "backlog-triage": {
+    name: "backlog-triage",
+    description: "Evaluate a backlog ticket for planning completeness and advance to technical_analysis when ready.",
+    requiredParams: ["ticketId"],
+    steps: [
+      {
+        key: "ticket",
+        tool: "get_ticket",
+        description: "Load the full ticket to evaluate readiness.",
+        input: { ticketId: "{{params.ticketId}}" },
+      },
+      {
+        key: "advance",
+        tool: "update_ticket_status",
+        description: "Advance to technical_analysis when ticket has description and affected paths.",
+        condition: "steps.ticket.description && steps.ticket.affectedPaths",
+        onError: "continue",
+        input: {
+          ticketId: "{{params.ticketId}}",
+          status: "technical_analysis",
+          comment: "Planner auto-triage: ticket has description and affected paths — advancing to technical analysis.",
         },
       },
     ],

@@ -409,6 +409,130 @@ export function updateSessionClaims(db: DB, sessionId: string, claimedFiles: str
     .run();
 }
 
+// --- Session Worktree ---
+
+export function updateSessionWorktree(
+  db: DB, sessionId: string, worktreePath: string, worktreeBranch: string,
+) {
+  return db.update(tables.sessions)
+    .set({ worktreePath, worktreeBranch })
+    .where(eq(tables.sessions.id, sessionId))
+    .run();
+}
+
+export function getSessionWorktree(db: DB, sessionId: string) {
+  const session = db.select({
+    worktreePath: tables.sessions.worktreePath,
+    worktreeBranch: tables.sessions.worktreeBranch,
+  }).from(tables.sessions)
+    .where(eq(tables.sessions.id, sessionId))
+    .get();
+  if (!session?.worktreePath || !session?.worktreeBranch) return null;
+  return { worktreePath: session.worktreePath, worktreeBranch: session.worktreeBranch };
+}
+
+// --- Atomic Claims ---
+
+export interface AtomicClaimResult {
+  ok: boolean;
+  conflicts: Array<{ path: string; claimedBy: string; existingClaim: string }>;
+}
+
+export function claimFilesAtomic(
+  db: DB,
+  sessionId: string,
+  paths: string[],
+  enforceMode: "advisory" | "strict",
+  heartbeatCutoff: string,
+  overlapFn: (a: string, b: string) => boolean,
+): AtomicClaimResult {
+  return db.transaction((tx) => {
+    // 1. Read all live sessions' claims
+    const liveSessions = tx.select().from(tables.sessions)
+      .where(and(
+        eq(tables.sessions.state, "active"),
+        sql`${tables.sessions.lastActivity} >= ${heartbeatCutoff}`,
+      ))
+      .all();
+
+    // 2. Check for conflicts
+    const conflicts: AtomicClaimResult["conflicts"] = [];
+    for (const session of liveSessions) {
+      if (session.id === sessionId) continue;
+      let claimed: string[];
+      try {
+        claimed = JSON.parse(session.claimedFilesJson || "[]") as string[];
+        if (!Array.isArray(claimed)) claimed = [];
+      } catch {
+        claimed = [];
+      }
+      for (const requestedPath of paths) {
+        const conflictClaim = claimed.find((existing) => overlapFn(existing, requestedPath));
+        if (conflictClaim) {
+          conflicts.push({
+            path: requestedPath,
+            claimedBy: session.agentId,
+            existingClaim: conflictClaim,
+          });
+        }
+      }
+    }
+
+    // 3. In strict mode with conflicts, abort
+    if (enforceMode === "strict" && conflicts.length > 0) {
+      return { ok: false, conflicts };
+    }
+
+    // 4. Write claims atomically
+    tx.update(tables.sessions)
+      .set({ claimedFilesJson: JSON.stringify(paths) })
+      .where(eq(tables.sessions.id, sessionId))
+      .run();
+
+    return { ok: true, conflicts };
+  });
+}
+
+// --- Commit Locks ---
+
+/**
+ * Attempt to acquire the global commit lock.
+ * Returns true if acquired, false if already held.
+ * Uses SQLite transaction for atomicity.
+ */
+export function acquireCommitLock(
+  db: DB, sessionId: string, agentId: string, ticketId?: string,
+): boolean {
+  return db.transaction((tx) => {
+    const existing = tx.select().from(tables.commitLocks)
+      .where(sql`${tables.commitLocks.releasedAt} IS NULL`)
+      .get();
+    if (existing) return false;
+
+    tx.insert(tables.commitLocks).values({
+      sessionId, agentId, ticketId: ticketId ?? null,
+      acquiredAt: new Date().toISOString(),
+    }).run();
+    return true;
+  });
+}
+
+export function releaseCommitLock(db: DB, sessionId: string): void {
+  db.update(tables.commitLocks)
+    .set({ releasedAt: new Date().toISOString() })
+    .where(and(
+      eq(tables.commitLocks.sessionId, sessionId),
+      sql`${tables.commitLocks.releasedAt} IS NULL`,
+    ))
+    .run();
+}
+
+export function getActiveCommitLock(db: DB) {
+  return db.select().from(tables.commitLocks)
+    .where(sql`${tables.commitLocks.releasedAt} IS NULL`)
+    .get() ?? null;
+}
+
 // --- Event Logs ---
 
 export function insertEventLog(db: DB, event: typeof tables.eventLogs.$inferInsert) {

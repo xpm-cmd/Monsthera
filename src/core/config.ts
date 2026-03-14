@@ -226,7 +226,7 @@ export const AgoraConfigSchema = z.object({
       "*.min.js", "*.min.css", "*.map",
     ]),
   zoektEnabled: z.boolean().default(true),
-  claimEnforceMode: z.enum(["advisory", "strict"]).default("advisory"),
+  claimEnforceMode: z.enum(["advisory", "strict"]).default("strict"),
   transport: z.enum(["stdio", "http"]).default("stdio"),
   httpPort: z.number().int().min(1024).max(65535).default(3000),
   noDashboard: z.boolean().default(false),

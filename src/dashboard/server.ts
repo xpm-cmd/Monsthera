@@ -114,12 +114,33 @@ const AssignTicketBodySchema = z.object({
   sessionId: SessionIdSchema,
 });
 
-const UpdateStatusBodySchema = z.object({
+export const DashboardUpdateStatusBodySchema = z.object({
   status: TicketStatus,
   comment: z.string().max(500).nullable().optional(),
   skipKnowledgeCapture: z.boolean().optional(),
-  agentId: AgentIdSchema,
-  sessionId: SessionIdSchema,
+  humanName: z.string().trim().max(100).optional(),
+  agentId: AgentIdSchema.optional(),
+  sessionId: SessionIdSchema.optional(),
+}).superRefine((value, ctx) => {
+  const humanName = value.humanName?.trim() ?? "";
+  if (humanName) {
+    return;
+  }
+
+  if (!value.agentId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["agentId"],
+      message: "agentId is required when acting as an agent session.",
+    });
+  }
+  if (!value.sessionId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["sessionId"],
+      message: "sessionId is required when acting as an agent session.",
+    });
+  }
 });
 
 const UpdateModelDiversityBodySchema = z.object({
@@ -336,12 +357,13 @@ export function startDashboard(
         }
 
         if (action === "status") {
-          const parsed = validateBody(res, UpdateStatusBodySchema, body);
+          const parsed = validateBody(res, DashboardUpdateStatusBodySchema, body);
           if (!parsed) return;
           const startedAt = Date.now();
           const resolvedCommitSha = parsed.status === "resolved"
             ? await getHead({ cwd: deps.repoPath })
             : undefined;
+          const humanName = parsed.humanName?.trim() ?? "";
           const result = updateTicketStatusRecord({
             db: deps.db,
             repoId: deps.repoId,
@@ -352,14 +374,19 @@ export function startDashboard(
             bus: deps.bus,
             refreshTicketSearch: deps.refreshTicketSearch,
             refreshKnowledgeSearch: deps.refreshKnowledgeSearch,
+            ...(humanName ? { system: true as const, actorLabel: `human ${humanName}` } : {}),
           }, {
             ticketId: decodeURIComponent(ticketId),
             status: parsed.status,
             comment: parsed.comment ?? null,
             skipKnowledgeCapture: parsed.skipKnowledgeCapture,
             commitSha: resolvedCommitSha,
-            agentId: parsed.agentId,
-            sessionId: parsed.sessionId,
+            ...(humanName
+              ? { actorLabel: `human ${humanName}` }
+              : {
+                  agentId: parsed.agentId ?? "",
+                  sessionId: parsed.sessionId ?? "",
+                }),
           });
           await logDashboardMutation(deps, {
             tool: "dashboard.update_ticket_status",

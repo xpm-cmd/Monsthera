@@ -47,7 +47,9 @@ function createTestDb() {
       state TEXT NOT NULL DEFAULT 'active',
       connected_at TEXT NOT NULL,
       last_activity TEXT NOT NULL,
-      claimed_files_json TEXT
+      claimed_files_json TEXT,
+      worktree_path TEXT,
+      worktree_branch TEXT
     );
     CREATE TABLE knowledge (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

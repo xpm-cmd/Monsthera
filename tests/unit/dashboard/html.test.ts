@@ -12,5 +12,7 @@ describe("dashboard html", () => {
     expect(html).toContain("Quorum");
     expect(html).toContain('id="governance-panel"');
     expect(html).toContain("governance-model-diversity-toggle");
+    expect(html).toContain('id="ticket-block-toggle"');
+    expect(html).toContain("Blocked</span></label>");
   });
 });

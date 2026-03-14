@@ -4,6 +4,9 @@ import type { AgoraConfig, RetrospectiveConfig } from "../core/config.js";
 import type { AgoraContext } from "../core/context.js";
 import { createAgoraContextLoader } from "../core/context-loader.js";
 import type { InsightStream } from "../core/insight-stream.js";
+import { acquireCommitLock, releaseCommitLock, updateSessionWorktree } from "../db/queries.js";
+import { getMainRepoRoot } from "../git/operations.js";
+import { createAgentWorktree, removeAgentWorktree, mergeAgentWork, hasUnmergedCommits } from "../git/worktree.js";
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import { createAgoraServer } from "../server.js";
 import { getToolRunner, type ToolRunner, type ToolRunnerCallResult } from "../tools/tool-runner.js";
@@ -11,8 +14,8 @@ import { getToolRunner, type ToolRunner, type ToolRunnerCallResult } from "../to
 type LoopCommand = "plan" | "dev" | "council";
 type LoopRole = "facilitator" | "developer" | "reviewer";
 type WatchStopReason = "signal" | "max_runs" | "workflow_failed";
-type WorkflowPrintReason = "initial" | "changed" | "review_request" | "in_review_queue" | "technical_analysis_queue";
-type PlannerAutonomousActionReason = Extract<WorkflowPrintReason, "in_review_queue" | "technical_analysis_queue">;
+type WorkflowPrintReason = "initial" | "changed" | "review_request" | "in_review_queue" | "technical_analysis_queue" | "backlog_triage";
+type PlannerAutonomousActionReason = Extract<WorkflowPrintReason, "in_review_queue" | "technical_analysis_queue" | "backlog_triage">;
 
 interface LoopSpec {
   workflowName: string;
@@ -85,7 +88,7 @@ interface QueueTicketSummary {
 }
 
 interface PlannerAutonomousAction {
-  workflowName: "ta-review" | "deep-review-v2";
+  workflowName: "ta-review" | "deep-review-v2" | "backlog-triage";
   params: Record<string, unknown>;
   queueTicket: QueueTicketSummary;
   reason: PlannerAutonomousActionReason;
@@ -212,6 +215,7 @@ export async function cmdLoop(
   });
 
   let registered: RegisteredLoopAgent | null = null;
+  let worktreeContext: { worktreePath: string; branchName: string } | null = null;
 
   try {
     const registration = await runner.callTool("register_agent", compactRecord({
@@ -239,6 +243,24 @@ export async function cmdLoop(
         throw new Error(
           "Council loop requires a reviewer specialization. Use --specialization <role> or --agent-name matching a specialized reviewer manifest.",
         );
+      }
+    }
+
+    // Dev loop: create isolated worktree for safe parallel development
+    if (loop === "dev") {
+      try {
+        const ctx = await getContext();
+        const mainRoot = await getMainRepoRoot({ cwd: config.repoPath });
+        const wt = await createAgentWorktree(mainRoot, registered.sessionId);
+        worktreeContext = wt;
+        updateSessionWorktree(ctx.db, registered.sessionId, wt.worktreePath, wt.branchName);
+        invocation = {
+          ...invocation,
+          workflowParams: { ...invocation.workflowParams, worktreeRepoPath: wt.worktreePath },
+        };
+      } catch (e) {
+        // Worktree creation is best-effort — dev loop still works without isolation
+        insight.warn(`Worktree setup skipped: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
@@ -298,6 +320,40 @@ export async function cmdLoop(
     insight.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   } finally {
+    // Worktree cleanup: merge work back to main before ending session
+    if (worktreeContext && registered) {
+      try {
+        const mainRoot = await getMainRepoRoot({ cwd: config.repoPath });
+        const hasWork = await hasUnmergedCommits(mainRoot, worktreeContext.branchName);
+        if (hasWork) {
+          const ctx = await getContext();
+          const lockAcquired = acquireCommitLock(ctx.db, registered.sessionId, registered.agentId);
+          if (lockAcquired) {
+            try {
+              const mergeResult = await mergeAgentWork(
+                mainRoot, worktreeContext.branchName,
+                `Merge agent work from ${agentName} (session ${registered.sessionId})`,
+              );
+              if (!mergeResult.merged) {
+                insight.warn(`Merge conflicts in ${mergeResult.conflicts.join(", ")} — branch preserved for manual resolution`);
+                worktreeContext = null; // skip worktree removal to preserve for manual fix
+              }
+            } finally {
+              releaseCommitLock(ctx.db, registered.sessionId);
+            }
+          } else {
+            insight.warn("Could not acquire commit lock — branch preserved for manual merge");
+            worktreeContext = null; // skip removal
+          }
+        }
+        if (worktreeContext) {
+          await removeAgentWorktree(mainRoot, registered.sessionId);
+        }
+      } catch (e) {
+        insight.warn(`Worktree cleanup error: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
     if (registered) {
       const endResult = await runner.callTool("end_session", {
         agentId: registered.agentId,
@@ -330,6 +386,7 @@ async function runWatchLoop(input: {
   const seenMessageIds = new Set<string>();
   const fingerprints = new Map<string, string>();
   let stopReason: WatchStopReason = "signal";
+  let activeTicketId: string | null = null;
 
   try {
     printWatchEvent({
@@ -591,15 +648,56 @@ async function runWatchLoop(input: {
         }
 
         if (loop === "dev") {
-          const autoTakeOutcome = await maybeAutoTakeDeveloperWork({
-            runner,
-            agent,
-            cycle: cycles,
-            asJson,
-            payload: execution.payload,
-          });
-          if (autoTakeOutcome) {
-            feedbackLines.push(buildDeveloperAutoTakeFeedbackLine(autoTakeOutcome));
+          // Phase 1: Check if we have an active ticket in progress
+          if (activeTicketId) {
+            const ticketStatus = await getTicketStatus(runner, agent, activeTicketId);
+            if (ticketStatus === "in_progress") {
+              const patches = await listPatchesForTicket(runner, agent, activeTicketId);
+              const hasValidatedPatch = patches.some((p) =>
+                p.state === "validated" || p.state === "committed",
+              );
+              if (hasValidatedPatch) {
+                await runner.callTool("update_ticket_status", {
+                  ticketId: activeTicketId,
+                  status: "in_review",
+                  comment: "Developer loop: implementation patch validated, advancing to review.",
+                  agentId: agent.agentId,
+                  sessionId: agent.sessionId,
+                });
+                await runner.callTool("send_coordination", {
+                  type: "review_request",
+                  payload: JSON.stringify({
+                    kind: "review_request",
+                    ticketId: activeTicketId,
+                    transition: "in_review→ready_for_commit",
+                  }),
+                  agentId: agent.agentId,
+                  sessionId: agent.sessionId,
+                });
+                feedbackLines.push(`Advanced ${activeTicketId} to in_review after validated patch`);
+                activeTicketId = null;
+              }
+            } else {
+              feedbackLines.push(`Released ${activeTicketId} (status: ${ticketStatus ?? "unknown"})`);
+              activeTicketId = null;
+            }
+          }
+
+          // Phase 2: Take new work only if not actively working
+          if (!activeTicketId) {
+            const autoTakeOutcome = await maybeAutoTakeDeveloperWork({
+              runner,
+              agent,
+              cycle: cycles,
+              asJson,
+              payload: execution.payload,
+            });
+            if (autoTakeOutcome?.outcome === "taken") {
+              activeTicketId = autoTakeOutcome.ticketId;
+              feedbackLines.push(buildDeveloperAutoTakeFeedbackLine(autoTakeOutcome));
+            } else if (autoTakeOutcome) {
+              feedbackLines.push(buildDeveloperAutoTakeFeedbackLine(autoTakeOutcome));
+            }
           }
         }
       }
@@ -1034,6 +1132,52 @@ async function getTopQueueTicket(
   return tickets[0] ?? null;
 }
 
+async function getTicketStatus(
+  runner: ToolRunner,
+  agent: LoopAgentPayload,
+  ticketId: string,
+): Promise<string | null> {
+  const result = await runner.callTool("get_ticket", {
+    ticketId,
+    agentId: agent.agentId,
+    sessionId: agent.sessionId,
+  });
+  if (!result.ok) return null;
+  const payload = parseToolPayload(result);
+  if (!isRecord(payload) || typeof payload.status !== "string") return null;
+  return payload.status;
+}
+
+interface PatchSummary {
+  proposalId: string;
+  state: string;
+  ticketId?: string;
+}
+
+async function listPatchesForTicket(
+  runner: ToolRunner,
+  agent: LoopAgentPayload,
+  ticketId: string,
+): Promise<PatchSummary[]> {
+  const result = await runner.callTool("list_patches", {
+    agentId: agent.agentId,
+    sessionId: agent.sessionId,
+  });
+  if (!result.ok) return [];
+  const payload = parseToolPayload(result);
+  if (!isRecord(payload) || !Array.isArray(payload.patches)) return [];
+
+  return payload.patches.flatMap((entry: unknown) => {
+    if (!isRecord(entry) || typeof entry.proposalId !== "string") return [];
+    if (entry.linkedTicketId !== ticketId) return [];
+    return [{
+      proposalId: entry.proposalId,
+      state: typeof entry.state === "string" ? entry.state : "unknown",
+      ticketId: typeof entry.linkedTicketId === "string" ? entry.linkedTicketId : undefined,
+    }];
+  });
+}
+
 function selectPlannerAutonomousAction(payload: unknown): PlannerAutonomousAction | null {
   const outputs = isRecord(payload) && isRecord(payload.outputs) ? payload.outputs : null;
   if (!outputs) return null;
@@ -1061,6 +1205,30 @@ function selectPlannerAutonomousAction(payload: unknown): PlannerAutonomousActio
       },
       queueTicket: technicalAnalysisTicket,
       reason: "technical_analysis_queue",
+    };
+  }
+
+  // Priority 3: Triage backlog tickets with complete readiness data
+  const backlogReadiness = Array.isArray(outputs.backlogReadiness) ? outputs.backlogReadiness : [];
+  const triageCandidate = backlogReadiness.find((item: unknown) =>
+    isRecord(item)
+    && typeof item.ticketId === "string"
+    && typeof item.description === "string" && item.description.length > 0
+    && Array.isArray(item.affectedPaths) && item.affectedPaths.length > 0,
+  );
+  if (isRecord(triageCandidate) && typeof triageCandidate.ticketId === "string") {
+    return {
+      workflowName: "backlog-triage",
+      params: {
+        ticketId: triageCandidate.ticketId,
+        timeoutSeconds: AUTONOMOUS_QUEUE_TIMEOUT_SECONDS,
+      },
+      queueTicket: {
+        ticketId: triageCandidate.ticketId,
+        title: typeof triageCandidate.title === "string" ? triageCandidate.title : undefined,
+        status: "backlog",
+      },
+      reason: "backlog_triage",
     };
   }
 
