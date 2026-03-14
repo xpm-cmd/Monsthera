@@ -8,73 +8,97 @@ export function renderDashboard(): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agora Command Center</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#0a0e14;--surface:#111820;--surface-hover:#151d28;--border:#1c2433;
-  --text:#e6edf3;--text2:#7d8b9d;--text3:#4a5567;
-  --blue:#3b82f6;--green:#22c55e;--orange:#f59e0b;--red:#ef4444;--purple:#a855f7;--cyan:#06b6d4;
-  --radius:10px;
+  --bg:#0C0C0C;--surface:#111111;--surface-hover:#1a1a1a;--sidebar:#080808;--border:#2f2f2f;
+  --text:#ffffff;--text2:#8a8a8a;--text3:#6a6a6a;
+  --accent:#00FF88;--blue:#4488FF;--green:#00FF88;--orange:#FF8800;--red:#FF4444;--purple:#8844FF;--cyan:#06b6d4;
+  --radius:8px;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-code,pre,.mono{font-family:'JetBrains Mono','Fira Code',monospace}
+body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh;display:flex}
+code,pre,.mono{font-family:'JetBrains Mono',monospace}
 
-/* ── Header ─────────────────────────────────── */
-.header{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;border-bottom:1px solid var(--border);background:var(--surface)}
-.header-left{display:flex;align-items:center;gap:.75rem}
-.logo{font-size:1.25rem;font-weight:700;color:var(--text);letter-spacing:-.02em}
-.logo span{color:var(--blue)}
-.version{font-size:.7rem;color:var(--text3);background:var(--bg);padding:2px 8px;border-radius:20px;font-family:monospace}
-.repo-name{font-size:.72rem;color:var(--text2);padding:2px 8px;border:1px solid var(--border);border-radius:20px;background:rgba(255,255,255,.03);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
-.pulse.disconnected{background:var(--red);box-shadow:0 0 6px var(--red)}
+/* ── App Layout: Sidebar + Main ─────────────── */
+.app-layout{display:flex;min-height:100vh;width:100%}
+.sidebar{width:240px;min-width:240px;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:10}
+.sidebar-header{padding:1.25rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.65rem}
+.sidebar-logo{font-size:1rem;font-weight:700;color:var(--accent);letter-spacing:.05em}
+.sidebar-version{font-size:.6rem;color:var(--text3);background:rgba(255,255,255,.05);padding:2px 6px;border-radius:4px}
+.sidebar-pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite;margin-left:auto}
+.sidebar-pulse.disconnected{background:var(--red);box-shadow:0 0 6px var(--red)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.header-right{display:flex;align-items:center;gap:.75rem}
-.btn{background:var(--bg);border:1px solid var(--border);color:var(--text2);padding:.4rem .9rem;border-radius:6px;cursor:pointer;font-size:.8rem;transition:all .2s}
-.btn:hover{color:var(--text);border-color:var(--blue);background:rgba(59,130,246,.08)}
 
-/* ── Main layout ────────────────────────────── */
-.main{padding:1.5rem;max-width:1400px;margin:0 auto}
+.sidebar-nav{flex:1;padding:.75rem 0;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:.65rem;padding:.65rem 1rem;color:var(--text2);cursor:pointer;font-size:.72rem;font-weight:500;letter-spacing:.04em;text-transform:uppercase;transition:all .15s;border-left:2px solid transparent}
+.nav-item:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.nav-item.active{color:var(--accent);border-left-color:var(--accent);background:rgba(0,255,136,.05)}
+.nav-item svg{width:16px;height:16px;opacity:.6;flex-shrink:0}
+.nav-item.active svg{opacity:1}
+.nav-item .nav-count{margin-left:auto;font-size:.6rem;color:var(--text3);background:rgba(255,255,255,.05);padding:1px 5px;border-radius:4px}
+.nav-item.active .nav-count{color:var(--accent);background:rgba(0,255,136,.1)}
+
+.sidebar-separator{height:1px;background:var(--border);margin:.5rem 1rem}
+
+.sidebar-feed{border-top:1px solid var(--border);padding:.75rem;max-height:220px;overflow-y:auto}
+.feed-title{font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.5rem;font-weight:600}
+.feed-item{font-size:.65rem;color:var(--text2);padding:.35rem 0;border-bottom:1px solid rgba(255,255,255,.03);line-height:1.4}
+.feed-item:last-child{border-bottom:none}
+.feed-item .feed-time{color:var(--text3);font-size:.58rem}
+.feed-item .feed-dot{display:inline-block;width:5px;height:5px;border-radius:50%;margin-right:.35rem}
+
+.main-content{margin-left:240px;flex:1;padding:1.5rem 2rem;overflow-y:auto;min-height:100vh}
+.main-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem}
+.main-title{font-size:1.1rem;font-weight:700;color:var(--text);letter-spacing:.02em;text-transform:uppercase}
+.main-subtitle{font-size:.68rem;color:var(--text3);margin-top:.2rem}
+.header-actions{display:flex;align-items:center;gap:.5rem}
+.btn{background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text2);padding:.4rem .75rem;border-radius:6px;cursor:pointer;font-size:.72rem;font-family:'JetBrains Mono',monospace;transition:all .15s}
+.btn:hover{color:var(--text);border-color:var(--accent);background:rgba(0,255,136,.05)}
+.btn-accent{background:rgba(0,255,136,.1);border-color:rgba(0,255,136,.3);color:var(--accent)}
+.btn-accent:hover{background:rgba(0,255,136,.18)}
+.btn-export{background:rgba(136,68,255,.08);border:1px solid rgba(136,68,255,.25);color:var(--purple)}
+.btn-export:hover{border-color:var(--purple);background:rgba(136,68,255,.15);color:var(--text)}
 
 /* ── Stat cards ─────────────────────────────── */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-bottom:1.25rem}
-.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;border-left:3px solid var(--blue);transition:all .2s;position:relative;overflow:hidden}
-.stat:hover{border-color:var(--blue);background:var(--surface-hover);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
-.stat:nth-child(2){border-left-color:var(--green)}
-.stat:nth-child(3){border-left-color:var(--cyan)}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;border-left:3px solid var(--accent);transition:all .2s;position:relative;overflow:hidden}
+.stat:hover{border-color:var(--accent);background:var(--surface-hover);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.stat:nth-child(2){border-left-color:var(--blue)}
+.stat:nth-child(3){border-left-color:var(--purple)}
 .stat:nth-child(4){border-left-color:var(--orange)}
-.stat:nth-child(5){border-left-color:var(--purple)}
-.stat:nth-child(6){border-left-color:var(--red)}
+.stat:nth-child(5){border-left-color:var(--red)}
+.stat:nth-child(6){border-left-color:var(--cyan)}
 .stat .icon{font-size:1.1rem;margin-bottom:.3rem}
-.stat .label{font-size:.65rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
-.stat .value{font-size:1.6rem;font-weight:700;margin-top:.15rem;font-family:monospace;letter-spacing:-.02em}
+.stat .label{font-size:.62rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-weight:500}
+.stat .value{font-size:1.5rem;font-weight:700;margin-top:.15rem;letter-spacing:-.02em}
 
 /* ── Charts row ─────────────────────────────── */
 .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.75rem;margin-bottom:1.25rem}
 .chart-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem;transition:all .2s}
-.chart-panel:hover{border-color:rgba(59,130,246,.3)}
-.chart-title{font-size:.75rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-weight:500;margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem}
+.chart-panel:hover{border-color:rgba(0,255,136,.2)}
+.chart-title{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-weight:500;margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem}
 .chart-title .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
 .chart-body{display:flex;align-items:center;gap:1rem;min-height:100px}
 .chart-body svg{flex-shrink:0}
 .chart-stack{display:flex;flex-direction:column;gap:.85rem;width:100%}
 .chart-indicators{display:grid;grid-template-columns:repeat(auto-fit,minmax(86px,1fr));gap:.55rem}
 .chart-indicator{border:1px solid rgba(255,255,255,.05);background:rgba(255,255,255,.02);border-radius:8px;padding:.55rem .65rem}
-.chart-indicator-value{display:block;color:var(--text);font-family:monospace;font-size:1rem;font-weight:700}
-.chart-indicator-label{display:block;color:var(--text3);font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;margin-top:.2rem}
-.chart-legend{font-size:.75rem;color:var(--text2);line-height:1.7}
+.chart-indicator-value{display:block;color:var(--text);font-size:1rem;font-weight:700}
+.chart-indicator-label{display:block;color:var(--text3);font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;margin-top:.2rem}
+.chart-legend{font-size:.72rem;color:var(--text2);line-height:1.7}
 .chart-legend .item{display:flex;align-items:center;gap:.4rem}
 .chart-legend .swatch{width:8px;height:8px;border-radius:2px;display:inline-block;flex-shrink:0}
-.chart-legend .count{color:var(--text);font-weight:600;font-family:monospace;margin-left:auto;padding-left:.5rem}
-.chart-empty{color:var(--text3);font-size:.8rem;font-style:italic;padding:1rem 0}
+.chart-legend .count{color:var(--text);font-weight:600;margin-left:auto;padding-left:.5rem}
+.chart-empty{color:var(--text3);font-size:.76rem;font-style:italic;padding:1rem 0}
 
-/* ── Tab bar ────────────────────────────────── */
-.tab-bar{display:flex;gap:.4rem;margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:0}
-.tab{padding:.55rem 1rem;border:none;border-bottom:2px solid transparent;background:none;color:var(--text2);cursor:pointer;font-size:.82rem;font-weight:500;transition:all .15s;border-radius:6px 6px 0 0}
+/* ── Sub-tab bar (Activity Log, etc) ────────── */
+.tab-bar{display:flex;gap:.25rem;margin-bottom:1rem;border-bottom:1px solid var(--border);padding-bottom:0;flex-wrap:wrap}
+.tab{padding:.5rem .85rem;border:none;border-bottom:2px solid transparent;background:none;color:var(--text2);cursor:pointer;font-size:.72rem;font-weight:500;transition:all .15s;border-radius:6px 6px 0 0;font-family:'JetBrains Mono',monospace}
 .tab:hover{color:var(--text);background:rgba(255,255,255,.03)}
-.tab.active{color:var(--blue);border-bottom-color:var(--blue);background:rgba(59,130,246,.06)}
-.tab .count{background:var(--bg);color:var(--text3);font-size:.65rem;padding:1px 6px;border-radius:10px;margin-left:.35rem;font-family:monospace}
-.tab.active .count{color:var(--blue);background:rgba(59,130,246,.12)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);background:rgba(0,255,136,.05)}
+.tab .count{background:rgba(255,255,255,.05);color:var(--text3);font-size:.6rem;padding:1px 5px;border-radius:4px;margin-left:.3rem}
+.tab.active .count{color:var(--accent);background:rgba(0,255,136,.1)}
 
 /* ── Sections & tables ──────────────────────── */
 .section{display:none}.section.active{display:block}
@@ -82,46 +106,47 @@ code,pre,.mono{font-family:'JetBrains Mono','Fira Code',monospace}
 .table-wrap::-webkit-scrollbar{width:6px}
 .table-wrap::-webkit-scrollbar-track{background:var(--surface)}
 .table-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-table{width:100%;border-collapse:collapse;font-size:.8rem}
+table{width:100%;border-collapse:collapse;font-size:.76rem}
 thead{position:sticky;top:0;z-index:1}
-th{background:var(--surface-hover);color:var(--text2);font-weight:500;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;padding:.6rem .75rem;text-align:left;border-bottom:1px solid var(--border)}
-td{padding:.55rem .75rem;border-bottom:1px solid rgba(28,36,51,.5);color:var(--text2);vertical-align:middle}
-tr:hover td{background:rgba(255,255,255,.015);color:var(--text)}
-tr:nth-child(even) td{background:rgba(0,0,0,.1)}
-td.mono{font-family:monospace;font-size:.75rem;color:var(--text3)}
+th{background:var(--surface-hover);color:var(--text2);font-weight:500;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;padding:.6rem .75rem;text-align:left;border-bottom:1px solid var(--border)}
+td{padding:.55rem .75rem;border-bottom:1px solid rgba(47,47,47,.5);color:var(--text2);vertical-align:middle}
+tr:hover td{background:rgba(255,255,255,.02);color:var(--text)}
+tr:nth-child(even) td{background:rgba(0,0,0,.15)}
+td.mono{font-family:monospace;font-size:.72rem;color:var(--text3)}
 tr.clickable{cursor:pointer}
-tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
+tr.clickable.active td{background:rgba(0,255,136,.06);color:var(--text)}
 
 /* ── Badges ─────────────────────────────────── */
-.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.7rem;font-weight:600;letter-spacing:.02em}
-.badge-success,.badge-active,.badge-applied{background:rgba(34,197,94,.1);color:var(--green);box-shadow:0 0 8px rgba(34,197,94,.08)}
-.badge-blue,.badge-validated,.badge-a,.badge-decision,.badge-pattern{background:rgba(59,130,246,.1);color:var(--blue);box-shadow:0 0 8px rgba(59,130,246,.08)}
-.badge-orange,.badge-b,.badge-proposed,.badge-gotcha{background:rgba(245,158,11,.1);color:var(--orange);box-shadow:0 0 8px rgba(245,158,11,.08)}
-.badge-red,.badge-stale,.badge-failed{background:rgba(239,68,68,.1);color:var(--red);box-shadow:0 0 8px rgba(239,68,68,.08)}
-.badge-purple,.badge-context,.badge-plan{background:rgba(168,85,247,.1);color:var(--purple);box-shadow:0 0 8px rgba(168,85,247,.08)}
-.badge-cyan,.badge-solution,.badge-preference{background:rgba(6,182,212,.1);color:var(--cyan);box-shadow:0 0 8px rgba(6,182,212,.08)}
-.badge-global{background:rgba(245,158,11,.1);color:var(--orange)}
-.badge-repo{background:rgba(34,197,94,.1);color:var(--green)}
+.badge{display:inline-block;padding:2px 9px;border-radius:4px;font-size:.65rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase}
+.badge-success,.badge-active,.badge-applied{background:rgba(0,255,136,.1);color:var(--green)}
+.badge-blue,.badge-validated,.badge-a,.badge-decision,.badge-pattern{background:rgba(68,136,255,.1);color:var(--blue)}
+.badge-orange,.badge-b,.badge-proposed,.badge-gotcha{background:rgba(255,136,0,.1);color:var(--orange)}
+.badge-red,.badge-stale,.badge-failed{background:rgba(255,68,68,.1);color:var(--red)}
+.badge-purple,.badge-context,.badge-plan{background:rgba(136,68,255,.1);color:var(--purple)}
+.badge-cyan,.badge-solution,.badge-preference{background:rgba(6,182,212,.1);color:var(--cyan)}
+.badge-global{background:rgba(255,136,0,.1);color:var(--orange)}
+.badge-repo{background:rgba(0,255,136,.1);color:var(--green)}
 
 /* ── Empty state ────────────────────────────── */
 .empty{color:var(--text3);font-size:.82rem;padding:2rem;text-align:center;font-style:italic}
 
 /* ── Toast notifications ───────────────────── */
-.toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.75rem 1.25rem;border-radius:8px;font-size:.82rem;color:var(--text);z-index:100;opacity:0;transform:translateY(10px);transition:all .3s ease;pointer-events:none;max-width:380px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.75rem 1.25rem;border-radius:6px;font-size:.76rem;color:var(--text);z-index:200;opacity:0;transform:translateY(10px);transition:all .3s ease;pointer-events:none;max-width:380px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 .toast.show{opacity:1;transform:translateY(0);pointer-events:auto}
-.toast.success{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3)}
-.toast.error{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3)}
+.toast.success{background:rgba(0,255,136,.12);border:1px solid rgba(0,255,136,.3)}
+.toast.error{background:rgba(255,68,68,.12);border:1px solid rgba(255,68,68,.3)}
 
 /* ── Export button ─────────────────────────── */
 .btn-export{background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.25);color:var(--purple)}
 .btn-export:hover{border-color:var(--purple);background:rgba(168,85,247,.15);color:var(--text)}
 
 /* ── Presence panel ────────────────────────── */
-.presence-title{font-size:.75rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-weight:500;margin-bottom:.6rem;display:flex;align-items:center;gap:.5rem}
+.presence-title{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;font-weight:500;margin-bottom:.6rem;display:flex;align-items:center;gap:.5rem}
 .presence-title .dot{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block}
 .presence{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:1.25rem}
-.agent-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;min-width:220px;flex:1 1 220px;max-width:320px;transition:all .2s;display:flex;align-items:flex-start;gap:.65rem}
-.agent-card:hover{border-color:rgba(59,130,246,.3);background:var(--surface-hover);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.agent-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;min-width:220px;flex:1 1 220px;max-width:320px;transition:all .2s;display:flex;align-items:flex-start;gap:.65rem;cursor:pointer}
+.agent-card:hover{border-color:rgba(0,255,136,.3);background:var(--surface-hover);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.agent-card.selected{border-color:var(--accent);background:rgba(0,255,136,.05)}
 .status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px;box-shadow:0 0 6px currentColor}
 .status-dot.online{background:var(--green);color:var(--green)}
 .status-dot.idle{background:var(--orange);color:var(--orange)}
@@ -220,8 +245,8 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .board-column-stat.alert{color:var(--orange);border-color:rgba(245,158,11,.22);background:rgba(245,158,11,.08)}
 .board-list{display:flex;flex-direction:column;gap:.6rem}
 .board-card{border:1px solid rgba(255,255,255,.05);border-left:3px solid rgba(59,130,246,.45);border-radius:8px;background:rgba(255,255,255,.02);padding:.7rem;cursor:pointer;transition:all .15s}
-.board-card:hover{background:rgba(255,255,255,.04);border-color:rgba(59,130,246,.25)}
-.board-card.active{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.35)}
+.board-card:hover{background:rgba(255,255,255,.04);border-color:rgba(0,255,136,.25)}
+.board-card.active{background:rgba(0,255,136,.06);border-color:rgba(0,255,136,.35)}
 .board-card-title{font-size:.8rem;color:var(--text);font-weight:600;line-height:1.35;margin:.35rem 0}
 .board-card-flags{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.35rem}
 .board-card-meta{display:flex;gap:.4rem;flex-wrap:wrap;font-size:.68rem;color:var(--text3)}
@@ -261,66 +286,103 @@ tr.clickable.active td{background:rgba(59,130,246,.08);color:var(--text)}
 .dep-graph-tooltip .mono{font-family:monospace;font-size:.72rem;color:var(--text)}
 .dep-graph-empty{padding:3rem;text-align:center;color:var(--text3);font-size:.82rem}
 
+/* ── Modal overlay ──────────────────────────── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.modal-backdrop.active{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:90%;max-width:780px;max-height:85vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1}
+.modal-header h2{font-size:.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.modal-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:1.2rem;padding:.25rem;line-height:1}
+.modal-close:hover{color:var(--text)}
+.modal-body{padding:1.25rem}
+.modal-footer{padding:.75rem 1.25rem;border-top:1px solid var(--border);display:flex;gap:.5rem;justify-content:flex-end}
+
 /* ── Footer ─────────────────────────────────── */
-footer{text-align:center;font-size:.7rem;color:var(--text3);padding:1.5rem;border-top:1px solid var(--border);margin-top:1rem}
-footer a{color:var(--blue);text-decoration:none}
+footer{text-align:center;font-size:.65rem;color:var(--text3);padding:1rem;border-top:1px solid var(--border);margin-top:1rem}
+footer a{color:var(--accent);text-decoration:none}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="header-left">
-    <div class="logo"><span>&#9670;</span> Agora</div>
-    <span class="version">v${VERSION}</span>
-    <span class="repo-name" id="repo-name" title="Repository name">loading…</span>
-    <div class="pulse" id="pulse" title="SSE connected"></div>
-  </div>
-  <div class="header-right">
-    <span style="font-size:.75rem;color:var(--text3)" id="last-updated"></span>
-    <button class="btn btn-export" id="export-btn" title="Export knowledge to Obsidian markdown vault">&#128214; Export Obsidian</button>
-    <button class="btn" id="refresh-btn">&#8635; Refresh</button>
+<div class="app-layout">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-logo">&#9670; AGORA</span>
+      <span class="sidebar-version">v${VERSION}</span>
+      <div class="sidebar-pulse" id="pulse" title="SSE connected"></div>
+    </div>
+    <div class="sidebar-nav" id="sidebar-nav">
+      <div class="nav-item active" data-route="mission" onclick="navigate('mission')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        MISSION CONTROL
+      </div>
+      <div class="nav-item" data-route="agents" onclick="navigate('agents')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        AGENTS <span class="nav-count" id="nav-count-agents">0</span>
+      </div>
+      <div class="nav-item" data-route="tickets" onclick="navigate('tickets')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 0 0-2 2v3a2 2 0 1 1 0 4v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3a2 2 0 1 1 0-4V7a2 2 0 0 0-2-2H5z"/></svg>
+        TICKETS <span class="nav-count" id="nav-count-tickets">0</span>
+      </div>
+      <div class="nav-item" data-route="knowledge" onclick="navigate('knowledge')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><path d="M9 22h6"/></svg>
+        KNOWLEDGE <span class="nav-count" id="nav-count-knowledge">0</span>
+      </div>
+      <div class="nav-item" data-route="workflows" onclick="navigate('workflows')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        WORKFLOWS
+      </div>
+      <div class="sidebar-separator"></div>
+      <div class="nav-item" data-route="activity" onclick="navigate('activity')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        ACTIVITY LOG <span class="nav-count" id="nav-count-logs">0</span>
+      </div>
+      <div class="nav-item" data-route="settings" onclick="navigate('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        SETTINGS
+      </div>
+    </div>
+    <div class="sidebar-feed" id="live-feed">
+      <div class="feed-title">LIVE FEED</div>
+      <div class="feed-item" style="color:var(--text3)">Connecting...</div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <div id="route-content">
+      <!-- Populated by router -->
+    </div>
+    <footer>Agora &mdash; Multi-agent shared context &amp; coordination server · <span id="last-updated"></span></footer>
   </div>
 </div>
 
-<div class="main">
-  <div class="stats" id="overview"></div>
-  <div class="governance-panel" id="governance-panel"><div class="empty">Loading governance policy…</div></div>
-  <div class="presence-title"><span class="dot"></span> Live Agents</div>
-  <div class="presence" id="presence"><div class="empty" style="width:100%">No agents registered yet</div></div>
-  <div class="charts" id="charts"></div>
-  <div class="tab-bar" id="tab-bar"></div>
-  <div id="agents" class="section active"></div>
-  <div id="timeline" class="section"></div>
-  <div id="search-debug" class="section"></div>
-  <div id="logs" class="section"></div>
-  <div id="patches" class="section"></div>
-  <div id="notes" class="section"></div>
-  <div id="knowledge" class="section"></div>
-  <div id="tickets" class="section"></div>
-  <div id="dependencies" class="section"></div>
+<!-- Modal root -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal-content"></div>
 </div>
 
-<footer>Agora &mdash; Multi-agent shared context &amp; coordination server</footer>
 <div class="toast" id="toast"></div>
 
 <script>
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const api=p=>fetch('/api/'+p).then(r=>r.json());
-const tabs=[['agents','Agents'],['timeline','Agent Timeline'],['search-debug','Search Debug'],['dependencies','Dependencies'],['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['knowledge','Knowledge'],['tickets','Tickets']];
-const PALETTE=['#3b82f6','#22c55e','#f59e0b','#a855f7','#06b6d4','#ec4899','#6366f1','#ef4444','#14b8a6','#f97316'];
+const ROUTES=['mission','agents','tickets','knowledge','workflows','activity','settings'];
+const PALETTE=['#00FF88','#4488FF','#FF8800','#8844FF','#06b6d4','#ec4899','#FF4444','#14b8a6','#f97316','#6366f1'];
 const COMMENT_TONES=[
-  {accent:'#3b82f6',bg:'rgba(59,130,246,.10)'},
-  {accent:'#22c55e',bg:'rgba(34,197,94,.10)'},
-  {accent:'#f59e0b',bg:'rgba(245,158,11,.10)'},
-  {accent:'#a855f7',bg:'rgba(168,85,247,.10)'},
+  {accent:'#4488FF',bg:'rgba(68,136,255,.10)'},
+  {accent:'#00FF88',bg:'rgba(0,255,136,.10)'},
+  {accent:'#FF8800',bg:'rgba(255,136,0,.10)'},
+  {accent:'#8844FF',bg:'rgba(136,68,255,.10)'},
   {accent:'#06b6d4',bg:'rgba(6,182,212,.10)'},
-  {accent:'#ef4444',bg:'rgba(239,68,68,.10)'},
+  {accent:'#FF4444',bg:'rgba(255,68,68,.10)'},
   {accent:'#ec4899',bg:'rgba(236,72,153,.10)'},
   {accent:'#14b8a6',bg:'rgba(20,184,166,.10)'}
 ];
 const COMMENT_EMOJIS=['🤖','🧠','🧪','🛠️','📡','🛰️','🔎','⚙️','🧭','📝'];
-const TYPE_COLORS={decision:'#3b82f6',gotcha:'#f59e0b',pattern:'#a855f7',context:'#06b6d4',plan:'#ec4899',solution:'#22c55e',preference:'#6366f1',runbook:'#14b8a6'};
-const STATE_COLORS={proposed:'#f59e0b',validated:'#3b82f6',applied:'#22c55e',committed:'#22c55e',stale:'#ef4444',failed:'#ef4444'};
+const TYPE_COLORS={decision:'#4488FF',gotcha:'#FF8800',pattern:'#8844FF',context:'#06b6d4',plan:'#ec4899',solution:'#00FF88',preference:'#6366f1',runbook:'#14b8a6'};
+const STATE_COLORS={proposed:'#FF8800',validated:'#4488FF',applied:'#00FF88',committed:'#00FF88',stale:'#FF4444',failed:'#FF4444'};
 const KNOWLEDGE_TYPES=['decision','gotcha','pattern','context','plan','solution','preference'];
 const TICKET_STATUS_CLS={resolved:'success',closed:'success',technical_analysis:'purple',approved:'success',in_progress:'blue',in_review:'blue',ready_for_commit:'cyan',backlog:'orange',blocked:'red',wont_fix:'red'};
 const TICKET_TRANSITIONS={backlog:['technical_analysis','wont_fix'],technical_analysis:['backlog','approved','blocked','resolved','wont_fix'],approved:['technical_analysis','in_progress','in_review','blocked','backlog','wont_fix'],in_progress:['approved','in_review','blocked','wont_fix'],in_review:['in_progress','ready_for_commit','blocked'],ready_for_commit:['in_progress','blocked','resolved'],blocked:['backlog','technical_analysis','approved','in_progress','in_review','ready_for_commit','wont_fix'],resolved:['in_progress','closed'],closed:['backlog'],wont_fix:['backlog']};
@@ -336,6 +398,10 @@ const TICKET_BOARD_COLUMNS=[
   {id:'blocked',label:'Blocked',statuses:['blocked']},
   {id:'done',label:'Done',statuses:['resolved','closed','wont_fix']}
 ];
+let currentRoute='mission';
+let liveFeedEvents=[];
+let selectedAgentId=null;
+let navCounts={agents:0,tickets:0,knowledge:0,logs:0};
 let tabCounts={agents:0,timeline:0,'search-debug':0,dependencies:0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
 let selectedTicketId=null;
 let selectedTicketDetail=null;
@@ -582,7 +648,7 @@ function makeDonut(data,size,thickness){
     }
     angle+=sweep;
   });
-  var center='<text x="'+cx+'" y="'+cy+'" text-anchor="middle" dominant-baseline="central" fill="#e6edf3" font-size="'+(size*.18).toFixed(0)+'" font-weight="700" font-family="monospace">'+total+'</text>';
+  var center='<text x="'+cx+'" y="'+cy+'" text-anchor="middle" dominant-baseline="central" fill="#ffffff" font-size="'+(size*.18).toFixed(0)+'" font-weight="700" font-family="monospace">'+total+'</text>';
   return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'+paths+center+'</svg>';
 }
 
@@ -598,8 +664,8 @@ function makeBarChart(data,width,barH,gap){
     var y=i*(barH+gap);
     var w=Math.max((d.value/max)*(width-80),2);
     bars+='<rect x="0" y="'+y+'" width="'+w.toFixed(1)+'" height="'+barH+'" rx="4" fill="'+d.color+'" opacity="0.75"/>';
-    bars+='<text x="'+(w+6).toFixed(1)+'" y="'+(y+barH/2)+'" dominant-baseline="central" fill="#7d8b9d" font-size="11" font-family="monospace">'+d.value+'</text>';
-    bars+='<text x="'+width+'" y="'+(y+barH/2)+'" text-anchor="end" dominant-baseline="central" fill="#4a5567" font-size="10">'+d.label+'</text>';
+    bars+='<text x="'+(w+6).toFixed(1)+'" y="'+(y+barH/2)+'" dominant-baseline="central" fill="#8a8a8a" font-size="11" font-family="monospace">'+d.value+'</text>';
+    bars+='<text x="'+width+'" y="'+(y+barH/2)+'" text-anchor="end" dominant-baseline="central" fill="#6a6a6a" font-size="10">'+d.label+'</text>';
   });
   return '<svg width="'+width+'" height="'+h+'" viewBox="0 0 '+width+' '+h+'">'+bars+'</svg>';
 }
@@ -613,8 +679,8 @@ function makeSparkline(values,width,height){
   var step=width/(values.length-1||1);
   var pts=values.map(function(v,i){return (i*step).toFixed(1)+','+(height-2-(v/max)*(height-8)).toFixed(1)}).join(' ');
   var area='M0,'+height+' L'+pts+' L'+((values.length-1)*step).toFixed(1)+','+height+' Z';
-  var gradient='<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/><stop offset="100%" stop-color="#3b82f6" stop-opacity="0.02"/></linearGradient></defs>';
-  return '<svg width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'">'+gradient+'<path d="'+area+'" fill="url(#sg)"/><polyline points="'+pts+'" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/></svg>';
+  var gradient='<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4488FF" stop-opacity="0.3"/><stop offset="100%" stop-color="#4488FF" stop-opacity="0.02"/></linearGradient></defs>';
+  return '<svg width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'">'+gradient+'<path d="'+area+'" fill="url(#sg)"/><polyline points="'+pts+'" fill="none" stroke="#4488FF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/></svg>';
 }
 
 function mkEmpty(message){return '<div class="chart-empty">'+esc(message||'No data')+'</div>';}
@@ -706,35 +772,254 @@ function agentShortLabel(agentId){
   return compact.slice(0,2)||'--';
 }
 
-/* ── Init ────────────────────────────────────── */
-function init(){
-  var bar=document.getElementById('tab-bar');
-  tabs.forEach(function(t,i){
-    var id=t[0],label=t[1];
-    var btn=document.createElement('button');
-    btn.className='tab'+(i===0?' active':'');
-    btn.id='tab-'+id;
-    btn.innerHTML=esc(label)+'<span class="count" id="count-'+id+'">0</span>';
-    btn.addEventListener('click',function(){showTab(id,btn)});
-    bar.appendChild(btn);
+/* ── Router ──────────────────────────────────── */
+function navigate(route){
+  currentRoute=route;
+  updateSidebarActive();
+  renderRoute();
+}
+
+function updateSidebarActive(){
+  document.querySelectorAll('.nav-item').forEach(function(item){
+    item.classList.toggle('active',item.getAttribute('data-route')===currentRoute);
   });
-  document.getElementById('refresh-btn').addEventListener('click',refresh);
-  refresh();
 }
 
-function showTab(id,btn){
-  document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active')});
-  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
-  document.getElementById(id).classList.add('active');
-  btn.classList.add('active');
-  refresh();
-}
-
-function updateCounts(){
+function updateNavCounts(){
+  Object.keys(navCounts).forEach(function(k){
+    var el=document.getElementById('nav-count-'+k);
+    if(el) el.textContent=navCounts[k];
+  });
+  /* legacy compat for internal functions */
   Object.keys(tabCounts).forEach(function(k){
     var el=document.getElementById('count-'+k);
     if(el) el.textContent=tabCounts[k];
   });
+}
+
+function renderRoute(){
+  var host=document.getElementById('route-content');
+  if(!host) return;
+  switch(currentRoute){
+    case 'mission': renderMissionControl(host); break;
+    case 'agents': renderAgentsScreen(host); break;
+    case 'tickets': renderTicketsScreen2(host); break;
+    case 'knowledge': renderKnowledgeScreen(host); break;
+    case 'workflows': renderWorkflowsScreen(host); break;
+    case 'activity': renderActivityScreen(host); break;
+    case 'settings': renderSettingsScreen(host); break;
+    default: renderMissionControl(host);
+  }
+}
+
+function addLiveFeedEvent(type,detail){
+  liveFeedEvents.unshift({type:type,detail:detail,time:new Date()});
+  if(liveFeedEvents.length>4) liveFeedEvents=liveFeedEvents.slice(0,4);
+  renderLiveFeed();
+}
+
+function renderLiveFeed(){
+  var feed=document.getElementById('live-feed');
+  if(!feed) return;
+  var feedDotColor=function(type){
+    if(type.startsWith('ticket')) return 'var(--blue)';
+    if(type.startsWith('agent')||type.startsWith('session')) return 'var(--green)';
+    if(type.startsWith('knowledge')) return 'var(--purple)';
+    return 'var(--text3)';
+  };
+  feed.innerHTML='<div class="feed-title">LIVE FEED</div>'
+    +(liveFeedEvents.length?liveFeedEvents.map(function(ev){
+      return '<div class="feed-item"><span class="feed-dot" style="background:'+feedDotColor(ev.type)+'"></span>'+esc(ev.type.replace(/_/g,' '))+' <span class="feed-time">'+ev.time.toLocaleTimeString()+'</span></div>';
+    }).join(''):'<div class="feed-item" style="color:var(--text3)">No events yet</div>');
+}
+
+/* ── Screen: Mission Control ────────────────── */
+function renderMissionControl(host){
+  host.innerHTML=''
+    +'<div class="main-header"><div><div class="main-title">Mission Control</div><div class="main-subtitle" id="repo-name">loading…</div></div>'
+    +'<div class="header-actions"><span style="font-size:.65rem;color:var(--text3)" id="last-updated"></span>'
+    +'<button class="btn btn-export" id="export-btn" title="Export knowledge to Obsidian">Export Obsidian</button>'
+    +'<button class="btn" id="refresh-btn" onclick="refresh()">Refresh</button></div></div>'
+    +'<div class="stats" id="overview"></div>'
+    +'<div class="governance-panel" id="governance-panel"><div class="empty">Loading governance policy…</div></div>'
+    +'<div class="presence-title"><span class="dot"></span> Live Agents</div>'
+    +'<div class="presence" id="presence"><div class="empty" style="width:100%">No agents registered yet</div></div>'
+    +'<div class="charts" id="charts"></div>';
+  var exportBtn=document.getElementById('export-btn');
+  if(exportBtn){
+    exportBtn.addEventListener('click',async function(){
+      exportBtn.disabled=true;exportBtn.textContent='Exporting...';
+      try{
+        var res=await fetch('/api/export/obsidian',{method:'POST'});
+        var data=await res.json();
+        if(res.ok){showToast('Exported '+data.exported+' entries → '+data.path,'success');}
+        else{showToast('Export failed: '+(data.error||'Unknown error'),'error');}
+      }catch(e){showToast('Export failed: '+e.message,'error');}
+      finally{exportBtn.disabled=false;exportBtn.textContent='Export Obsidian';}
+    });
+  }
+  refresh();
+}
+
+/* ── Screen: Agents ─────────────────────────── */
+function renderAgentsScreen(host){
+  host.innerHTML=''
+    +'<div class="main-header"><div><div class="main-title">Agents</div><div class="main-subtitle">Agent registry &amp; timeline</div></div>'
+    +'<div class="header-actions"><button class="btn" onclick="refresh()">Refresh</button></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem" id="agents-layout">'
+    +'<div><div class="presence-title"><span class="dot"></span> Agent Registry</div><div id="agents-grid" class="presence"></div></div>'
+    +'<div><div class="presence-title">Agent Timeline</div><div id="agent-timeline-panel"></div></div>'
+    +'</div>';
+  refresh();
+}
+
+/* ── Screen: Tickets (routed) ───────────────── */
+function renderTicketsScreen2(host){
+  host.innerHTML=''
+    +'<div class="main-header"><div><div class="main-title">Tickets</div><div class="main-subtitle">Kanban board &amp; management</div></div>'
+    +'<div class="header-actions"><button class="btn btn-accent" onclick="openCreateTicketModal()">+ CREATE</button><button class="btn" onclick="refresh()">Refresh</button></div></div>'
+    +'<div id="tickets" class="section active"></div>';
+  refresh();
+}
+
+/* ── Screen: Knowledge ──────────────────────── */
+function renderKnowledgeScreen(host){
+  host.innerHTML=''
+    +'<div class="main-header"><div><div class="main-title">Knowledge</div><div class="main-subtitle">Search &amp; knowledge graph</div></div>'
+    +'<div class="header-actions"><button class="btn" onclick="refresh()">Refresh</button></div></div>'
+    +'<div id="knowledge" class="section active"></div>';
+  refresh();
+}
+
+/* ── Screen: Workflows ──────────────────────── */
+function renderWorkflowsScreen(host){
+  host.innerHTML=''
+    +'<div class="main-header"><div><div class="main-title">Workflows</div><div class="main-subtitle">Pipeline visualization</div></div></div>'
+    +'<div id="workflows-content"><div class="empty">Workflows view coming soon — pipeline visualization from .agora/workflows/*.yaml</div></div>';
+}
+
+/* ── Screen: Activity Log ───────────────────── */
+function renderActivityScreen(host){
+  host.innerHTML=''
+    +'<div class="main-header"><div><div class="main-title">Activity Log</div><div class="main-subtitle">Events, patches &amp; notes</div></div>'
+    +'<div class="header-actions"><button class="btn" onclick="refresh()">Refresh</button></div></div>'
+    +'<div style="margin-bottom:1rem"><div class="tab-bar" id="tab-bar"></div></div>'
+    +'<div id="logs" class="section active"></div>'
+    +'<div id="patches" class="section"></div>'
+    +'<div id="notes" class="section"></div>'
+    +'<div id="timeline" class="section"></div>'
+    +'<div id="search-debug" class="section"></div>'
+    +'<div id="dependencies" class="section"></div>';
+  /* build sub-tabs for activity view */
+  var bar=document.getElementById('tab-bar');
+  if(bar){
+    var activityTabs=[['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['timeline','Agent Timeline'],['search-debug','Search Debug'],['dependencies','Dependencies']];
+    activityTabs.forEach(function(t,i){
+      var id=t[0],label=t[1];
+      var btn=document.createElement('button');
+      btn.className='tab'+(i===0?' active':'');
+      btn.id='tab-'+id;
+      btn.innerHTML=esc(label)+'<span class="count" id="count-'+id+'">0</span>';
+      btn.addEventListener('click',function(){showActivityTab(id,btn)});
+      bar.appendChild(btn);
+    });
+  }
+  refresh();
+}
+
+function showActivityTab(id,btn){
+  document.querySelectorAll('#route-content .section').forEach(function(s){s.classList.remove('active')});
+  document.querySelectorAll('#tab-bar .tab').forEach(function(t){t.classList.remove('active')});
+  var el=document.getElementById(id);
+  if(el) el.classList.add('active');
+  btn.classList.add('active');
+  refresh();
+}
+
+/* ── Screen: Settings ───────────────────────── */
+function renderSettingsScreen(host){
+  host.innerHTML=''
+    +'<div class="main-header"><div><div class="main-title">Settings</div><div class="main-subtitle">Governance &amp; configuration</div></div></div>'
+    +'<div class="governance-panel" id="governance-panel"><div class="empty">Loading governance policy…</div></div>';
+  refreshGovernance();
+}
+
+/* ── Modal helpers ──────────────────────────── */
+function openModal(html){
+  var backdrop=document.getElementById('modal-backdrop');
+  var content=document.getElementById('modal-content');
+  if(content) content.innerHTML=html;
+  if(backdrop) backdrop.classList.add('active');
+}
+
+function closeModal(){
+  var backdrop=document.getElementById('modal-backdrop');
+  if(backdrop) backdrop.classList.remove('active');
+  selectedTicketId=null;
+  selectedTicketDetail=null;
+}
+
+async function openCreateTicketModal(){
+  var templateData=getTicketTemplatesData();
+  var templates=templateData.templates||[];
+  var actor=getSelectedActor();
+  var actorOptions=ticketActors.map(function(a){
+    return '<option value="'+esc(a.sessionId)+'"'+(a.sessionId===selectedActorSessionId?' selected':'')+'>'+esc(actorLabel(a))+'</option>';
+  }).join('');
+  var templateOptions='<option value="">— No template —</option>'+templates.map(function(t){
+    return '<option value="'+esc(t.id)+'">'+esc(t.title||t.id)+'</option>';
+  }).join('');
+
+  openModal(''
+    +'<div class="modal-header"><h2>Create Ticket</h2><button class="modal-close" onclick="closeModal()">&times;</button></div>'
+    +'<div class="modal-body">'
+    +'<div class="field-row" style="margin-bottom:1rem">'
+    +'<div class="field"><label>Template</label><select id="create-ticket-template" onchange="var t=getTicketTemplateById(this.value);if(t)applyTemplateToCreateForm(t)">'+templateOptions+'</select></div>'
+    +'<div class="field"><label>Acting as</label><select id="create-ticket-actor" onchange="selectedActorSessionId=this.value">'+actorOptions+'</select></div>'
+    +'</div>'
+    +'<div class="field"><label>Title</label><input id="create-ticket-title" maxlength="200" placeholder="Ticket title"></div>'
+    +'<div class="field"><label>Description</label><textarea id="create-ticket-description" maxlength="'+${MAX_TICKET_LONG_TEXT_LENGTH}+'" placeholder="Describe the issue or task"></textarea></div>'
+    +'<div class="field-row">'
+    +'<div class="field"><label>Severity</label><select id="create-ticket-severity"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>'
+    +'<div class="field"><label>Priority (0-10)</label><input id="create-ticket-priority" type="number" min="0" max="10" value="5"></div>'
+    +'</div>'
+    +'<div class="field"><label>Tags (comma-separated)</label><input id="create-ticket-tags" placeholder="e.g. bug, api, urgent"></div>'
+    +'<div class="field"><label>Affected Paths</label><input id="create-ticket-paths" placeholder="e.g. src/api/, tests/"></div>'
+    +'<div class="field"><label>Acceptance Criteria</label><textarea id="create-ticket-criteria" maxlength="'+${MAX_TICKET_LONG_TEXT_LENGTH}+'" placeholder="What must be true for this ticket to be resolved?"></textarea></div>'
+    +'</div>'
+    +'<div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn btn-accent" onclick="submitCreateTicket()">Create Ticket</button></div>');
+}
+
+async function submitCreateTicket(){
+  var actor=getSelectedActor();
+  if(!actor){showToast('No active session to act as','error');return;}
+  var title=document.getElementById('create-ticket-title');
+  if(!title||!title.value.trim()){showToast('Title is required','error');return;}
+  try{
+    var tags=(document.getElementById('create-ticket-tags').value||'').split(',').map(function(t){return t.trim()}).filter(Boolean);
+    var paths=(document.getElementById('create-ticket-paths').value||'').split(',').map(function(t){return t.trim()}).filter(Boolean);
+    await apiPost('tickets/create',{
+      sessionId:selectedActorSessionId,
+      title:title.value.trim(),
+      description:(document.getElementById('create-ticket-description').value||'').trim(),
+      severity:document.getElementById('create-ticket-severity').value,
+      priority:parseInt(document.getElementById('create-ticket-priority').value)||5,
+      tags:tags,affectedPaths:paths,
+      acceptanceCriteria:(document.getElementById('create-ticket-criteria').value||'').trim()
+    });
+    showToast('Ticket created','success');
+    closeModal();
+    refresh();
+  }catch(e){showToast('Create failed: '+e.message,'error');}
+}
+
+/* ── Init ────────────────────────────────────── */
+function init(){
+  navigate('mission');
+}
+
+function updateCounts(){
+  updateNavCounts();
 }
 
 /* ── Cards ───────────────────────────────────── */
@@ -1156,18 +1441,21 @@ async function loadTicketDetail(ticketId){
 }
 
 function renderTicketDetail(error){
+  /* Render into modal when available, else fall back to inline #ticket-detail */
   var host=document.getElementById('ticket-detail');
-  if(!host) return;
+  var useModal=!!document.getElementById('modal-backdrop');
   if(error){
-    host.innerHTML='<div class="detail-card"><div class="ticket-help">'+esc(error)+'</div></div>';
+    if(useModal){openModal('<div class="modal-header"><h2>Error</h2><button class="modal-close" onclick="closeModal()">&times;</button></div><div class="modal-body"><div class="ticket-help">'+esc(error)+'</div></div>');}
+    else if(host){host.innerHTML='<div class="detail-card"><div class="ticket-help">'+esc(error)+'</div></div>';}
     return;
   }
   if(!selectedTicketId){
-    host.innerHTML='<div class="ticket-help">Select a ticket to view comments, history, and linked patches.</div>';
+    if(host) host.innerHTML='<div class="ticket-help">Select a ticket to view details.</div>';
     return;
   }
   if(!selectedTicketDetail){
-    host.innerHTML='<div class="detail-card"><div class="ticket-help">Loading ticket details…</div></div>';
+    if(useModal){openModal('<div class="modal-header"><h2>Loading…</h2><button class="modal-close" onclick="closeModal()">&times;</button></div><div class="modal-body"><div class="ticket-help">Loading ticket details…</div></div>');}
+    else if(host){host.innerHTML='<div class="detail-card"><div class="ticket-help">Loading ticket details…</div></div>';}
     return;
   }
   var t=selectedTicketDetail;
@@ -1211,7 +1499,7 @@ function renderTicketDetail(error){
     +'</div>'
     :'<div class="ticket-help">No active session selected. Register an agent to comment or move tickets.</div>';
   var headBadges='<span class="badge badge-'+(TICKET_STATUS_CLS[t.status]||'blue')+'">'+esc(t.status)+'</span>'+(t.quorum?(' <span class="badge badge-'+esc((t.quorum.progress&&t.quorum.progress.state)||'blue')+'" title="'+esc((t.quorum.progress&&t.quorum.progress.title)||'Quorum progress')+'">'+esc((t.quorum.progress&&t.quorum.progress.label)||'-')+'</span>'):'');
-  host.innerHTML='<div class="detail-card">'
+  var detailContent=''
     +'<div class="detail-head"><div><div class="detail-title">'+esc(t.title||t.ticketId)+'</div><div class="detail-sub"><span>'+esc(t.ticketId)+'</span><span>'+esc(new Date(t.updatedAt).toLocaleString())+'</span></div></div><div>'+headBadges+'</div></div>'
     +'<div class="detail-grid">'
     +'<div class="detail-block"><div class="detail-label">Description</div><div class="detail-value">'+esc(t.description||'-')+'</div></div>'
@@ -1228,8 +1516,12 @@ function renderTicketDetail(error){
     +'<div class="detail-section"><h4>Actions</h4>'+actionsHtml+'</div>'
     +'<div class="detail-section"><h4>Comments</h4><div class="comment-list">'+comments+'</div></div>'
     +'<div class="detail-section"><h4>History</h4><div class="history-list">'+history+'</div></div>'
-    +'<div class="detail-section"><h4>Linked Patches</h4><div class="patch-list">'+patches+'</div></div>'
-    +'</div>';
+    +'<div class="detail-section"><h4>Linked Patches</h4><div class="patch-list">'+patches+'</div></div>';
+  if(useModal){
+    openModal('<div class="modal-header"><h2>'+esc(t.ticketId)+' '+headBadges+'</h2><button class="modal-close" onclick="closeModal()">&times;</button></div><div class="modal-body"><div class="detail-card" id="ticket-detail">'+detailContent+'</div></div>');
+  }else if(host){
+    host.innerHTML='<div class="detail-card">'+detailContent+'</div>';
+  }
   attachTicketDetailListeners(t);
 }
 
@@ -2525,6 +2817,17 @@ async function refreshPresence(){
   }catch(e){console.error('Presence refresh failed:',e)}
 }
 
+/* ── Governance refresh ─────────────────────── */
+async function refreshGovernance(){
+  try{
+    var settings=await api('settings/governance');
+    governanceSettings.data=settings;
+    governanceSettings.loading=false;
+    governanceSettings.saving=false;
+    renderGovernancePanel();
+  }catch(e){console.error('Governance refresh failed:',e);}
+}
+
 /* ── Main refresh ────────────────────────────── */
 async function refresh(){
   try{
@@ -2533,7 +2836,6 @@ async function refresh(){
     ]);
     var o=results[0],agents=results[1],timeline=results[2],logs=results[3],patches=results[4],notes=results[5],knowledge=results[6],presence=results[7],tickets=results[8],ticketMetrics=results[9],files=results[10],ticketTemplates=results[11],settings=results[12];
     knowledgeCatalog=knowledge;
-    await refreshKnowledgeViewData(false);
     dashboardAgents=agents;
     window.__agoraTicketTemplates=ticketTemplates;
     governanceSettings.data=settings;
@@ -2551,92 +2853,137 @@ async function refresh(){
       selectedActorSessionId=ticketActors.length?ticketActors[0].sessionId:null;
     }
 
-    /* Overview cards */
-    var ov=document.getElementById('overview');
-    var repoName=repoBasename(o.repoPath);
-    var repoEl=document.getElementById('repo-name');
-    if(repoEl){repoEl.textContent=repoName;repoEl.title=o.repoPath||repoName;}
-    ov.replaceChildren(
-      makeCard('&#128193;','Files Indexed',o.fileCount),
-      makeCard('&#129302;','Agents',o.totalAgents),
-      makeCard('&#9889;','Active Sessions',o.activeSessions),
-      makeCard('&#128230;','Patches',o.totalPatches),
-      makeCard('&#127915;','Open Tickets',o.openTickets!=null?o.openTickets+'/'+o.totalTickets:'0'),
-      makeCard('&#127793;','Indexed Commit',o.indexedCommit?o.indexedCommit.slice(0,7):'none'),
-      makeCard('&#128279;','Topology',o.coordinationTopology));
-    renderGovernancePanel();
-
-    /* Presence */
-    renderPresence(presence);
-
-    /* Charts */
-    renderCharts(o,logs,patches,knowledge,presence,files);
-
-    /* Tab counts */
+    /* Nav counts */
+    navCounts={agents:agents.length,tickets:tickets.length,knowledge:knowledge.length,logs:logs.length};
     tabCounts={agents:agents.length,timeline:timeline.length,'search-debug':searchDebugState.data&&searchDebugState.data.mergedResults?searchDebugState.data.mergedResults.length:0,dependencies:depGraphState.nodes.length,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};
     updateCounts();
 
-    /* Agents */
-    document.getElementById('agents').replaceChildren(makeTable(
-      ['ID','Name','Type','Role','Tier','Sessions'],
-      agents.map(function(a){return[m(a.id),a.name,a.type,b(a.role,a.role),b(a.trustTier,a.trustTier.toLowerCase()),a.activeSessions]})));
+    /* Route-specific rendering */
+    if(currentRoute==='mission'){
+      var ov=document.getElementById('overview');
+      var repoName=repoBasename(o.repoPath);
+      var repoEl=document.getElementById('repo-name');
+      if(repoEl){repoEl.textContent=repoName;repoEl.title=o.repoPath||repoName;}
+      if(ov) ov.replaceChildren(
+        makeCard('&#128193;','Files Indexed',o.fileCount),
+        makeCard('&#129302;','Agents',o.totalAgents),
+        makeCard('&#9889;','Active Sessions',o.activeSessions),
+        makeCard('&#128230;','Patches',o.totalPatches),
+        makeCard('&#127915;','Open Tickets',o.openTickets!=null?o.openTickets+'/'+o.totalTickets:'0'),
+        makeCard('&#127793;','Indexed Commit',o.indexedCommit?o.indexedCommit.slice(0,7):'none'),
+        makeCard('&#128279;','Topology',o.coordinationTopology));
+      renderGovernancePanel();
+      renderPresence(presence);
+      renderCharts(o,logs,patches,knowledge,presence,files);
+    }
 
-    /* Agent timeline */
-    renderAgentTimelineSection(timeline);
-
-    /* Search debugger */
-    renderSearchDebugSection();
-
-    /* Dependency graph — lazy load on first tab visit */
-    if(!depGraphState.loaded) loadDepGraph();
-
-    /* Logs */
-    document.getElementById('logs').replaceChildren(makeTable(
-      ['Event','Agent','Tool','Status','Summary','Detail','Duration','In','Out','Time'],
-      logs.map(function(l){return[
-        m(l.eventId.slice(0,10)),
-        l.agentId||'-',
-        b(l.tool,'a'),
-        b(l.status,eventStatusClass(l.status)),
-        l.redactedSummary||'-',
-        l.errorDetail?(l.errorCode?l.errorCode+': ':'')+l.errorDetail:'-',
-        m(l.durationMs+'ms'),
-        l.payloadSizeIn||'-',
-        l.payloadSizeOut||'-',
-        new Date(l.timestamp).toLocaleTimeString()
-      ]})));
-
-    /* Patches */
-    document.getElementById('patches').replaceChildren(makeTable(
-      ['Proposal','State','Message','Base','Agent','Created'],
-      patches.map(function(p){return[m(p.proposalId.slice(0,10)),b(p.state,p.state),esc(p.message).slice(0,60),m(p.baseCommit.slice(0,7)),p.agentId||'-',new Date(p.createdAt).toLocaleString()]})));
-
-    /* Notes */
-    document.getElementById('notes').replaceChildren(makeTable(
-      ['Key','Type','Preview','Agent','Commit','Updated'],
-      notes.map(function(n){return[m(n.key),b(n.type,n.type),n.contentPreview.slice(0,80),n.agentId||'-',m(n.commitSha.slice(0,7)),new Date(n.updatedAt).toLocaleString()]})));
-
-    /* Knowledge */
-    renderKnowledgeSection();
-    if(knowledgeGraphState.loaded && !knowledgeGraphState.loading){
-      var activeKnowledge=document.getElementById('knowledge');
-      if(activeKnowledge && activeKnowledge.classList.contains('active')){
-        loadKnowledgeGraph();
+    if(currentRoute==='agents'){
+      /* Agent cards in grid */
+      var agGrid=document.getElementById('agents-grid');
+      if(agGrid){
+        agGrid.innerHTML='';
+        presence.forEach(function(agent){
+          var status='offline';
+          var lastActive='';
+          (agent.sessions||[]).forEach(function(s){
+            if(s.state==='active') status='online';
+            else if(s.state==='idle'&&status!=='online') status='idle';
+            if(s.lastActivity) lastActive=s.lastActivity;
+          });
+          var card=document.createElement('div');
+          card.className='agent-card'+(selectedAgentId===agent.id?' selected':'');
+          card.onclick=function(){selectedAgentId=agent.id;refresh();};
+          card.innerHTML='<div class="status-dot '+status+'"></div>'
+            +'<div class="agent-info">'
+            +'<div class="agent-name">'+esc(agent.name)+'</div>'
+            +'<div class="agent-meta"><span class="badge badge-blue">'+esc(agent.role||'-')+'</span><span class="badge badge-purple">'+esc(agent.type||'-')+'</span></div>'
+            +'<div class="agent-time">['+status.toUpperCase()+']'+(lastActive?' · '+new Date(lastActive).toLocaleTimeString():'')+'</div>'
+            +'</div>';
+          agGrid.appendChild(card);
+        });
+        if(!presence.length) agGrid.innerHTML='<div class="empty" style="width:100%">No agents registered</div>';
+      }
+      /* Timeline in detail panel */
+      var tlPanel=document.getElementById('agent-timeline-panel');
+      if(tlPanel){
+        if(selectedAgentId){
+          var agentTimeline=timeline.filter(function(t){return t.agentId===selectedAgentId||t.id===selectedAgentId});
+          if(agentTimeline.length){
+            renderAgentTimelineSection(agentTimeline);
+          }else{
+            renderAgentTimelineSection(timeline.slice(0,10));
+          }
+        }else{
+          renderAgentTimelineSection(timeline.slice(0,10));
+        }
       }
     }
 
-    /* Tickets */
-    var visibleTickets=renderTicketsSection(tickets,ticketMetrics);
-    if(selectedTicketId && visibleTickets.some(function(t){return t.ticketId===selectedTicketId})){
-      selectedTicketDetail=await api('tickets/'+encodeURIComponent(selectedTicketId));
-      renderTicketDetail();
-    }else if(selectedTicketId && !visibleTickets.some(function(t){return t.ticketId===selectedTicketId})){
-      selectedTicketId=null;
-      selectedTicketDetail=null;
-      renderTicketDetail();
+    if(currentRoute==='tickets'){
+      var visibleTickets=renderTicketsSection(tickets,ticketMetrics);
+      if(selectedTicketId && visibleTickets.some(function(t){return t.ticketId===selectedTicketId})){
+        selectedTicketDetail=await api('tickets/'+encodeURIComponent(selectedTicketId));
+        renderTicketDetail();
+      }else if(selectedTicketId && !visibleTickets.some(function(t){return t.ticketId===selectedTicketId})){
+        selectedTicketId=null;
+        selectedTicketDetail=null;
+        renderTicketDetail();
+      }
     }
 
-    document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
+    if(currentRoute==='knowledge'){
+      await refreshKnowledgeViewData(false);
+      renderKnowledgeSection();
+      if(knowledgeGraphState.loaded && !knowledgeGraphState.loading){
+        var activeKnowledge=document.getElementById('knowledge');
+        if(activeKnowledge && activeKnowledge.classList.contains('active')){
+          loadKnowledgeGraph();
+        }
+      }
+    }
+
+    if(currentRoute==='activity'){
+      /* Logs */
+      var logsEl=document.getElementById('logs');
+      if(logsEl) logsEl.replaceChildren(makeTable(
+        ['Event','Agent','Tool','Status','Summary','Detail','Duration','In','Out','Time'],
+        logs.map(function(l){return[
+          m(l.eventId.slice(0,10)),
+          l.agentId||'-',
+          b(l.tool,'a'),
+          b(l.status,eventStatusClass(l.status)),
+          l.redactedSummary||'-',
+          l.errorDetail?(l.errorCode?l.errorCode+': ':'')+l.errorDetail:'-',
+          m(l.durationMs+'ms'),
+          l.payloadSizeIn||'-',
+          l.payloadSizeOut||'-',
+          new Date(l.timestamp).toLocaleTimeString()
+        ]})));
+
+      /* Patches */
+      var patchesEl=document.getElementById('patches');
+      if(patchesEl) patchesEl.replaceChildren(makeTable(
+        ['Proposal','State','Message','Base','Agent','Created'],
+        patches.map(function(p){return[m(p.proposalId.slice(0,10)),b(p.state,p.state),esc(p.message).slice(0,60),m(p.baseCommit.slice(0,7)),p.agentId||'-',new Date(p.createdAt).toLocaleString()]})));
+
+      /* Notes */
+      var notesEl=document.getElementById('notes');
+      if(notesEl) notesEl.replaceChildren(makeTable(
+        ['Key','Type','Preview','Agent','Commit','Updated'],
+        notes.map(function(n){return[m(n.key),b(n.type,n.type),n.contentPreview.slice(0,80),n.agentId||'-',m(n.commitSha.slice(0,7)),new Date(n.updatedAt).toLocaleString()]})));
+
+      /* Agent timeline */
+      renderAgentTimelineSection(timeline);
+      renderSearchDebugSection();
+      if(!depGraphState.loaded) loadDepGraph();
+    }
+
+    if(currentRoute==='settings'){
+      renderGovernancePanel();
+    }
+
+    var lastEl=document.getElementById('last-updated');
+    if(lastEl) lastEl.textContent='Updated '+new Date().toLocaleTimeString();
   }catch(e){
     console.error('Refresh failed:',e);
   }
@@ -2646,21 +2993,29 @@ async function refresh(){
 function connectSSE(){
   var pulse=document.getElementById('pulse');
   var es=new EventSource('/api/events');
-  es.onopen=function(){pulse.classList.remove('disconnected');pulse.title='SSE connected'};
-  es.addEventListener('agent_registered',function(){refresh()});
-  es.addEventListener('session_changed',function(){refresh()});
-  es.addEventListener('patch_proposed',function(){refresh()});
-  es.addEventListener('note_added',function(){refresh()});
-  es.addEventListener('event_logged',function(){refresh()});
-  es.addEventListener('index_updated',function(){refresh()});
-  es.addEventListener('knowledge_stored',function(){refresh()});
-  es.addEventListener('ticket_created',function(){refresh()});
-  es.addEventListener('ticket_assigned',function(){refresh()});
-  es.addEventListener('ticket_status_changed',function(){refresh()});
-  es.addEventListener('ticket_commented',function(){refresh()});
-  es.addEventListener('ticket_external_sync',function(){refresh()});
+  es.onopen=function(){if(pulse)pulse.classList.remove('disconnected');if(pulse)pulse.title='SSE connected'};
+
+  var sseHandler=function(eventType){
+    return function(){
+      addLiveFeedEvent(eventType,'');
+      refresh();
+    };
+  };
+
+  es.addEventListener('agent_registered',sseHandler('agent_registered'));
+  es.addEventListener('session_changed',sseHandler('session_changed'));
+  es.addEventListener('patch_proposed',sseHandler('patch_proposed'));
+  es.addEventListener('note_added',sseHandler('note_added'));
+  es.addEventListener('event_logged',sseHandler('event_logged'));
+  es.addEventListener('index_updated',sseHandler('index_updated'));
+  es.addEventListener('knowledge_stored',sseHandler('knowledge_stored'));
+  es.addEventListener('ticket_created',sseHandler('ticket_created'));
+  es.addEventListener('ticket_assigned',sseHandler('ticket_assigned'));
+  es.addEventListener('ticket_status_changed',sseHandler('ticket_status_changed'));
+  es.addEventListener('ticket_commented',sseHandler('ticket_commented'));
+  es.addEventListener('ticket_external_sync',sseHandler('ticket_external_sync'));
   es.onerror=function(){
-    pulse.classList.add('disconnected');pulse.title='SSE disconnected';
+    if(pulse){pulse.classList.add('disconnected');pulse.title='SSE disconnected';}
     es.close();setTimeout(connectSSE,5000);
   };
 }
@@ -2668,33 +3023,19 @@ function connectSSE(){
 /* ── Toast ───────────────────────────────────── */
 function showToast(msg,type){
   var t=document.getElementById('toast');
+  if(!t) return;
   t.textContent=msg;
   t.className='toast '+type+' show';
   setTimeout(function(){t.classList.remove('show')},4000);
 }
 
-/* ── Obsidian Export ─────────────────────────── */
-document.getElementById('export-btn').addEventListener('click',async function(){
-  var btn=document.getElementById('export-btn');
-  btn.disabled=true;btn.textContent='Exporting...';
-  try{
-    var res=await fetch('/api/export/obsidian',{method:'POST'});
-    var data=await res.json();
-    if(res.ok){
-      showToast('Exported '+data.exported+' entries → '+data.path,'success');
-    }else{
-      showToast('Export failed: '+(data.error||'Unknown error'),'error');
-    }
-  }catch(e){
-    showToast('Export failed: '+e.message,'error');
-  }finally{
-    btn.disabled=false;btn.innerHTML='&#128214; Export Obsidian';
-  }
-});
-
 init();
 connectSSE();
-setInterval(refreshPresence,10000);
+setInterval(function(){
+  if(currentRoute==='mission'||currentRoute==='agents'){
+    api('presence').then(function(agents){renderPresence(agents)}).catch(function(){});
+  }
+},10000);
 </script>
 </body>
 </html>`;
