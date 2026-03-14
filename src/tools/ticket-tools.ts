@@ -43,6 +43,124 @@ import { spawnRepairTicket } from "../tickets/repair-spawner.js";
 
 type GetContext = () => Promise<AgoraContext>;
 const ConsensusTransitionSchema = z.enum(GATED_TICKET_TRANSITIONS);
+const MIN_VERDICT_REASONING_LENGTH = 50;
+const GENERIC_VERDICT_PATTERNS = [
+  /^autonomous council review for\b/i,
+  /^(?:pass|approved|lgtm|looks good)\.?$/i,
+];
+const CONCRETE_EVIDENCE_PATTERNS = [
+  /\b(?:src|tests|docs|schemas|\.agora)\/[\w./-]+/,
+  /`[^`]+`/,
+  /\b[A-Za-z_][A-Za-z0-9_]*\(\)/,
+  /\b[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\b/,
+] as const;
+
+interface VerdictReasoningValidationResult {
+  ok: true;
+  normalizedReasoning: string | null;
+}
+
+interface VerdictReasoningValidationError {
+  ok: false;
+  message: string;
+  data?: Record<string, unknown>;
+}
+
+function normalizeVerdictReasoning(reasoning: string | null | undefined): string | null {
+  if (typeof reasoning !== "string") return null;
+  const normalized = reasoning.trim().replace(/\s+/g, " ");
+  return normalized.length > 0 ? normalized : null;
+}
+
+function buildSpecializationGuidance(specialization: string): string {
+  switch (specialization) {
+    case "architect":
+      return "reference boundaries, contracts, or data flow";
+    case "security":
+      return "reference trust boundaries, validation, or exposure risk";
+    case "performance":
+      return "reference hot paths, queries, or runtime cost";
+    case "patterns":
+      return "reference naming, duplication, or consistency";
+    case "simplifier":
+      return "reference avoidable complexity or a simpler alternative";
+    case "design":
+      return "reference UX structure or interaction details";
+    default:
+      return "reference concrete code or design evidence";
+  }
+}
+
+function validateVerdictReasoning(input: {
+  reasoning: string | null | undefined;
+  verdict: string;
+  specialization: string;
+  ticketInternalId: number;
+  agentId: string;
+  db: AgoraContext["db"];
+}): VerdictReasoningValidationResult | VerdictReasoningValidationError {
+  const normalizedReasoning = normalizeVerdictReasoning(input.reasoning);
+  if (input.verdict === "abstain") {
+    return { ok: true, normalizedReasoning };
+  }
+
+  if (!normalizedReasoning || normalizedReasoning.length < MIN_VERDICT_REASONING_LENGTH) {
+    return {
+      ok: false,
+      message: `Pass/fail verdicts require at least ${MIN_VERDICT_REASONING_LENGTH} characters of concrete reasoning.`,
+      data: {
+        validation: "reasoning_length",
+        specialization: input.specialization,
+        verdict: input.verdict,
+        reasoningLength: normalizedReasoning?.length ?? 0,
+      },
+    };
+  }
+
+  if (GENERIC_VERDICT_PATTERNS.some((pattern) => pattern.test(normalizedReasoning))) {
+    return {
+      ok: false,
+      message: "Verdict reasoning is too generic. Reference concrete code or architecture evidence instead of a template approval.",
+      data: {
+        validation: "reasoning_template",
+        specialization: input.specialization,
+        verdict: input.verdict,
+      },
+    };
+  }
+
+  if (!CONCRETE_EVIDENCE_PATTERNS.some((pattern) => pattern.test(normalizedReasoning))) {
+    return {
+      ok: false,
+      message: `Verdict reasoning must reference concrete code or design evidence; ${buildSpecializationGuidance(input.specialization)}.`,
+      data: {
+        validation: "reasoning_specificity",
+        specialization: input.specialization,
+        verdict: input.verdict,
+      },
+    };
+  }
+
+  const priorVerdicts = queries.getActiveVerdictsByAgentForTicket(input.db, input.ticketInternalId, input.agentId);
+  const duplicate = priorVerdicts.find((verdictRow) => {
+    if (verdictRow.specialization === input.specialization) return false;
+    return normalizeVerdictReasoning(verdictRow.reasoning)?.toLowerCase() === normalizedReasoning.toLowerCase();
+  });
+  if (duplicate) {
+    return {
+      ok: false,
+      message: `Verdict reasoning duplicates your active ${duplicate.specialization} review. Each specialization needs distinct analysis.`,
+      data: {
+        validation: "reasoning_duplicate",
+        specialization: input.specialization,
+        duplicateSpecialization: duplicate.specialization,
+        verdict: input.verdict,
+      },
+    };
+  }
+
+  return { ok: true, normalizedReasoning };
+}
 
 export function registerTicketTools(server: McpServer, getContext: GetContext): void {
   // ─── create_ticket ──────────────────────────────────────────
@@ -473,6 +591,21 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         }
       }
 
+      const reasoningValidation = validateVerdictReasoning({
+        reasoning,
+        verdict,
+        specialization,
+        ticketInternalId: ticket.id,
+        agentId: resolved.agentId,
+        db: c.db,
+      });
+      if (!reasoningValidation.ok) {
+        return errJson({
+          error: reasoningValidation.message,
+          ...(reasoningValidation.data ?? {}),
+        });
+      }
+
       const now = new Date().toISOString();
       const stored = queries.insertReviewVerdict(c.db, {
         ticketId: ticket.id,
@@ -480,7 +613,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         sessionId: resolved.sessionId,
         specialization,
         verdict,
-        reasoning: reasoning ?? null,
+        reasoning: reasoningValidation.normalizedReasoning,
         createdAt: now,
       });
       queries.updateTicket(c.db, ticket.id, {});

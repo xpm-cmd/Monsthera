@@ -11,6 +11,7 @@ import { getHead } from "../git/operations.js";
 import {
   buildGovernanceOptions,
   evaluateTicketTransitionConsensus,
+  GATED_ADVANCE_TARGET,
   GATED_TICKET_TRANSITIONS,
   type ConsensusPayload,
 } from "./consensus.js";
@@ -394,6 +395,7 @@ export function updateTicketStatusRecord(
   if (input.status === "resolved") updates.resolvedByAgentId = resolved.agentId;
   if (input.status === "resolved" && resolvedCommitSha) updates.commitSha = resolvedCommitSha;
   if (current === "resolved" && input.status === "in_progress") updates.resolvedByAgentId = null;
+  const isEnteringGatedStatus = Object.prototype.hasOwnProperty.call(GATED_ADVANCE_TARGET, input.status);
 
   let knowledgeId: number | null = null;
   ctx.db.transaction((tx) => {
@@ -401,6 +403,9 @@ export function updateTicketStatusRecord(
       .set({ ...updates, updatedAt: now })
       .where(eq(tables.tickets.id, ticket.id))
       .run();
+    if (isEnteringGatedStatus) {
+      queries.clearActiveReviewVerdicts(tx, ticket.id);
+    }
     tx.insert(tables.ticketHistory).values({
       ticketId: ticket.id,
       fromStatus: current,

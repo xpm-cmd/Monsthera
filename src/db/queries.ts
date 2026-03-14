@@ -11,6 +11,8 @@ type QueryDb = Pick<DB, "select" | "insert" | "update" | "delete">;
 
 const TICKET_RESOLUTION_COMMITS_COLUMN = "resolution_commits_json";
 const ticketResolutionCommitsColumnCache = new WeakMap<object, boolean>();
+const REVIEW_VERDICT_PENDING_REPLACEMENT = -1;
+export const REVIEW_VERDICT_CLEARED_ON_RESET = 0;
 
 // --- Repos ---
 
@@ -853,7 +855,7 @@ export function insertReviewVerdict(
     // The placeholder is only visible inside this transaction and is immediately rewritten.
     if (existing) {
       tx.update(tables.reviewVerdicts)
-        .set({ supersededBy: -1 })
+        .set({ supersededBy: REVIEW_VERDICT_PENDING_REPLACEMENT })
         .where(eq(tables.reviewVerdicts.id, existing.id))
         .run();
     }
@@ -897,6 +899,49 @@ export function getActiveReviewVerdicts(db: DB, ticketInternalId: number) {
 }
 
 export const getReviewVerdicts = getActiveReviewVerdicts;
+
+/**
+ * Clear the currently active verdict slate for a ticket when it re-enters a gated review status.
+ * This preserves the audit trail while forcing the next council cycle to submit fresh verdicts.
+ */
+export function clearActiveReviewVerdicts(db: DB, ticketInternalId: number): number {
+  try {
+    const result = db
+      .update(tables.reviewVerdicts)
+      .set({ supersededBy: REVIEW_VERDICT_CLEARED_ON_RESET })
+      .where(and(
+        eq(tables.reviewVerdicts.ticketId, ticketInternalId),
+        isNull(tables.reviewVerdicts.supersededBy),
+      ))
+      .run();
+    return result.changes;
+  } catch (error) {
+    if (isMissingTableError(error, "review_verdicts")) return 0;
+    throw error;
+  }
+}
+
+export function getActiveVerdictsByAgentForTicket(db: DB, ticketInternalId: number, agentId: string) {
+  try {
+    return db
+      .select()
+      .from(tables.reviewVerdicts)
+      .where(and(
+        eq(tables.reviewVerdicts.ticketId, ticketInternalId),
+        eq(tables.reviewVerdicts.agentId, agentId),
+        isNull(tables.reviewVerdicts.supersededBy),
+      ))
+      .orderBy(
+        tables.reviewVerdicts.specialization,
+        sql`coalesce(julianday(${tables.reviewVerdicts.createdAt}), 0)`,
+        tables.reviewVerdicts.id,
+      )
+      .all();
+  } catch (error) {
+    if (isMissingTableError(error, "review_verdicts")) return [];
+    throw error;
+  }
+}
 
 export function getVerdictHistory(db: DB, ticketInternalId: number, specialization?: string) {
   try {

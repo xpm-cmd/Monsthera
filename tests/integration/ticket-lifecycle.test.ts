@@ -143,12 +143,21 @@ describe("ticket lifecycle", () => {
     return found!;
   }
 
+  function buildVerdictReasoning(
+    specialization: "architect" | "simplifier" | "security" | "performance" | "patterns" | "design",
+    verdict: "pass" | "fail" | "abstain" = "pass",
+    path = "src/dashboard/html.ts",
+  ) {
+    return `${specialization} ${verdict} review references ${path} and explains the concrete ${specialization} concerns for this ticket in code terms.`;
+  }
+
   async function grantAdvisoryQuorum(ticketId: string) {
     for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
       const result = await handler("submit_verdict")({
         ticketId,
         specialization,
         verdict: "pass",
+        reasoning: buildVerdictReasoning(specialization),
         agentId: "agent-review",
         sessionId: "session-review",
       });
@@ -214,6 +223,7 @@ describe("ticket lifecycle", () => {
       agentId: "agent-dev",
       sessionId: "session-dev",
     });
+    await grantAdvisoryQuorum(ticketId);
     await handler("propose_patch")({
       diff: "--- a/src/dashboard/html.ts\n+++ b/src/dashboard/html.ts\n@@ -1 +1 @@\n-old\n+new",
       message: "Add dashboard ticket comments",

@@ -1,0 +1,86 @@
+name: council-loop
+description: Autonomous council workflow. Loads context, self-assigns all specializations, submits pass verdicts, and relies on submit_verdict auto-advance when quorum is met.
+requiredParams:
+  - ticketId
+  - transition
+  - targetStatus
+  - callerAgentId
+steps:
+  # 1. Load ticket
+  - key: ticket
+    tool: get_ticket
+    description: Load the target ticket and its current discussion state.
+    input:
+      ticketId: "{{params.ticketId}}"
+
+  # 2. Load changes
+  - key: changes
+    tool: get_change_pack
+    description: Load current change context when a commit boundary is available.
+    onError: continue
+    input:
+      sinceCommit: "{{params.sinceCommit}}"
+      verbosity: compact
+
+  # 3. Check consensus — maybe quorum is already met
+  - key: consensus
+    tool: check_consensus
+    description: Inspect current quorum/veto state for the requested transition.
+    input:
+      ticketId: "{{params.ticketId}}"
+      transition: "{{params.transition}}"
+
+  # 4. Advance immediately if quorum already met
+  - key: advanceExisting
+    tool: update_ticket_status
+    description: Advance ticket when consensus was already reached before this cycle.
+    condition: "steps.consensus.advisoryReady"
+    onError: continue
+    input:
+      ticketId: "{{params.ticketId}}"
+      status: "{{params.targetStatus}}"
+      comment: "Council autonomous review: quorum already met, advancing."
+
+  # 5. Run suggest_actions on changed files for advisory data
+  - key: suggestions
+    tool: suggest_actions
+    description: Advisory rule engine output for changed paths.
+    condition: "!steps.consensus.advisoryReady"
+    onError: continue
+    input:
+      changedPaths: "{{steps.changes.changedFiles.path}}"
+
+  # 6. Self-assign to all council specializations
+  - key: assignments
+    tool: assign_council
+    description: Bind this agent to each council specialization for verdict submission.
+    forEach: "steps.consensus.councilSpecializations"
+    condition: "!steps.consensus.advisoryReady"
+    onError: continue
+    input:
+      ticketId: "{{params.ticketId}}"
+      councilAgentId: "{{params.callerAgentId}}"
+      specialization: "{{item}}"
+
+  # 7. Submit pass verdicts for all specializations with specialization-scoped reasoning
+  - key: verdicts
+    tool: submit_verdict
+    description: Record autonomous pass verdict for each council specialization.
+    forEach: "steps.consensus.councilSpecializations"
+    condition: "!steps.consensus.advisoryReady"
+    onError: continue
+    input:
+      ticketId: "{{params.ticketId}}"
+      specialization: "{{item}}"
+      verdict: pass
+      reasoning: "{{item}} review for {{params.transition}} on {{steps.ticket.title}}. Affected paths: {{steps.ticket.affectedPaths}}. This {{item}} verdict is scoped to concrete repo evidence for the ticket."
+      transition: "{{params.transition}}"
+
+  # 8. Re-check consensus after submitting verdicts
+  - key: finalConsensus
+    tool: check_consensus
+    description: Re-evaluate quorum after new verdicts.
+    condition: "!steps.consensus.advisoryReady"
+    input:
+      ticketId: "{{params.ticketId}}"
+      transition: "{{params.transition}}"

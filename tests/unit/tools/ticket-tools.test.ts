@@ -144,12 +144,21 @@ describe("ticket tools", () => {
     });
   }
 
+  function buildVerdictReasoning(
+    specialization: "architect" | "simplifier" | "security" | "performance" | "patterns" | "design",
+    verdict: "pass" | "fail" | "abstain" = "pass",
+    path = "src/dashboard/html.ts",
+  ) {
+    return `${specialization} ${verdict} review references ${path} and explains the concrete ${specialization} concerns for this ticket in code terms.`;
+  }
+
   async function grantAdvisoryQuorum(ticketId: string) {
     for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
       const result = await handler("submit_verdict")({
         ticketId,
         specialization,
         verdict: "pass",
+        reasoning: buildVerdictReasoning(specialization),
         agentId: "agent-review",
         sessionId: "session-review",
       });
@@ -364,6 +373,7 @@ describe("ticket tools", () => {
       agentId: "agent-dev",
       sessionId: "session-dev",
     });
+    await grantAdvisoryQuorum(ticketId);
     await handler("update_ticket_status")({
       ticketId,
       status: "ready_for_commit",
@@ -672,6 +682,84 @@ describe("ticket tools", () => {
     expect(verdictReasoning.safeParse(tooLongText).success).toBe(false);
   });
 
+  it("rejects pass verdicts with short reasoning", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const result = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: "Short src/a.ts",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("at least 50 characters");
+  });
+
+  it("allows short abstain reasoning", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const result = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "abstain",
+      reasoning: "Need more data",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.isError).not.toBe(true);
+  });
+
+  it("rejects template-only verdict reasoning", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const result = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: "Autonomous council review for technical_analysis→approved. Ticket: Example. Changed files: 3.",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("too generic");
+  });
+
+  it("rejects duplicate reasoning across specializations for the same agent", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+    const duplicatedReasoning = buildVerdictReasoning("architect", "pass", "src/shared/review.ts");
+
+    const first = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: duplicatedReasoning,
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    expect(first.isError).not.toBe(true);
+
+    const second = await handler("submit_verdict")({
+      ticketId,
+      specialization: "security",
+      verdict: "pass",
+      reasoning: duplicatedReasoning,
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(second.isError).toBe(true);
+    expect(second.content[0].text).toContain("Each specialization needs distinct analysis");
+  });
+
   it("records advisory verdicts and reports consensus state", async () => {
     const createResult = await createTicket();
     const ticketId = JSON.parse(createResult.content[0].text).ticketId;
@@ -680,7 +768,7 @@ describe("ticket tools", () => {
       ticketId,
       specialization: "architect",
       verdict: "pass",
-      reasoning: "Architecture is sound",
+      reasoning: buildVerdictReasoning("architect"),
       agentId: "agent-review",
       sessionId: "session-review",
     });
@@ -688,7 +776,7 @@ describe("ticket tools", () => {
       ticketId,
       specialization: "security",
       verdict: "fail",
-      reasoning: "Auth boundary unresolved",
+      reasoning: buildVerdictReasoning("security", "fail", "src/auth/guard.ts"),
       agentId: "agent-dev",
       sessionId: "session-dev",
     });
@@ -787,6 +875,7 @@ describe("ticket tools", () => {
       ticketId,
       specialization: "architect",
       verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
       agentId: "agent-review",
       sessionId: "session-review",
     });
@@ -846,6 +935,7 @@ describe("ticket tools", () => {
         ticketId,
         specialization,
         verdict: "pass",
+        reasoning: buildVerdictReasoning(specialization),
         agentId: "agent-review",
         sessionId: "session-review",
       });
@@ -886,7 +976,7 @@ describe("ticket tools", () => {
       ticketId,
       specialization: "architect",
       verdict: "pass",
-      reasoning: "Initial pass",
+      reasoning: buildVerdictReasoning("architect", "pass", "src/layout/root.ts"),
       agentId: "agent-review",
       sessionId: "session-review",
     });
@@ -894,7 +984,7 @@ describe("ticket tools", () => {
       ticketId,
       specialization: "architect",
       verdict: "fail",
-      reasoning: "Updated concern",
+      reasoning: buildVerdictReasoning("architect", "fail", "src/layout/root.ts"),
       agentId: "agent-dev",
       sessionId: "session-dev",
     });
@@ -904,7 +994,7 @@ describe("ticket tools", () => {
       specialization: "architect",
       verdict: "fail",
       agentId: "agent-dev",
-      reasoning: "Updated concern",
+      reasoning: buildVerdictReasoning("architect", "fail", "src/layout/root.ts"),
     });
 
     const ticket = queries.getTicketByTicketId(db, ticketId)!;
@@ -954,6 +1044,7 @@ describe("ticket tools", () => {
       ticketId,
       specialization: "architect",
       verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
       agentId: "agent-review",
       sessionId: "session-review",
     });
@@ -974,6 +1065,7 @@ describe("ticket tools", () => {
       ticketId,
       specialization: "security",
       verdict: "pass",
+      reasoning: buildVerdictReasoning("security"),
       agentId: "agent-admin",
       sessionId: "session-admin",
     });

@@ -1032,6 +1032,89 @@ describe("ticket service quorum enforcement", () => {
     expect(queries.getTicketByTicketId(db, ticketId)?.status).toBe("approved");
   });
 
+  it("clears active verdicts when a ticket re-enters technical_analysis", async () => {
+    const { ticketId, ticket } = await createTechnicalAnalysisTicket();
+
+    for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
+      recordVerdict(db, ticket.id, {
+        specialization,
+        verdict: "pass",
+      });
+    }
+
+    expect(updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    }).ok).toBe(true);
+    expect(queries.getActiveReviewVerdicts(db, ticket.id)).toHaveLength(4);
+
+    expect(updateTicketStatusRecord(systemCtx, {
+      ticketId,
+      status: "backlog",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(systemCtx, {
+      ticketId,
+      status: "technical_analysis",
+    }).ok).toBe(true);
+
+    expect(queries.getActiveReviewVerdicts(db, ticket.id)).toHaveLength(0);
+    expect(queries.getVerdictHistory(db, ticket.id).every((row) => row.supersededBy === queries.REVIEW_VERDICT_CLEARED_ON_RESET)).toBe(true);
+
+    const blocked = updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.ok ? "" : blocked.message).toContain("Council quorum not met");
+  });
+
+  it("clears active verdicts when a ticket enters in_review", async () => {
+    registerActor(db, { agentId: "agent-dev", sessionId: "session-dev", roleId: "developer" });
+    const devCtx: TicketServiceContext = {
+      ...reviewerCtx,
+    };
+    const { ticketId, ticket } = await createTechnicalAnalysisTicket();
+
+    for (const specialization of ["architect", "simplifier", "performance", "patterns"] as const) {
+      recordVerdict(db, ticket.id, {
+        specialization,
+        verdict: "pass",
+      });
+    }
+
+    expect(updateTicketStatusRecord(reviewerCtx, {
+      ticketId,
+      status: "approved",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    }).ok).toBe(true);
+    expect(assignTicketRecord(systemCtx, {
+      ticketId,
+      assigneeAgentId: "agent-dev",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(devCtx, {
+      ticketId,
+      status: "in_progress",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    }).ok).toBe(true);
+
+    expect(queries.getActiveReviewVerdicts(db, ticket.id)).toHaveLength(4);
+    expect(updateTicketStatusRecord(devCtx, {
+      ticketId,
+      status: "in_review",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    }).ok).toBe(true);
+
+    expect(queries.getActiveReviewVerdicts(db, ticket.id)).toHaveLength(0);
+    expect(queries.getVerdictHistory(db, ticket.id).every((row) => row.supersededBy === queries.REVIEW_VERDICT_CLEARED_ON_RESET)).toBe(true);
+  });
+
   it("blocks approval when architect or security veto exists even if pass quorum is met", async () => {
     const { ticketId, ticket } = await createTechnicalAnalysisTicket();
 
@@ -1193,6 +1276,7 @@ describe("ticket service quorum enforcement", () => {
       status: "in_review",
     }).ok).toBe(true);
 
+    recordVerdict(db, ticket.id, { specialization: "architect", verdict: "pass" });
     recordVerdict(db, ticket.id, { specialization: "simplifier", verdict: "pass" });
 
     const ready = updateTicketStatusRecord(quorumCtx, {
