@@ -1454,6 +1454,18 @@ export function getLatestTicketSyncCursor(db: DB, repoId: number): string {
       inner join tickets t on t.id = c.ticket_id
       where t.repo_id = ${repoId}
     )`,
+    verdictCount: sql<number>`(
+      select count(*)
+      from review_verdicts v
+      inner join tickets t on t.id = v.ticket_id
+      where t.repo_id = ${repoId}
+    )`,
+    latestVerdictAt: sql<string | null>`(
+      select max(v.created_at)
+      from review_verdicts v
+      inner join tickets t on t.id = v.ticket_id
+      where t.repo_id = ${repoId}
+    )`,
     dependencyCount: sql<number>`(
       select count(*)
       from ticket_dependencies d
@@ -1487,6 +1499,8 @@ export function getLatestTicketSyncCursor(db: DB, repoId: number): string {
     latestHistoryAt: null,
     commentCount: 0,
     latestCommentAt: null,
+    verdictCount: 0,
+    latestVerdictAt: null,
     dependencyCount: 0,
     latestDependencyAt: null,
     linkedPatchCount: 0,

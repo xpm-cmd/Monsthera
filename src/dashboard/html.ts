@@ -3073,6 +3073,7 @@ function connectSSE(){
   es.addEventListener('ticket_created',sseHandler('ticket_created'));
   es.addEventListener('ticket_assigned',sseHandler('ticket_assigned'));
   es.addEventListener('ticket_status_changed',sseHandler('ticket_status_changed'));
+  es.addEventListener('ticket_verdict_submitted',sseHandler('ticket_verdict_submitted'));
   es.addEventListener('ticket_commented',sseHandler('ticket_commented'));
   es.addEventListener('ticket_external_sync',sseHandler('ticket_external_sync'));
   es.onerror=function(){

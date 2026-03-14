@@ -883,6 +883,31 @@ describe("ticket tools", () => {
     expect(result.isError).not.toBe(true);
   });
 
+  it("emits a dashboard event when a verdict is submitted", async () => {
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const result = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.isError).not.toBe(true);
+
+    const latestEvent = queries.getDashboardEventsByRepo(db, repoId).at(-1);
+    expect(latestEvent?.eventType).toBe("ticket_verdict_submitted");
+    expect(JSON.parse(latestEvent?.dataJson ?? "{}")).toMatchObject({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      agentId: "agent-review",
+    });
+  });
+
   it("rejects template-only verdict reasoning", async () => {
     const createResult = await createTicket();
     const ticketId = JSON.parse(createResult.content[0].text).ticketId;

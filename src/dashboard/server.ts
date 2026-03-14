@@ -73,6 +73,7 @@ const TICKET_SYNC_EVENT_TYPES = new Set<DashboardEvent["type"]>([
   "ticket_created",
   "ticket_assigned",
   "ticket_status_changed",
+  "ticket_verdict_submitted",
   "ticket_commented",
   "ticket_linked",
 ]);

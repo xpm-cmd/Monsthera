@@ -13,6 +13,7 @@ import {
   parseStringArrayJson,
 } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
+import { recordDashboardEvent } from "../dashboard/events.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { getHead } from "../git/operations.js";
@@ -688,6 +689,22 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         config: c.config?.ticketQuorum,
         transition: transition ?? inferConsensusTransitionForTicketStatus(ticket.status as TicketStatusType),
         governance: govOpts,
+      });
+
+      recordDashboardEvent(c.db, c.repoId, {
+        type: "ticket_verdict_submitted",
+        data: {
+          ticketId,
+          specialization: stored.specialization,
+          verdict: stored.verdict,
+          agentId: stored.agentId,
+          sessionId: stored.sessionId,
+          transition: transition ?? inferConsensusTransitionForTicketStatus(ticket.status as TicketStatusType),
+          responded: consensus.counts.responded,
+          requiredPasses: consensus.requiredPasses,
+          blockedByVeto: consensus.blockedByVeto,
+          advisoryReady: consensus.advisoryReady,
+        },
       });
 
       let autoAdvanced: { previousStatus: string; status: string } | null = null;

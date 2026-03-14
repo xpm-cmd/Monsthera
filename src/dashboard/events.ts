@@ -17,6 +17,7 @@ export interface DashboardEvent {
     | "ticket_assigned"
     | "ticket_unassigned"
     | "ticket_status_changed"
+    | "ticket_verdict_submitted"
     | "ticket_commented"
     | "ticket_linked"
     | "ticket_external_sync"
