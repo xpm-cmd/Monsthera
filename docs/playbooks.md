@@ -208,3 +208,38 @@ They still do not:
 - fully implement code changes by themselves after a ticket reaches `in_progress`
 
 They reduce manual orchestration, but council analysis and implementation still need real agents behind the loops.
+
+## 9. Operational Checklists
+
+Use these when the code and the ticket state may have drifted apart, or when a follow-up fix lands outside the original implementation wave.
+
+### Ticket Reality Sync Checklist
+
+- if implementation is already in the repo, do not leave the ticket in `approved`
+- move it to `in_progress`, then `in_review`, so the state matches reality
+- if review already passed and the code is landed, make sure the ticket reaches `resolved`
+- prefer an exact commit-based transition path over a manual `resolved` that would attach the wrong `HEAD`
+- verify with `agora ticket show TKT-1234abcd --json`
+
+### Resolution Traceability Checklist
+
+- confirm `commitSha` points to the actual landing commit, not the ticket creation `HEAD`
+- for umbrella or multi-slice work, confirm `resolutionCommitShas` is populated
+- if a post-commit reconcile is needed, prefer `agora ticket reconcile-commit --commit <sha> --json`
+- if you are fixing historical metadata, leave an explicit `retro-sync` or `retro-audit` comment
+- do not auto-resolve unrelated tickets just because they share nearby files; check overlap carefully first
+
+### Loop And Routing Checklist
+
+- if `suggest_next_work` says `review_manually`, the developer loop must not auto-take the ticket
+- only auto-take when there is an explicit recommendation or a genuinely unambiguous candidate
+- when adding a new routing heuristic, test clear match, ambiguous match, and no-claim cases
+- re-run the focused loop tests before you trust the automation
+
+### Indexing And Search Checklist
+
+- if parser output changes, verify the extracted symbols are semantic identifiers, not raw AST text
+- re-run focused parser and FTS tests
+- run `agora index --incremental --verbosity quiet`
+- treat new warnings during post-commit or reindex as regressions until explained
+- if legacy indexed data can trigger warnings, sanitize it during rebuild instead of dropping the whole record
