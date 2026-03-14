@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
@@ -98,6 +98,15 @@ const BACKLOG_PLAN_COMMENT_HEADER_PATTERNS = [
   /^\[plan review\]/i,
 ] as const;
 
+const RESOLUTION_VERIFICATION_COMMENT_HEADER_PATTERNS = [
+  /^\[verification\]/i,
+  /^verified\b/i,
+  /^verification\b/i,
+  /^validated\b/i,
+  /^validation\b/i,
+  /^tested\b/i,
+] as const;
+
 interface BacklogPlanningReadiness {
   enforced: boolean;
   ready: boolean;
@@ -111,6 +120,17 @@ interface BacklogPlanningReadiness {
     agentId: string;
     createdAt: string;
     modelKey: string | null;
+  }>;
+}
+
+interface ResolutionVerificationReadiness {
+  ready: boolean;
+  readyForCommitAt: string;
+  acceptedHeaders: string[];
+  eligibleComments: Array<{
+    agentId: string;
+    createdAt: string;
+    content: string;
   }>;
 }
 
@@ -411,16 +431,28 @@ export function updateTicketStatusRecord(
     }
   }
 
+  const key = `${current}→${input.status}`;
+
   // Require at least 1 ticket comment before resolving from ready_for_commit
   if (input.status === "resolved" && current === "ready_for_commit" && !isSystemActor) {
-    const comments = queries.getTicketComments(ctx.db, ticket.id);
-    if (comments.length === 0) {
+    const verificationReadiness = evaluateResolutionVerificationReadiness(
+      ctx.db,
+      ticket.id,
+      ticket.createdAt,
+    );
+    if (!verificationReadiness.ready) {
       return err("invalid_request",
-        "At least one verification comment is required before resolving. Post a comment documenting what was verified.");
+        buildResolutionVerificationBlockMessage(key, verificationReadiness),
+        {
+          transition: key,
+          readyForCommitAt: verificationReadiness.readyForCommitAt,
+          acceptedHeaders: verificationReadiness.acceptedHeaders,
+          eligibleComments: verificationReadiness.eligibleComments,
+        },
+      );
     }
   }
 
-  const key = `${current}→${input.status}`;
   const allowed = TRANSITION_ROLES[key];
   if (allowed && !allowed.includes(resolved.role)) {
     ctx.insight.warn(
@@ -520,9 +552,13 @@ export function updateTicketStatusRecord(
   if (input.status === "resolved" && effectiveCommitSha && !isSystemActor) {
     const otherTickets = ctx.db.select({ ticketId: tables.tickets.ticketId })
       .from(tables.tickets)
-      .where(eq(tables.tickets.commitSha, effectiveCommitSha))
-      .all()
-      .filter((row) => row.ticketId !== input.ticketId);
+      .where(and(
+        eq(tables.tickets.repoId, ctx.repoId),
+        eq(tables.tickets.status, "resolved"),
+        eq(tables.tickets.commitSha, effectiveCommitSha),
+        ne(tables.tickets.id, ticket.id),
+      ))
+      .all();
     if (otherTickets.length > 0) {
       sharedCommitWarning = `Commit ${effectiveCommitSha.slice(0, 7)} is already associated with ${otherTickets.length} other ticket(s): ${otherTickets.map((t) => t.ticketId).join(", ")}. Consider atomic commits per ticket for safe rollback.`;
       ctx.insight.warn(sharedCommitWarning);
@@ -1123,6 +1159,13 @@ function buildBacklogPlanningBlockMessage(
   return `Backlog planning gate not met for ${transitionKey}: ${readiness.iterationCount}/${readiness.minIterations} structured plan iterations and ${readiness.distinctModels}/${readiness.requiredDistinctModels} distinct models since ${readiness.cycleStartedAt}. Add ticket comments starting with ${readiness.acceptedHeaders.join(", ")} before leaving backlog.`;
 }
 
+function buildResolutionVerificationBlockMessage(
+  transitionKey: string,
+  readiness: ResolutionVerificationReadiness,
+): string {
+  return `Verification evidence not met for ${transitionKey}: add a ticket comment after ${readiness.readyForCommitAt} starting with ${readiness.acceptedHeaders.join(", ")} to document what was verified before resolving.`;
+}
+
 function evaluateBacklogPlanningReadiness(
   db: DB,
   ticketInternalId: number,
@@ -1168,6 +1211,37 @@ function evaluateBacklogPlanningReadiness(
     minIterations: gate.minIterations,
     distinctModels,
     requiredDistinctModels: gate.requiredDistinctModels,
+    acceptedHeaders,
+    eligibleComments,
+  };
+}
+
+function evaluateResolutionVerificationReadiness(
+  db: DB,
+  ticketInternalId: number,
+  ticketCreatedAt: string,
+): ResolutionVerificationReadiness {
+  const history = queries.getTicketHistory(db, ticketInternalId);
+  const readyForCommitAt = [...history]
+    .reverse()
+    .find((entry) => entry.toStatus === "ready_for_commit")
+    ?.timestamp ?? ticketCreatedAt;
+
+  const acceptedHeaders = ["[Verification]", "Verified", "Verification", "Validated", "Tested"];
+  const eligibleComments = queries.getTicketComments(db, ticketInternalId)
+    .filter((comment) => (
+      comment.createdAt >= readyForCommitAt
+      && RESOLUTION_VERIFICATION_COMMENT_HEADER_PATTERNS.some((pattern) => pattern.test(comment.content.trim()))
+    ))
+    .map((comment) => ({
+      agentId: comment.agentId,
+      createdAt: comment.createdAt,
+      content: comment.content,
+    }));
+
+  return {
+    ready: eligibleComments.length > 0,
+    readyForCommitAt,
     acceptedHeaders,
     eligibleComments,
   };

@@ -1842,7 +1842,16 @@ describe("ticket service governance: resolution guards", () => {
 
   afterEach(() => sqlite.close());
 
-  async function createAndAssignTicket(assigneeAgentId: string) {
+  async function createAndAssignTicket(
+    assigneeAgentId: string,
+    statuses: readonly ("technical_analysis" | "approved" | "in_progress" | "in_review" | "ready_for_commit")[] = [
+      "technical_analysis",
+      "approved",
+      "in_progress",
+      "in_review",
+      "ready_for_commit",
+    ],
+  ) {
     const result = await createTicketRecord(
       { ...ctx, system: true, actorLabel: "test" },
       { title: "T", description: "D", severity: "medium", priority: 5, tags: [], affectedPaths: [] },
@@ -1855,7 +1864,7 @@ describe("ticket service governance: resolution guards", () => {
       sessionId: assigneeAgentId === "agent-dev" ? "session-dev" : assigneeAgentId === "agent-admin" ? "session-admin" : "session-dev-2",
     });
     // Move through lifecycle to ready_for_commit
-    for (const status of ["technical_analysis", "approved", "in_progress", "in_review", "ready_for_commit"] as const) {
+    for (const status of statuses) {
       updateTicketStatusRecord(
         { ...ctx, system: true, actorLabel: "test" },
         { ticketId, status, actorLabel: "test" },
@@ -1945,7 +1954,58 @@ describe("ticket service governance: resolution guards", () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.message).toContain("verification comment");
+    expect(result.message).toContain("Verification evidence not met");
+  });
+
+  it("rejects planning comments created before ready_for_commit as resolution evidence", async () => {
+    const ticketId = await createAndAssignTicket("agent-dev", [
+      "technical_analysis",
+      "approved",
+      "in_progress",
+      "in_review",
+    ]);
+    commentTicketRecord(ctx, {
+      ticketId,
+      content: "[Plan Review] implementation looks ready",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    updateTicketStatusRecord(
+      { ...ctx, system: true, actorLabel: "test" },
+      { ticketId, status: "ready_for_commit", actorLabel: "test" },
+    );
+
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      comment: "Done",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("Verification evidence not met");
+  });
+
+  it("rejects non-verification comments created after ready_for_commit", async () => {
+    const ticketId = await createAndAssignTicket("agent-dev");
+    commentTicketRecord(ctx, {
+      ticketId,
+      content: "Please verify tool output and docs.",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      comment: "Done",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("Verification evidence not met");
   });
 
   it("allows system actors to resolve without assignee check or comment", async () => {
@@ -2029,6 +2089,36 @@ describe("ticket service governance: resolution guards", () => {
 
     const ticketId = await createAndAssignTicket("agent-dev");
     commentTicketRecord(warnCtx, { ticketId, content: "Verified", agentId: "agent-dev", sessionId: "session-dev" });
+    const result = updateTicketStatusRecord(warnCtx, {
+      ticketId,
+      status: "resolved",
+      comment: "Done",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.sharedCommitWarning).toBeUndefined();
+    expect(warnings.some((w) => w.includes("already associated"))).toBe(false);
+  });
+
+  it("ignores non-resolved tickets when checking for shared commit SHA warnings", async () => {
+    const warnings: string[] = [];
+    const warnCtx: TicketServiceContext = {
+      ...ctx,
+      insight: { info: () => undefined, warn: (msg: string) => warnings.push(msg) },
+    };
+
+    await createAndAssignTicket("agent-dev");
+
+    const ticketId = await createAndAssignTicket("agent-dev");
+    commentTicketRecord(warnCtx, {
+      ticketId,
+      content: "Verified: landed and checked",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
     const result = updateTicketStatusRecord(warnCtx, {
       ticketId,
       status: "resolved",

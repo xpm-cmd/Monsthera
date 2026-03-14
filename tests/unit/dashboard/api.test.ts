@@ -568,6 +568,7 @@ describe("Dashboard API", () => {
     insert.run(1, "TKT-aging", "Old in progress", "Desc", "in_progress", "high", 7, "agent-1", "s-1", "agent-dev", "abc1234", new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString(), new Date(now).toISOString());
     insert.run(1, "TKT-blocked", "Blocked item", "Desc", "blocked", "critical", 9, "agent-1", "s-1", "agent-dev", "abc1234", new Date(now - 16 * 24 * 60 * 60 * 1000).toISOString(), new Date(now).toISOString());
     insert.run(1, "TKT-done", "Done item", "Desc", "resolved", "low", 3, "agent-1", "s-1", "agent-dev", "abc1234", new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(), new Date(now).toISOString());
+    insert.run(1, "TKT-done-2", "Done item 2", "Desc", "resolved", "medium", 4, "agent-1", "s-1", "agent-dev", "abc1234", new Date(now - 36 * 60 * 60 * 1000).toISOString(), new Date(now).toISOString());
 
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run("agent-dev", "Dev", "codex", "developer", "A", new Date(now).toISOString());
@@ -578,10 +579,10 @@ describe("Dashboard API", () => {
       backlog: 1,
       in_progress: 1,
       blocked: 1,
-      resolved: 1,
+      resolved: 2,
     });
     expect(metrics.severityCounts).toMatchObject({
-      medium: 1,
+      medium: 2,
       high: 1,
       critical: 1,
       low: 1,
@@ -600,13 +601,13 @@ describe("Dashboard API", () => {
     expect(metrics.assigneeLoad[0]).toMatchObject({ assigneeAgentId: "agent-dev", count: 2, label: "Dev" });
     expect(metrics.oldestOpen[0]).toMatchObject({ ticketId: "TKT-blocked" });
     expect(metrics.commitHealth).toMatchObject({
-      totalResolvedWithCommit: 4,
+      totalResolvedWithCommit: 2,
       uniqueCommits: 1,
       multiTicketCommitCount: 1,
     });
     expect(metrics.commitHealth.multiTicketCommits[0]).toMatchObject({
       sha: "abc1234",
-      ticketCount: 4,
+      ticketCount: 2,
     });
   });
 

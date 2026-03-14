@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { z } from "zod/v4";
 import type * as schema from "../db/schema.js";
@@ -553,7 +553,10 @@ function getCommitToTicketHealth(deps: DashboardDeps) {
     commitSha: tables.tickets.commitSha,
   })
     .from(tables.tickets)
-    .where(eq(tables.tickets.repoId, deps.repoId))
+    .where(and(
+      eq(tables.tickets.repoId, deps.repoId),
+      eq(tables.tickets.status, "resolved"),
+    ))
     .all()
     .filter((row) => row.commitSha);
 
