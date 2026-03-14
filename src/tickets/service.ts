@@ -397,6 +397,29 @@ export function updateTicketStatusRecord(
     return err("denied", "Developers can only transition tickets assigned to themselves");
   }
 
+  // Resolution governance: resolver must be assignee or have elevated role
+  if (input.status === "resolved" && ticket.assigneeAgentId && !isSystemActor) {
+    const isAssignee = ticket.assigneeAgentId === resolved.agentId;
+    const isElevated = resolved.role === "facilitator" || resolved.role === "admin";
+    if (!isAssignee && !isElevated) {
+      return err("denied",
+        `Only the assignee (${ticket.assigneeAgentId}) or a facilitator/admin can resolve this ticket.`);
+    }
+    if (!isAssignee && isElevated && !input.comment?.trim()) {
+      return err("invalid_request",
+        `Resolver differs from assignee (${ticket.assigneeAgentId}). A justification comment is required when resolving on behalf of another agent.`);
+    }
+  }
+
+  // Require at least 1 ticket comment before resolving from ready_for_commit
+  if (input.status === "resolved" && current === "ready_for_commit" && !isSystemActor) {
+    const comments = queries.getTicketComments(ctx.db, ticket.id);
+    if (comments.length === 0) {
+      return err("invalid_request",
+        "At least one verification comment is required before resolving. Post a comment documenting what was verified.");
+    }
+  }
+
   const key = `${current}→${input.status}`;
   const allowed = TRANSITION_ROLES[key];
   if (allowed && !allowed.includes(resolved.role)) {
@@ -570,6 +593,21 @@ export function updateTicketStatusRecord(
     actorLabel: resolved.agentId,
   });
 
+  // Rate-limit audit: warn if agent resolves >3 tickets in 1 hour (non-blocking)
+  let resolutionRateWarning: string | null = null;
+  if (input.status === "resolved" && !isSystemActor) {
+    const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString();
+    const recentResolutions = ctx.db.select()
+      .from(tables.ticketHistory)
+      .where(eq(tables.ticketHistory.toStatus, "resolved"))
+      .all()
+      .filter((row) => row.agentId === resolved.agentId && row.timestamp >= oneHourAgo);
+    if (recentResolutions.length > 3) {
+      resolutionRateWarning = `Audit notice: ${resolved.agentId} has resolved ${recentResolutions.length} tickets in the last hour.`;
+      ctx.insight.warn(resolutionRateWarning);
+    }
+  }
+
   return ok({
     ticketId: input.ticketId,
     previousStatus: current,
@@ -577,6 +615,7 @@ export function updateTicketStatusRecord(
     assigneeAgentId: nextAssigneeAgentId,
     knowledgeCaptured: Boolean(knowledgeEntry),
     knowledgeKey: knowledgeEntry?.key ?? null,
+    ...(resolutionRateWarning ? { resolutionRateWarning } : {}),
   });
 }
 

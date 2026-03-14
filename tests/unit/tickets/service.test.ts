@@ -1819,3 +1819,168 @@ describe("ticket service governance: backlog planning gate", () => {
     expect(result.ok).toBe(true);
   });
 });
+
+describe("ticket service governance: resolution guards", () => {
+  let sqlite: InstanceType<typeof Database>;
+  let db: ReturnType<typeof createTestDb>["db"];
+  let repoId: number;
+  let ctx: TicketServiceContext;
+
+  beforeEach(() => {
+    ({ db, sqlite } = createTestDb());
+    repoId = queries.upsertRepo(db, "/test", "test").id;
+    registerActor(db, { agentId: "agent-dev", sessionId: "session-dev", roleId: "developer" });
+    registerActor(db, { agentId: "agent-dev-2", sessionId: "session-dev-2", roleId: "developer" });
+    registerActor(db, { agentId: "agent-admin", sessionId: "session-admin", roleId: "admin" });
+    ctx = {
+      db,
+      repoId,
+      repoPath: "/test",
+      insight: { info: () => undefined, warn: () => undefined },
+    };
+  });
+
+  afterEach(() => sqlite.close());
+
+  async function createAndAssignTicket(assigneeAgentId: string) {
+    const result = await createTicketRecord(
+      { ...ctx, system: true, actorLabel: "test" },
+      { title: "T", description: "D", severity: "medium", priority: 5, tags: [], affectedPaths: [] },
+    );
+    const ticketId = result.ok ? String(result.data.ticketId) : "";
+    assignTicketRecord(ctx, {
+      ticketId,
+      assigneeAgentId,
+      agentId: assigneeAgentId,
+      sessionId: assigneeAgentId === "agent-dev" ? "session-dev" : assigneeAgentId === "agent-admin" ? "session-admin" : "session-dev-2",
+    });
+    // Move through lifecycle to ready_for_commit
+    for (const status of ["technical_analysis", "approved", "in_progress", "in_review", "ready_for_commit"] as const) {
+      updateTicketStatusRecord(
+        { ...ctx, system: true, actorLabel: "test" },
+        { ticketId, status, actorLabel: "test" },
+      );
+    }
+    return ticketId;
+  }
+
+  it("allows assignee to resolve their own ticket", async () => {
+    const ticketId = await createAndAssignTicket("agent-dev");
+    commentTicketRecord(ctx, {
+      ticketId,
+      content: "Verified: works as expected",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      comment: "Done",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("denies non-assignee developer from resolving", async () => {
+    const ticketId = await createAndAssignTicket("agent-dev");
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      comment: "Done",
+      agentId: "agent-dev-2",
+      sessionId: "session-dev-2",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("assigned to themselves");
+  });
+
+  it("allows facilitator/admin to resolve with justification comment", async () => {
+    const ticketId = await createAndAssignTicket("agent-dev");
+    commentTicketRecord(ctx, {
+      ticketId,
+      content: "Verified: works as expected",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      comment: "Resolving on behalf of dev — verified implementation",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("denies facilitator/admin resolving without justification comment", async () => {
+    const ticketId = await createAndAssignTicket("agent-dev");
+    commentTicketRecord(ctx, {
+      ticketId,
+      content: "Verified",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("justification comment");
+  });
+
+  it("requires at least one ticket comment before resolving from ready_for_commit", async () => {
+    const ticketId = await createAndAssignTicket("agent-dev");
+    // No comments added — try to resolve
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      comment: "Done",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain("verification comment");
+  });
+
+  it("allows system actors to resolve without assignee check or comment", async () => {
+    const ticketId = await createAndAssignTicket("agent-dev");
+    const result = updateTicketStatusRecord(
+      { ...ctx, system: true, actorLabel: "post-commit" },
+      { ticketId, status: "resolved", actorLabel: "post-commit" },
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("emits rate-limit warning when agent resolves >3 tickets in 1 hour", async () => {
+    const warnings: string[] = [];
+    const warnCtx: TicketServiceContext = {
+      ...ctx,
+      insight: { info: () => undefined, warn: (msg: string) => warnings.push(msg) },
+    };
+
+    for (let i = 0; i < 4; i++) {
+      const ticketId = await createAndAssignTicket("agent-dev");
+      commentTicketRecord(warnCtx, {
+        ticketId,
+        content: "Verified",
+        agentId: "agent-dev",
+        sessionId: "session-dev",
+      });
+      updateTicketStatusRecord(warnCtx, {
+        ticketId,
+        status: "resolved",
+        comment: `Resolved ticket ${i + 1}`,
+        agentId: "agent-dev",
+        sessionId: "session-dev",
+      });
+    }
+
+    expect(warnings.some((w) => w.includes("Audit notice"))).toBe(true);
+  });
+});

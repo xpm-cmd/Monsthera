@@ -546,6 +546,12 @@ describe("ticket tools", () => {
     let ticket = queries.getTicketByTicketId(db, ticketId)!;
     expect(ticket.resolvedByAgentId).toBeNull();
 
+    await handler("comment_ticket")({
+      ticketId,
+      content: "Verified: implementation looks correct",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
     await handler("update_ticket_status")({
       ticketId,
       status: "resolved",
