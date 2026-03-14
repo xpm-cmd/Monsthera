@@ -1284,12 +1284,19 @@ function renderTicketMetrics(metrics){
   var assigneeRows=(metrics.assigneeLoad||[]).map(function(entry){
     return '<div class="metric-row"><span>'+esc(entry.label)+'</span><strong>'+esc(String(entry.count))+'</strong></div>';
   });
+  var duplicateRows=(metrics.duplicateClusters||[]).map(function(cluster){
+    var labels=(cluster.ticketIds||[]).slice(0,3).join(', ');
+    var reason=(cluster.reasons||[])[0]||'metadata overlap';
+    return '<div class="metric-row" title="'+esc((cluster.reasons||[]).join(' · '))+'"><span>'+esc(labels)+(cluster.ticketIds&&cluster.ticketIds.length>3?' +'+esc(String(cluster.ticketIds.length-3)):'')+'</span><strong>'+esc(String(Math.round((cluster.score||0)*100)))+'%</strong></div>'
+      +'<div class="metric-empty" style="padding:.1rem 0 .45rem 0">'+esc(reason)+'</div>';
+  });
   return '<div class="ticket-metrics">'
     +'<div class="metric-card"><h4>Status Mix</h4>'+rows(statusRows)+'</div>'
     +'<div class="metric-card"><h4>Severity Mix</h4>'+rows(severityRows)+'</div>'
     +'<div class="metric-card"><h4>Aging Buckets</h4>'+rows(agingRows)+'</div>'
     +'<div class="metric-card"><h4>Blocked Tickets</h4><div class="metric-row"><span>Count</span><strong>'+esc(String(metrics.blockedCount||0))+'</strong></div>'+rows(blockedRows)+'</div>'
     +'<div class="metric-card"><h4>Unassigned Open</h4><div class="metric-row"><span>Count</span><strong>'+esc(String(metrics.unassignedOpenCount||0))+'</strong></div>'+rows(unassignedRows)+'</div>'
+    +'<div class="metric-card"><h4>Twin Ticket Clusters</h4><div class="metric-row"><span>Count</span><strong>'+esc(String(metrics.duplicateClusterCount||0))+'</strong></div>'+rows(duplicateRows)+'</div>'
     +'<div class="metric-card"><h4>Assignee Load</h4>'+rows(assigneeRows)+'</div>'
   +'</div>';
 }
@@ -1500,6 +1507,15 @@ function renderTicketDetail(error){
   var commitLabel=resolutionCommits.length>1?'Commits':'Commit';
   var commitValue=resolutionCommits.length?resolutionCommits.map(function(sha){return esc((sha||'-').slice(0,7));}).join(', '):'-';
   var quorumSection=renderTicketQuorumDetail(t.quorum);
+  var duplicateSection=(function(){
+    if(!t.duplicateSignal) return '';
+    var clusters=(t.duplicateSignal.clusters||[]).map(function(cluster){
+      return (cluster.tickets||[]).map(function(peer){
+        return '<div class="edge-meta-item"><div class="edge-meta-top"><span><a href="#" class="dep-link" data-ticket="'+esc(peer.ticketId)+'">'+esc(peer.ticketId)+'</a> · '+esc(peer.status)+'</span><span class="edge-meta-score">'+esc(String(Math.round((cluster.score||0)*100)))+'%</span></div><div class="edge-meta-note">'+esc(peer.title)+(cluster.reasons&&cluster.reasons.length?'<br>'+esc(cluster.reasons.join(' · ')):'')+'</div></div>';
+      }).join('');
+    }).join('');
+    return '<div class="detail-section"><h4>Twin Ticket Signal</h4><div class="detail-block"><div class="detail-label">Suspicious Cluster</div><div class="detail-value"><span class="badge badge-orange">Cluster x'+esc(String(t.duplicateSignal.peerCount||0))+'</span> <span class="badge badge-red">'+esc(String(Math.round((t.duplicateSignal.score||0)*100)))+'% match</span><br>'+esc((t.duplicateSignal.reasons||[]).join(' · '))+'</div></div>'+(clusters?'<div class="edge-meta-list" style="margin-top:.65rem">'+clusters+'</div>':'')+'</div>';
+  })();
   var actor=getSelectedActor();
   var assigneeOptions=dashboardAgents.map(function(agent){
     return '<option value="'+esc(agent.id)+'"'+(t.assigneeAgentId===agent.id?' selected':'')+'>'+esc(agent.name+' ('+agent.role+')')+'</option>';
@@ -1543,6 +1559,7 @@ function renderTicketDetail(error){
     +(function(){var deps=t.dependencies;if(!deps)return '';var parts=[];if(deps.blocking&&deps.blocking.length)parts.push('Blocks: '+deps.blocking.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.blockedBy&&deps.blockedBy.length)parts.push('Blocked by: '+deps.blockedBy.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(deps.relatedTo&&deps.relatedTo.length)parts.push('Related: '+deps.relatedTo.map(function(id){return '<a href="#" class="dep-link" data-ticket="'+esc(id)+'">'+esc(id)+'</a>';}).join(', '));if(!parts.length)return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">-</div></div>';return '<div class="detail-block"><div class="detail-label">Dependencies</div><div class="detail-value">'+parts.join('<br>')+'</div></div>';})()
     +'</div>'
     +quorumSection
+    +duplicateSection
     +'<div class="detail-section"><h4>Actions</h4>'+actionsHtml+'</div>'
     +'<div class="detail-section"><h4>Comments</h4><div class="comment-list">'+comments+'</div></div>'
     +'<div class="detail-section"><h4>History</h4><div class="history-list">'+history+'</div></div>'
@@ -1609,13 +1626,16 @@ function renderTicketsSection(tickets,metrics){
               :'No recent review activity';
             flags.push('<span class="badge badge-red" title="'+esc(reviewTitle)+'">Review stale</span>');
           }
-          if(ticket.quorumBadge){
-            flags.push('<span class="badge badge-'+esc(ticket.quorumState||'blue')+'" title="'+esc(ticket.quorumTitle||ticket.quorumBadge)+'">'+esc(ticket.quorumBadge)+'</span>');
-          }
-          if(ticket.humanActionRequired){
-            var har=humanActionReasonLabel(ticket.humanActionReason);
-            flags.push('<span class="badge badge-orange" title="'+esc(har)+'">Human action</span>');
-          }
+        if(ticket.quorumBadge){
+          flags.push('<span class="badge badge-'+esc(ticket.quorumState||'blue')+'" title="'+esc(ticket.quorumTitle||ticket.quorumBadge)+'">'+esc(ticket.quorumBadge)+'</span>');
+        }
+        if(ticket.suspiciousDuplicate){
+          flags.push('<span class="badge badge-orange" title="'+esc(ticket.duplicateTitle||'Suspicious duplicate cluster')+'">Twin x'+esc(String(ticket.duplicatePeerCount||1))+'</span>');
+        }
+        if(ticket.humanActionRequired){
+          var har=humanActionReasonLabel(ticket.humanActionReason);
+          flags.push('<span class="badge badge-orange" title="'+esc(har)+'">Human action</span>');
+        }
           card.innerHTML='<div class="board-card-sub">'+esc(ticket.ticketId)+'</div>'
             +'<div class="board-card-title">'+esc(ticket.title)+'</div>'
             +(flags.length?'<div class="board-card-flags">'+flags.join('')+'</div>':'')
@@ -1631,13 +1651,14 @@ function renderTicketsSection(tickets,metrics){
     section.appendChild(board);
   }else{
     var showQuorumColumn=filteredTickets.some(function(ticket){return !!ticket.quorumBadge});
+    var showDuplicateColumn=filteredTickets.some(function(ticket){return !!ticket.suspiciousDuplicate});
     var showHumanActionColumn=filteredTickets.some(function(ticket){return !!ticket.humanActionRequired});
     var wrap=document.createElement('div');
     wrap.className='table-wrap';
     var table=document.createElement('table');
     var thead=document.createElement('thead');
     var hr=document.createElement('tr');
-    ['ID','Title','Status'].concat(showQuorumColumn?['Quorum']:[]).concat(showHumanActionColumn?['Human Action']:[]).concat(['Severity','Priority','Assignee','Creator','Age','Updated']).forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
+    ['ID','Title','Status'].concat(showQuorumColumn?['Quorum']:[]).concat(showDuplicateColumn?['Twin Risk']:[]).concat(showHumanActionColumn?['Human Action']:[]).concat(['Severity','Priority','Assignee','Creator','Age','Updated']).forEach(function(h){var th=document.createElement('th');th.textContent=h;hr.appendChild(th)});
     thead.appendChild(hr);
     table.appendChild(thead);
     var tbody=document.createElement('tbody');
@@ -1652,6 +1673,11 @@ function renderTicketsSection(tickets,metrics){
       ];
       if(showQuorumColumn){
         cells.push(t.quorumBadge?{badge:t.quorumBadge,cls:t.quorumState||'blue',title:t.quorumTitle||t.quorumBadge}:'-');
+      }
+      if(showDuplicateColumn){
+        cells.push(t.suspiciousDuplicate
+          ? {badge:'Cluster x'+String(t.duplicatePeerCount||1),cls:'orange',title:t.duplicateTitle||'Suspicious duplicate cluster'}
+          : '-');
       }
       if(showHumanActionColumn){
         cells.push(t.humanActionRequired

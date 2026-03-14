@@ -17,6 +17,7 @@ import type { CodeSearchDebugResult } from "../search/debug.js";
 import type { KnowledgeScope, SearchKnowledgeOptions, KnowledgeSearchEntry } from "../knowledge/search.js";
 import type { TicketStatus } from "../../schemas/ticket.js";
 import { buildGovernanceOptions, buildTicketConsensusReport, inferConsensusTransitionForTicketStatus } from "../tickets/consensus.js";
+import { buildDuplicateDetectionInsights } from "../tickets/duplicate-detection.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 const SecretLineHitsSchema = z.array(z.object({ pattern: z.string().min(1).optional() }));
@@ -350,12 +351,16 @@ export function getPresence(deps: DashboardDeps) {
 
 export function getTicketsList(deps: DashboardDeps) {
   const now = Date.now();
-  return queries.getTicketsByRepo(deps.db, deps.repoId).map((ticket) => {
+  const tickets = queries.getTicketsByRepo(deps.db, deps.repoId);
+  const duplicateInsights = buildDashboardDuplicateInsights(tickets);
+
+  return tickets.map((ticket) => {
     const visibility = getTicketVisibilitySignals(deps, ticket, now);
     const history = queries.getTicketHistory(deps.db, ticket.id);
     const quorum = buildDashboardTicketQuorum(deps, ticket);
     const assigneeHealth = getTicketAssigneeHealth(deps, ticket, now);
     const humanAction = getHumanActionRequired(ticket, quorum, history, assigneeHealth);
+    const duplicateSignal = duplicateInsights.byTicketId.get(ticket.ticketId) ?? null;
 
     return {
       ticketId: ticket.ticketId,
@@ -384,13 +389,31 @@ export function getTicketsList(deps: DashboardDeps) {
       orphanedAssigneeReason: assigneeHealth.reason,
       humanActionRequired: humanAction.required,
       humanActionReason: humanAction.reason,
+      suspiciousDuplicate: !!duplicateSignal,
+      duplicateClusterCount: duplicateSignal?.clusterIds.length ?? 0,
+      duplicatePeerCount: duplicateSignal?.peerTicketIds.length ?? 0,
+      duplicateSignalScore: duplicateSignal?.score ?? 0,
+      duplicateReasons: duplicateSignal?.reasons ?? [],
+      duplicateTitle: duplicateSignal ? summarizeDuplicateReasons(duplicateSignal.reasons) : null,
     };
   });
 }
 
 export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
-  const ticket = queries.getTicketByTicketId(deps.db, ticketId, deps.repoId);
+  const tickets = queries.getTicketsByRepo(deps.db, deps.repoId);
+  const ticket = tickets.find((entry) => entry.ticketId === ticketId) ?? null;
   if (!ticket) return null;
+  const duplicateInsights = buildDashboardDuplicateInsights(tickets);
+  const duplicateSignal = duplicateInsights.byTicketId.get(ticket.ticketId) ?? null;
+  const duplicateClusters = duplicateInsights.clusters
+    .filter((cluster) => cluster.ticketIds.includes(ticket.ticketId))
+    .map((cluster) => ({
+      id: cluster.id,
+      score: cluster.score,
+      reasons: cluster.reasons,
+      createdSpanMinutes: cluster.createdSpanMinutes,
+      tickets: cluster.tickets.filter((entry) => entry.ticketId !== ticket.ticketId),
+    }));
 
   const comments = queries.getTicketComments(deps.db, ticket.id);
   const history = queries.getTicketHistory(deps.db, ticket.id);
@@ -446,6 +469,16 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
     orphanedAssigneeReason: assigneeHealth.reason,
     humanActionRequired: humanAction.required,
     humanActionReason: humanAction.reason,
+    suspiciousDuplicate: !!duplicateSignal,
+    duplicateSignal: duplicateSignal
+      ? {
+          clusterCount: duplicateSignal.clusterIds.length,
+          peerCount: duplicateSignal.peerTicketIds.length,
+          score: duplicateSignal.score,
+          reasons: duplicateSignal.reasons,
+          clusters: duplicateClusters,
+        }
+      : null,
     dependencies: { blocking, blockedBy, relatedTo },
     comments: comments.map((comment) => ({
       agentId: comment.agentId,
@@ -476,6 +509,8 @@ export function getTicketMetrics(deps: DashboardDeps) {
   const now = Date.now();
   const statusCounts = queries.getTicketCountsByStatus(deps.db, deps.repoId);
   const severityCounts = queries.getTicketCountsBySeverity(deps.db, deps.repoId);
+  const allTickets = queries.getTicketsByRepo(deps.db, deps.repoId);
+  const duplicateInsights = buildDashboardDuplicateInsights(allTickets);
   const openTickets = queries.getOpenTicketsByRepo(deps.db, deps.repoId);
   const blockedTickets = queries.getBlockedTicketsByRepo(deps.db, deps.repoId);
   const unassignedOpen = openTickets.filter((ticket) => !ticket.assigneeAgentId);
@@ -522,6 +557,15 @@ export function getTicketMetrics(deps: DashboardDeps) {
       ageDays: ticketAgeDays(ticket.createdAt, now),
     }));
 
+  const duplicateClusters = duplicateInsights.clusters.slice(0, 5).map((cluster) => ({
+    id: cluster.id,
+    score: cluster.score,
+    reasons: cluster.reasons,
+    createdSpanMinutes: cluster.createdSpanMinutes,
+    ticketIds: cluster.ticketIds,
+    tickets: cluster.tickets,
+  }));
+
   return {
     statusCounts,
     severityCounts,
@@ -541,10 +585,40 @@ export function getTicketMetrics(deps: DashboardDeps) {
       severity: ticket.severity,
       ageDays: ticketAgeDays(ticket.createdAt, now),
     })),
+    duplicateClusterCount: duplicateInsights.clusters.length,
+    duplicateClusters,
     assigneeLoad: assigneeLoad.slice(0, 6),
     oldestOpen,
     commitHealth: getCommitToTicketHealth(deps),
   };
+}
+
+function buildDashboardDuplicateInsights(
+  tickets: Array<typeof schema.tickets.$inferSelect>,
+) {
+  return buildDuplicateDetectionInsights(tickets.map((ticket) => ({
+    ticketId: ticket.ticketId,
+    title: ticket.title,
+    status: ticket.status,
+    creatorAgentId: ticket.creatorAgentId,
+    assigneeAgentId: ticket.assigneeAgentId,
+    commitSha: ticket.commitSha,
+    createdAt: ticket.createdAt,
+    tags: parseStringArrayJson(ticket.tagsJson, {
+      maxItems: 25,
+      maxItemLength: 64,
+    }),
+    affectedPaths: parseStringArrayJson(ticket.affectedPathsJson, {
+      maxItems: 100,
+      maxItemLength: 500,
+    }),
+  })));
+}
+
+function summarizeDuplicateReasons(reasons: string[]): string {
+  if (reasons.length === 0) return "Suspicious duplicate cluster";
+  if (reasons.length === 1) return reasons[0]!;
+  return `${reasons[0]} · ${reasons[1]}`;
 }
 
 function getCommitToTicketHealth(deps: DashboardDeps) {

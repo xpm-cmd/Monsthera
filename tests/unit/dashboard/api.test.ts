@@ -611,6 +611,111 @@ describe("Dashboard API", () => {
     });
   });
 
+  it("surfaces suspicious duplicate ticket clusters in list, metrics, and detail", () => {
+    const now = Date.now();
+    const insert = sqlite.prepare(`
+      INSERT INTO tickets (
+        id, repo_id, ticket_id, title, description, status, severity, priority,
+        tags_json, affected_paths_json, creator_agent_id, creator_session_id,
+        assignee_agent_id, commit_sha, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insert.run(
+      61,
+      1,
+      "TKT-dup-1",
+      "Detect duplicate ticket clusters in dashboard",
+      "Desc",
+      "blocked",
+      "medium",
+      6,
+      JSON.stringify(["dashboard", "tickets"]),
+      JSON.stringify(["src/dashboard/api.ts", "src/dashboard/html.ts"]),
+      "agent-creator",
+      "session-1",
+      "agent-dev",
+      "abc1234",
+      new Date(now - 4 * 60_000).toISOString(),
+      new Date(now - 60_000).toISOString(),
+    );
+    insert.run(
+      62,
+      1,
+      "TKT-dup-2",
+      "Dashboard detect duplicate ticket clusters",
+      "Desc",
+      "in_progress",
+      "medium",
+      6,
+      JSON.stringify(["dashboard", "tickets"]),
+      JSON.stringify(["src/dashboard/api.ts", "src/dashboard/html.ts"]),
+      "agent-creator",
+      "session-2",
+      "agent-dev",
+      "abc1234",
+      new Date(now - 2 * 60_000).toISOString(),
+      new Date(now - 30_000).toISOString(),
+    );
+    insert.run(
+      63,
+      1,
+      "TKT-clean",
+      "Unique infra maintenance task",
+      "Desc",
+      "backlog",
+      "low",
+      3,
+      JSON.stringify(["infra"]),
+      JSON.stringify(["scripts/cleanup.sh"]),
+      "agent-other",
+      "session-3",
+      null,
+      "def5678",
+      new Date(now - 30 * 60_000).toISOString(),
+      new Date(now - 20 * 60_000).toISOString(),
+    );
+
+    const tickets = getTicketsList(deps);
+    const duplicateOne = tickets.find((ticket) => ticket.ticketId === "TKT-dup-1");
+    const duplicateTwo = tickets.find((ticket) => ticket.ticketId === "TKT-dup-2");
+    const clean = tickets.find((ticket) => ticket.ticketId === "TKT-clean");
+
+    expect(duplicateOne).toMatchObject({
+      suspiciousDuplicate: true,
+      duplicateClusterCount: 1,
+      duplicatePeerCount: 1,
+    });
+    expect(duplicateOne?.duplicateTitle).toMatch(/title similarity|paths overlap|same assignee/);
+    expect(duplicateTwo).toMatchObject({
+      suspiciousDuplicate: true,
+      duplicateClusterCount: 1,
+      duplicatePeerCount: 1,
+    });
+    expect(clean).toMatchObject({
+      suspiciousDuplicate: false,
+      duplicateClusterCount: 0,
+      duplicatePeerCount: 0,
+    });
+
+    const metrics = getTicketMetrics(deps);
+    expect(metrics.duplicateClusterCount).toBe(1);
+    expect(metrics.duplicateClusters[0]).toMatchObject({
+      ticketIds: ["TKT-dup-1", "TKT-dup-2"],
+    });
+    expect(metrics.duplicateClusters[0]?.reasons.join(" ")).toMatch(/title similarity|paths overlap/);
+
+    const detail = getTicketDetail(deps, "TKT-dup-1");
+    expect(detail?.duplicateSignal).toMatchObject({
+      clusterCount: 1,
+      peerCount: 1,
+    });
+    expect(detail?.duplicateSignal?.reasons.join(" ")).toMatch(/title similarity|paths overlap/);
+    expect(detail?.duplicateSignal?.clusters[0]?.tickets[0]).toMatchObject({
+      ticketId: "TKT-dup-2",
+    });
+  });
+
   it("returns ticket detail with comments, history, and linked patches", () => {
     const now = new Date().toISOString();
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)

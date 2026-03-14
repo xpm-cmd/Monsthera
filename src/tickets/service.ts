@@ -31,6 +31,7 @@ import type { CoordinationBus } from "../coordination/bus.js";
 import type { CouncilSpecializationId as CouncilSpecializationIdValue } from "../../schemas/council.js";
 import { CouncilSpecializationId } from "../../schemas/council.js";
 import { suggestActionsForChanges } from "../dispatch/rules.js";
+import { titleSimilarity } from "./duplicate-detection.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
@@ -206,24 +207,6 @@ export interface BatchResult {
   succeeded: number;
   failed: number;
   results: BatchItemResult[];
-}
-
-function titleSimilarity(a: string, b: string): number {
-  const normalize = (s: string) => s.toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .split(/\s+/).filter(Boolean);
-
-  const wordsA = new Set(normalize(a));
-  const wordsB = new Set(normalize(b));
-
-  if (wordsA.size === 0 || wordsB.size === 0) return 0;
-
-  let intersection = 0;
-  for (const w of wordsA) if (wordsB.has(w)) intersection++;
-
-  // Jaccard similarity on word sets
-  const union = new Set([...wordsA, ...wordsB]).size;
-  return intersection / union;
 }
 
 export async function createTicketRecord(
