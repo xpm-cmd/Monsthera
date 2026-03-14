@@ -357,6 +357,7 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
   const history = queries.getTicketHistory(deps.db, ticket.id);
   const linkedPatches = queries.getPatchesByTicketId(deps.db, ticket.id);
   const ticketDeps = queries.getTicketDependencies(deps.db, ticket.id);
+  const resolutionCommitShas = queries.getTicketResolutionCommitShas(deps.db, ticket.id);
   const quorum = buildDashboardTicketQuorum(deps, ticket);
   const humanAction = getHumanActionRequired(ticket, quorum, history);
 
@@ -397,6 +398,7 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
     assigneeAgentId: ticket.assigneeAgentId,
     resolvedByAgentId: ticket.resolvedByAgentId,
     commitSha: ticket.commitSha,
+    resolutionCommitShas,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
     nextActionHint,

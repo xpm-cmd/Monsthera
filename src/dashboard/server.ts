@@ -24,6 +24,7 @@ import {
   type TicketServiceError,
 } from "../tickets/service.js";
 import { reapStaleSessions } from "../agents/registry.js";
+import { getHead } from "../git/operations.js";
 import { classifyResultForLogging, recordRuntimeEventWithContext } from "../tools/runtime-instrumentation.js";
 import { z } from "zod/v4";
 import {
@@ -307,6 +308,9 @@ export function startDashboard(
           const parsed = validateBody(res, UpdateStatusBodySchema, body);
           if (!parsed) return;
           const startedAt = Date.now();
+          const resolvedCommitSha = parsed.status === "resolved"
+            ? await getHead({ cwd: deps.repoPath })
+            : undefined;
           const result = updateTicketStatusRecord({
             db: deps.db,
             repoId: deps.repoId,
@@ -321,6 +325,7 @@ export function startDashboard(
             status: parsed.status,
             comment: parsed.comment ?? null,
             skipKnowledgeCapture: parsed.skipKnowledgeCapture,
+            commitSha: resolvedCommitSha,
             agentId: parsed.agentId,
             sessionId: parsed.sessionId,
           });

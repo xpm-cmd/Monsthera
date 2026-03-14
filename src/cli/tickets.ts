@@ -74,7 +74,7 @@ interface TicketCliDeps {
     ctx: TicketCliContext,
     config: TicketCliConfig,
     insight: InsightStream,
-    input: { ticketId: string; comment: string; actorLabel: string },
+    input: { ticketId: string; comment: string; actorLabel: string; commitSha?: string },
   ) => ReturnType<typeof updateTicketStatusRecord>;
 }
 
@@ -131,6 +131,9 @@ export async function cmdTicket(
         if (!parsedStatus.success) {
           throw new Error(`Invalid ticket status: ${targetStatus}`);
         }
+        const resolvedCommitSha = parsedStatus.data === "resolved"
+          ? await (deps.getHead ?? getHead)({ cwd: ctx.repoRoot })
+          : undefined;
 
         const result = updateTicketStatusRecord({
           db: ctx.db,
@@ -147,6 +150,7 @@ export async function cmdTicket(
           status: parsedStatus.data as TicketStatusType,
           comment: getArg(args, "--comment"),
           skipKnowledgeCapture: args.includes("--skip-knowledge-capture"),
+          commitSha: resolvedCommitSha,
         });
 
         if (!result.ok) {
@@ -217,6 +221,10 @@ export function formatTicketList(payload: ReturnType<typeof buildTicketListPaylo
 }
 
 export function formatTicketDetail(ticket: NonNullable<ReturnType<typeof buildTicketDetailPayload>>): string {
+  const resolutionCommitShas = ticket.resolutionCommitShas.length > 0
+    ? ticket.resolutionCommitShas
+    : [ticket.commitSha];
+  const commitLabel = resolutionCommitShas.length > 1 ? "Commits" : "Commit";
   const lines = [
     `${ticket.ticketId} [${ticket.status}]`,
     ticket.title,
@@ -224,7 +232,7 @@ export function formatTicketDetail(ticket: NonNullable<ReturnType<typeof buildTi
     `Creator: ${ticket.creatorAgentId}`,
     `Assignee: ${ticket.assigneeAgentId ?? "unassigned"}`,
     `Resolved by: ${ticket.resolvedByAgentId ?? "-"}`,
-    `Commit: ${ticket.commitSha}`,
+    `${commitLabel}: ${resolutionCommitShas.join(", ")}`,
     `Created: ${ticket.createdAt}`,
     `Updated: ${ticket.updatedAt}`,
   ];
@@ -469,6 +477,7 @@ export async function reconcileCommitTickets(
       ticketId,
       comment,
       actorLabel: input.actorLabel,
+      commitSha: input.commitSha,
     });
 
     if (!result.ok) {
@@ -633,7 +642,7 @@ function defaultTransitionTicket(
   ctx: TicketCliContext,
   config: TicketCliConfig,
   insight: InsightStream,
-  input: { ticketId: string; comment: string; actorLabel: string },
+  input: { ticketId: string; comment: string; actorLabel: string; commitSha?: string },
 ): ReturnType<typeof updateTicketStatusRecord> {
   return updateTicketStatusRecord({
     db: ctx.db,
@@ -649,5 +658,6 @@ function defaultTransitionTicket(
     ticketId: input.ticketId,
     status: "resolved",
     comment: input.comment,
+    commitSha: input.commitSha,
   });
 }

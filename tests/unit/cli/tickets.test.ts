@@ -73,6 +73,7 @@ describe("ticket CLI commit reconciliation", () => {
       ticketId: "TKT-ready111",
       comment: "Auto-resolved after commit abc123d.",
       actorLabel: "post-commit",
+      commitSha: "abc123def456",
     });
     expect(payload).toEqual({
       commitSha: "abc123def456",

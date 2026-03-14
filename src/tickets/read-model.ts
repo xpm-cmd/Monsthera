@@ -44,6 +44,7 @@ export interface TicketDetailPayload {
   assigneeAgentId: string | null;
   resolvedByAgentId: string | null;
   commitSha: string;
+  resolutionCommitShas: string[];
   createdAt: string;
   updatedAt: string;
   dependencies: {
@@ -115,6 +116,7 @@ export function buildTicketDetailPayload(
   const comments = queries.getTicketComments(db, ticket.id);
   const linkedPatches = queries.getPatchesByTicketId(db, ticket.id);
   const dependencies = resolveTicketDependencies(db, ticket.id);
+  const resolutionCommitShas = queries.getTicketResolutionCommitShas(db, ticket.id);
 
   return {
     ticketId: ticket.ticketId,
@@ -136,6 +138,7 @@ export function buildTicketDetailPayload(
     assigneeAgentId: ticket.assigneeAgentId,
     resolvedByAgentId: ticket.resolvedByAgentId,
     commitSha: ticket.commitSha,
+    resolutionCommitShas,
     createdAt: ticket.createdAt,
     updatedAt: ticket.updatedAt,
     dependencies,

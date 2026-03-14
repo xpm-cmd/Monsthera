@@ -115,6 +115,8 @@ interface UpdateTicketStatusFields {
   status: TicketStatusType;
   comment?: string | null;
   skipKnowledgeCapture?: boolean;
+  commitSha?: string | null;
+  commitShas?: string[] | null;
 }
 
 export type UpdateTicketStatusInput = UpdateTicketStatusFields & TicketActorInput;
@@ -362,6 +364,15 @@ export function updateTicketStatusRecord(
   }
 
   const now = new Date().toISOString();
+  const linkedPatches = queries.getPatchesByTicketId(ctx.db, ticket.id);
+  const resolutionCommitShas = input.status === "resolved"
+    ? deriveResolutionCommitShas(ctx.db, ctx.repoId, ticket.ticketId, {
+        comment: input.comment ?? null,
+        linkedPatches,
+        commitSha: input.commitSha ?? null,
+        commitShas: input.commitShas ?? null,
+      })
+    : [];
   const captureTargetStatus = shouldCaptureTicketKnowledge(input.status) ? input.status : null;
   const knowledgeEntry = captureTargetStatus && input.skipKnowledgeCapture !== true
     ? buildTicketResolutionKnowledgeEntry({
@@ -373,13 +384,15 @@ export function updateTicketStatusRecord(
         capturedAt: now,
         history: queries.getTicketHistory(ctx.db, ticket.id),
         comments: queries.getTicketComments(ctx.db, ticket.id),
-        linkedPatches: queries.getPatchesByTicketId(ctx.db, ticket.id),
+        linkedPatches,
       })
     : null;
-  const updates: Partial<Pick<typeof tables.tickets.$inferInsert, "status" | "resolvedByAgentId">> = {
+  const resolvedCommitSha = resolutionCommitShas[0] ?? input.commitSha?.trim() ?? null;
+  const updates: Partial<Pick<typeof tables.tickets.$inferInsert, "status" | "resolvedByAgentId" | "commitSha">> = {
     status: input.status,
   };
   if (input.status === "resolved") updates.resolvedByAgentId = resolved.agentId;
+  if (input.status === "resolved" && resolvedCommitSha) updates.commitSha = resolvedCommitSha;
   if (current === "resolved" && input.status === "in_progress") updates.resolvedByAgentId = null;
 
   let knowledgeId: number | null = null;
@@ -397,6 +410,9 @@ export function updateTicketStatusRecord(
       comment: input.comment ?? null,
       timestamp: now,
     }).run();
+    if (input.status === "resolved" || (current === "resolved" && input.status === "in_progress")) {
+      queries.setTicketResolutionCommitShas(tx, ticket.id, resolutionCommitShas, now);
+    }
     if (knowledgeEntry) {
       knowledgeId = queries.upsertKnowledge(tx, knowledgeEntry).id;
     }
@@ -680,6 +696,71 @@ function wouldCreateCycle(
     }
   }
   return false;
+}
+
+const TICKET_ID_PATTERN = /\bTKT-[A-Za-z0-9]+\b/gi;
+
+function deriveResolutionCommitShas(
+  db: DB,
+  repoId: number,
+  ticketId: string,
+  input: {
+    comment?: string | null;
+    linkedPatches: ReturnType<typeof queries.getPatchesByTicketId>;
+    commitSha?: string | null;
+    commitShas?: readonly string[] | null;
+  },
+): string[] {
+  const seen = new Set<string>();
+  const commitShas: string[] = [];
+  const push = (value: string | null | undefined) => {
+    const trimmed = value?.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    commitShas.push(trimmed);
+  };
+
+  for (const patch of input.linkedPatches) {
+    push(patch.committedSha);
+  }
+
+  for (const referencedTicketId of extractReferencedTicketIds(input.comment ?? null)) {
+    if (referencedTicketId.toLowerCase() === ticketId.toLowerCase()) continue;
+    const referencedTicket = queries.getTicketByTicketId(db, referencedTicketId, repoId);
+    if (!referencedTicket) continue;
+
+    const referencedResolutionCommitShas = queries.getTicketResolutionCommitShas(db, referencedTicket.id);
+    if (referencedResolutionCommitShas.length > 0) {
+      for (const referencedCommitSha of referencedResolutionCommitShas) {
+        push(referencedCommitSha);
+      }
+      continue;
+    }
+
+    push(referencedTicket.commitSha);
+  }
+
+  for (const explicitCommitSha of input.commitShas ?? []) {
+    push(explicitCommitSha);
+  }
+  push(input.commitSha);
+
+  return commitShas;
+}
+
+function extractReferencedTicketIds(text: string | null): string[] {
+  if (!text) return [];
+
+  const seen = new Set<string>();
+  const ticketIds: string[] = [];
+  const matches = text.match(TICKET_ID_PATTERN) ?? [];
+  for (const match of matches) {
+    const normalized = `TKT-${match.slice(4).toLowerCase()}`;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    ticketIds.push(normalized);
+  }
+  return ticketIds;
 }
 
 function isSystemContext(ctx: TicketContext): ctx is TicketSystemContext {

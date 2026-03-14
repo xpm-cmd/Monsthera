@@ -1,5 +1,6 @@
 import { eq, and, like, desc, or, sql, notInArray, isNull, inArray } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { Database as SqliteDatabase } from "better-sqlite3";
 import { posix as pathPosix } from "node:path";
 import { parseStringArrayJson } from "../core/input-hardening.js";
 import type * as schema from "./schema.js";
@@ -7,6 +8,9 @@ import * as tables from "./schema.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 type QueryDb = Pick<DB, "select" | "insert" | "update" | "delete">;
+
+const TICKET_RESOLUTION_COMMITS_COLUMN = "resolution_commits_json";
+const ticketResolutionCommitsColumnCache = new WeakMap<object, boolean>();
 
 // --- Repos ---
 
@@ -555,7 +559,7 @@ export function updateTicket(
     typeof tables.tickets.$inferInsert,
     "title" | "description" | "severity" | "priority" | "tagsJson" |
     "affectedPathsJson" | "acceptanceCriteria" | "status" | "assigneeAgentId" |
-    "resolvedByAgentId"
+    "resolvedByAgentId" | "commitSha"
   >>,
 ) {
   return db
@@ -563,6 +567,36 @@ export function updateTicket(
     .set({ ...updates, updatedAt: new Date().toISOString() })
     .where(eq(tables.tickets.id, id))
     .run();
+}
+
+export function getTicketResolutionCommitShas(db: DB, ticketInternalId: number): string[] {
+  const sqlite = getSqliteClient(db);
+  if (!sqlite || !hasTicketResolutionCommitsColumn(db)) return [];
+
+  const row = sqlite
+    .prepare(`SELECT ${TICKET_RESOLUTION_COMMITS_COLUMN} FROM tickets WHERE id = ?`)
+    .get(ticketInternalId) as Record<string, string | null> | undefined;
+
+  return parseStringArrayJson(row?.[TICKET_RESOLUTION_COMMITS_COLUMN] ?? null, {
+    maxItems: 64,
+    maxItemLength: 64,
+  });
+}
+
+export function setTicketResolutionCommitShas(
+  db: DB,
+  ticketInternalId: number,
+  commitShas: readonly string[],
+  updatedAt = new Date().toISOString(),
+): boolean {
+  const sqlite = getSqliteClient(db);
+  if (!sqlite || !hasTicketResolutionCommitsColumn(db)) return false;
+
+  const normalized = normalizeCommitShas(commitShas);
+  sqlite
+    .prepare(`UPDATE tickets SET ${TICKET_RESOLUTION_COMMITS_COLUMN} = ?, updated_at = ? WHERE id = ?`)
+    .run(normalized.length > 0 ? JSON.stringify(normalized) : null, updatedAt, ticketInternalId);
+  return true;
 }
 
 export function getTicketsByRepo(
@@ -1256,4 +1290,36 @@ export function deleteProtectedArtifact(db: DB, repoId: number, pathPattern: str
 
 function isMissingTableError(error: unknown, tableName: string): boolean {
   return error instanceof Error && error.message.includes(`no such table: ${tableName}`);
+}
+
+function getSqliteClient(db: DB): SqliteDatabase | undefined {
+  const directClient = (db as DB & { $client?: SqliteDatabase }).$client;
+  if (directClient) return directClient;
+  return (db as DB & { session?: { client?: SqliteDatabase } }).session?.client;
+}
+
+function hasTicketResolutionCommitsColumn(db: DB): boolean {
+  const key = db as object;
+  const cached = ticketResolutionCommitsColumnCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const sqlite = getSqliteClient(db);
+  if (!sqlite) return false;
+
+  const hasColumn = (sqlite.prepare("PRAGMA table_info(tickets)").all() as Array<{ name: string }>)
+    .some((column) => column.name === TICKET_RESOLUTION_COMMITS_COLUMN);
+  ticketResolutionCommitsColumnCache.set(key, hasColumn);
+  return hasColumn;
+}
+
+function normalizeCommitShas(commitShas: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const sha of commitShas) {
+    const trimmed = sha.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+  return normalized;
 }

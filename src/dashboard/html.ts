@@ -1132,6 +1132,9 @@ function renderTicketDetail(error){
   }).join('')||'<div class="ticket-help">No linked patches.</div>';
   var tags=(t.tags||[]).length?(t.tags||[]).join(', '):'-';
   var affectedPaths=(t.affectedPaths||[]).length?(t.affectedPaths||[]).join(', '):'-';
+  var resolutionCommits=(t.resolutionCommitShas||[]).length?(t.resolutionCommitShas||[]):(t.commitSha?[t.commitSha]:[]);
+  var commitLabel=resolutionCommits.length>1?'Commits':'Commit';
+  var commitValue=resolutionCommits.length?resolutionCommits.map(function(sha){return esc((sha||'-').slice(0,7));}).join(', '):'-';
   var quorumSection=renderTicketQuorumDetail(t.quorum);
   var actor=getSelectedActor();
   var assigneeOptions=dashboardAgents.map(function(agent){
@@ -1154,7 +1157,7 @@ function renderTicketDetail(error){
     +'<div class="detail-block"><div class="detail-label">Description</div><div class="detail-value">'+esc(t.description||'-')+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Acceptance Criteria</div><div class="detail-value">'+esc(t.acceptanceCriteria||'-')+'</div></div>'
     +'<div class="detail-block"><div class="detail-label">Ownership</div><div class="detail-value">Creator: '+esc(t.creatorAgentId||'-')+'<br>Assignee: '+esc(t.assigneeAgentId||'-')+'</div></div>'
-    +'<div class="detail-block"><div class="detail-label">Context</div><div class="detail-value">Severity: '+esc(t.severity||'-')+'<br>Priority: '+esc(String(t.priority??'-'))+'<br>Commit: '+esc((t.commitSha||'-').slice(0,7))+'</div></div>'
+    +'<div class="detail-block"><div class="detail-label">Context</div><div class="detail-value">Severity: '+esc(t.severity||'-')+'<br>Priority: '+esc(String(t.priority??'-'))+'<br>'+commitLabel+': '+commitValue+'</div></div>'
     +(function(){var hint=t.nextActionHint;if(!hint)return '';var cls=hint.kind==='reviewer'?'purple':hint.kind==='assignee'?'blue':'orange';var actorName=hint.agentName?' · '+hint.agentName:'';return '<div class="detail-block"><div class="detail-label">Next Action (Heuristic)</div><div class="detail-value"><span class="badge badge-'+cls+'">'+esc(hint.label+actorName)+'</span><br>'+esc(hint.reason||'')+'</div></div>';})()
     +(t.humanActionRequired?'<div class="detail-block"><div class="detail-label">Human Action Required</div><div class="detail-value"><span class="badge badge-orange">'+esc(humanActionReasonLabel(t.humanActionReason))+'</span></div></div>':'')
     +'<div class="detail-block"><div class="detail-label">Tags</div><div class="detail-value">'+esc(tags)+'</div></div>'

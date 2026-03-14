@@ -148,6 +148,7 @@ function createTables(sqlite: Database.Database): void {
       assignee_agent_id TEXT,
       resolved_by_agent_id TEXT,
       commit_sha TEXT NOT NULL,
+      resolution_commits_json TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`,
@@ -432,4 +433,11 @@ function runMigrations(sqlite: Database.Database): void {
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_ticket_history_ticket_id ON ticket_history(ticket_id)").run();
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_ticket_comments_ticket_id ON ticket_comments(ticket_id)").run();
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_patches_ticket_id ON patches(ticket_id)").run();
+
+  // Migration 14: Add multi-commit resolution traceability for umbrella tickets
+  try {
+    sqlite.prepare("SELECT resolution_commits_json FROM tickets LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE tickets ADD COLUMN resolution_commits_json TEXT").run();
+  }
 }

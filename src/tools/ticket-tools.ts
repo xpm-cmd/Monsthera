@@ -15,6 +15,7 @@ import {
 import * as queries from "../db/queries.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
+import { getHead } from "../git/operations.js";
 import {
   TicketStatus, TicketSeverity,
 } from "../../schemas/ticket.js";
@@ -131,6 +132,9 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     },
     async ({ ticketId, status: targetStatus, comment, skipKnowledgeCapture, agentId, sessionId }) => {
       const c = await getContext();
+      const resolvedCommitSha = targetStatus === "resolved"
+        ? await getHead({ cwd: c.repoPath })
+        : undefined;
       const result = updateTicketStatusRecord({
         db: c.db,
         repoId: c.repoId,
@@ -155,6 +159,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         status: targetStatus as TicketStatusType,
         comment,
         skipKnowledgeCapture,
+        commitSha: resolvedCommitSha,
         agentId,
         sessionId,
       });

@@ -28,7 +28,7 @@ function createTestDb() {
     CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', provider TEXT, model TEXT, model_family TEXT, model_version TEXT, identity_source TEXT, role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL);
     CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT);
-    CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, resolution_commits_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE review_verdicts (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, specialization TEXT NOT NULL, verdict TEXT NOT NULL, reasoning TEXT, created_at TEXT NOT NULL, superseded_by INTEGER);
@@ -347,6 +347,96 @@ describe("ticket service system context", () => {
       knowledgeKey: null,
     });
     expect(queries.getKnowledgeByKey(db, `solution:ticket:${skippedTicketId.toLowerCase()}`)).toBeUndefined();
+  });
+
+  it("stores the provided commit SHA when resolving a ticket", async () => {
+    const createResult = await createTicketRecord(ctx, {
+      title: "Backfill commit metadata",
+      description: "Resolution should carry the landing commit instead of the creation HEAD.",
+      severity: "medium",
+      priority: 3,
+      tags: ["audit"],
+      affectedPaths: ["src/tickets/service.ts"],
+      acceptanceCriteria: "Resolved ticket points at landing commit",
+    });
+    expect(createResult.ok).toBe(true);
+    if (!createResult.ok) return;
+
+    const ticketId = createResult.data.ticketId as string;
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+    queries.updateTicket(db, ticket.id, { status: "ready_for_commit", commitSha: "stale000" });
+
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId,
+      status: "resolved",
+      comment: "Resolved after merge.",
+      commitSha: "def5678",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(queries.getTicketByTicketId(db, ticketId)?.commitSha).toBe("def5678");
+    expect(queries.getTicketResolutionCommitShas(db, ticket.id)).toEqual(["def5678"]);
+  });
+
+  it("prefers referenced child ticket commits over fallback HEAD when resolving umbrella tickets", () => {
+    const childOne = queries.insertTicket(db, {
+      repoId,
+      ticketId: "TKT-child001",
+      title: "Child one",
+      description: "Implements the first slice.",
+      status: "resolved",
+      severity: "medium",
+      priority: 4,
+      creatorAgentId: "agent-dev",
+      creatorSessionId: "session-dev",
+      resolvedByAgentId: "system:service",
+      commitSha: "child111",
+      createdAt: "2026-03-12T01:00:00.000Z",
+      updatedAt: "2026-03-12T01:10:00.000Z",
+    });
+    const childTwo = queries.insertTicket(db, {
+      repoId,
+      ticketId: "TKT-child002",
+      title: "Child two",
+      description: "Implements the second slice.",
+      status: "resolved",
+      severity: "medium",
+      priority: 4,
+      creatorAgentId: "agent-dev",
+      creatorSessionId: "session-dev",
+      resolvedByAgentId: "system:service",
+      commitSha: "child222",
+      createdAt: "2026-03-12T01:20:00.000Z",
+      updatedAt: "2026-03-12T01:30:00.000Z",
+    });
+    queries.setTicketResolutionCommitShas(db, childOne.id, ["child111"]);
+    queries.setTicketResolutionCommitShas(db, childTwo.id, ["child222"]);
+
+    const parent = queries.insertTicket(db, {
+      repoId,
+      ticketId: "TKT-parent001",
+      title: "Umbrella delivery",
+      description: "Roll up the child tickets into one delivered milestone.",
+      status: "ready_for_commit",
+      severity: "high",
+      priority: 7,
+      creatorAgentId: "agent-dev",
+      creatorSessionId: "session-dev",
+      commitSha: "stale000",
+      createdAt: "2026-03-12T02:00:00.000Z",
+      updatedAt: "2026-03-12T02:05:00.000Z",
+    });
+
+    const result = updateTicketStatusRecord(ctx, {
+      ticketId: parent.ticketId,
+      status: "resolved",
+      comment: "Umbrella complete after TKT-child001 and TKT-child002 landed.",
+      commitSha: "head999",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(queries.getTicketByTicketId(db, parent.ticketId)?.commitSha).toBe("child111");
+    expect(queries.getTicketResolutionCommitShas(db, parent.id)).toEqual(["child111", "child222", "head999"]);
   });
 
   it("still enforces transition validation in system context", async () => {

@@ -329,6 +329,8 @@ describe("ticket tools", () => {
   it("updates status, writes history, and clears resolvedByAgentId on reopen", async () => {
     const createResult = await createTicket();
     const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+    const createdTicket = queries.getTicketByTicketId(db, ticketId)!;
+    queries.updateTicket(db, createdTicket.id, { commitSha: "stale000" });
 
     await handler("assign_ticket")({
       ticketId,
@@ -381,6 +383,7 @@ describe("ticket tools", () => {
 
     ticket = queries.getTicketByTicketId(db, ticketId)!;
     expect(ticket.resolvedByAgentId).toBe("agent-dev");
+    expect(ticket.commitSha).toBe("abc1234");
 
     await handler("update_ticket_status")({
       ticketId,
