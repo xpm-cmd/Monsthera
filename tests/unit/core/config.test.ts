@@ -173,6 +173,10 @@ describe("AgoraConfigSchema", () => {
 
     expect(result.governance.requireBinding).toBe(true);
     expect(result.governance.modelDiversity.strict).toBe(true);
+    expect(result.governance.reviewerIndependence).toEqual({
+      strict: true,
+      identityKey: "agent",
+    });
   });
 
   it("rejects crossInstance enabled without instanceId", () => {

@@ -6,14 +6,14 @@ import { getIndexedCommit } from "../indexing/indexer.js";
 import { VERSION } from "../core/constants.js";
 import { parseJsonWithSchema, parseStringArrayJson } from "../core/input-hardening.js";
 import type { CoordinationBus } from "../coordination/bus.js";
-import type { TicketQuorumConfig } from "../core/config.js";
+import type { GovernanceConfig, TicketQuorumConfig } from "../core/config.js";
 import { getAgentPresenceSummary } from "../agents/registry.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import { loadTicketTemplates, type TicketTemplate } from "../tickets/templates.js";
 import type { CodeSearchDebugResult } from "../search/debug.js";
 import type { KnowledgeScope, SearchKnowledgeOptions, KnowledgeSearchEntry } from "../knowledge/search.js";
 import type { TicketStatus } from "../../schemas/ticket.js";
-import { buildTicketConsensusReport, inferConsensusTransitionForTicketStatus } from "../tickets/consensus.js";
+import { buildGovernanceOptions, buildTicketConsensusReport, inferConsensusTransitionForTicketStatus } from "../tickets/consensus.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 const SecretLineHitsSchema = z.array(z.object({ pattern: z.string().min(1).optional() }));
@@ -30,6 +30,7 @@ export interface DashboardDeps {
   bus: CoordinationBus;
   globalDb: DB | null;
   ticketQuorum?: TicketQuorumConfig;
+  governance?: GovernanceConfig;
   refreshTicketSearch?: () => void;
   refreshKnowledgeSearch?: (knowledgeIds?: number[]) => void;
   searchDebug?: DashboardSearchDebugProvider;
@@ -1310,6 +1311,10 @@ function buildDashboardTicketQuorum(
     verdictRows,
     config: deps.ticketQuorum,
     transition,
+    governance: buildGovernanceOptions(deps.governance, verdictRows, (agentId: string) => {
+      const agent = resolveAgent(agentId);
+      return agent ? { roleId: agent.roleId, provider: agent.provider, model: agent.model } : undefined;
+    }, ticket.severity),
   });
   const vetoKeys = new Set(consensus.vetoes.map((entry) => `${entry.specialization}:${entry.agentId}`));
   const verdictBySpecialization = new Map(consensus.verdicts.map((entry) => [entry.specialization, entry] as const));
@@ -1372,6 +1377,32 @@ function summarizeDashboardQuorumProgress(consensus: ReturnType<typeof buildTick
       label: "VETO ✗",
       state: "red",
       title: vetoRoles ? `${baseTitle} · veto by ${vetoRoles}` : baseTitle,
+      responded,
+      total,
+    };
+  }
+
+  if (consensus.governance?.strictReviewerIndependenceApplied && consensus.governance?.reviewerIndependence && !consensus.governance.reviewerIndependence.independenceMet) {
+    const duplicateSummary = consensus.governance.reviewerIndependence.duplicateGroups
+      .map((group) => group.specializations.join(", "))
+      .join("; ");
+    return {
+      label: `${progressLabel} !`,
+      state: "orange",
+      title: `${baseTitle} · reviewer independence blocked (${duplicateSummary})`,
+      responded,
+      total,
+    };
+  }
+
+  if (consensus.governance?.strictDiversityApplied && consensus.governance?.modelDiversity && !consensus.governance.modelDiversity.diversityMet) {
+    const duplicateModels = consensus.governance.modelDiversity.duplicateGroups
+      .map((group) => `${group.provider}/${group.model}`)
+      .join(", ");
+    return {
+      label: `${progressLabel} !`,
+      state: "orange",
+      title: `${baseTitle} · model diversity blocked (${duplicateModels})`,
       responded,
       total,
     };

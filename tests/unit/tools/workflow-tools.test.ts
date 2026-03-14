@@ -420,12 +420,15 @@ steps:
         architect: ["Architect Reviewer"],
         security: ["Security Reviewer"],
       },
+      requireDistinctModels: false,
       liveSessions: [{ id: "session-review", agentId: "agent-review" }],
       getAgent: (agentId) => {
         if (agentId !== "agent-review") return undefined;
         return {
           name: "Council Loop Reviewer",
           roleId: "reviewer",
+          provider: "openai",
+          model: "gpt-5",
         };
       },
     });
@@ -440,10 +443,10 @@ steps:
       },
       {
         specialization: "security",
-        agentId: "agent-review",
-        agentName: "Council Loop Reviewer",
-        sessionId: "session-review",
-        status: "resolved",
+        agentId: null,
+        agentName: null,
+        sessionId: null,
+        status: "no_candidate",
       },
     ]);
   });
@@ -455,6 +458,7 @@ steps:
         architect: ["Architect Reviewer"],
         security: ["Security Reviewer"],
       },
+      requireDistinctModels: false,
       liveSessions: [
         { id: "session-architect", agentId: "agent-architect" },
         { id: "session-generic", agentId: "agent-review" },
@@ -464,12 +468,16 @@ steps:
           return {
             name: "Architect Reviewer",
             roleId: "reviewer",
+            provider: "anthropic",
+            model: "opus",
           };
         }
         if (agentId === "agent-review") {
           return {
             name: "Council Loop Reviewer",
             roleId: "reviewer",
+            provider: "openai",
+            model: "gpt-5",
           };
         }
         return undefined;
@@ -490,6 +498,146 @@ steps:
         agentName: "Council Loop Reviewer",
         sessionId: "session-generic",
         status: "resolved",
+      },
+    ]);
+  });
+
+  it("does not assign two roles to different agents on the same model when strict model diversity is enabled", () => {
+    const resolutions = resolveReviewerAssignments({
+      roles: ["architect", "security"],
+      availableReviewRoles: {
+        architect: ["Architect Reviewer"],
+        security: ["Security Reviewer"],
+      },
+      requireDistinctModels: true,
+      liveSessions: [
+        { id: "session-architect", agentId: "agent-architect" },
+        { id: "session-security", agentId: "agent-security" },
+      ],
+      getAgent: (agentId) => {
+        if (agentId === "agent-architect") {
+          return {
+            name: "Architect Reviewer",
+            roleId: "reviewer",
+            provider: "openai",
+            model: "gpt-5",
+          };
+        }
+        if (agentId === "agent-security") {
+          return {
+            name: "Security Reviewer",
+            roleId: "reviewer",
+            provider: "openai",
+            model: "gpt-5",
+          };
+        }
+        return undefined;
+      },
+    });
+
+    expect(resolutions).toEqual([
+      {
+        specialization: "architect",
+        agentId: "agent-architect",
+        agentName: "Architect Reviewer",
+        sessionId: "session-architect",
+        status: "resolved",
+      },
+      {
+        specialization: "security",
+        agentId: null,
+        agentName: null,
+        sessionId: null,
+        status: "no_candidate",
+      },
+    ]);
+  });
+
+  it("allows same-model reviewers for critical-ticket dispatch when model diversity is relaxed", () => {
+    const resolutions = resolveReviewerAssignments({
+      roles: ["architect", "security"],
+      availableReviewRoles: {
+        architect: ["Architect Reviewer"],
+        security: ["Security Reviewer"],
+      },
+      requireDistinctModels: false,
+      liveSessions: [
+        { id: "session-architect", agentId: "agent-architect" },
+        { id: "session-security", agentId: "agent-security" },
+      ],
+      getAgent: (agentId) => {
+        if (agentId === "agent-architect") {
+          return {
+            name: "Architect Reviewer",
+            roleId: "reviewer",
+            provider: "openai",
+            model: "gpt-5",
+          };
+        }
+        if (agentId === "agent-security") {
+          return {
+            name: "Security Reviewer",
+            roleId: "reviewer",
+            provider: "openai",
+            model: "gpt-5",
+          };
+        }
+        return undefined;
+      },
+    });
+
+    expect(resolutions).toEqual([
+      {
+        specialization: "architect",
+        agentId: "agent-architect",
+        agentName: "Architect Reviewer",
+        sessionId: "session-architect",
+        status: "resolved",
+      },
+      {
+        specialization: "security",
+        agentId: "agent-security",
+        agentName: "Security Reviewer",
+        sessionId: "session-security",
+        status: "resolved",
+      },
+    ]);
+  });
+
+  it("does not assign two roles to different sessions of the same agent", () => {
+    const resolutions = resolveReviewerAssignments({
+      roles: ["architect", "security"],
+      availableReviewRoles: {
+        architect: ["Architect Reviewer"],
+        security: ["Security Reviewer"],
+      },
+      requireDistinctModels: false,
+      liveSessions: [
+        { id: "session-a", agentId: "agent-review" },
+        { id: "session-b", agentId: "agent-review" },
+      ],
+      getAgent: () => ({
+        name: "Council Loop Reviewer",
+        roleId: "reviewer",
+        provider: "openai",
+        model: "gpt-5",
+      }),
+    });
+
+    expect(resolutions).toEqual([
+      {
+        specialization: "architect",
+        agentId: "agent-review",
+        agentName: "Council Loop Reviewer",
+        sessionId: "session-a",
+        status: "resolved",
+      },
+      {
+        specialization: "security",
+        agentId: null,
+        agentName: null,
+        sessionId: null,
+        status: "no_candidate",
       },
     ]);
   });

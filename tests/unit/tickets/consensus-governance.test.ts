@@ -4,6 +4,7 @@ import {
   buildConsensusPayload,
   buildGovernanceOptions,
   evaluateModelDiversity,
+  evaluateReviewerIndependence,
   type AgentIdentity,
   type ConsensusGovernanceOptions,
   type NormalizedReviewVerdictRecord,
@@ -14,12 +15,13 @@ function makeVerdict(
   specialization: CouncilSpecializationId,
   verdict: CouncilVerdict,
   agentId = `agent-${specialization}`,
+  sessionId = `session-${agentId}`,
 ): ReviewVerdictRecord {
   return {
     specialization,
     verdict,
     agentId,
-    sessionId: `session-${agentId}`,
+    sessionId,
     reasoning: null,
     createdAt: new Date().toISOString(),
   };
@@ -29,12 +31,13 @@ function makeNormalizedVerdict(
   specialization: CouncilSpecializationId,
   verdict: CouncilVerdict,
   agentId = `agent-${specialization}`,
+  sessionId = `session-${agentId}`,
 ): NormalizedReviewVerdictRecord {
   return {
     specialization,
     verdict,
     agentId,
-    sessionId: `session-${agentId}`,
+    sessionId,
     reasoning: null,
     createdAt: new Date().toISOString(),
   };
@@ -361,6 +364,80 @@ describe("governance: strict diversity enforcement", () => {
   });
 });
 
+describe("governance: reviewer independence", () => {
+  it("deduplicates counted passes when the same agent covers multiple specializations", () => {
+    const verdicts = [
+      makeVerdict("architect", "pass", "agent-review"),
+      makeVerdict("simplifier", "pass", "agent-review"),
+      makeVerdict("security", "pass", "agent-review"),
+      makeVerdict("performance", "pass", "agent-review"),
+    ];
+
+    const result = buildConsensusPayload("TKT-test", verdicts, {
+      requiredPasses: 4,
+      governance: {
+        strictReviewerIndependence: true,
+        reviewerIdentityKey: "agent",
+      },
+    });
+
+    expect(result.counts.pass).toBe(1);
+    expect(result.quorumMet).toBe(false);
+    expect(result.advisoryReady).toBe(false);
+    expect(result.governance?.reviewerIndependence).toMatchObject({
+      identityKey: "agent",
+      distinctReviewers: 1,
+      totalVoters: 4,
+      independenceMet: false,
+    });
+    expect(result.governance?.reviewerIndependence?.duplicateGroups).toEqual([
+      expect.objectContaining({
+        reviewerKey: "agent-review",
+        specializations: ["architect", "simplifier", "security", "performance"],
+      }),
+    ]);
+  });
+
+  it("treats same-agent multi-session verdicts as non-independent in agent mode", () => {
+    const verdicts = [
+      makeNormalizedVerdict("architect", "pass", "agent-review", "session-a"),
+      makeNormalizedVerdict("security", "pass", "agent-review", "session-b"),
+    ];
+
+    const result = evaluateReviewerIndependence(verdicts, "agent");
+
+    expect(result.independenceMet).toBe(false);
+    expect(result.duplicateGroups).toEqual([
+      expect.objectContaining({
+        reviewerKey: "agent-review",
+        sessionIds: ["session-a", "session-b"],
+        specializations: ["architect", "security"],
+      }),
+    ]);
+  });
+
+  it("allows duplicate reviewer identities when strict independence is disabled", () => {
+    const verdicts = [
+      makeVerdict("architect", "pass", "agent-review"),
+      makeVerdict("simplifier", "pass", "agent-review"),
+      makeVerdict("security", "pass", "agent-other"),
+      makeVerdict("performance", "pass", "agent-third"),
+    ];
+
+    const result = buildConsensusPayload("TKT-test", verdicts, {
+      requiredPasses: 4,
+      governance: {
+        strictReviewerIndependence: false,
+        reviewerIdentityKey: "agent",
+      },
+    });
+
+    expect(result.counts.pass).toBe(4);
+    expect(result.quorumMet).toBe(true);
+    expect(result.advisoryReady).toBe(true);
+  });
+});
+
 // ─── buildGovernanceOptions helper ────────────────────────────
 
 describe("buildGovernanceOptions", () => {
@@ -376,7 +453,13 @@ describe("buildGovernanceOptions", () => {
     };
 
     const opts = buildGovernanceOptions(
-      { nonVotingRoles: ["facilitator"], modelDiversity: { strict: false }, requireBinding: false, autoAdvance: true },
+      {
+        nonVotingRoles: ["facilitator"],
+        modelDiversity: { strict: true },
+        reviewerIndependence: { strict: true, identityKey: "agent" },
+        requireBinding: false,
+        autoAdvance: true,
+      },
       verdicts,
       (id) => agentDb[id],
     );
@@ -384,7 +467,9 @@ describe("buildGovernanceOptions", () => {
     expect(opts).toBeDefined();
     expect(opts!.nonVotingAgentIds).toEqual(["agent-fac"]);
     expect(opts!.agentIdentities?.get("agent-dev")).toEqual({ provider: "openai", model: "gpt-4" });
-    expect(opts!.strictDiversity).toBe(false);
+    expect(opts!.strictDiversity).toBe(true);
+    expect(opts!.strictReviewerIndependence).toBe(true);
+    expect(opts!.reviewerIdentityKey).toBe("agent");
   });
 
   it("returns undefined when no governance config is provided", () => {
@@ -398,7 +483,13 @@ describe("buildGovernanceOptions", () => {
     ];
 
     const opts = buildGovernanceOptions(
-      { nonVotingRoles: ["facilitator"], modelDiversity: { strict: false }, requireBinding: false, autoAdvance: true },
+      {
+        nonVotingRoles: ["facilitator"],
+        modelDiversity: { strict: true },
+        reviewerIndependence: { strict: true, identityKey: "agent" },
+        requireBinding: false,
+        autoAdvance: true,
+      },
       verdicts,
       () => undefined,
     );
@@ -406,5 +497,44 @@ describe("buildGovernanceOptions", () => {
     expect(opts).toBeDefined();
     expect(opts!.nonVotingAgentIds).toEqual([]);
     expect(opts!.agentIdentities?.size).toBe(0);
+  });
+
+  it("waives strict model diversity for critical tickets only", () => {
+    const verdicts = [
+      makeVerdict("architect", "pass", "agent-a"),
+      makeVerdict("security", "pass", "agent-b"),
+    ];
+    const agentDb: Record<string, { roleId: string; provider: string | null; model: string | null }> = {
+      "agent-a": { roleId: "reviewer", provider: "openai", model: "gpt-5" },
+      "agent-b": { roleId: "reviewer", provider: "openai", model: "gpt-5" },
+    };
+
+    const normal = buildGovernanceOptions(
+      {
+        nonVotingRoles: ["facilitator"],
+        modelDiversity: { strict: true },
+        reviewerIndependence: { strict: true, identityKey: "agent" },
+        requireBinding: false,
+        autoAdvance: true,
+      },
+      verdicts,
+      (id) => agentDb[id],
+      "high",
+    );
+    const critical = buildGovernanceOptions(
+      {
+        nonVotingRoles: ["facilitator"],
+        modelDiversity: { strict: true },
+        reviewerIndependence: { strict: true, identityKey: "agent" },
+        requireBinding: false,
+        autoAdvance: true,
+      },
+      verdicts,
+      (id) => agentDb[id],
+      "critical",
+    );
+
+    expect(normal?.strictDiversity).toBe(true);
+    expect(critical?.strictDiversity).toBe(false);
   });
 });

@@ -45,15 +45,33 @@ export interface ModelDiversityResult {
   diversityMet: boolean;
 }
 
+export interface ReviewerIndependenceResult {
+  identityKey: "agent" | "agent_session";
+  distinctReviewers: number;
+  totalVoters: number;
+  duplicateGroups: Array<{
+    reviewerKey: string;
+    agentIds: string[];
+    sessionIds: string[];
+    specializations: CouncilSpecializationIdValue[];
+  }>;
+  independenceMet: boolean;
+}
+
 export interface GovernanceEvaluation {
   nonVotingExcluded: NormalizedReviewVerdictRecord[];
   modelDiversity: ModelDiversityResult | null;
+  reviewerIndependence: ReviewerIndependenceResult | null;
+  strictDiversityApplied: boolean;
+  strictReviewerIndependenceApplied: boolean;
 }
 
 export interface ConsensusGovernanceOptions {
   nonVotingAgentIds?: string[];
   agentIdentities?: ReadonlyMap<string, AgentIdentity>;
   strictDiversity?: boolean;
+  strictReviewerIndependence?: boolean;
+  reviewerIdentityKey?: "agent" | "agent_session";
 }
 
 // ─── Consensus payload (flat) ─────────────────────────────────
@@ -161,6 +179,27 @@ function countDiversityAdjustedPasses(
   return count;
 }
 
+function reviewerIdentityForVerdict(
+  verdict: Pick<NormalizedReviewVerdictRecord, "agentId" | "sessionId">,
+  identityKey: "agent" | "agent_session",
+): string {
+  return identityKey === "agent_session"
+    ? `${verdict.agentId}::${verdict.sessionId}`
+    : verdict.agentId;
+}
+
+function countReviewerAdjustedPasses(
+  verdicts: NormalizedReviewVerdictRecord[],
+  identityKey: "agent" | "agent_session",
+): number {
+  const seen = new Set<string>();
+  for (const verdict of verdicts) {
+    if (verdict.verdict !== "pass") continue;
+    seen.add(reviewerIdentityForVerdict(verdict, identityKey));
+  }
+  return seen.size;
+}
+
 // ─── Public API ───────────────────────────────────────────────
 
 export function buildConsensusPayload(
@@ -202,10 +241,23 @@ export function buildConsensusPayload(
   const diversityResult = gov?.agentIdentities
     ? evaluateModelDiversity(verdicts, gov.agentIdentities)
     : null;
+  const reviewerIndependence = gov
+    ? evaluateReviewerIndependence(verdicts, gov.reviewerIdentityKey ?? "agent")
+    : null;
 
-  const effectivePassCount = gov?.strictDiversity && diversityResult
-    ? countDiversityAdjustedPasses(verdicts, gov.agentIdentities!)
-    : verdicts.filter((entry) => entry.verdict === "pass").length;
+  let effectivePassCount = verdicts.filter((entry) => entry.verdict === "pass").length;
+  if (gov?.strictReviewerIndependence && reviewerIndependence) {
+    effectivePassCount = Math.min(
+      effectivePassCount,
+      countReviewerAdjustedPasses(verdicts, gov.reviewerIdentityKey ?? "agent"),
+    );
+  }
+  if (gov?.strictDiversity && diversityResult) {
+    effectivePassCount = Math.min(
+      effectivePassCount,
+      countDiversityAdjustedPasses(verdicts, gov.agentIdentities!),
+    );
+  }
 
   const counts = {
     pass: effectivePassCount,
@@ -221,9 +273,18 @@ export function buildConsensusPayload(
   const quorumMet = counts.pass >= requiredPasses;
   const blockedByVeto = vetoes.length > 0;
   const diversityBlocked = gov?.strictDiversity === true && diversityResult != null && !diversityResult.diversityMet;
+  const reviewerIndependenceBlocked = gov?.strictReviewerIndependence === true
+    && reviewerIndependence != null
+    && !reviewerIndependence.independenceMet;
 
   const governance: GovernanceEvaluation | undefined = gov
-    ? { nonVotingExcluded, modelDiversity: diversityResult }
+    ? {
+        nonVotingExcluded,
+        modelDiversity: diversityResult,
+        reviewerIndependence,
+        strictDiversityApplied: gov.strictDiversity === true,
+        strictReviewerIndependenceApplied: gov.strictReviewerIndependence === true,
+      }
     : undefined;
 
   return {
@@ -234,7 +295,7 @@ export function buildConsensusPayload(
     counts,
     quorumMet,
     blockedByVeto,
-    advisoryReady: quorumMet && !blockedByVeto && !diversityBlocked,
+    advisoryReady: quorumMet && !blockedByVeto && !diversityBlocked && !reviewerIndependenceBlocked,
     missingSpecializations,
     vetoes,
     verdicts,
@@ -316,6 +377,7 @@ export function buildGovernanceOptions(
   governance: GovernanceConfig | undefined,
   verdictRows: ReviewVerdictRecord[],
   getAgentRecord: (agentId: string) => { roleId: string; provider: string | null; model: string | null } | undefined,
+  ticketSeverity?: string | null,
 ): ConsensusGovernanceOptions | undefined {
   if (!governance) return undefined;
 
@@ -340,7 +402,56 @@ export function buildGovernanceOptions(
   return {
     nonVotingAgentIds,
     agentIdentities,
-    strictDiversity: governance.modelDiversity?.strict ?? false,
+    strictDiversity: (governance.modelDiversity?.strict ?? true) && ticketSeverity !== "critical",
+    strictReviewerIndependence: governance.reviewerIndependence?.strict ?? true,
+    reviewerIdentityKey: governance.reviewerIndependence?.identityKey ?? "agent",
+  };
+}
+
+export function evaluateReviewerIndependence(
+  verdicts: NormalizedReviewVerdictRecord[],
+  identityKey: "agent" | "agent_session" = "agent",
+): ReviewerIndependenceResult {
+  const passVerdicts = verdicts.filter((entry) => entry.verdict === "pass");
+  const groups = new Map<string, {
+    reviewerKey: string;
+    agentIds: Set<string>;
+    sessionIds: Set<string>;
+    specializations: CouncilSpecializationIdValue[];
+  }>();
+
+  for (const verdict of passVerdicts) {
+    const reviewerKey = reviewerIdentityForVerdict(verdict, identityKey);
+    const existing = groups.get(reviewerKey);
+    if (existing) {
+      existing.agentIds.add(verdict.agentId);
+      existing.sessionIds.add(verdict.sessionId);
+      existing.specializations.push(verdict.specialization);
+      continue;
+    }
+    groups.set(reviewerKey, {
+      reviewerKey,
+      agentIds: new Set([verdict.agentId]),
+      sessionIds: new Set([verdict.sessionId]),
+      specializations: [verdict.specialization],
+    });
+  }
+
+  const duplicateGroups = [...groups.values()]
+    .filter((group) => group.specializations.length > 1)
+    .map((group) => ({
+      reviewerKey: group.reviewerKey,
+      agentIds: [...group.agentIds],
+      sessionIds: [...group.sessionIds],
+      specializations: [...group.specializations],
+    }));
+
+  return {
+    identityKey,
+    distinctReviewers: groups.size,
+    totalVoters: passVerdicts.length,
+    duplicateGroups,
+    independenceMet: duplicateGroups.length === 0,
   };
 }
 

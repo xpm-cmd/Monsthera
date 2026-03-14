@@ -230,7 +230,8 @@ export const AgoraConfigSchema = z.object({
   ticketQuorum: TicketQuorumConfigSchema.default(DEFAULT_TICKET_QUORUM),
   governance: GovernanceConfigSchema.default({
     nonVotingRoles: ["facilitator"],
-    modelDiversity: { strict: false },
+    modelDiversity: { strict: true },
+    reviewerIndependence: { strict: true, identityKey: "agent" },
     requireBinding: false,
     autoAdvance: true,
   }),
@@ -319,6 +320,14 @@ export function mergeConfigSources(
               modelDiversity: {
                 ...(merged.governance?.modelDiversity ?? {}),
                 ...(governance.modelDiversity ?? {}),
+              },
+            }
+          : {}),
+        ...(governance.reviewerIndependence || merged.governance?.reviewerIndependence
+          ? {
+              reviewerIndependence: {
+                ...(merged.governance?.reviewerIndependence ?? {}),
+                ...(governance.reviewerIndependence ?? {}),
               },
             }
           : {}),

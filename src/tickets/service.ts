@@ -390,7 +390,7 @@ export function updateTicketStatusRecord(
       ? buildGovernanceOptions(ctx.governance, verdictRows, (agentId) => {
           const agent = queries.getAgent(ctx.db, agentId);
           return agent ? { roleId: agent.roleId, provider: agent.provider, model: agent.model } : undefined;
-        })
+        }, ticket.severity)
       : undefined;
     const consensus = isGated
       ? evaluateTicketTransitionConsensus({
@@ -976,6 +976,14 @@ function buildConsensusBlockMessage(
   transitionKey: string,
   consensus: ConsensusPayload,
 ): string {
+  const reviewerIndependence = consensus.governance?.reviewerIndependence;
+  if (consensus.governance?.strictReviewerIndependenceApplied && reviewerIndependence && !reviewerIndependence.independenceMet) {
+    const duplicateSummary = reviewerIndependence.duplicateGroups
+      .map((group) => `${group.agentIds.join(", ")} covering ${group.specializations.join(", ")}`)
+      .join("; ");
+    return `Reviewer independence not met for ${transitionKey}: ${duplicateSummary}. Require distinct reviewer identities or use an explicit admin override.`;
+  }
+
   if (consensus.blockedByVeto) {
     const vetoSummary = consensus.vetoes
       .map((veto) => {
@@ -986,6 +994,14 @@ function buildConsensusBlockMessage(
       })
       .join("; ");
     return `Council veto blocks ${transitionKey}: ${vetoSummary}. Submit updated verdicts to clear the veto.`;
+  }
+
+  const modelDiversity = consensus.governance?.modelDiversity;
+  if (consensus.governance?.strictDiversityApplied && modelDiversity && !modelDiversity.diversityMet) {
+    const duplicateModels = modelDiversity.duplicateGroups
+      .map((group) => `${group.provider}/${group.model} covering ${group.specializations.join(", ")}`)
+      .join("; ");
+    return `Reviewer model diversity not met for ${transitionKey}: ${duplicateModels}. Require distinct reviewer models or use an explicit admin override.`;
   }
 
   const passesNeeded = Math.max(0, consensus.requiredPasses - consensus.counts.pass);

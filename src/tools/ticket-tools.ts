@@ -623,7 +623,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const govOpts = buildGovernanceOptions(c.config?.governance, verdictRows, (aid) => {
         const a = queries.getAgent(c.db, aid);
         return a ? { roleId: a.roleId, provider: a.provider, model: a.model } : undefined;
-      });
+      }, ticket.severity);
 
       const consensus = buildTicketConsensusReport({
         ticketId,
@@ -749,7 +749,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const govOpts = buildGovernanceOptions(c.config?.governance, verdictRows, (aid) => {
         const a = queries.getAgent(c.db, aid);
         return a ? { roleId: a.roleId, provider: a.provider, model: a.model } : undefined;
-      });
+      }, ticket.severity);
 
       return okJson(buildTicketConsensusReport({
         ticketId,

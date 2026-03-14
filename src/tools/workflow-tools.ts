@@ -21,6 +21,8 @@ interface LiveReviewerCandidate {
   agentName: string;
   roleId: string;
   sessionId: string;
+  provider: string | null;
+  model: string | null;
 }
 
 export function registerWorkflowTools(server: McpServer, getContext: GetContext): void {
@@ -105,6 +107,8 @@ export function registerWorkflowTools(server: McpServer, getContext: GetContext)
               roles,
               availableReviewRoles: catalog.availableReviewRoles,
               liveSessions,
+              requireDistinctModels: (c.config?.governance?.modelDiversity?.strict ?? true)
+                && ticket?.severity !== "critical",
               getAgent: (reviewerAgentId) => queries.getAgent(c.db, reviewerAgentId),
             });
 
@@ -181,7 +185,13 @@ export function resolveReviewerAssignments(input: {
   roles: string[];
   availableReviewRoles: Record<string, string[]>;
   liveSessions: Array<{ id: string; agentId: string }>;
-  getAgent: (agentId: string) => { name: string; roleId: string } | undefined;
+  requireDistinctModels?: boolean;
+  getAgent: (agentId: string) => {
+    name: string;
+    roleId: string;
+    provider?: string | null;
+    model?: string | null;
+  } | undefined;
 }): ReviewerResolution[] {
   const liveCandidates = input.liveSessions.flatMap((session) => {
     const agent = input.getAgent(session.agentId);
@@ -191,13 +201,24 @@ export function resolveReviewerAssignments(input: {
       agentName: agent.name,
       roleId: agent.roleId,
       sessionId: session.id,
+      provider: agent.provider ?? null,
+      model: agent.model ?? null,
     } satisfies LiveReviewerCandidate];
   });
   const reservedSessions = new Set<string>();
+  const reservedAgentIds = new Set<string>();
+  const reservedModels = new Set<string>();
 
   return input.roles.map((role): ReviewerResolution => {
     const preferredNames = input.availableReviewRoles[role] ?? [];
-    const resolved = pickReviewerCandidate(liveCandidates, preferredNames, reservedSessions);
+    const resolved = pickReviewerCandidate(
+      liveCandidates,
+      preferredNames,
+      reservedSessions,
+      reservedAgentIds,
+      reservedModels,
+      input.requireDistinctModels === true,
+    );
     if (!resolved) {
       return {
         specialization: role,
@@ -209,6 +230,9 @@ export function resolveReviewerAssignments(input: {
     }
 
     reservedSessions.add(resolved.sessionId);
+    reservedAgentIds.add(resolved.agentId);
+    const modelKey = getReviewerModelKey(resolved);
+    if (modelKey) reservedModels.add(modelKey);
     return {
       specialization: role,
       agentId: resolved.agentId,
@@ -227,24 +251,45 @@ function pickReviewerCandidate(
   liveCandidates: LiveReviewerCandidate[],
   preferredNames: string[],
   reservedSessions: Set<string>,
+  reservedAgentIds: Set<string>,
+  reservedModels: Set<string>,
+  requireDistinctModels: boolean,
 ): LiveReviewerCandidate | null {
-  const preferred = pickCandidate(liveCandidates, preferredNames, reservedSessions, true)
-    ?? pickCandidate(liveCandidates, preferredNames, reservedSessions, false);
+  const preferred = pickCandidate(liveCandidates, preferredNames, reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, true)
+    ?? pickCandidate(liveCandidates, preferredNames, reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, false);
   if (preferred) return preferred;
 
-  return pickCandidate(liveCandidates, [], reservedSessions, true)
-    ?? pickCandidate(liveCandidates, [], reservedSessions, false);
+  return pickCandidate(liveCandidates, [], reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, true)
+    ?? pickCandidate(liveCandidates, [], reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, false);
 }
 
 function pickCandidate(
   liveCandidates: LiveReviewerCandidate[],
   preferredNames: string[],
   reservedSessions: Set<string>,
+  reservedAgentIds: Set<string>,
+  reservedModels: Set<string>,
+  requireDistinctModels: boolean,
   preferUnreserved: boolean,
 ): LiveReviewerCandidate | null {
   const pool = liveCandidates.filter((candidate) => (
     (!preferUnreserved || !reservedSessions.has(candidate.sessionId))
+    && !reservedAgentIds.has(candidate.agentId)
     && (preferredNames.length === 0 || preferredNames.includes(candidate.agentName))
+    && (!requireDistinctModels || isDistinctModelCandidate(candidate, reservedModels))
   ));
   return pool[0] ?? null;
+}
+
+function getReviewerModelKey(candidate: Pick<LiveReviewerCandidate, "provider" | "model">): string | null {
+  if (!candidate.provider || !candidate.model) return null;
+  return `${candidate.provider}::${candidate.model}`;
+}
+
+function isDistinctModelCandidate(
+  candidate: Pick<LiveReviewerCandidate, "provider" | "model">,
+  reservedModels: Set<string>,
+): boolean {
+  const modelKey = getReviewerModelKey(candidate);
+  return modelKey !== null && !reservedModels.has(modelKey);
 }

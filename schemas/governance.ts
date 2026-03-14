@@ -13,7 +13,12 @@ export const GOVERNANCE_ANALYTICAL_SPECIALIZATIONS: CouncilSpecializationIdValue
  * provider+model pair are deduplicated — only one counts toward quorum.
  */
 export const ModelDiversityConfigSchema = z.object({
-  strict: z.boolean().default(false),
+  strict: z.boolean().default(true),
+});
+
+export const ReviewerIndependenceConfigSchema = z.object({
+  strict: z.boolean().default(true),
+  identityKey: z.enum(["agent", "agent_session"]).default("agent"),
 });
 
 /**
@@ -29,9 +34,11 @@ export const ModelDiversityConfigSchema = z.object({
 export const GovernanceConfigSchema = z.object({
   nonVotingRoles: z.array(RoleId).default(["facilitator"]),
   modelDiversity: ModelDiversityConfigSchema.default({ strict: false }),
+  reviewerIndependence: ReviewerIndependenceConfigSchema.default({ strict: true, identityKey: "agent" }),
   requireBinding: z.boolean().default(false),
   autoAdvance: z.boolean().default(true),
 });
 
 export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
 export type ModelDiversityConfig = z.infer<typeof ModelDiversityConfigSchema>;
+export type ReviewerIndependenceConfig = z.infer<typeof ReviewerIndependenceConfigSchema>;
