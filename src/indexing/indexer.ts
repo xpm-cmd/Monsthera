@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import type * as schema from "../db/schema.js";
 import * as tables from "../db/schema.js";
 import { getHead, getAllTrackedFiles, getFileContent, getChangedFilesSinceCommit } from "../git/operations.js";
@@ -93,12 +93,23 @@ export async function fullIndex(opts: IndexOptions): Promise<IndexResult> {
 
   if (existing) {
     db.update(tables.indexState)
-      .set({ dbIndexedCommit: commit, indexedAt: now, lastSuccess: now, lastError })
+      .set({
+        dbIndexedCommit: commit,
+        indexedAt: now,
+        ...(errors.length === 0 ? { lastSuccess: now } : {}),
+        lastError,
+      })
       .where(eq(tables.indexState.repoId, repoId))
       .run();
   } else {
     db.insert(tables.indexState)
-      .values({ repoId, dbIndexedCommit: commit, indexedAt: now, lastSuccess: now, lastError })
+      .values({
+        repoId,
+        dbIndexedCommit: commit,
+        indexedAt: now,
+        ...(errors.length === 0 ? { lastSuccess: now } : {}),
+        lastError,
+      })
       .run();
   }
 
@@ -142,51 +153,66 @@ export async function incrementalIndex(lastCommit: string, opts: IndexOptions): 
   let filesIndexed = 0;
   let filesSkipped = 0;
 
-  for (const change of changedFiles) {
-    // Helper: delete a file and its imports (imports FK → files.id)
-    const deleteFileByPath = () => {
-      const existing = db.select({ id: tables.files.id }).from(tables.files)
-        .where(and(eq(tables.files.repoId, repoId), eq(tables.files.path, change.path)))
-        .get();
-      if (existing) {
-        db.delete(tables.imports).where(eq(tables.imports.sourceFileId, existing.id)).run();
-        db.delete(tables.files).where(eq(tables.files.id, existing.id)).run();
-      }
-    };
+  // Wrap all DB writes in a single transaction for atomicity and batched fsync.
+  // Async parsing (tree-sitter) happens in-memory; DB ops are sync (better-sqlite3).
+  db.run(sql`BEGIN IMMEDIATE`);
+  try {
+    for (const change of changedFiles) {
+      // Helper: delete a file and its imports (imports FK → files.id)
+      const deleteFileByPath = () => {
+        const existing = db.select({ id: tables.files.id }).from(tables.files)
+          .where(and(eq(tables.files.repoId, repoId), eq(tables.files.path, change.path)))
+          .get();
+        if (existing) {
+          db.delete(tables.imports).where(eq(tables.imports.sourceFileId, existing.id)).run();
+          db.delete(tables.files).where(eq(tables.files.id, existing.id)).run();
+        }
+      };
 
-    if (change.status === "D") {
-      deleteFileByPath();
-      filesIndexed++;
-      continue;
-    }
-
-    try {
-      // Delete old record and re-index
-      deleteFileByPath();
-
-      const result = await indexSingleFile(change.path, currentHead, opts);
-      if (result === "skipped") {
-        filesSkipped++;
-      } else {
+      if (change.status === "D") {
+        deleteFileByPath();
         filesIndexed++;
+        continue;
       }
-    } catch (err) {
-      errors.push({ path: change.path, error: err instanceof Error ? err.message : String(err) });
-      filesSkipped++;
+
+      try {
+        // Delete old record and re-index
+        deleteFileByPath();
+
+        const result = await indexSingleFile(change.path, currentHead, opts);
+        if (result === "skipped") {
+          filesSkipped++;
+        } else {
+          filesIndexed++;
+        }
+      } catch (err) {
+        errors.push({ path: change.path, error: err instanceof Error ? err.message : String(err) });
+        filesSkipped++;
+      }
     }
+
+    await validateCustomWorkflows(repoPath, onProgress);
+
+    // Update index state
+    const now = new Date().toISOString();
+    const lastError = errors.length > 0
+      ? errors.map(e => `${e.path}: ${e.error}`).join('; ').slice(0, 1000)
+      : null;
+    db.update(tables.indexState)
+      .set({
+        dbIndexedCommit: currentHead,
+        indexedAt: now,
+        ...(errors.length === 0 ? { lastSuccess: now } : {}),
+        lastError,
+      })
+      .where(eq(tables.indexState.repoId, repoId))
+      .run();
+
+    db.run(sql`COMMIT`);
+  } catch (err) {
+    db.run(sql`ROLLBACK`);
+    throw err;
   }
-
-  await validateCustomWorkflows(repoPath, onProgress);
-
-  // Update index state
-  const now = new Date().toISOString();
-  const lastError = errors.length > 0
-    ? errors.map(e => `${e.path}: ${e.error}`).join('; ').slice(0, 1000)
-    : null;
-  db.update(tables.indexState)
-    .set({ dbIndexedCommit: currentHead, indexedAt: now, lastSuccess: now, lastError })
-    .where(eq(tables.indexState.repoId, repoId))
-    .run();
 
   return {
     commit: currentHead,
