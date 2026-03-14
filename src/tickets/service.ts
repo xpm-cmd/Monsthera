@@ -513,6 +513,22 @@ export function updateTicketStatusRecord(
       })
     : null;
   const resolvedCommitSha = resolutionCommitShas[0] ?? input.commitSha?.trim() ?? null;
+
+  // Shared SHA warning: warn if this commit is already associated with other resolved tickets
+  let sharedCommitWarning: string | null = null;
+  const effectiveCommitSha = resolvedCommitSha ?? ticket.commitSha;
+  if (input.status === "resolved" && effectiveCommitSha && !isSystemActor) {
+    const otherTickets = ctx.db.select({ ticketId: tables.tickets.ticketId })
+      .from(tables.tickets)
+      .where(eq(tables.tickets.commitSha, effectiveCommitSha))
+      .all()
+      .filter((row) => row.ticketId !== input.ticketId);
+    if (otherTickets.length > 0) {
+      sharedCommitWarning = `Commit ${effectiveCommitSha.slice(0, 7)} is already associated with ${otherTickets.length} other ticket(s): ${otherTickets.map((t) => t.ticketId).join(", ")}. Consider atomic commits per ticket for safe rollback.`;
+      ctx.insight.warn(sharedCommitWarning);
+    }
+  }
+
   const updates: Partial<Pick<typeof tables.tickets.$inferInsert, "status" | "resolvedByAgentId" | "commitSha" | "assigneeAgentId">> = {
     status: input.status,
   };
@@ -616,6 +632,7 @@ export function updateTicketStatusRecord(
     knowledgeCaptured: Boolean(knowledgeEntry),
     knowledgeKey: knowledgeEntry?.key ?? null,
     ...(resolutionRateWarning ? { resolutionRateWarning } : {}),
+    ...(sharedCommitWarning ? { sharedCommitWarning } : {}),
   });
 }
 

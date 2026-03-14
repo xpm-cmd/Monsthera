@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { z } from "zod/v4";
 import type * as schema from "../db/schema.js";
+import * as tables from "../db/schema.js";
 import * as queries from "../db/queries.js";
 import { getIndexedCommit } from "../indexing/indexer.js";
 import { VERSION } from "../core/constants.js";
@@ -541,6 +543,38 @@ export function getTicketMetrics(deps: DashboardDeps) {
     })),
     assigneeLoad: assigneeLoad.slice(0, 6),
     oldestOpen,
+    commitHealth: getCommitToTicketHealth(deps),
+  };
+}
+
+function getCommitToTicketHealth(deps: DashboardDeps) {
+  const resolvedTickets = deps.db.select({
+    ticketId: tables.tickets.ticketId,
+    commitSha: tables.tickets.commitSha,
+  })
+    .from(tables.tickets)
+    .where(eq(tables.tickets.repoId, deps.repoId))
+    .all()
+    .filter((row) => row.commitSha);
+
+  const shaToTickets = new Map<string, string[]>();
+  for (const row of resolvedTickets) {
+    if (!row.commitSha) continue;
+    const list = shaToTickets.get(row.commitSha) ?? [];
+    list.push(row.ticketId);
+    shaToTickets.set(row.commitSha, list);
+  }
+
+  const multiTicketCommits = [...shaToTickets.entries()]
+    .filter(([, tickets]) => tickets.length > 1)
+    .map(([sha, tickets]) => ({ sha: sha.slice(0, 7), ticketCount: tickets.length, ticketIds: tickets }))
+    .sort((a, b) => b.ticketCount - a.ticketCount);
+
+  return {
+    totalResolvedWithCommit: resolvedTickets.length,
+    uniqueCommits: shaToTickets.size,
+    multiTicketCommitCount: multiTicketCommits.length,
+    multiTicketCommits: multiTicketCommits.slice(0, 5),
   };
 }
 

@@ -1983,4 +1983,63 @@ describe("ticket service governance: resolution guards", () => {
 
     expect(warnings.some((w) => w.includes("Audit notice"))).toBe(true);
   });
+
+  it("emits shared commit SHA warning when resolving with a SHA used by another ticket", async () => {
+    const warnings: string[] = [];
+    const warnCtx: TicketServiceContext = {
+      ...ctx,
+      insight: { info: () => undefined, warn: (msg: string) => warnings.push(msg) },
+    };
+
+    // Resolve first ticket — sets commitSha to "abc1234"
+    const ticketId1 = await createAndAssignTicket("agent-dev");
+    commentTicketRecord(warnCtx, { ticketId: ticketId1, content: "Verified", agentId: "agent-dev", sessionId: "session-dev" });
+    updateTicketStatusRecord(warnCtx, {
+      ticketId: ticketId1,
+      status: "resolved",
+      comment: "Done",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    // Resolve second ticket — same commitSha "abc1234"
+    const ticketId2 = await createAndAssignTicket("agent-dev");
+    commentTicketRecord(warnCtx, { ticketId: ticketId2, content: "Verified", agentId: "agent-dev", sessionId: "session-dev" });
+    const result = updateTicketStatusRecord(warnCtx, {
+      ticketId: ticketId2,
+      status: "resolved",
+      comment: "Done",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.sharedCommitWarning).toContain("abc1234");
+    expect(result.data.sharedCommitWarning).toContain(ticketId1);
+    expect(warnings.some((w) => w.includes("abc1234"))).toBe(true);
+  });
+
+  it("does not emit shared commit warning for unique SHA", async () => {
+    const warnings: string[] = [];
+    const warnCtx: TicketServiceContext = {
+      ...ctx,
+      insight: { info: () => undefined, warn: (msg: string) => warnings.push(msg) },
+    };
+
+    const ticketId = await createAndAssignTicket("agent-dev");
+    commentTicketRecord(warnCtx, { ticketId, content: "Verified", agentId: "agent-dev", sessionId: "session-dev" });
+    const result = updateTicketStatusRecord(warnCtx, {
+      ticketId,
+      status: "resolved",
+      comment: "Done",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.sharedCommitWarning).toBeUndefined();
+    expect(warnings.some((w) => w.includes("already associated"))).toBe(false);
+  });
 });

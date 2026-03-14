@@ -599,6 +599,15 @@ describe("Dashboard API", () => {
     expect(metrics.unassignedOpen[0]).toMatchObject({ ticketId: "TKT-new" });
     expect(metrics.assigneeLoad[0]).toMatchObject({ assigneeAgentId: "agent-dev", count: 2, label: "Dev" });
     expect(metrics.oldestOpen[0]).toMatchObject({ ticketId: "TKT-blocked" });
+    expect(metrics.commitHealth).toMatchObject({
+      totalResolvedWithCommit: 4,
+      uniqueCommits: 1,
+      multiTicketCommitCount: 1,
+    });
+    expect(metrics.commitHealth.multiTicketCommits[0]).toMatchObject({
+      sha: "abc1234",
+      ticketCount: 4,
+    });
   });
 
   it("returns ticket detail with comments, history, and linked patches", () => {
