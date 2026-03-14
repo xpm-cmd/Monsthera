@@ -658,6 +658,120 @@ describe("loop CLI", () => {
     expect(messages.some((message: string) => message.includes("Auto-took TKT-dev111 for implementation"))).toBe(true);
   });
 
+  it("auto-assigns a recommended priority-only approved ticket when the developer session has no claimed files", async () => {
+    const insight = createInsight();
+    const callTool = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "register_agent",
+        result: toolTextPayload({
+          agentId: "agent-dev",
+          sessionId: "session-dev",
+          role: "developer",
+          resumed: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "poll_coordination",
+        result: toolTextPayload({ topology: "hub-spoke", count: 0, messages: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "run_workflow",
+        result: toolTextPayload({
+          name: "custom:developer-loop",
+          status: "completed",
+          outputs: {
+            suggestions: {
+              routingRecommendation: {
+                action: "recommend",
+                ticketId: "TKT-dev222",
+                confidence: "medium",
+                basis: "priority_only",
+              },
+              claimedPaths: [],
+              suggestions: [{
+                ticketId: "TKT-dev222",
+                title: "Priority-only work",
+                rankingScore: 7,
+              }, {
+                ticketId: "TKT-dev333",
+                title: "Priority-only work B",
+                rankingScore: 6,
+              }],
+            },
+            ticket: {
+              ticketId: "TKT-dev222",
+              title: "Priority-only work",
+              affectedPaths: ["src/priority.ts"],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "assign_ticket",
+        result: toolTextPayload({
+          ticketId: "TKT-dev222",
+          assigneeAgentId: "agent-dev",
+          status: "approved",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "claim_files",
+        result: toolTextPayload({
+          claimed: ["src/priority.ts"],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "update_ticket_status",
+        result: toolTextPayload({
+          ticketId: "TKT-dev222",
+          status: "in_progress",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        tool: "end_session",
+        result: toolTextPayload({ ended: true }),
+      });
+
+    await cmdLoop(config, insight, [
+      "dev",
+      "--watch",
+      "--interval-ms",
+      "1000",
+      "--max-runs",
+      "1",
+    ], {
+      createServer: (() => ({} as any)) as any,
+      getRunner: () => ({ callTool } as any),
+      sleep: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(callTool).toHaveBeenNthCalledWith(4, "assign_ticket", {
+      ticketId: "TKT-dev222",
+      assigneeAgentId: "agent-dev",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(callTool).toHaveBeenNthCalledWith(5, "claim_files", {
+      paths: ["src/priority.ts"],
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+    expect(callTool).toHaveBeenNthCalledWith(6, "update_ticket_status", {
+      ticketId: "TKT-dev222",
+      status: "in_progress",
+      comment: "Developer loop auto-take: claimed approved work for implementation",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+  });
+
   it("falls back to backlog planning in council watch mode when review and TA queues are empty", async () => {
     const insight = createInsight();
     const callTool = vi.fn()

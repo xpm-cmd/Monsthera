@@ -531,6 +531,34 @@ describe("suggest_next_work", () => {
     }
   });
 
+  it("recommends the highest-priority approved ticket when the session has no claims and the top score is unique", async () => {
+    const { db, sqlite } = createSuggestDb();
+    try {
+      insertAgentSession(db, "agent-dev", "session-dev", []);
+      insertApprovedTicket(sqlite, "TKT-top", "Top priority work", 9, ["src/top"]);
+      insertApprovedTicket(sqlite, "TKT-next", "Next priority work", 6, ["src/next"]);
+
+      const suggestNextWork = setupSuggestServer(db);
+      const result = await suggestNextWork({ agentId: "agent-dev", sessionId: "session-dev", limit: 5 });
+      const payload = JSON.parse(result.content[0].text);
+
+      expect(payload.match).toMatchObject({ kind: "no_match" });
+      expect(payload.routingRecommendation).toMatchObject({
+        action: "recommend",
+        ticketId: "TKT-top",
+        confidence: "medium",
+        basis: "priority_only",
+      });
+      expect(payload.suggestions[0]).toMatchObject({
+        ticketId: "TKT-top",
+        matchKind: "no_match",
+        overlapScore: 0,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it("reports no_match when claimed files do not overlap approved work", async () => {
     const { db, sqlite } = createSuggestDb();
     try {

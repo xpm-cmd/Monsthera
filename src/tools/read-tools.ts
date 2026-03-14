@@ -1069,6 +1069,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       const topScore = top?.rankingScore ?? 0;
       const topOverlap = top?.overlapScore ?? 0;
       const tiedTop = scored.filter((ticket) => ticket.rankingScore === topScore && ticket.overlapScore === topOverlap);
+      const hasPriorityOnlyWinner = claimed.length === 0 && tiedTop.length === 1 && top !== null;
       const matchKind = topOverlap === 0
         ? "no_match"
         : tiedTop.length > 1
@@ -1083,6 +1084,13 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             : "No approved tickets overlap the currently claimed files.";
       const routingRecommendation = matchKind === "clear_match" && top
         ? { action: "recommend", ticketId: top.ticketId, confidence: "high" as const }
+        : hasPriorityOnlyWinner && top
+          ? {
+            action: "recommend",
+            ticketId: top.ticketId,
+            confidence: "medium" as const,
+            basis: "priority_only" as const,
+          }
         : matchKind === "ambiguous_match"
           ? { action: "review_manually", ticketIds: tiedTop.map((ticket) => ticket.ticketId), confidence: "medium" as const }
           : { action: "review_manually", ticketIds: [] as string[], confidence: "low" as const };
