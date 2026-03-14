@@ -91,6 +91,28 @@ describe("FTS5Backend", () => {
     ]));
   });
 
+  it("sanitizes oversized symbol names without warning and keeps the file searchable", async () => {
+    const warn = vi.fn();
+    sqlite.prepare("UPDATE files SET symbols_json = ? WHERE path = ?").run(
+      JSON.stringify([{ name: "x".repeat(260) }, { name: "createServer" }]),
+      "src/server.ts",
+    );
+
+    const warnedFts5 = new FTS5Backend(sqlite, db, warn);
+    warnedFts5.initFtsTable();
+    warnedFts5.rebuildIndex(1);
+
+    const rows = sqlite.prepare("SELECT symbols FROM files_fts WHERE path = ?").all("src/server.ts") as Array<{ symbols: string }>;
+    expect(rows[rows.length - 1]?.symbols).toContain("createServer");
+    expect(rows[rows.length - 1]?.symbols.length).toBeLessThan(500);
+    expect(warn).not.toHaveBeenCalled();
+
+    const results = await warnedFts5.search("createServer", 1);
+    expect(results).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "src/server.ts" }),
+    ]));
+  });
+
   it("does not penalize test files when the query is explicitly test-related", async () => {
     sqlite.prepare(
       "INSERT INTO files (repo_id, path, language, summary, symbols_json) VALUES (?, ?, ?, ?, ?)",

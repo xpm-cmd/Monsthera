@@ -17,7 +17,7 @@ import {
 const FTS_TABLE = "files_fts";
 const KNOWLEDGE_FTS_TABLE = "knowledge_fts";
 const TICKETS_FTS_TABLE = "tickets_fts";
-const FileSymbolsSchema = z.array(z.object({ name: z.string().min(1).max(200) }));
+const RawFileSymbolsSchema = z.array(z.object({ name: z.string().min(1) }));
 export const TEST_FILE_PENALTY_FACTOR = DEFAULT_TEST_FILE_PENALTY_FACTOR;
 export const CONFIG_FILE_PENALTY_FACTOR = DEFAULT_CONFIG_FILE_PENALTY_FACTOR;
 const TEST_RELATED_QUERY_PATTERN = /\b(test(?:ing|s)?|unit|integration|e2e|spec(?:s)?)\b/i;
@@ -88,11 +88,15 @@ export class FTS5Backend implements SearchBackend {
       for (const file of files) {
         const symbols = parseJsonWithWarning(
           file.symbolsJson,
-          FileSymbolsSchema,
+          RawFileSymbolsSchema,
           [],
           (reason) => this.onWarning(`FTS5 file symbol parse failed for ${file.path}: ${reason}`),
         );
-        const symbolNames = symbols.map((s) => expandCamelCase(s.name)).join(" ");
+        const symbolNames = symbols
+          .map((symbol) => symbol.name.trim().slice(0, 200))
+          .filter(Boolean)
+          .map((name) => expandCamelCase(name))
+          .join(" ");
 
         insert.run(file.id, file.repoId, file.path, file.summary ?? "", symbolNames, file.language ?? "");
       }

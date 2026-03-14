@@ -106,6 +106,26 @@ export async function parseFile(content: string, language: SupportedLanguage): P
 function extractTSSymbols(root: Parser.SyntaxNode): ExtractedSymbol[] {
   const symbols: ExtractedSymbol[] = [];
 
+  function collectBindingIdentifiers(node: Parser.SyntaxNode | null | undefined): string[] {
+    if (!node) return [];
+
+    switch (node.type) {
+      case "identifier":
+      case "shorthand_property_identifier_pattern":
+        return [node.text];
+      case "object_pattern":
+      case "array_pattern":
+      case "assignment_pattern":
+      case "pair_pattern":
+      case "rest_pattern":
+      case "object_assignment_pattern":
+      case "array_assignment_pattern":
+        return node.children.flatMap((child) => collectBindingIdentifiers(child));
+      default:
+        return node.children.flatMap((child) => collectBindingIdentifiers(child));
+    }
+  }
+
   function walk(node: Parser.SyntaxNode, depth: number): void {
     switch (node.type) {
       case "function_declaration": {
@@ -141,7 +161,9 @@ function extractTSSymbols(root: Parser.SyntaxNode): ExtractedSymbol[] {
           for (const declarator of node.children) {
             if (declarator.type === "variable_declarator") {
               const name = declarator.childForFieldName("name");
-              if (name) symbols.push({ name: name.text, kind: "variable", line: node.startPosition.row });
+              for (const identifier of collectBindingIdentifiers(name)) {
+                symbols.push({ name: identifier, kind: "variable", line: node.startPosition.row });
+              }
             }
           }
         }

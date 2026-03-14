@@ -56,6 +56,27 @@ let counter = 0;
     expect(result.symbols.some((s) => s.kind === "variable" && s.name === "counter")).toBe(true);
   });
 
+  it("extracts bound identifiers from top-level destructuring declarations", async () => {
+    const content = `
+const {
+  ftsSearchMock,
+  ftsInitMock: initMock,
+  nested: { rebuildMock },
+  ...restMocks
+} = mocks;
+`;
+    const result = await parseFile(content, "typescript");
+    const variableNames = result.symbols
+      .filter((s) => s.kind === "variable")
+      .map((s) => s.name);
+
+    expect(variableNames).toContain("ftsSearchMock");
+    expect(variableNames).toContain("initMock");
+    expect(variableNames).toContain("rebuildMock");
+    expect(variableNames).toContain("restMocks");
+    expect(variableNames.some((name) => name.includes("{"))).toBe(false);
+  });
+
   it("extracts import statements", async () => {
     const content = `
 import { readFile } from "node:fs";
