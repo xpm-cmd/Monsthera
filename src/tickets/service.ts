@@ -11,8 +11,8 @@ import { getHead } from "../git/operations.js";
 import {
   buildGovernanceOptions,
   evaluateTicketTransitionConsensus,
-  resolveTicketQuorumRule,
-  type TransitionConsensusPayload,
+  GATED_TICKET_TRANSITIONS,
+  type ConsensusPayload,
 } from "./consensus.js";
 import {
   buildTicketResolutionKnowledgeEntry,
@@ -324,15 +324,15 @@ export function updateTicketStatusRecord(
   }
 
   if (resolved.role !== "admin") {
-    const quorumRule = resolveTicketQuorumRule(current, input.status, ctx.ticketQuorum);
-    const verdictRows = quorumRule ? queries.getActiveReviewVerdicts(ctx.db, ticket.id) : [];
-    const governanceOpts = quorumRule
+    const isGated = (GATED_TICKET_TRANSITIONS as readonly string[]).includes(`${current}→${input.status}`);
+    const verdictRows = isGated ? queries.getActiveReviewVerdicts(ctx.db, ticket.id) : [];
+    const governanceOpts = isGated
       ? buildGovernanceOptions(ctx.governance, verdictRows, (agentId) => {
           const agent = queries.getAgent(ctx.db, agentId);
           return agent ? { roleId: agent.roleId, provider: agent.provider, model: agent.model } : undefined;
         })
       : undefined;
-    const consensus = quorumRule
+    const consensus = isGated
       ? evaluateTicketTransitionConsensus({
           ticketId: input.ticketId,
           fromStatus: current,
@@ -890,7 +890,7 @@ function err(
 
 function buildConsensusBlockMessage(
   transitionKey: string,
-  consensus: TransitionConsensusPayload,
+  consensus: ConsensusPayload,
 ): string {
   if (consensus.blockedByVeto) {
     const vetoSummary = consensus.vetoes

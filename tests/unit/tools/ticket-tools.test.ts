@@ -768,16 +768,9 @@ describe("ticket tools", () => {
 
   it("uses configured quorum rules for transition-aware verdict and consensus reports", async () => {
     config.ticketQuorum = {
-      technicalAnalysisToApproved: {
-        enabled: true,
-        requiredPasses: 2,
-        vetoSpecializations: ["security"],
-      },
-      inReviewToReadyForCommit: {
-        enabled: true,
-        requiredPasses: 3,
-        vetoSpecializations: ["architect", "security"],
-      },
+      enabled: true,
+      requiredPasses: 2,
+      vetoSpecializations: ["security"],
     };
 
     const createResult = await createTicket();

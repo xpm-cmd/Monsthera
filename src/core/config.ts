@@ -43,26 +43,16 @@ export const ToolRateLimitConfigSchema = z.object({
   overrides: z.record(z.string().min(1), z.number().int().min(1).max(1_000)).default({}),
 });
 
-const DEFAULT_TICKET_QUORUM_RULE = {
+const DEFAULT_TICKET_QUORUM = {
   enabled: true,
   vetoSpecializations: ["architect", "security"] as ("architect" | "security")[],
 };
 
-const DEFAULT_TICKET_QUORUM_CONFIG = {
-  technicalAnalysisToApproved: { ...DEFAULT_TICKET_QUORUM_RULE },
-  inReviewToReadyForCommit: { ...DEFAULT_TICKET_QUORUM_RULE },
-};
-
-export const TicketQuorumTransitionRuleSchema = z.object({
+export const TicketQuorumConfigSchema = z.object({
   enabled: z.boolean().default(true),
   requiredPasses: z.number().int().min(1).max(COUNCIL_SPECIALIZATIONS.length).optional(),
   vetoSpecializations: z.array(CouncilSpecializationId).default(["architect", "security"]),
-}).default(DEFAULT_TICKET_QUORUM_RULE);
-
-export const TicketQuorumConfigSchema = z.object({
-  technicalAnalysisToApproved: TicketQuorumTransitionRuleSchema.default(DEFAULT_TICKET_QUORUM_RULE),
-  inReviewToReadyForCommit: TicketQuorumTransitionRuleSchema.default(DEFAULT_TICKET_QUORUM_RULE),
-}).default(DEFAULT_TICKET_QUORUM_CONFIG);
+}).default(DEFAULT_TICKET_QUORUM);
 
 const DEFAULT_LIFECYCLE_CONFIG = {
   enabled: false,
@@ -237,7 +227,7 @@ export const AgoraConfigSchema = z.object({
     nonceTtlSeconds: 600,
     peers: [],
   }),
-  ticketQuorum: TicketQuorumConfigSchema.default(DEFAULT_TICKET_QUORUM_CONFIG),
+  ticketQuorum: TicketQuorumConfigSchema.default(DEFAULT_TICKET_QUORUM),
   governance: GovernanceConfigSchema.default({
     nonVotingRoles: ["facilitator"],
     modelDiversity: { strict: false },
@@ -256,7 +246,6 @@ export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
 export type RegistrationAuth = z.infer<typeof RegistrationAuthSchema>;
 export type SecretPatternRule = z.infer<typeof SecretPatternRuleSchema>;
 export type ToolRateLimitConfig = z.infer<typeof ToolRateLimitConfigSchema>;
-export type TicketQuorumTransitionRuleConfig = z.infer<typeof TicketQuorumTransitionRuleSchema>;
 export type TicketQuorumConfig = z.infer<typeof TicketQuorumConfigSchema>;
 export type SearchConfig = z.infer<typeof SearchConfigSchema>;
 export type CrossInstanceCapability = z.infer<typeof CrossInstanceCapabilitySchema>;
@@ -318,22 +307,6 @@ export function mergeConfigSources(
       merged.ticketQuorum = {
         ...(merged.ticketQuorum ?? {}),
         ...ticketQuorum,
-        ...(ticketQuorum.technicalAnalysisToApproved || merged.ticketQuorum?.technicalAnalysisToApproved
-          ? {
-              technicalAnalysisToApproved: {
-                ...(merged.ticketQuorum?.technicalAnalysisToApproved ?? {}),
-                ...(ticketQuorum.technicalAnalysisToApproved ?? {}),
-              },
-            }
-          : {}),
-        ...(ticketQuorum.inReviewToReadyForCommit || merged.ticketQuorum?.inReviewToReadyForCommit
-          ? {
-              inReviewToReadyForCommit: {
-                ...(merged.ticketQuorum?.inReviewToReadyForCommit ?? {}),
-                ...(ticketQuorum.inReviewToReadyForCommit ?? {}),
-              },
-            }
-          : {}),
       };
     }
 

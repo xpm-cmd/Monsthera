@@ -11,9 +11,20 @@ import { GOVERNANCE_ANALYTICAL_SPECIALIZATIONS } from "../../schemas/governance.
 import type { TicketStatus } from "../../schemas/ticket.js";
 import type { TicketQuorumConfig, GovernanceConfig } from "../core/config.js";
 
+// ─── Input / output types ─────────────────────────────────────
+
 export interface ReviewVerdictRecord {
   specialization: string;
   verdict: string;
+  agentId: string;
+  sessionId: string;
+  reasoning: string | null;
+  createdAt: string;
+}
+
+export interface NormalizedReviewVerdictRecord {
+  specialization: CouncilSpecializationIdValue;
+  verdict: CouncilVerdictValue;
   agentId: string;
   sessionId: string;
   reasoning: string | null;
@@ -39,20 +50,26 @@ export interface GovernanceEvaluation {
   modelDiversity: ModelDiversityResult | null;
 }
 
-export interface ConsensusCounts {
-  pass: number;
-  fail: number;
-  abstain: number;
-  responded: number;
-  missing: number;
+export interface ConsensusGovernanceOptions {
+  nonVotingAgentIds?: string[];
+  agentIdentities?: ReadonlyMap<string, AgentIdentity>;
+  strictDiversity?: boolean;
 }
+
+// ─── Consensus payload (flat) ─────────────────────────────────
 
 export interface ConsensusPayload {
   ticketId: string;
   councilSpecializations: CouncilSpecializationIdValue[];
   vetoSpecializations: CouncilSpecializationIdValue[];
   requiredPasses: number;
-  counts: ConsensusCounts;
+  counts: {
+    pass: number;
+    fail: number;
+    abstain: number;
+    responded: number;
+    missing: number;
+  };
   quorumMet: boolean;
   blockedByVeto: boolean;
   advisoryReady: boolean;
@@ -60,7 +77,11 @@ export interface ConsensusPayload {
   vetoes: NormalizedReviewVerdictRecord[];
   verdicts: NormalizedReviewVerdictRecord[];
   governance?: GovernanceEvaluation;
+  transition?: GatedTicketTransition;
+  enforcementEnabled?: boolean;
 }
+
+// ─── Gated transitions ────────────────────────────────────────
 
 export const GATED_TICKET_TRANSITIONS = [
   "technical_analysis→approved",
@@ -69,59 +90,78 @@ export const GATED_TICKET_TRANSITIONS = [
 
 export type GatedTicketTransition = typeof GATED_TICKET_TRANSITIONS[number];
 
-const DEFAULT_VETO_SPECIALIZATIONS: CouncilSpecializationIdValue[] = ["architect", "security"];
-
-const TICKET_QUORUM_RULES: Record<GatedTicketTransition, keyof TicketQuorumConfig> = {
-  "technical_analysis→approved": "technicalAnalysisToApproved",
-  "in_review→ready_for_commit": "inReviewToReadyForCommit",
+export const GATED_ADVANCE_TARGET: Readonly<Partial<Record<TicketStatus, TicketStatus>>> = {
+  technical_analysis: "approved",
+  in_review: "ready_for_commit",
 };
 
-export interface ResolvedTicketQuorumRule {
-  transition: GatedTicketTransition;
-  key: keyof TicketQuorumConfig;
-  requiredPasses: number;
-  vetoSpecializations: CouncilSpecializationIdValue[];
-}
+// ─── Internal helpers ─────────────────────────────────────────
 
-export interface TransitionConsensusPayload extends ConsensusPayload {
-  transition: GatedTicketTransition;
-  ruleKey: keyof TicketQuorumConfig;
-}
+const DEFAULT_VETO_SPECIALIZATIONS: CouncilSpecializationIdValue[] = ["architect", "security"];
 
-export interface DisabledTransitionConsensusPayload extends ConsensusPayload {
-  transition: GatedTicketTransition;
-  ruleKey: keyof TicketQuorumConfig;
-  enforcementEnabled: false;
-}
-
-export interface EnabledTransitionConsensusPayload extends TransitionConsensusPayload {
-  enforcementEnabled: true;
-}
-
-export type TicketConsensusReport =
-  | ConsensusPayload
-  | DisabledTransitionConsensusPayload
-  | EnabledTransitionConsensusPayload;
-
-export interface NormalizedReviewVerdictRecord {
-  specialization: CouncilSpecializationIdValue;
-  verdict: CouncilVerdictValue;
-  agentId: string;
-  sessionId: string;
-  reasoning: string | null;
-  createdAt: string;
-}
-
-export function getDefaultAdvisoryPasses(totalSpecializations = COUNCIL_SPECIALIZATIONS.length): number {
-  // Current council guidance is 3/5 and 4/6; keeping a simple total-2 rule preserves both.
+function getDefaultAdvisoryPasses(totalSpecializations = COUNCIL_SPECIALIZATIONS.length): number {
   return Math.max(1, totalSpecializations - 2);
 }
 
-export interface ConsensusGovernanceOptions {
-  nonVotingAgentIds?: string[];
-  agentIdentities?: ReadonlyMap<string, AgentIdentity>;
-  strictDiversity?: boolean;
+function resolveQuorumParams(
+  config: TicketQuorumConfig | null | undefined,
+  governanceEnabled: boolean,
+): { requiredPasses: number; vetoSpecializations: CouncilSpecializationIdValue[] } | null {
+  if (config?.enabled === false) return null;
+  return {
+    requiredPasses: config?.requiredPasses ?? (governanceEnabled
+      ? Math.max(1, GOVERNANCE_ANALYTICAL_SPECIALIZATIONS.length - 1)
+      : getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length)),
+    vetoSpecializations: dedupeSpecializations(config?.vetoSpecializations ?? DEFAULT_VETO_SPECIALIZATIONS),
+  };
 }
+
+function dedupeSpecializations(values: readonly CouncilSpecializationIdValue[]): CouncilSpecializationIdValue[] {
+  return [...new Set(values)];
+}
+
+function normalizeVerdictRows(verdictRows: ReviewVerdictRecord[]): NormalizedReviewVerdictRecord[] {
+  return verdictRows.flatMap((row) => {
+    const specialization = CouncilSpecializationId.safeParse(row.specialization);
+    const verdict = CouncilVerdict.safeParse(row.verdict);
+    if (!specialization.success || !verdict.success) {
+      return [];
+    }
+    return [{
+      specialization: specialization.data,
+      verdict: verdict.data,
+      agentId: row.agentId,
+      sessionId: row.sessionId,
+      reasoning: row.reasoning,
+      createdAt: row.createdAt,
+    }];
+  });
+}
+
+function isGatedTicketTransition(value: string): value is GatedTicketTransition {
+  return (GATED_TICKET_TRANSITIONS as readonly string[]).includes(value);
+}
+
+function countDiversityAdjustedPasses(
+  verdicts: NormalizedReviewVerdictRecord[],
+  agentIdentities: ReadonlyMap<string, AgentIdentity>,
+): number {
+  const passVerdicts = verdicts.filter((v) => v.verdict === "pass");
+  const seenModels = new Set<string>();
+  let count = 0;
+  for (const v of passVerdicts) {
+    const identity = agentIdentities.get(v.agentId);
+    if (!identity?.provider || !identity?.model) continue;
+    const key = `${identity.provider}::${identity.model}`;
+    if (!seenModels.has(key)) {
+      seenModels.add(key);
+      count++;
+    }
+  }
+  return count;
+}
+
+// ─── Public API ───────────────────────────────────────────────
 
 export function buildConsensusPayload(
   ticketId: string,
@@ -140,7 +180,6 @@ export function buildConsensusPayload(
     ? GOVERNANCE_ANALYTICAL_SPECIALIZATIONS
     : COUNCIL_SPECIALIZATIONS));
 
-  // Governance: filter out non-voting roles (e.g. facilitator)
   const nonVotingIds = gov?.nonVotingAgentIds ?? [];
   const nonVotingExcluded = nonVotingIds.length > 0
     ? allNormalized.filter((v) => nonVotingIds.includes(v.agentId))
@@ -160,18 +199,15 @@ export function buildConsensusPayload(
     (entry) => entry.verdict === "fail" && vetoSpecializations.includes(entry.specialization),
   );
 
-  // Governance: model diversity evaluation
   const diversityResult = gov?.agentIdentities
     ? evaluateModelDiversity(verdicts, gov.agentIdentities)
     : null;
 
-  // When strict diversity is enabled, passing verdicts from duplicate
-  // provider+model pairs only count once toward quorum.
   const effectivePassCount = gov?.strictDiversity && diversityResult
     ? countDiversityAdjustedPasses(verdicts, gov.agentIdentities!)
     : verdicts.filter((entry) => entry.verdict === "pass").length;
 
-  const counts: ConsensusCounts = {
+  const counts = {
     pass: effectivePassCount,
     fail: verdicts.filter((entry) => entry.verdict === "fail").length,
     abstain: verdicts.filter((entry) => entry.verdict === "abstain").length,
@@ -212,38 +248,31 @@ export function buildTicketConsensusReport(input: {
   config?: TicketQuorumConfig | null;
   transition?: GatedTicketTransition | null;
   governance?: ConsensusGovernanceOptions;
-}): TicketConsensusReport {
+}): ConsensusPayload {
   if (!input.transition) {
     return buildConsensusPayload(input.ticketId, input.verdictRows, {
       governance: input.governance,
     });
   }
 
-  const key = TICKET_QUORUM_RULES[input.transition];
-  const rule = input.config?.[key];
-  if (rule?.enabled === false) {
+  const params = resolveQuorumParams(input.config, !!input.governance);
+  if (!params) {
     return {
       ...buildConsensusPayload(input.ticketId, input.verdictRows, {
         governance: input.governance,
       }),
       transition: input.transition,
-      ruleKey: key,
       enforcementEnabled: false,
     };
   }
 
-  const requiredPasses = rule?.requiredPasses ?? (input.governance
-    ? Math.max(1, GOVERNANCE_ANALYTICAL_SPECIALIZATIONS.length - 1)
-    : getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length));
-  const vetoSpecializations = dedupeSpecializations(rule?.vetoSpecializations ?? DEFAULT_VETO_SPECIALIZATIONS);
   return {
     ...buildConsensusPayload(input.ticketId, input.verdictRows, {
-      requiredPasses,
-      vetoSpecializations,
+      requiredPasses: params.requiredPasses,
+      vetoSpecializations: params.vetoSpecializations,
       governance: input.governance,
     }),
     transition: input.transition,
-    ruleKey: key,
     enforcementEnabled: true,
   };
 }
@@ -259,42 +288,6 @@ export function inferConsensusTransitionForTicketStatus(status: TicketStatus): G
   }
 }
 
-const GATED_ADVANCE_TARGET: Record<string, TicketStatus> = {
-  technical_analysis: "approved",
-  in_review: "ready_for_commit",
-};
-
-export function getAutoAdvanceTarget(status: TicketStatus): TicketStatus | null {
-  return GATED_ADVANCE_TARGET[status] ?? null;
-}
-
-export function resolveTicketQuorumRule(
-  fromStatus: TicketStatus,
-  toStatus: TicketStatus,
-  config?: TicketQuorumConfig | null,
-  options?: { governanceEnabled?: boolean },
-): ResolvedTicketQuorumRule | null {
-  const transition = `${fromStatus}→${toStatus}`;
-  if (!isGatedTicketTransition(transition)) {
-    return null;
-  }
-
-  const key = TICKET_QUORUM_RULES[transition];
-  const rule = config?.[key];
-  if (rule?.enabled === false) {
-    return null;
-  }
-
-  return {
-    transition,
-    key,
-    requiredPasses: rule?.requiredPasses ?? (options?.governanceEnabled
-      ? Math.max(1, GOVERNANCE_ANALYTICAL_SPECIALIZATIONS.length - 1)
-      : getDefaultAdvisoryPasses(COUNCIL_SPECIALIZATIONS.length)),
-    vetoSpecializations: dedupeSpecializations(rule?.vetoSpecializations ?? DEFAULT_VETO_SPECIALIZATIONS),
-  };
-}
-
 export function evaluateTicketTransitionConsensus(input: {
   ticketId: string;
   fromStatus: TicketStatus;
@@ -302,27 +295,23 @@ export function evaluateTicketTransitionConsensus(input: {
   verdictRows: ReviewVerdictRecord[];
   config?: TicketQuorumConfig | null;
   governance?: ConsensusGovernanceOptions;
-}): TransitionConsensusPayload | null {
-  const rule = resolveTicketQuorumRule(input.fromStatus, input.toStatus, input.config, {
-    governanceEnabled: !!input.governance,
-  });
-  if (!rule) return null;
+}): ConsensusPayload | null {
+  const transition = `${input.fromStatus}→${input.toStatus}`;
+  if (!isGatedTicketTransition(transition)) return null;
+
+  const params = resolveQuorumParams(input.config, !!input.governance);
+  if (!params) return null;
 
   return {
     ...buildConsensusPayload(input.ticketId, input.verdictRows, {
-      requiredPasses: rule.requiredPasses,
-      vetoSpecializations: rule.vetoSpecializations,
+      requiredPasses: params.requiredPasses,
+      vetoSpecializations: params.vetoSpecializations,
       governance: input.governance,
     }),
-    transition: rule.transition,
-    ruleKey: rule.key,
+    transition,
   };
 }
 
-/**
- * Build governance options from config and agent lookup.
- * Resolves non-voting agent IDs and agent identity maps for the given verdict rows.
- */
 export function buildGovernanceOptions(
   governance: GovernanceConfig | undefined,
   verdictRows: ReviewVerdictRecord[],
@@ -355,10 +344,6 @@ export function buildGovernanceOptions(
   };
 }
 
-/**
- * Evaluate model diversity across passing verdicts.
- * Agents missing provider or model are not diversity-eligible.
- */
 export function evaluateModelDiversity(
   verdicts: NormalizedReviewVerdictRecord[],
   agentIdentities: ReadonlyMap<string, AgentIdentity>,
@@ -399,57 +384,4 @@ export function evaluateModelDiversity(
     duplicateGroups,
     diversityMet: duplicateGroups.length === 0 && ineligibleAgentIds.length === 0,
   };
-}
-
-/**
- * Count passes with diversity deduplication: when multiple passing verdicts
- * share the same provider+model, only one counts toward quorum.
- */
-function countDiversityAdjustedPasses(
-  verdicts: NormalizedReviewVerdictRecord[],
-  agentIdentities: ReadonlyMap<string, AgentIdentity>,
-): number {
-  const passVerdicts = verdicts.filter((v) => v.verdict === "pass");
-  const seenModels = new Set<string>();
-  let count = 0;
-
-  for (const v of passVerdicts) {
-    const identity = agentIdentities.get(v.agentId);
-    if (!identity?.provider || !identity?.model) {
-      continue;
-    }
-    const key = `${identity.provider}::${identity.model}`;
-    if (!seenModels.has(key)) {
-      seenModels.add(key);
-      count++;
-    }
-  }
-
-  return count;
-}
-
-function dedupeSpecializations(values: readonly CouncilSpecializationIdValue[]): CouncilSpecializationIdValue[] {
-  return [...new Set(values)];
-}
-
-function normalizeVerdictRows(verdictRows: ReviewVerdictRecord[]): NormalizedReviewVerdictRecord[] {
-  return verdictRows.flatMap((row) => {
-    const specialization = CouncilSpecializationId.safeParse(row.specialization);
-    const verdict = CouncilVerdict.safeParse(row.verdict);
-    if (!specialization.success || !verdict.success) {
-      return [];
-    }
-    return [{
-      specialization: specialization.data,
-      verdict: verdict.data,
-      agentId: row.agentId,
-      sessionId: row.sessionId,
-      reasoning: row.reasoning,
-      createdAt: row.createdAt,
-    }];
-  });
-}
-
-function isGatedTicketTransition(value: string): value is GatedTicketTransition {
-  return (GATED_TICKET_TRANSITIONS as readonly string[]).includes(value);
 }

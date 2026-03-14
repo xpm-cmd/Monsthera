@@ -17,7 +17,7 @@ function createTestDb() {
     `CREATE TABLE imports (id INTEGER PRIMARY KEY AUTOINCREMENT, source_file_id INTEGER NOT NULL REFERENCES files(id), target_path TEXT NOT NULL, kind TEXT NOT NULL)`,
     `CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', provider TEXT, model TEXT, model_family TEXT, model_version TEXT, identity_source TEXT, role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL)`,
     `CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT)`,
-    `CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+    `CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, resolution_commits_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
     `CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
     `CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL, from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL)`,
     `CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL)`,
@@ -427,16 +427,9 @@ describe("Dashboard API", () => {
   it("adds quorum progress badges only for gated ticket states", () => {
     const now = new Date().toISOString();
     deps.ticketQuorum = {
-      technicalAnalysisToApproved: {
-        enabled: true,
-        requiredPasses: 2,
-        vetoSpecializations: ["architect", "security"],
-      },
-      inReviewToReadyForCommit: {
-        enabled: true,
-        requiredPasses: 2,
-        vetoSpecializations: ["architect", "security"],
-      },
+      enabled: true,
+      requiredPasses: 2,
+      vetoSpecializations: ["architect", "security"],
     };
 
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
@@ -577,6 +570,8 @@ describe("Dashboard API", () => {
         touched_paths_json, dry_run_result_json, agent_id, session_id, committed_sha, ticket_id, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(1, "patch-ticket", "abc1234", null, "validated", "---", "Wire dashboard ticket detail", "[]", "{}", "developer-1", "session-2", null, 1, now, now);
+    sqlite.prepare("UPDATE tickets SET resolution_commits_json = ? WHERE id = ?")
+      .run(JSON.stringify(["ff0011", "ff0022"]), 1);
 
     const detail = getTicketDetail(deps, "TKT-detail");
 
@@ -598,21 +593,15 @@ describe("Dashboard API", () => {
     expect(detail?.history).toHaveLength(1);
     expect(detail?.linkedPatches).toHaveLength(1);
     expect(detail?.linkedPatches[0]?.proposalId).toBe("patch-ticket");
+    expect(detail?.resolutionCommitShas).toEqual(["ff0011", "ff0022"]);
   });
 
   it("returns gated ticket detail with quorum verdict rows, missing roles, and veto metadata", () => {
     const now = new Date().toISOString();
     deps.ticketQuorum = {
-      technicalAnalysisToApproved: {
-        enabled: true,
-        requiredPasses: 2,
-        vetoSpecializations: ["architect", "security"],
-      },
-      inReviewToReadyForCommit: {
-        enabled: true,
-        requiredPasses: 2,
-        vetoSpecializations: ["architect", "security"],
-      },
+      enabled: true,
+      requiredPasses: 2,
+      vetoSpecializations: ["architect", "security"],
     };
 
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)
@@ -719,16 +708,9 @@ describe("Dashboard API", () => {
   it("surfaces structured human-action reasons across ticket states", () => {
     const now = new Date().toISOString();
     deps.ticketQuorum = {
-      technicalAnalysisToApproved: {
-        enabled: true,
-        requiredPasses: 2,
-        vetoSpecializations: ["architect", "security"],
-      },
-      inReviewToReadyForCommit: {
-        enabled: true,
-        requiredPasses: 2,
-        vetoSpecializations: ["architect", "security"],
-      },
+      enabled: true,
+      requiredPasses: 2,
+      vetoSpecializations: ["architect", "security"],
     };
 
     sqlite.prepare(`INSERT INTO agents (id, name, type, role_id, trust_tier, registered_at) VALUES (?, ?, ?, ?, ?, ?)`)

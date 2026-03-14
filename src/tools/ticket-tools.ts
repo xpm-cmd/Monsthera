@@ -35,7 +35,7 @@ import {
 import {
   buildGovernanceOptions,
   buildTicketConsensusReport,
-  getAutoAdvanceTarget,
+  GATED_ADVANCE_TARGET,
   GATED_TICKET_TRANSITIONS,
   inferConsensusTransitionForTicketStatus,
 } from "../tickets/consensus.js";
@@ -500,7 +500,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
 
       let autoAdvanced: { previousStatus: string; status: string } | null = null;
       if (consensus.advisoryReady && c.config?.governance?.autoAdvance !== false) {
-        const target = getAutoAdvanceTarget(ticket.status as TicketStatusType);
+        const target = GATED_ADVANCE_TARGET[ticket.status as TicketStatusType];
         if (target) {
           const advanceResult = updateTicketStatusRecord({
             db: c.db,
