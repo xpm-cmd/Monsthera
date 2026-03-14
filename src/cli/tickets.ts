@@ -30,7 +30,7 @@ interface TicketTransitionPayload {
 
 interface TicketCommitSkippedPayload {
   ticketId: string;
-  reason: "not_found" | "not_ready_for_commit" | "below_confidence" | "not_actionable";
+  reason: "not_found" | "not_ready_for_commit" | "below_confidence" | "not_actionable" | "active_unassigned";
   status?: string;
   overlapScore?: number;
 }
@@ -413,6 +413,15 @@ export async function reconcileCommitTickets(
           });
           continue;
         }
+        if (!candidate.assigneeAgentId) {
+          payload.skipped.push({
+            ticketId: candidate.ticketId,
+            reason: "active_unassigned",
+            status: candidate.status,
+            overlapScore: candidate.overlapScore,
+          });
+          continue;
+        }
         alreadyProcessed.add(candidate.ticketId.toLowerCase());
         payload.inferredTicketIds.push(candidate.ticketId);
         const targetStatus = ADVANCE_STATUS_MAP[candidate.status];
@@ -453,6 +462,14 @@ export async function reconcileCommitTickets(
       } else {
         const cascadeTarget = ADVANCE_STATUS_MAP[depTicket.status];
         if (cascadeTarget) {
+          if (!depTicket.assigneeAgentId) {
+            payload.skipped.push({
+              ticketId: depTicket.ticketId,
+              reason: "active_unassigned",
+              status: depTicket.status,
+            });
+            continue;
+          }
           advanceTicket(depTicket.ticketId, cascadeTarget, "dependency_cascade", undefined,
             `Auto-advanced: dependency ${resolved.ticketId} resolved in commit ${commitShortSha}.`);
         }

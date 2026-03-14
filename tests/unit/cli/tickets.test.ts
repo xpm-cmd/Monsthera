@@ -261,12 +261,20 @@ describe("ticket CLI commit reconciliation", () => {
       getTicketsByStatusesAndAffectedPaths: vi.fn().mockReturnValue([]),
       getTicketByTicketId: getTicketByTicketId as never,
       getTicketById: vi.fn().mockImplementation((_db: unknown, id: number) => {
-        if (id === 31) return { ticketId: "TKT-child02", status: "in_progress" };
+        if (id === 31) return { ticketId: "TKT-child02", status: "in_progress", assigneeAgentId: "agent-dev" };
         return null;
-      }),
+      }) as never,
       getTicketDependencies: vi.fn().mockReturnValue({
-        outgoing: [], incoming: [{ relationType: "blocked_by", fromTicketId: 31 }],
-      }),
+        outgoing: [],
+        incoming: [{
+          id: 1,
+          fromTicketId: 31,
+          toTicketId: 30,
+          relationType: "blocked_by",
+          createdByAgentId: "agent-review",
+          createdAt: "2026-03-14T00:00:00.000Z",
+        }],
+      }) as never,
       transitionTicket,
       advanceTicket: advanceTicketDep,
     });
@@ -354,7 +362,7 @@ describe("ticket CLI commit reconciliation", () => {
       ]),
       getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
       getTicketsByStatusesAndAffectedPaths: vi.fn().mockReturnValue([
-        { ticketId: "TKT-approved01", status: "approved", overlapScore: 0.75 },
+        { ticketId: "TKT-approved01", status: "approved", assigneeAgentId: "agent-dev", overlapScore: 0.75 },
       ]),
       getTicketByTicketId: vi.fn().mockReturnValue(null) as never,
       getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
@@ -382,7 +390,7 @@ describe("ticket CLI commit reconciliation", () => {
       getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "src/utils.ts" }]),
       getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
       getTicketsByStatusesAndAffectedPaths: vi.fn().mockReturnValue([
-        { ticketId: "TKT-lowoverlap", status: "approved", overlapScore: 0.25 },
+        { ticketId: "TKT-lowoverlap", status: "approved", assigneeAgentId: "agent-dev", overlapScore: 0.25 },
       ]),
       getTicketByTicketId: vi.fn().mockReturnValue(null) as never,
       getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
@@ -417,7 +425,7 @@ describe("ticket CLI commit reconciliation", () => {
       getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "src/core/engine.ts" }]),
       getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
       getTicketsByStatusesAndAffectedPaths: vi.fn().mockReturnValue([
-        { ticketId: "TKT-inprog01", status: "in_progress", overlapScore: 1.0 },
+        { ticketId: "TKT-inprog01", status: "in_progress", assigneeAgentId: "agent-dev", overlapScore: 1.0 },
       ]),
       getTicketByTicketId: vi.fn().mockReturnValue(null) as never,
       getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
@@ -428,6 +436,93 @@ describe("ticket CLI commit reconciliation", () => {
     expect(payload.advanced).toHaveLength(1);
     expect(payload.advanced[0]!.status).toBe("in_review");
     expect(payload.advanced[0]!.source).toBe("path_match");
+  });
+
+  it("does not auto-advance unassigned approved tickets on path overlap", async () => {
+    const insight = createInsight();
+    const transitionTicket = vi.fn();
+    const advanceTicketDep = vi.fn();
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "kkk111",
+      commitMessage: "feat: incidental overlap",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("kkk111"),
+      getChangedFiles: vi.fn().mockResolvedValue([{ status: "M", path: "src/api/handler.ts" }]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
+      getTicketsByStatusesAndAffectedPaths: vi.fn().mockReturnValue([
+        { ticketId: "TKT-approved02", status: "approved", assigneeAgentId: null, overlapScore: 1.0 },
+      ]),
+      getTicketByTicketId: vi.fn().mockReturnValue(null) as never,
+      getTicketDependencies: vi.fn().mockReturnValue({ outgoing: [], incoming: [] }),
+      transitionTicket,
+      advanceTicket: advanceTicketDep,
+    });
+
+    expect(payload.advanced).toEqual([]);
+    expect(payload.skipped).toContainEqual({
+      ticketId: "TKT-approved02",
+      reason: "active_unassigned",
+      status: "approved",
+      overlapScore: 1,
+    });
+    expect(advanceTicketDep).not.toHaveBeenCalled();
+  });
+
+  it("does not dependency-cascade unassigned active tickets", async () => {
+    const insight = createInsight();
+    const transitionTicket = vi.fn().mockImplementation((_ctx, _cfg, _insight, input) => ({
+      ok: true,
+      data: { ticketId: input.ticketId, previousStatus: "ready_for_commit", status: "resolved" },
+    }));
+    const advanceTicketDep = vi.fn();
+
+    const payload = await reconcileCommitTickets(ctx, config, insight, {
+      commitSha: "lll222",
+      commitMessage: "feat: finish TKT-root",
+      actorLabel: "post-commit",
+    }, {
+      getShortSha: vi.fn().mockResolvedValue("lll222"),
+      getChangedFiles: vi.fn().mockResolvedValue([]),
+      getReadyTicketsByAffectedPaths: vi.fn().mockReturnValue([]),
+      getTicketByTicketId: vi.fn((_db: unknown, ticketId: string) => {
+        if (ticketId === "TKT-root") return { id: 55, ticketId: "TKT-root", status: "ready_for_commit" };
+        return null;
+      }) as never,
+      getTicketById: vi.fn((_db: unknown, ticketInternalId: number) => {
+        if (ticketInternalId === 77) return { id: 77, ticketId: "TKT-child", status: "approved", assigneeAgentId: null };
+        return null;
+      }) as never,
+      getTicketDependencies: vi.fn((_db: unknown, ticketInternalId: number) => {
+        if (ticketInternalId === 55) {
+          return {
+            outgoing: [],
+            incoming: [{
+              id: 2,
+              fromTicketId: 77,
+              toTicketId: 55,
+              relationType: "blocked_by",
+              createdByAgentId: "agent-review",
+              createdAt: "2026-03-14T00:00:00.000Z",
+            }],
+          };
+        }
+        return { outgoing: [], incoming: [] };
+      }) as never,
+      transitionTicket,
+      advanceTicket: advanceTicketDep,
+    });
+
+    expect(payload.resolved).toHaveLength(1);
+    expect(payload.cascadedTicketIds).toEqual(["TKT-child"]);
+    expect(payload.advanced).toEqual([]);
+    expect(payload.skipped).toContainEqual({
+      ticketId: "TKT-child",
+      reason: "active_unassigned",
+      status: "approved",
+    });
+    expect(advanceTicketDep).not.toHaveBeenCalled();
   });
 });
 

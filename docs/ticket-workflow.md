@@ -37,10 +37,12 @@ flowchart LR
     technical_analysis --> approved
     technical_analysis --> wont_fix
 
+    approved --> technical_analysis
     approved --> in_progress
     approved --> backlog
     approved --> wont_fix
 
+    in_progress --> approved
     in_progress --> in_review
     in_progress --> blocked
     in_progress --> wont_fix
@@ -120,6 +122,11 @@ Practical rule:
 
 - same scope rework -> back to `in_progress`
 - distinct new defect -> new bug ticket, original can still progress independently
+
+Administrative correction:
+
+- use `in_progress -> approved` when a ticket was auto-started incorrectly and should return to the ready queue without being marked blocked
+- use `approved -> technical_analysis` when an approval must be invalidated and sent back to council/design review
 
 ## Technical Analysis Convention
 

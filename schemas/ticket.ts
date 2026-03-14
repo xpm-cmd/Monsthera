@@ -27,8 +27,8 @@ export type TicketSeverity = z.infer<typeof TicketSeverity>;
 export const VALID_TRANSITIONS: Record<TicketStatus, readonly TicketStatus[]> = {
   backlog:            ["technical_analysis", "wont_fix"],
   technical_analysis: ["backlog", "approved", "resolved", "wont_fix"],
-  approved:           ["in_progress", "in_review", "backlog", "wont_fix"],
-  in_progress:        ["in_review", "blocked", "wont_fix"],
+  approved:           ["technical_analysis", "in_progress", "in_review", "backlog", "wont_fix"],
+  in_progress:        ["approved", "in_review", "blocked", "wont_fix"],
   in_review:          ["in_progress", "ready_for_commit"],  // reject → in_progress
   ready_for_commit:   ["in_progress", "resolved"],          // late fix or post-commit resolution
   blocked:            ["in_progress", "wont_fix"],          // unblock or abandon
@@ -48,10 +48,12 @@ export const TRANSITION_ROLES: Record<string, readonly string[]> = {
   "technical_analysis→approved": ["reviewer", "facilitator", "admin"],
   "technical_analysis→resolved": ["reviewer", "facilitator", "admin"],
   "technical_analysis→wont_fix": ["reviewer", "facilitator", "admin"],
+  "approved→technical_analysis": ["reviewer", "facilitator", "admin"], // re-open for fresh council review
   "approved→in_progress":   ["developer", "admin"],
   "approved→in_review":     ["developer", "admin"],
   "approved→backlog":       ["reviewer", "facilitator", "admin"],       // rework
   "approved→wont_fix":      ["reviewer", "facilitator", "admin"],
+  "in_progress→approved":   ["reviewer", "facilitator", "admin"],       // administrative requeue
   "in_progress→in_review":  ["developer", "admin"],
   "in_progress→blocked":    ["developer", "admin"],
   "in_progress→wont_fix":   ["reviewer", "facilitator", "admin"],

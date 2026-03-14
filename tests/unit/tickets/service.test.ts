@@ -773,6 +773,15 @@ describe("ticket service system context", () => {
     }).ok).toBe(true);
     expect(updateTicketStatusRecord(ctx, {
       ticketId: reviewReadyTicketId,
+      status: "technical_analysis",
+      comment: "Invalidate stale approval and return to council",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reviewReadyTicketId,
+      status: "approved",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: reviewReadyTicketId,
       status: "in_review",
       comment: "Change already landed, review directly",
     }).ok).toBe(true);
@@ -800,6 +809,15 @@ describe("ticket service system context", () => {
     expect(assignTicketRecord(ctx, {
       ticketId: abandonedTicketId,
       assigneeAgentId: "agent-dev",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: abandonedTicketId,
+      status: "in_progress",
+    }).ok).toBe(true);
+    expect(updateTicketStatusRecord(ctx, {
+      ticketId: abandonedTicketId,
+      status: "approved",
+      comment: "Administrative requeue after false positive start",
     }).ok).toBe(true);
     expect(updateTicketStatusRecord(ctx, {
       ticketId: abandonedTicketId,
