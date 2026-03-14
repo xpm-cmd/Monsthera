@@ -1,8 +1,10 @@
 import { setTimeout as sleepTimeout } from "node:timers/promises";
+import { CouncilSpecializationId, type CouncilSpecializationId as CouncilSpecialization } from "../../schemas/council.js";
 import type { AgoraConfig } from "../core/config.js";
 import type { AgoraContext } from "../core/context.js";
 import { createAgoraContextLoader } from "../core/context-loader.js";
 import type { InsightStream } from "../core/insight-stream.js";
+import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import { createAgoraServer } from "../server.js";
 import { getToolRunner, type ToolRunner, type ToolRunnerCallResult } from "../tools/tool-runner.js";
 
@@ -37,6 +39,7 @@ interface LoopInvocation {
   workflowParams: Record<string, unknown>;
   councilQueueWatch: boolean;
   queueLimit: number;
+  councilSpecialization?: CouncilSpecialization;
 }
 
 interface LoopWatchOptions {
@@ -70,6 +73,7 @@ interface CouncilRequestContext {
   sourceAgentId: string;
   ticketId: string;
   transition: string | null;
+  requestedRoles: CouncilSpecialization[];
 }
 
 interface QueueTicketSummary {
@@ -208,6 +212,22 @@ export async function cmdLoop(
     }));
     registered = parseRegisteredAgent(registration);
 
+    if (loop === "council") {
+      invocation = {
+        ...invocation,
+        councilSpecialization: await resolveCouncilLoopSpecialization({
+          explicit: invocation.councilSpecialization,
+          agentName,
+          getContext,
+        }),
+      };
+      if (!invocation.councilQueueWatch && !invocation.councilSpecialization) {
+        throw new Error(
+          "Council loop requires a reviewer specialization. Use --specialization <role> or --agent-name matching a specialized reviewer manifest.",
+        );
+      }
+    }
+
     const agent = toLoopAgentPayload(agentName, registered);
     if (watch.enabled) {
       await runWatchLoop({
@@ -224,7 +244,7 @@ export async function cmdLoop(
     }
 
     const effectiveParams = loop === "council"
-      ? enrichCouncilParams(invocation.workflowParams, agent)
+      ? enrichCouncilParams(invocation.workflowParams, agent, invocation.councilSpecialization)
       : invocation.workflowParams;
     const workflowExecution = await executeWorkflow(runner, spec.workflowName, agent, effectiveParams);
     if (!workflowExecution.call.ok) {
@@ -298,12 +318,17 @@ async function runWatchLoop(input: {
         let handledRequest = false;
 
         for (const request of requests) {
-          const councilParams = await resolveCouncilRequestParams(runner, agent, request);
+          const councilParams = await resolveCouncilRequestParams(
+            runner,
+            agent,
+            request,
+            invocation.councilSpecialization,
+          );
           if (!councilParams) {
             printWatchEvent({
               event: "watch_warning",
               loop,
-              message: `Skipping review request ${request.messageId}: could not infer a valid council transition for ${request.ticketId}.`,
+              message: `Skipping review request ${request.messageId}: no matching council specialization was available for ${request.ticketId}.`,
             }, asJson);
             continue;
           }
@@ -331,45 +356,37 @@ async function runWatchLoop(input: {
         }
 
         if (!handledRequest) {
-          const inReviewTicket = await getTopQueueTicket(runner, agent, "in_review", invocation.queueLimit);
-          if (inReviewTicket) {
-            const params = enrichCouncilParams({ ticketId: inReviewTicket.ticketId, transition: "in_review→ready_for_commit" }, agent);
-            const execution = await executeWorkflow(runner, spec.workflowName, agent, params);
-            const handled = printWatchWorkflowEvent({
-              loop,
-              workflowName: spec.workflowName,
-              cycle: cycles,
-              reason: "in_review_queue",
-              params,
-              agent,
-              execution,
-              asJson,
-              fingerprintKey: "queue:in_review",
-              fingerprints,
-              queueTicket: inReviewTicket,
-            });
-            if (!handled.ok) {
-              process.exitCode = 1;
-              stopReason = "workflow_failed";
-              break;
+          if (!invocation.councilSpecialization) {
+            const warning = "Council queue watch requires --specialization <role> or a specialized --agent-name to self-review queued tickets.";
+            if (fingerprints.get("council:missing_specialization") !== warning) {
+              fingerprints.set("council:missing_specialization", warning);
+              printWatchEvent({
+                event: "watch_warning",
+                loop,
+                message: warning,
+              }, asJson);
             }
           } else {
-            const technicalAnalysisTicket = await getTopQueueTicket(runner, agent, "technical_analysis", invocation.queueLimit);
-            if (technicalAnalysisTicket) {
-              const params = enrichCouncilParams({ ticketId: technicalAnalysisTicket.ticketId, transition: "technical_analysis→approved" }, agent);
+            const inReviewTicket = await getTopQueueTicket(runner, agent, "in_review", invocation.queueLimit);
+            if (inReviewTicket) {
+              const params = enrichCouncilParams(
+                { ticketId: inReviewTicket.ticketId, transition: "in_review→ready_for_commit" },
+                agent,
+                invocation.councilSpecialization,
+              );
               const execution = await executeWorkflow(runner, spec.workflowName, agent, params);
               const handled = printWatchWorkflowEvent({
                 loop,
                 workflowName: spec.workflowName,
                 cycle: cycles,
-                reason: "technical_analysis_queue",
+                reason: "in_review_queue",
                 params,
                 agent,
                 execution,
                 asJson,
-                fingerprintKey: "queue:technical_analysis",
+                fingerprintKey: "queue:in_review",
                 fingerprints,
-                queueTicket: technicalAnalysisTicket,
+                queueTicket: inReviewTicket,
               });
               if (!handled.ok) {
                 process.exitCode = 1;
@@ -377,17 +394,45 @@ async function runWatchLoop(input: {
                 break;
               }
             } else {
-              const backlogTickets = await listTickets(runner, agent, "backlog", invocation.queueLimit);
-              const backlogFingerprint = fingerprintValue(backlogTickets);
-              if (fingerprints.get("queue:backlog") !== backlogFingerprint) {
-                fingerprints.set("queue:backlog", backlogFingerprint);
-                printWatchEvent({
-                  event: "backlog_queue",
+              const technicalAnalysisTicket = await getTopQueueTicket(runner, agent, "technical_analysis", invocation.queueLimit);
+              if (technicalAnalysisTicket) {
+                const params = enrichCouncilParams(
+                  { ticketId: technicalAnalysisTicket.ticketId, transition: "technical_analysis→approved" },
+                  agent,
+                  invocation.councilSpecialization,
+                );
+                const execution = await executeWorkflow(runner, spec.workflowName, agent, params);
+                const handled = printWatchWorkflowEvent({
                   loop,
+                  workflowName: spec.workflowName,
                   cycle: cycles,
-                  message: "No review requests, in_review tickets, or technical_analysis tickets. Council can advance backlog planning.",
-                  tickets: backlogTickets,
-                }, asJson);
+                  reason: "technical_analysis_queue",
+                  params,
+                  agent,
+                  execution,
+                  asJson,
+                  fingerprintKey: "queue:technical_analysis",
+                  fingerprints,
+                  queueTicket: technicalAnalysisTicket,
+                });
+                if (!handled.ok) {
+                  process.exitCode = 1;
+                  stopReason = "workflow_failed";
+                  break;
+                }
+              } else {
+                const backlogTickets = await listTickets(runner, agent, "backlog", invocation.queueLimit);
+                const backlogFingerprint = fingerprintValue(backlogTickets);
+                if (fingerprints.get("queue:backlog") !== backlogFingerprint) {
+                  fingerprints.set("queue:backlog", backlogFingerprint);
+                  printWatchEvent({
+                    event: "backlog_queue",
+                    loop,
+                    cycle: cycles,
+                    message: "No review requests, in_review tickets, or technical_analysis tickets. Council can advance backlog planning.",
+                    tickets: backlogTickets,
+                  }, asJson);
+                }
               }
             }
           }
@@ -436,7 +481,7 @@ async function runWatchLoop(input: {
         }
       } else {
         const effectiveParams = loop === "council"
-          ? enrichCouncilParams(invocation.workflowParams, agent)
+          ? enrichCouncilParams(invocation.workflowParams, agent, invocation.councilSpecialization)
           : invocation.workflowParams;
         const execution = await executeWorkflow(runner, spec.workflowName, agent, effectiveParams);
         const handled = printWatchWorkflowEvent({
@@ -569,6 +614,10 @@ function buildCouncilInvocation(args: string[], watchEnabled: boolean): LoopInvo
   const ticketId = getArg(args, "--ticket") ?? positionalTicketId;
   const rawTransition = getArg(args, "--transition") ?? positionalTransition;
   const queueLimit = buildQueueLimit(args);
+  const rawSpecialization = getArg(args, "--specialization");
+  const councilSpecialization = rawSpecialization == null
+    ? undefined
+    : parseCouncilSpecialization(rawSpecialization, "--specialization");
 
   if (!watchEnabled) {
     if (!ticketId || !/^TKT-[A-Za-z0-9]+$/i.test(ticketId)) {
@@ -589,6 +638,7 @@ function buildCouncilInvocation(args: string[], watchEnabled: boolean): LoopInvo
       }),
       councilQueueWatch: false,
       queueLimit,
+      councilSpecialization,
     };
   }
 
@@ -613,6 +663,7 @@ function buildCouncilInvocation(args: string[], watchEnabled: boolean): LoopInvo
       }),
       councilQueueWatch: false,
       queueLimit,
+      councilSpecialization,
     };
   }
 
@@ -620,6 +671,7 @@ function buildCouncilInvocation(args: string[], watchEnabled: boolean): LoopInvo
     workflowParams: {},
     councilQueueWatch: true,
     queueLimit,
+    councilSpecialization,
   };
 }
 
@@ -737,12 +789,19 @@ function extractCouncilRequests(
     const transition = typeof message.payload.transition === "string"
       ? normalizeCouncilTransition(message.payload.transition)
       : undefined;
+    const requestedRoles = Array.isArray(message.payload.roles)
+      ? message.payload.roles.flatMap((entry) => {
+        const parsed = CouncilSpecializationId.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      })
+      : [];
 
     requests.push({
       messageId: message.id,
       sourceAgentId: message.from,
       ticketId: message.payload.ticketId,
       transition: transition && COUNCIL_TRANSITIONS.has(transition) ? transition : null,
+      requestedRoles,
     });
   }
 
@@ -753,27 +812,56 @@ async function resolveCouncilRequestParams(
   runner: ToolRunner,
   agent: LoopAgentPayload,
   request: CouncilRequestContext,
+  workerSpecialization?: CouncilSpecialization,
 ): Promise<Record<string, unknown> | null> {
   const transition = request.transition
     ?? await inferCouncilTransitionFromTicket(runner, agent, request.ticketId);
   if (!transition) return null;
+  const specialization = selectCouncilRequestSpecialization(request, workerSpecialization);
+  if (!specialization) return null;
 
   return enrichCouncilParams({
     ticketId: request.ticketId,
     transition,
-  }, agent);
+  }, agent, specialization);
 }
 
 function enrichCouncilParams(
   params: Record<string, unknown>,
   agent: LoopAgentPayload,
+  specialization?: CouncilSpecialization,
 ): Record<string, unknown> {
   const transition = typeof params.transition === "string" ? params.transition : "";
   return {
     ...params,
     targetStatus: COUNCIL_TARGET_STATUS[transition] ?? "approved",
     callerAgentId: agent.agentId,
+    ...(specialization ? { callerSpecialization: specialization } : {}),
   };
+}
+
+function selectCouncilRequestSpecialization(
+  request: CouncilRequestContext,
+  workerSpecialization?: CouncilSpecialization,
+): CouncilSpecialization | null {
+  if (request.requestedRoles.length === 0) {
+    return workerSpecialization ?? null;
+  }
+  if (workerSpecialization) {
+    return request.requestedRoles.includes(workerSpecialization) ? workerSpecialization : null;
+  }
+  return request.requestedRoles.length === 1 ? request.requestedRoles[0] ?? null : null;
+}
+
+async function resolveCouncilLoopSpecialization(input: {
+  explicit?: CouncilSpecialization;
+  agentName: string;
+  getContext: () => Promise<AgoraContext>;
+}): Promise<CouncilSpecialization | undefined> {
+  if (input.explicit) return input.explicit;
+  const context = await input.getContext();
+  const catalog = await loadRepoAgentCatalog(context.repoPath);
+  return catalog.repoAgents.find((agent) => agent.name === input.agentName)?.reviewRole ?? undefined;
 }
 
 async function inferCouncilTransitionFromTicket(
@@ -1237,6 +1325,14 @@ function parsePositiveInt(raw: string, flag: string): number {
   return parsed;
 }
 
+function parseCouncilSpecialization(raw: string, flag: string): CouncilSpecialization {
+  const parsed = CouncilSpecializationId.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`Invalid ${flag} value: ${raw}`);
+  }
+  return parsed.data;
+}
+
 function fingerprintValue(value: unknown): string {
   return JSON.stringify(stripVolatileFields(value));
 }
@@ -1299,12 +1395,13 @@ function printLoopHelp(): void {
   console.error("Loop commands:");
   console.error("  agora loop plan [--limit <n>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
   console.error("  agora loop dev [--limit <n>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
-  console.error("  agora loop council <ticket-id> --transition <technical_analysis->approved|in_review->ready_for_commit> [--since-commit <sha>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
-  console.error("  agora loop council --watch [--limit <n>] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
+  console.error("  agora loop council <ticket-id> --transition <technical_analysis->approved|in_review->ready_for_commit> [--since-commit <sha>] [--specialization <role>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
+  console.error("  agora loop council --watch [--limit <n>] [--specialization <role>] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
   console.error("");
   console.error("Watch mode:");
   console.error("  --watch keeps a single session alive, polls coordination, and reruns the loop.");
   console.error("  Council watch handles review requests first, then in_review, then technical_analysis, then backlog planning.");
+  console.error("  Council queue watch requires --specialization <role> or a specialized --agent-name.");
   console.error("");
   console.error("Role/session handling:");
   console.error("  Each command auto-registers the required role.");

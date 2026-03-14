@@ -73,9 +73,9 @@ What it returns:
 Use this when a reviewer should enter a ticket review gate with ticket context and current consensus state already loaded.
 
 ```bash
-agora loop council TKT-1234abcd --transition in_review->ready_for_commit
-agora loop council TKT-1234abcd --transition technical_analysis->approved --json
-agora loop council TKT-1234abcd --transition in_review->ready_for_commit --since-commit HEAD~1 --json
+agora loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer"
+agora loop council TKT-1234abcd --transition technical_analysis->approved --specialization security --json
+agora loop council TKT-1234abcd --transition in_review->ready_for_commit --since-commit HEAD~1 --agent-name "Patterns Reviewer" --json
 ```
 
 What it runs:
@@ -97,8 +97,9 @@ Allowed transitions:
 Notes:
 
 - ASCII `->` is accepted and normalized internally to the canonical `→` transition form.
+- Council reviewers are specialization-scoped. Use either a specialized `--agent-name` such as `Architect Reviewer` or an explicit `--specialization`.
 - `--since-commit` is optional and preloads recent change context when provided.
-- `agora loop council --watch` can run without a fixed ticket and operate from the queue.
+- `agora loop council --watch` can run without a fixed ticket and operate from the queue, but autonomous queue picking still requires a concrete specialization.
 
 ## Output Modes
 

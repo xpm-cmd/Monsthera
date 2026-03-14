@@ -1,10 +1,11 @@
 name: council-loop
-description: Autonomous council workflow. Loads context, self-assigns all specializations, submits pass verdicts, and relies on submit_verdict auto-advance when quorum is met.
+description: Autonomous council workflow. Loads context, assigns the caller to its own specialization, submits one scoped verdict, and relies on submit_verdict auto-advance when quorum is met.
 requiredParams:
   - ticketId
   - transition
   - targetStatus
   - callerAgentId
+  - callerSpecialization
 steps:
   # 1. Load ticket
   - key: ticket
@@ -50,30 +51,28 @@ steps:
     input:
       changedPaths: "{{steps.changes.changedFiles.path}}"
 
-  # 6. Self-assign to all council specializations
-  - key: assignments
+  # 6. Assign the caller only to its own council specialization
+  - key: assignment
     tool: assign_council
-    description: Bind this agent to each council specialization for verdict submission.
-    forEach: "steps.consensus.councilSpecializations"
+    description: Bind this agent to its own specialization for verdict submission.
     condition: "!steps.consensus.advisoryReady"
     onError: continue
     input:
       ticketId: "{{params.ticketId}}"
       councilAgentId: "{{params.callerAgentId}}"
-      specialization: "{{item}}"
+      specialization: "{{params.callerSpecialization}}"
 
-  # 7. Submit pass verdicts for all specializations with specialization-scoped reasoning
-  - key: verdicts
+  # 7. Submit a pass verdict for the caller specialization only
+  - key: verdict
     tool: submit_verdict
-    description: Record autonomous pass verdict for each council specialization.
-    forEach: "steps.consensus.councilSpecializations"
+    description: Record an autonomous pass verdict for the caller specialization only.
     condition: "!steps.consensus.advisoryReady"
     onError: continue
     input:
       ticketId: "{{params.ticketId}}"
-      specialization: "{{item}}"
+      specialization: "{{params.callerSpecialization}}"
       verdict: pass
-      reasoning: "{{item}} review for {{params.transition}} on {{steps.ticket.title}}. Affected paths: {{steps.ticket.affectedPaths}}. This {{item}} verdict is scoped to concrete repo evidence for the ticket."
+      reasoning: "{{params.callerSpecialization}} review for {{params.transition}} on {{steps.ticket.title}}. Affected paths: {{steps.ticket.affectedPaths}}. This {{params.callerSpecialization}} verdict is scoped to concrete repo evidence for the ticket."
       transition: "{{params.transition}}"
 
   # 8. Re-check consensus after submitting verdicts

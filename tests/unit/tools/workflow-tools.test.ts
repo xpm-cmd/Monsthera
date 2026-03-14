@@ -413,7 +413,7 @@ steps:
     });
   });
 
-  it("falls back to generic live reviewers when no specialization-specific reviewer is connected", () => {
+  it("does not resolve a role to a generic reviewer when a specialization-specific reviewer is required", () => {
     const resolutions = resolveReviewerAssignments({
       roles: ["architect", "security"],
       availableReviewRoles: {
@@ -436,10 +436,10 @@ steps:
     expect(resolutions).toEqual([
       {
         specialization: "architect",
-        agentId: "agent-review",
-        agentName: "Council Loop Reviewer",
-        sessionId: "session-review",
-        status: "resolved",
+        agentId: null,
+        agentName: null,
+        sessionId: null,
+        status: "no_candidate",
       },
       {
         specialization: "security",
@@ -451,7 +451,7 @@ steps:
     ]);
   });
 
-  it("prefers specialization-specific live reviewers before generic fallback", () => {
+  it("prefers specialization-specific live reviewers and does not use generic fallback for other roles", () => {
     const resolutions = resolveReviewerAssignments({
       roles: ["architect", "security"],
       availableReviewRoles: {
@@ -494,9 +494,47 @@ steps:
       },
       {
         specialization: "security",
-        agentId: "agent-review",
-        agentName: "Council Loop Reviewer",
-        sessionId: "session-generic",
+        agentId: null,
+        agentName: null,
+        sessionId: null,
+        status: "no_candidate",
+      },
+    ]);
+  });
+
+  it("allows generic reviewer fallback only when the repo has no specialization-specific reviewer manifest for that role", () => {
+    const resolutions = resolveReviewerAssignments({
+      roles: ["architect", "security"],
+      availableReviewRoles: {
+        architect: [],
+        security: [],
+      },
+      requireDistinctModels: false,
+      liveSessions: [
+        { id: "session-a", agentId: "agent-review-a" },
+        { id: "session-b", agentId: "agent-review-b" },
+      ],
+      getAgent: (agentId) => ({
+        name: agentId === "agent-review-a" ? "Council Loop Reviewer A" : "Council Loop Reviewer B",
+        roleId: "reviewer",
+        provider: agentId === "agent-review-a" ? "anthropic" : "openai",
+        model: agentId === "agent-review-a" ? "sonnet" : "gpt-5",
+      }),
+    });
+
+    expect(resolutions).toEqual([
+      {
+        specialization: "architect",
+        agentId: "agent-review-a",
+        agentName: "Council Loop Reviewer A",
+        sessionId: "session-a",
+        status: "resolved",
+      },
+      {
+        specialization: "security",
+        agentId: "agent-review-b",
+        agentName: "Council Loop Reviewer B",
+        sessionId: "session-b",
         status: "resolved",
       },
     ]);
@@ -608,8 +646,8 @@ steps:
     const resolutions = resolveReviewerAssignments({
       roles: ["architect", "security"],
       availableReviewRoles: {
-        architect: ["Architect Reviewer"],
-        security: ["Security Reviewer"],
+        architect: [],
+        security: [],
       },
       requireDistinctModels: false,
       liveSessions: [

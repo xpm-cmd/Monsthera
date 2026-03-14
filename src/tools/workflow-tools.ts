@@ -258,6 +258,7 @@ function pickReviewerCandidate(
   const preferred = pickCandidate(liveCandidates, preferredNames, reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, true)
     ?? pickCandidate(liveCandidates, preferredNames, reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, false);
   if (preferred) return preferred;
+  if (preferredNames.length > 0) return null;
 
   return pickCandidate(liveCandidates, [], reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, true)
     ?? pickCandidate(liveCandidates, [], reservedSessions, reservedAgentIds, reservedModels, requireDistinctModels, false);

@@ -78,13 +78,13 @@ If the work is blocked by a concrete defect or missing prerequisite, say so expl
 Run:
 
 ```bash
-agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json
+agora loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer" --json
 ```
 
 Or for technical analysis:
 
 ```bash
-agora loop council TKT-1234abcd --transition technical_analysis->approved --json
+agora loop council TKT-1234abcd --transition technical_analysis->approved --specialization security --json
 ```
 
 Use this when a reviewer needs the current ticket context and consensus state before writing findings or submitting a verdict.
@@ -98,7 +98,7 @@ What to do next:
 Prompt for a reviewer agent:
 
 ```text
-Act as reviewer. Start by running `agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json`.
+Act as reviewer. Start by running `agora loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer" --json`.
 Review only the current gate. Focus on defects, regressions, risks, missing tests, and scope mismatches.
 Be maximally detailed and analytically deep by default.
 Do not propose patches.
@@ -153,7 +153,8 @@ Use watch mode:
 agora loop plan --watch
 agora facilitator --watch
 agora loop dev --watch
-agora loop council --watch
+agora loop council --watch --agent-name "Architect Reviewer"
+agora loop council --watch --agent-name "Security Reviewer"
 ```
 
 Recommended use:
@@ -168,6 +169,7 @@ Council watch behavior:
 - if no requests, looks at `in_review`
 - if that queue is empty, looks at `technical_analysis`
 - if that is also empty, falls back to backlog planning candidates
+- each council worker only assigns and votes for its own specialization
 
 Planner watch behavior:
 
