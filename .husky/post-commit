@@ -1,12 +1,19 @@
 #!/usr/bin/env sh
 
+# Skip if .agora directory does not exist (user never ran `agora init`)
+[ -d .agora ] || exit 0
+
 if ! command -v pnpm >/dev/null 2>&1; then
   echo "Agora post-commit reindex skipped: pnpm not available."
   exit 0
 fi
 
-pnpm tsx src/index.ts ticket reconcile-commit --actor-label post-commit --verbosity quiet >/dev/null 2>&1 || \
-  echo "Agora post-commit ticket resolution failed. Run 'agora ticket reconcile-commit' manually."
+# Run in background — post-commit is informational, git ignores exit code.
+# Redirect stdout only; stderr stays visible so warnings/errors reach the terminal.
+(
+  pnpm tsx src/index.ts ticket reconcile-commit --actor-label post-commit --verbosity quiet >/dev/null || \
+    echo "Agora post-commit ticket resolution failed. Run 'agora ticket reconcile-commit --verbosity verbose' for diagnostics."
 
-pnpm tsx src/index.ts index --incremental --verbosity quiet >/dev/null 2>&1 || \
-  echo "Agora post-commit reindex failed. Run 'agora index --incremental' manually."
+  pnpm tsx src/index.ts index --incremental --verbosity quiet >/dev/null || \
+    echo "Agora post-commit reindex failed. Run 'agora index --incremental --verbosity verbose' for diagnostics."
+) &

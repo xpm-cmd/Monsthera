@@ -705,6 +705,10 @@ function printHelp() {
   console.error("  agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json");
   console.error("  agora facilitator --watch");
   console.error("");
+  console.error("Git hooks:");
+  console.error("  post-commit    Auto-runs 'ticket reconcile-commit' and 'index --incremental'");
+  console.error("                 in background. Requires .agora/ dir (skipped otherwise).");
+  console.error("");
   console.error("Agent access preference:");
   console.error("  Prefer `agora ticket|patch|knowledge ... --json` or `agora tool ... --json`");
   console.error("  before reading `.agora/agora.db` directly.");
