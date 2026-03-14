@@ -6,7 +6,7 @@ import { createAgoraContextLoader } from "./core/context-loader.js";
 import { recordRuntimeEventWithContext } from "./tools/runtime-instrumentation.js";
 import { initDatabase, initGlobalDatabase } from "./db/init.js";
 import { InsightStream } from "./core/insight-stream.js";
-import { fullIndex, getIndexedCommit, incrementalIndex } from "./indexing/indexer.js";
+import { fullIndex, getIndexedCommit, incrementalIndex, buildIndexOptions } from "./indexing/indexer.js";
 import { isGitRepo, getRepoRoot, getMainRepoRoot } from "./git/operations.js";
 import * as queries from "./db/queries.js";
 import { prepareKnowledgeSearchTarget } from "./knowledge/search.js";
@@ -544,28 +544,21 @@ async function cmdIndex(
     insight.warn("No previous indexed commit found; falling back to full index");
   }
 
+  const indexOpts = buildIndexOptions({
+    repoPath: repoRoot,
+    repoId,
+    db,
+    sensitiveFilePatterns: config.sensitiveFilePatterns,
+    secretPatterns: compileSecretPatterns(config.secretPatterns),
+    excludePatterns: config.excludePatterns,
+    onProgress: (msg: string) => insight.detail(msg),
+    semanticReranker,
+  });
+
   insight.info(shouldRunIncremental ? `Starting incremental index from ${indexedCommit!.slice(0, 7)}...` : "Starting full index...");
   const result = shouldRunIncremental
-    ? await incrementalIndex(indexedCommit!, {
-        repoPath: repoRoot,
-        repoId,
-        db,
-        sensitiveFilePatterns: config.sensitiveFilePatterns,
-        secretPatterns: compileSecretPatterns(config.secretPatterns),
-        excludePatterns: config.excludePatterns,
-        onProgress: (msg: string) => insight.detail(msg),
-        semanticReranker,
-      })
-    : await fullIndex({
-        repoPath: repoRoot,
-        repoId,
-        db,
-        sensitiveFilePatterns: config.sensitiveFilePatterns,
-        secretPatterns: compileSecretPatterns(config.secretPatterns),
-        excludePatterns: config.excludePatterns,
-        onProgress: (msg) => insight.detail(msg),
-        semanticReranker,
-      });
+    ? await incrementalIndex(indexedCommit!, indexOpts)
+    : await fullIndex(indexOpts);
 
   await rebuildSearchIndexes(sqlite, db, repoId, insight);
 

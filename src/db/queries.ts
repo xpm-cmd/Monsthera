@@ -236,6 +236,84 @@ function resolveIndexedImportTarget(
   return null;
 }
 
+// --- Transitive dependency tracing ---
+
+export interface TransitiveDep {
+  path: string;
+  depth: number;
+  isCycle: boolean;
+}
+
+export function traceTransitiveDeps(
+  db: DB,
+  repoId: number,
+  filePath: string,
+  opts: { direction: "inbound" | "outbound" | "both"; maxDepth?: number },
+): TransitiveDep[] {
+  const maxDepth = Math.min(opts.maxDepth ?? 3, 5);
+
+  // Load all files and imports for this repo into memory
+  const allFiles = db.select({ id: tables.files.id, path: tables.files.path })
+    .from(tables.files).where(eq(tables.files.repoId, repoId)).all();
+  const allPaths = new Set(allFiles.map(f => f.path));
+
+  const allImports = db.select({
+    sourceFileId: tables.imports.sourceFileId,
+    targetPath: tables.imports.targetPath,
+    sourcePath: tables.files.path,
+  }).from(tables.imports)
+    .innerJoin(tables.files, eq(tables.imports.sourceFileId, tables.files.id))
+    .where(eq(tables.files.repoId, repoId))
+    .all();
+
+  // Build adjacency lists
+  // outbound: file -> [files it imports]
+  // inbound: file -> [files that import it]
+  const outbound = new Map<string, Set<string>>();
+  const inbound = new Map<string, Set<string>>();
+
+  for (const imp of allImports) {
+    const resolved = resolveIndexedImportTarget(imp.sourcePath, imp.targetPath, allPaths);
+    if (!resolved) continue;
+
+    if (!outbound.has(imp.sourcePath)) outbound.set(imp.sourcePath, new Set());
+    outbound.get(imp.sourcePath)!.add(resolved);
+
+    if (!inbound.has(resolved)) inbound.set(resolved, new Set());
+    inbound.get(resolved)!.add(imp.sourcePath);
+  }
+
+  // BFS
+  const results: TransitiveDep[] = [];
+  const visited = new Set<string>([filePath]);
+  const queue: Array<{ path: string; depth: number }> = [{ path: filePath, depth: 0 }];
+
+  while (queue.length > 0) {
+    const { path, depth } = queue.shift()!;
+    if (depth >= maxDepth) continue;
+
+    const neighbors = new Set<string>();
+    if (opts.direction === "outbound" || opts.direction === "both") {
+      for (const n of outbound.get(path) ?? []) neighbors.add(n);
+    }
+    if (opts.direction === "inbound" || opts.direction === "both") {
+      for (const n of inbound.get(path) ?? []) neighbors.add(n);
+    }
+
+    for (const neighbor of neighbors) {
+      if (visited.has(neighbor)) {
+        results.push({ path: neighbor, depth: depth + 1, isCycle: true });
+        continue;
+      }
+      visited.add(neighbor);
+      results.push({ path: neighbor, depth: depth + 1, isCycle: false });
+      queue.push({ path: neighbor, depth: depth + 1 });
+    }
+  }
+
+  return results;
+}
+
 // --- Index State ---
 
 export function getIndexState(db: DB, repoId: number) {

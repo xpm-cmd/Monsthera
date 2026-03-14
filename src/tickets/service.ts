@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, notInArray, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
@@ -28,6 +28,9 @@ import type { RoleId } from "../../schemas/agent.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
 import { recordDashboardEvent } from "../dashboard/events.js";
 import type { CoordinationBus } from "../coordination/bus.js";
+import type { CouncilSpecializationId as CouncilSpecializationIdValue } from "../../schemas/council.js";
+import { CouncilSpecializationId } from "../../schemas/council.js";
+import { suggestActionsForChanges } from "../dispatch/rules.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 
@@ -205,6 +208,24 @@ export interface BatchResult {
   results: BatchItemResult[];
 }
 
+function titleSimilarity(a: string, b: string): number {
+  const normalize = (s: string) => s.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .split(/\s+/).filter(Boolean);
+
+  const wordsA = new Set(normalize(a));
+  const wordsB = new Set(normalize(b));
+
+  if (wordsA.size === 0 || wordsB.size === 0) return 0;
+
+  let intersection = 0;
+  for (const w of wordsA) if (wordsB.has(w)) intersection++;
+
+  // Jaccard similarity on word sets
+  const union = new Set([...wordsA, ...wordsB]).size;
+  return intersection / union;
+}
+
 export async function createTicketRecord(
   ctx: TicketContext,
   input: CreateTicketInput,
@@ -213,9 +234,72 @@ export async function createTicketRecord(
   if (!auth.ok) return auth;
   const resolved = auth.data;
 
+  // Duplicate detection: fuzzy match against recent open tickets
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
+  const recentTickets = ctx.db.select({
+    ticketId: tables.tickets.ticketId,
+    title: tables.tickets.title,
+    status: tables.tickets.status,
+  }).from(tables.tickets)
+    .where(and(
+      eq(tables.tickets.repoId, ctx.repoId),
+      notInArray(tables.tickets.status, ["closed", "wont_fix"]),
+      sql`${tables.tickets.createdAt} >= ${sevenDaysAgo}`,
+    ))
+    .all();
+
+  const duplicateCandidates: Array<{ ticketId: string; title: string; similarity: number }> = [];
+  for (const existing of recentTickets) {
+    const sim = titleSimilarity(input.title, existing.title);
+    if (sim > 0.7) {
+      duplicateCandidates.push({
+        ticketId: existing.ticketId,
+        title: existing.title,
+        similarity: Math.round(sim * 100),
+      });
+    }
+  }
+
+  // Batch creation warning: same agent creating many tickets rapidly
+  const fiveMinAgo = new Date(Date.now() - 300_000).toISOString();
+  const recentByAgent = ctx.db.select({ count: sql<number>`count(*)` })
+    .from(tables.tickets)
+    .where(and(
+      eq(tables.tickets.repoId, ctx.repoId),
+      eq(tables.tickets.creatorAgentId, resolved.agentId),
+      sql`${tables.tickets.createdAt} >= ${fiveMinAgo}`,
+    )).get();
+
+  const batchWarning = (recentByAgent?.count ?? 0) >= 3
+    ? `Batch creation notice: ${recentByAgent!.count} tickets created by this agent in 5 minutes.`
+    : null;
+
+  // Build warnings array (non-blocking — ticket is still created)
+  const warnings: string[] = [];
+  if (duplicateCandidates.length > 0) {
+    warnings.push(
+      `Possible duplicate(s) found:\n` +
+      duplicateCandidates.map(d =>
+        `  - ${d.ticketId}: "${d.title}" (${d.similarity}% similar)`
+      ).join("\n")
+    );
+  }
+  if (batchWarning) warnings.push(batchWarning);
+
   const now = new Date().toISOString();
   const ticketId = `TKT-${randomUUID().slice(0, 8)}`;
   const commitSha = await getHead({ cwd: ctx.repoPath });
+
+  // Compute required council roles from affected paths via dispatch rules
+  let requiredRolesJson: string | null = null;
+  if (input.affectedPaths?.length) {
+    try {
+      const suggestions = suggestActionsForChanges(input.affectedPaths, ctx.repoPath);
+      if (suggestions.requiredRoles.length > 0) {
+        requiredRolesJson = JSON.stringify(suggestions.requiredRoles);
+      }
+    } catch { /* dispatch rules are optional */ }
+  }
 
   const ticket = ctx.db.transaction((tx) => {
     const createdTicket = tx.insert(tables.tickets).values({
@@ -229,6 +313,7 @@ export async function createTicketRecord(
       tagsJson: JSON.stringify(input.tags),
       affectedPathsJson: JSON.stringify(input.affectedPaths),
       acceptanceCriteria: input.acceptanceCriteria ?? null,
+      requiredRolesJson,
       creatorAgentId: resolved.agentId,
       creatorSessionId: resolved.sessionId,
       commitSha,
@@ -275,6 +360,7 @@ export async function createTicketRecord(
     severity: input.severity,
     priority: input.priority,
     commitSha,
+    ...(warnings.length > 0 && { warnings }),
   });
 }
 
@@ -489,6 +575,9 @@ export function updateTicketStatusRecord(
           return agent ? { roleId: agent.roleId, provider: agent.provider, model: agent.model } : undefined;
         }, ticket.severity)
       : undefined;
+    const ticketRequiredRoles = isGated
+      ? resolveTicketRequiredRoles(ticket, ctx.repoPath)
+      : [];
     const consensus = isGated
       ? evaluateTicketTransitionConsensus({
           ticketId: input.ticketId,
@@ -497,6 +586,7 @@ export function updateTicketStatusRecord(
           verdictRows,
           config: ctx.ticketQuorum,
           governance: governanceOpts,
+          requiredRoles: ticketRequiredRoles,
         })
       : null;
     if (consensus && !consensus.advisoryReady) {
@@ -513,6 +603,8 @@ export function updateTicketStatusRecord(
           councilSpecializations: consensus.councilSpecializations,
           vetoSpecializations: consensus.vetoSpecializations,
           missingSpecializations: consensus.missingSpecializations,
+          requiredRoles: consensus.requiredRoles,
+          missingRequiredRoles: consensus.missingRequiredRoles,
           vetoes: consensus.vetoes,
           verdicts: consensus.verdicts,
         },
@@ -1145,6 +1237,10 @@ function buildConsensusBlockMessage(
     return `Reviewer model diversity not met for ${transitionKey}: ${duplicateModels}. Require distinct reviewer models or use an explicit admin override.`;
   }
 
+  if (consensus.missingRequiredRoles.length > 0) {
+    return `Required roles not satisfied for ${transitionKey}: missing passing verdicts from ${consensus.missingRequiredRoles.join(", ")}. These roles are required by dispatch rules for the ticket's affected paths.`;
+  }
+
   const passesNeeded = Math.max(0, consensus.requiredPasses - consensus.counts.pass);
   const awaiting = consensus.missingSpecializations.length > 0
     ? ` Await verdicts from: ${consensus.missingSpecializations.join(", ")}.`
@@ -1245,4 +1341,35 @@ function evaluateResolutionVerificationReadiness(
     acceptedHeaders,
     eligibleComments,
   };
+}
+
+/**
+ * Resolve required council roles for a ticket. Uses stored `requiredRolesJson` if
+ * present, otherwise lazily computes from the ticket's affected paths via dispatch rules.
+ */
+function resolveTicketRequiredRoles(
+  ticket: { requiredRolesJson: string | null; affectedPathsJson: string | null },
+  repoPath: string,
+): CouncilSpecializationIdValue[] {
+  // 1. Try stored value
+  if (ticket.requiredRolesJson) {
+    try {
+      const parsed: unknown[] = JSON.parse(ticket.requiredRolesJson);
+      return parsed.flatMap((v) => {
+        const result = CouncilSpecializationId.safeParse(v);
+        return result.success ? [result.data] : [];
+      });
+    } catch { /* fall through to lazy computation */ }
+  }
+
+  // 2. Lazy computation from affected paths
+  if (!ticket.affectedPathsJson) return [];
+  try {
+    const affectedPaths: string[] = JSON.parse(ticket.affectedPathsJson);
+    if (!affectedPaths.length) return [];
+    const suggestions = suggestActionsForChanges(affectedPaths, repoPath);
+    return suggestions.requiredRoles;
+  } catch {
+    return [];
+  }
 }

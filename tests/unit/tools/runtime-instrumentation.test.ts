@@ -129,13 +129,31 @@ describe("runtime instrumentation", () => {
     expect(row.error_detail).toBe("sqlite busy");
   });
 
-  it("rate limits repeated calls per tool and logs them as denied", async () => {
+  it("does not rate limit anonymous public tools", async () => {
+    server.tool("get_code_pack", "get_code_pack", {}, async () => ({
+      content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
+    }));
+
+    const first = await server.handlers.get("get_code_pack")!({});
+    const second = await server.handlers.get("get_code_pack")!({});
+
+    expect(first.isError).toBeUndefined();
+    expect(second.isError).toBeUndefined();
+
+    const rows = sqlite.prepare("SELECT status, error_code, denial_reason FROM event_logs ORDER BY id").all() as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.status).toBe("success");
+    expect(rows[1]?.status).toBe("success");
+  });
+
+  it("rate limits repeated identified calls per tool and logs them as denied", async () => {
     server.tool("status", "status", {}, async () => ({
       content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
     }));
 
-    const first = await server.handlers.get("status")!({});
-    const second = await server.handlers.get("status")!({});
+    const actor = { agentId: "agent-1", sessionId: "session-1" };
+    const first = await server.handlers.get("status")!(actor);
+    const second = await server.handlers.get("status")!(actor);
 
     expect(first.isError).toBeUndefined();
     expect(second.isError).toBe(true);
@@ -154,14 +172,15 @@ describe("runtime instrumentation", () => {
     });
   });
 
-  it("supports per-tool rate limit overrides", async () => {
+  it("supports per-tool rate limit overrides for identified actors", async () => {
     server.tool("schema", "schema", {}, async () => ({
       content: [{ type: "text", text: JSON.stringify({ ok: true }) }],
     }));
 
-    const first = await server.handlers.get("schema")!({});
-    const second = await server.handlers.get("schema")!({});
-    const third = await server.handlers.get("schema")!({});
+    const actor = { agentId: "agent-2", sessionId: "session-2" };
+    const first = await server.handlers.get("schema")!(actor);
+    const second = await server.handlers.get("schema")!(actor);
+    const third = await server.handlers.get("schema")!(actor);
 
     expect(first.isError).toBeUndefined();
     expect(second.isError).toBeUndefined();

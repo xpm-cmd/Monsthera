@@ -10,9 +10,10 @@ vi.mock("../../../src/indexing/indexer.js", () => ({
   fullIndex: vi.fn(),
   incrementalIndex: vi.fn(),
   getIndexedCommit: vi.fn(() => null),
+  buildIndexOptions: vi.fn((ctx: any) => ctx),
 }));
 
-import { fullIndex } from "../../../src/indexing/indexer.js";
+import { fullIndex, incrementalIndex, getIndexedCommit } from "../../../src/indexing/indexer.js";
 
 class FakeServer {
   handlers = new Map<string, (input: unknown) => Promise<any>>();
@@ -132,5 +133,32 @@ describe("index tools", () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("does not have access to request_reindex");
+  });
+
+  it("dispatches incremental index when getIndexedCommit returns a commit SHA", async () => {
+    const fakeSha = "a".repeat(40);
+    vi.mocked(getIndexedCommit).mockReturnValue(fakeSha);
+    vi.mocked(incrementalIndex).mockResolvedValue({
+      commit: "b".repeat(40),
+      filesIndexed: 2,
+      filesSkipped: 1,
+      errors: [],
+      durationMs: 10,
+    });
+
+    const result = await handler("request_reindex")({
+      full: false,
+      agentId: "agent-dev",
+      sessionId: "session-agent-dev",
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(incrementalIndex).toHaveBeenCalledOnce();
+    expect(incrementalIndex).toHaveBeenCalledWith(fakeSha, expect.anything());
+    expect(fullIndex).not.toHaveBeenCalled();
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      filesIndexed: 2,
+      durationMs: 10,
+    });
   });
 });

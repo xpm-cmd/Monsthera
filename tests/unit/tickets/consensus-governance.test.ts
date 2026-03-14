@@ -610,3 +610,113 @@ describe("buildGovernanceOptions", () => {
     expect(critical?.strictDiversity).toBe(false);
   });
 });
+
+// ─── Required roles enforcement ───────────────────────────────
+
+describe("consensus: required roles enforcement", () => {
+  it("blocks advisoryReady when required roles have not passed", () => {
+    const verdicts = [
+      makeVerdict("performance", "pass"),
+      makeVerdict("patterns", "pass"),
+      makeVerdict("simplifier", "pass"),
+      makeVerdict("design", "pass"),
+    ];
+
+    const result = buildConsensusPayload("TKT-test", verdicts, {
+      requiredPasses: 3,
+      requiredRoles: ["architect", "security"],
+    });
+
+    expect(result.requiredRoles).toEqual(["architect", "security"]);
+    expect(result.missingRequiredRoles).toEqual(["architect", "security"]);
+    expect(result.quorumMet).toBe(true);
+    expect(result.advisoryReady).toBe(false);
+  });
+
+  it("allows advisoryReady when all required roles have passed", () => {
+    const verdicts = [
+      makeVerdict("architect", "pass"),
+      makeVerdict("security", "pass"),
+      makeVerdict("simplifier", "pass"),
+      makeVerdict("performance", "pass"),
+    ];
+
+    const result = buildConsensusPayload("TKT-test", verdicts, {
+      requiredPasses: 3,
+      requiredRoles: ["architect", "security"],
+    });
+
+    expect(result.requiredRoles).toEqual(["architect", "security"]);
+    expect(result.missingRequiredRoles).toEqual([]);
+    expect(result.quorumMet).toBe(true);
+    expect(result.advisoryReady).toBe(true);
+  });
+
+  it("treats abstain as NOT passed for required roles", () => {
+    const verdicts = [
+      makeVerdict("architect", "abstain"),
+      makeVerdict("security", "pass"),
+      makeVerdict("simplifier", "pass"),
+      makeVerdict("performance", "pass"),
+      makeVerdict("patterns", "pass"),
+    ];
+
+    const result = buildConsensusPayload("TKT-test", verdicts, {
+      requiredPasses: 3,
+      requiredRoles: ["architect", "security"],
+    });
+
+    expect(result.missingRequiredRoles).toEqual(["architect"]);
+    expect(result.advisoryReady).toBe(false);
+  });
+
+  it("treats fail as NOT passed for required roles", () => {
+    const verdicts = [
+      makeVerdict("architect", "fail"),
+      makeVerdict("security", "pass"),
+      makeVerdict("simplifier", "pass"),
+      makeVerdict("performance", "pass"),
+      makeVerdict("patterns", "pass"),
+    ];
+
+    const result = buildConsensusPayload("TKT-test", verdicts, {
+      requiredPasses: 3,
+      requiredRoles: ["architect"],
+    });
+
+    expect(result.missingRequiredRoles).toEqual(["architect"]);
+    expect(result.advisoryReady).toBe(false);
+  });
+
+  it("backward compatible: empty requiredRoles does not change existing behavior", () => {
+    const verdicts = [
+      makeVerdict("architect", "pass"),
+      makeVerdict("simplifier", "pass"),
+      makeVerdict("security", "pass"),
+      makeVerdict("performance", "pass"),
+    ];
+
+    const result = buildConsensusPayload("TKT-test", verdicts, {
+      requiredPasses: 3,
+    });
+
+    expect(result.requiredRoles).toEqual([]);
+    expect(result.missingRequiredRoles).toEqual([]);
+    expect(result.advisoryReady).toBe(true);
+  });
+
+  it("backward compatible: no requiredRoles option preserves default behavior", () => {
+    const verdicts = [
+      makeVerdict("architect", "pass"),
+      makeVerdict("simplifier", "pass"),
+      makeVerdict("security", "pass"),
+      makeVerdict("performance", "pass"),
+    ];
+
+    const result = buildConsensusPayload("TKT-test", verdicts);
+
+    expect(result.requiredRoles).toEqual([]);
+    expect(result.missingRequiredRoles).toEqual([]);
+    expect(result.advisoryReady).toBe(true);
+  });
+});

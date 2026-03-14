@@ -159,6 +159,7 @@ function createTables(sqlite: Database.Database): void {
       resolved_by_agent_id TEXT,
       commit_sha TEXT NOT NULL,
       resolution_commits_json TEXT,
+      required_roles_json TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`,
@@ -463,7 +464,14 @@ function runMigrations(sqlite: Database.Database): void {
     sqlite.prepare("ALTER TABLE sessions ADD COLUMN worktree_branch TEXT").run();
   }
 
-  // Migration 16: Create commit_locks table for merge serialization
+  // Migration 16: Add required_roles_json column to tickets for dispatch-derived role enforcement
+  try {
+    sqlite.prepare("SELECT required_roles_json FROM tickets LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE tickets ADD COLUMN required_roles_json TEXT").run();
+  }
+
+  // Migration 17: Create commit_locks table for merge serialization
   sqlite.prepare(`CREATE TABLE IF NOT EXISTS commit_locks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,

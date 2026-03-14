@@ -5,6 +5,7 @@ import { AgoraError } from "../core/errors.js";
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
 import { logEvent } from "../logging/event-logger.js";
+import { TOOL_ACCESS_POLICY } from "../trust/tool-policy.js";
 
 type GetContext = () => Promise<AgoraContext>;
 export type ToolHandler = (input: unknown) => Promise<unknown>;
@@ -100,7 +101,9 @@ export function instrumentToolHandler(
       ctx = null;
     }
 
-    const rateLimit = ctx ? consumeToolRateLimit(ctx.config, tool, actor, startedAt) : null;
+    const rateLimit = ctx && shouldEnforceToolRateLimit(tool, actor)
+      ? consumeToolRateLimit(ctx.config, tool, actor, startedAt)
+      : null;
     if (rateLimit && !rateLimit.allowed) {
       const limitedResult = buildRateLimitedResult(tool, rateLimit);
       await recordRuntimeEventFromSource(ctx, getContext, {
@@ -389,6 +392,16 @@ function consumeToolRateLimit(
   retained.push(now);
   toolRateWindows.set(key, retained);
   return { allowed: true, limit };
+}
+
+function shouldEnforceToolRateLimit(
+  tool: string,
+  actor: { agentId?: string; sessionId?: string },
+): boolean {
+  if (actor.agentId || actor.sessionId) return true;
+
+  const policy = TOOL_ACCESS_POLICY[tool as keyof typeof TOOL_ACCESS_POLICY];
+  return policy?.mode !== "public";
 }
 
 function resolveToolRateLimit(config: Partial<AgoraConfig>, tool: string): number {

@@ -97,3 +97,136 @@ describe("lookup_dependencies queries", () => {
     expect(kinds).toEqual(["from", "import", "require"]);
   });
 });
+
+describe("traceTransitiveDeps", () => {
+  let db: ReturnType<typeof createTestDb>["db"];
+  let sqlite: InstanceType<typeof Database>;
+  let repoId: number;
+
+  beforeEach(() => {
+    const result = createTestDb();
+    db = result.db;
+    sqlite = result.sqlite;
+    repoId = queries.upsertRepo(db, "/test", "test").id;
+  });
+  afterEach(() => sqlite.close());
+
+  function insertFile(path: string) {
+    return sqlite.prepare(
+      "INSERT INTO files (repo_id, path, language, indexed_at) VALUES (?, ?, 'typescript', datetime('now'))",
+    ).run(repoId, path);
+  }
+
+  function insertImport(sourceFileId: number, targetPath: string, kind = "import") {
+    sqlite.prepare(
+      "INSERT INTO imports (source_file_id, target_path, kind) VALUES (?, ?, ?)",
+    ).run(sourceFileId, targetPath, kind);
+  }
+
+  it("traces outbound transitive dependencies with depth", () => {
+    // A -> B -> C
+    const fileA = insertFile("src/a.ts");
+    const fileB = insertFile("src/b.ts");
+    insertFile("src/c.ts");
+    insertImport(Number(fileA.lastInsertRowid), "./b.ts", "import");
+    insertImport(Number(fileB.lastInsertRowid), "./c.ts", "import");
+
+    const deps = queries.traceTransitiveDeps(db, repoId, "src/a.ts", {
+      direction: "outbound",
+      maxDepth: 3,
+    });
+
+    expect(deps).toHaveLength(2);
+    expect(deps[0]).toEqual({ path: "src/b.ts", depth: 1, isCycle: false });
+    expect(deps[1]).toEqual({ path: "src/c.ts", depth: 2, isCycle: false });
+  });
+
+  it("traces inbound (reverse) dependencies", () => {
+    // B -> A, C -> A
+    const fileB = insertFile("src/b.ts");
+    const fileC = insertFile("src/c.ts");
+    insertFile("src/a.ts");
+    insertImport(Number(fileB.lastInsertRowid), "./a.ts", "import");
+    insertImport(Number(fileC.lastInsertRowid), "./a.ts", "import");
+
+    const deps = queries.traceTransitiveDeps(db, repoId, "src/a.ts", {
+      direction: "inbound",
+      maxDepth: 3,
+    });
+
+    expect(deps).toHaveLength(2);
+    const paths = deps.map(d => d.path).sort();
+    expect(paths).toEqual(["src/b.ts", "src/c.ts"]);
+    expect(deps.every(d => d.depth === 1)).toBe(true);
+    expect(deps.every(d => !d.isCycle)).toBe(true);
+  });
+
+  it("detects cycles", () => {
+    // A -> B -> A (cycle)
+    const fileA = insertFile("src/a.ts");
+    const fileB = insertFile("src/b.ts");
+    insertImport(Number(fileA.lastInsertRowid), "./b.ts", "import");
+    insertImport(Number(fileB.lastInsertRowid), "./a.ts", "import");
+
+    const deps = queries.traceTransitiveDeps(db, repoId, "src/a.ts", {
+      direction: "outbound",
+      maxDepth: 3,
+    });
+
+    expect(deps).toHaveLength(2);
+    expect(deps[0]).toEqual({ path: "src/b.ts", depth: 1, isCycle: false });
+    expect(deps[1]).toEqual({ path: "src/a.ts", depth: 2, isCycle: true });
+  });
+
+  it("respects maxDepth limit", () => {
+    // A -> B -> C -> D
+    const fileA = insertFile("src/a.ts");
+    const fileB = insertFile("src/b.ts");
+    const fileC = insertFile("src/c.ts");
+    insertFile("src/d.ts");
+    insertImport(Number(fileA.lastInsertRowid), "./b.ts", "import");
+    insertImport(Number(fileB.lastInsertRowid), "./c.ts", "import");
+    insertImport(Number(fileC.lastInsertRowid), "./d.ts", "import");
+
+    const deps = queries.traceTransitiveDeps(db, repoId, "src/a.ts", {
+      direction: "outbound",
+      maxDepth: 1,
+    });
+
+    expect(deps).toHaveLength(1);
+    expect(deps[0]).toEqual({ path: "src/b.ts", depth: 1, isCycle: false });
+  });
+
+  it("returns empty array for a file with no imports", () => {
+    insertFile("src/leaf.ts");
+
+    const deps = queries.traceTransitiveDeps(db, repoId, "src/leaf.ts", {
+      direction: "outbound",
+      maxDepth: 3,
+    });
+
+    expect(deps).toHaveLength(0);
+  });
+
+  it("traces both directions simultaneously", () => {
+    // B -> A -> C
+    const fileA = insertFile("src/a.ts");
+    const fileB = insertFile("src/b.ts");
+    insertFile("src/c.ts");
+    insertImport(Number(fileA.lastInsertRowid), "./c.ts", "import");
+    insertImport(Number(fileB.lastInsertRowid), "./a.ts", "import");
+
+    const deps = queries.traceTransitiveDeps(db, repoId, "src/a.ts", {
+      direction: "both",
+      maxDepth: 3,
+    });
+
+    // Depth 1: outbound src/c.ts, inbound src/b.ts
+    // Depth 2: from src/b.ts outbound -> src/a.ts (cycle), from src/c.ts inbound -> src/a.ts (cycle)
+    const nonCyclic = deps.filter(d => !d.isCycle);
+    expect(nonCyclic).toHaveLength(2);
+    const paths = nonCyclic.map(d => d.path).sort();
+    expect(paths).toEqual(["src/b.ts", "src/c.ts"]);
+    expect(nonCyclic.every(d => d.depth === 1)).toBe(true);
+  });
+});

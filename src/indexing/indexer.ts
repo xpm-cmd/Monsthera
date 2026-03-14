@@ -86,16 +86,19 @@ export async function fullIndex(opts: IndexOptions): Promise<IndexResult> {
 
   // Update index state
   const now = new Date().toISOString();
+  const lastError = errors.length > 0
+    ? errors.map(e => `${e.path}: ${e.error}`).join('; ').slice(0, 1000)
+    : null;
   const existing = db.select().from(tables.indexState).where(eq(tables.indexState.repoId, repoId)).get();
 
   if (existing) {
     db.update(tables.indexState)
-      .set({ dbIndexedCommit: commit, indexedAt: now, lastSuccess: now })
+      .set({ dbIndexedCommit: commit, indexedAt: now, lastSuccess: now, lastError })
       .where(eq(tables.indexState.repoId, repoId))
       .run();
   } else {
     db.insert(tables.indexState)
-      .values({ repoId, dbIndexedCommit: commit, indexedAt: now, lastSuccess: now })
+      .values({ repoId, dbIndexedCommit: commit, indexedAt: now, lastSuccess: now, lastError })
       .run();
   }
 
@@ -115,12 +118,25 @@ export async function incrementalIndex(lastCommit: string, opts: IndexOptions): 
   const { repoPath, repoId, db, onProgress } = opts;
   const errors: Array<{ path: string; error: string }> = [];
 
+  // Fix 2: Validate SHA format before any git calls
+  if (!/^[0-9a-f]{40}$/i.test(lastCommit)) {
+    onProgress?.(`Invalid commit SHA format, falling back to full index`);
+    return fullIndex(opts);
+  }
+
   const currentHead = await getHead({ cwd: repoPath });
   if (currentHead === lastCommit) {
     return { commit: currentHead, filesIndexed: 0, filesSkipped: 0, errors: [], durationMs: Date.now() - start };
   }
 
-  const changedFiles = await getChangedFilesSinceCommit(lastCommit, { cwd: repoPath });
+  // Fix 1: Catch bad commit ref and fall back to full index
+  let changedFiles;
+  try {
+    changedFiles = await getChangedFilesSinceCommit(lastCommit, { cwd: repoPath });
+  } catch {
+    onProgress?.(`Bad ref ${lastCommit.slice(0, 7)}, falling back to full index`);
+    return fullIndex(opts);
+  }
   onProgress?.(`${changedFiles.length} files changed since ${lastCommit.slice(0, 7)}`);
 
   let filesIndexed = 0;
@@ -164,8 +180,11 @@ export async function incrementalIndex(lastCommit: string, opts: IndexOptions): 
 
   // Update index state
   const now = new Date().toISOString();
+  const lastError = errors.length > 0
+    ? errors.map(e => `${e.path}: ${e.error}`).join('; ').slice(0, 1000)
+    : null;
   db.update(tables.indexState)
-    .set({ dbIndexedCommit: currentHead, indexedAt: now, lastSuccess: now })
+    .set({ dbIndexedCommit: currentHead, indexedAt: now, lastSuccess: now, lastError })
     .where(eq(tables.indexState.repoId, repoId))
     .run();
 
@@ -371,6 +390,32 @@ async function maybeEmbed(
   } catch {
     // Non-fatal: file is indexed but without embedding
   }
+}
+
+/**
+ * Build IndexOptions from a common context shape.
+ * Deduplicates the IndexOptions construction used in index-tools, read-tools, and the CLI.
+ */
+export function buildIndexOptions(ctx: {
+  db: BetterSQLite3Database<typeof schema>;
+  repoId: number;
+  repoPath: string;
+  sensitiveFilePatterns?: string[];
+  secretPatterns?: SecretPattern[];
+  excludePatterns?: string[];
+  onProgress?: (msg: string) => void;
+  semanticReranker?: IndexOptions["semanticReranker"];
+}): IndexOptions {
+  return {
+    repoPath: ctx.repoPath,
+    repoId: ctx.repoId,
+    db: ctx.db,
+    sensitiveFilePatterns: ctx.sensitiveFilePatterns,
+    secretPatterns: ctx.secretPatterns,
+    excludePatterns: ctx.excludePatterns,
+    onProgress: ctx.onProgress,
+    semanticReranker: ctx.semanticReranker,
+  };
 }
 
 export function getIndexedCommit(

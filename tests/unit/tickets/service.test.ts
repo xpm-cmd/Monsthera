@@ -28,7 +28,7 @@ function createTestDb() {
     CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', provider TEXT, model TEXT, model_family TEXT, model_version TEXT, identity_source TEXT, role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL);
     CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT, worktree_path TEXT, worktree_branch TEXT);
-    CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, resolution_commits_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, required_roles_json TEXT, resolution_commits_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE review_verdicts (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, specialization TEXT NOT NULL, verdict TEXT NOT NULL, reasoning TEXT, created_at TEXT NOT NULL, superseded_by INTEGER);
@@ -2131,5 +2131,213 @@ describe("ticket service governance: resolution guards", () => {
     if (!result.ok) return;
     expect(result.data.sharedCommitWarning).toBeUndefined();
     expect(warnings.some((w) => w.includes("already associated"))).toBe(false);
+  });
+});
+
+describe("duplicate / twin ticket detection", () => {
+  let sqlite: InstanceType<typeof Database>;
+  let db: ReturnType<typeof createTestDb>["db"];
+  let repoId: number;
+  let bus: CoordinationBus;
+  let ctx: TicketSystemContext;
+
+  beforeEach(() => {
+    ({ db, sqlite } = createTestDb());
+    repoId = queries.upsertRepo(db, "/test", "test").id;
+    bus = new CoordinationBus("hub-spoke", 200, db, repoId);
+
+    ctx = {
+      db,
+      repoId,
+      repoPath: "/test",
+      system: true,
+      actorLabel: "cli admin",
+      insight: { info: () => undefined, warn: () => undefined },
+      bus,
+      refreshTicketSearch: () => {},
+      refreshKnowledgeSearch: () => {},
+    };
+  });
+
+  afterEach(() => {
+    sqlite.close();
+  });
+
+  it("returns warnings when creating a ticket with similar title to existing open ticket", async () => {
+    // Create an existing ticket
+    const first = await createTicketRecord(ctx, {
+      title: "Add user authentication to API",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+    expect(first.ok).toBe(true);
+
+    // Create a similar ticket
+    const second = await createTicketRecord(ctx, {
+      title: "Add user authentication to API system",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.data.warnings).toBeDefined();
+    expect(Array.isArray(second.data.warnings)).toBe(true);
+    expect((second.data.warnings as string[]).some((w: string) => w.includes("Possible duplicate"))).toBe(true);
+  });
+
+  it("returns no warnings when creating a ticket with a unique title", async () => {
+    await createTicketRecord(ctx, {
+      title: "Add user authentication to API",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+
+    const result = await createTicketRecord(ctx, {
+      title: "Fix database connection pooling issue",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.warnings).toBeUndefined();
+  });
+
+  it("does NOT flag similar title on closed/wont_fix tickets", async () => {
+    const first = await createTicketRecord(ctx, {
+      title: "Add user authentication to API",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    // Move ticket to wont_fix (simplest terminal path: backlog → wont_fix)
+    const ticketId = first.data.ticketId as string;
+    const wontFix = updateTicketStatusRecord(ctx, { ticketId, status: "wont_fix", actorLabel: "test" });
+    expect(wontFix.ok).toBe(true);
+
+    // Now create a similar ticket — should NOT warn since original is wont_fix
+    const second = await createTicketRecord(ctx, {
+      title: "Add user authentication to API system",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    // Should not have duplicate warnings (may have batch warning)
+    const dupWarning = (second.data.warnings as string[] | undefined)?.find((w: string) => w.includes("Possible duplicate"));
+    expect(dupWarning).toBeUndefined();
+  });
+
+  it("triggers batch creation warning when 3+ tickets created by same agent in 5 minutes", async () => {
+    // Create 3 tickets rapidly
+    for (let i = 0; i < 3; i++) {
+      await createTicketRecord(ctx, {
+        title: `Unique ticket number ${i} with distinct words ${i}`,
+        description: "desc",
+        severity: "medium",
+        priority: 5,
+        tags: [],
+        affectedPaths: [],
+        actorLabel: "test",
+      });
+    }
+
+    // 4th ticket should trigger batch warning
+    const result = await createTicketRecord(ctx, {
+      title: "Yet another completely different ticket for testing batch",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.warnings).toBeDefined();
+    expect((result.data.warnings as string[]).some((w: string) => w.includes("Batch creation notice"))).toBe(true);
+  });
+
+  it("titleSimilarity returns high score for similar titles (tested via duplicate detection)", async () => {
+    // Create first ticket
+    await createTicketRecord(ctx, {
+      title: "Implement caching layer for database queries",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+
+    // Create ticket with nearly identical title
+    const result = await createTicketRecord(ctx, {
+      title: "Implement caching layer for database queries optimization",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.warnings).toBeDefined();
+    const dupWarning = (result.data.warnings as string[]).find((w: string) => w.includes("Possible duplicate"));
+    expect(dupWarning).toBeDefined();
+    // Should show high similarity percentage
+    expect(dupWarning).toMatch(/\d+% similar/);
+  });
+
+  it("titleSimilarity returns low score for different titles (no warning)", async () => {
+    await createTicketRecord(ctx, {
+      title: "Implement caching layer for database queries",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+
+    const result = await createTicketRecord(ctx, {
+      title: "Fix broken authentication middleware in production",
+      description: "desc",
+      severity: "medium",
+      priority: 5,
+      tags: [],
+      affectedPaths: [],
+      actorLabel: "test",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // No duplicate warning (may have batch warning if 3+ tickets)
+    const dupWarning = (result.data.warnings as string[] | undefined)?.find((w: string) => w.includes("Possible duplicate"));
+    expect(dupWarning).toBeUndefined();
   });
 });

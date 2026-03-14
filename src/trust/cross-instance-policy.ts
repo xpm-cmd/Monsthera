@@ -18,6 +18,7 @@ const CAPABILITY_TOOLS: Record<CrossInstanceCapability, readonly string[]> = {
     "get_change_pack",
     "get_issue_pack",
     "lookup_dependencies",
+    "trace_dependencies",
   ],
   read_knowledge: [
     "search_knowledge",

@@ -104,6 +104,8 @@ export interface ConsensusPayload {
   blockedByVeto: boolean;
   advisoryReady: boolean;
   missingSpecializations: CouncilSpecializationIdValue[];
+  requiredRoles: CouncilSpecializationIdValue[];
+  missingRequiredRoles: CouncilSpecializationIdValue[];
   vetoes: NormalizedReviewVerdictRecord[];
   verdicts: NormalizedReviewVerdictRecord[];
   governance?: GovernanceEvaluation;
@@ -247,6 +249,7 @@ export function buildConsensusPayload(
     vetoSpecializations?: readonly CouncilSpecializationIdValue[];
     councilSpecializations?: readonly CouncilSpecializationIdValue[];
     governance?: ConsensusGovernanceOptions;
+    requiredRoles?: CouncilSpecializationIdValue[];
   },
 ): ConsensusPayload {
   const vetoSpecializations = dedupeSpecializations(options?.vetoSpecializations ?? DEFAULT_VETO_SPECIALIZATIONS);
@@ -323,6 +326,15 @@ export function buildConsensusPayload(
     && reviewerIndependence != null
     && !reviewerIndependence.independenceMet;
 
+  const requiredRoles = options?.requiredRoles ?? [];
+  const missingRequiredRoles = requiredRoles.filter(
+    (role) => {
+      const verdict = verdicts.find((v) => v.specialization === role);
+      return !verdict || verdict.verdict !== "pass";
+    },
+  );
+  const allRequiredPassed = missingRequiredRoles.length === 0;
+
   const governance: GovernanceEvaluation | undefined = gov
     ? {
         nonVotingExcluded,
@@ -342,8 +354,10 @@ export function buildConsensusPayload(
     counts,
     quorumMet,
     blockedByVeto,
-    advisoryReady: quorumMet && !blockedByVeto && !diversityBlocked && !modelVoterCapBlocked && !reviewerIndependenceBlocked,
+    advisoryReady: quorumMet && !blockedByVeto && !diversityBlocked && !modelVoterCapBlocked && !reviewerIndependenceBlocked && allRequiredPassed,
     missingSpecializations,
+    requiredRoles: [...requiredRoles],
+    missingRequiredRoles: [...missingRequiredRoles],
     vetoes,
     verdicts,
     governance,
@@ -356,10 +370,12 @@ export function buildTicketConsensusReport(input: {
   config?: TicketQuorumConfig | null;
   transition?: GatedTicketTransition | null;
   governance?: ConsensusGovernanceOptions;
+  requiredRoles?: CouncilSpecializationIdValue[];
 }): ConsensusPayload {
   if (!input.transition) {
     return buildConsensusPayload(input.ticketId, input.verdictRows, {
       governance: input.governance,
+      requiredRoles: input.requiredRoles,
     });
   }
 
@@ -368,6 +384,7 @@ export function buildTicketConsensusReport(input: {
     return {
       ...buildConsensusPayload(input.ticketId, input.verdictRows, {
         governance: input.governance,
+        requiredRoles: input.requiredRoles,
       }),
       transition: input.transition,
       enforcementEnabled: false,
@@ -379,6 +396,7 @@ export function buildTicketConsensusReport(input: {
       requiredPasses: params.requiredPasses,
       vetoSpecializations: params.vetoSpecializations,
       governance: input.governance,
+      requiredRoles: input.requiredRoles,
     }),
     transition: input.transition,
     enforcementEnabled: true,
@@ -403,6 +421,7 @@ export function evaluateTicketTransitionConsensus(input: {
   verdictRows: ReviewVerdictRecord[];
   config?: TicketQuorumConfig | null;
   governance?: ConsensusGovernanceOptions;
+  requiredRoles?: CouncilSpecializationIdValue[];
 }): ConsensusPayload | null {
   const transition = `${input.fromStatus}→${input.toStatus}`;
   if (!isGatedTicketTransition(transition)) return null;
@@ -415,6 +434,7 @@ export function evaluateTicketTransitionConsensus(input: {
       requiredPasses: params.requiredPasses,
       vetoSpecializations: params.vetoSpecializations,
       governance: input.governance,
+      requiredRoles: input.requiredRoles,
     }),
     transition,
   };

@@ -13,7 +13,7 @@ import * as queries from "../db/queries.js";
 import { buildEvidenceBundle, type EvidenceBundleResult } from "../retrieval/evidence-bundle.js";
 import { exportAuditTrail } from "../export/audit.js";
 import { getHead, getChangedFiles, getDiffStats, getPerFileDiffs, getRecentCommits, isValidCommit } from "../git/operations.js";
-import { getIndexedCommit, incrementalIndex } from "../indexing/indexer.js";
+import { getIndexedCommit, incrementalIndex, buildIndexOptions } from "../indexing/indexer.js";
 import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
 import { analyzeFileComplexity } from "../analysis/complexity.js";
@@ -653,6 +653,11 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         lookup_dependencies: {
           filePath: "string (file path relative to repo root, required)",
         },
+        trace_dependencies: {
+          filePath: "string (file path relative to repo root, required)",
+          direction: "enum: inbound|outbound|both (default outbound)",
+          maxDepth: "number 1-5 (default 3)",
+        },
         // ── export tools ──
         export_audit: {
           format: "enum: json|csv (required)",
@@ -714,7 +719,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       let effectiveCommit = indexedCommit;
       if (indexedCommit !== head) {
         try {
-          const result = await incrementalIndex(indexedCommit, {
+          const result = await incrementalIndex(indexedCommit, buildIndexOptions({
             repoPath: c.repoPath,
             repoId: c.repoId,
             db: c.db,
@@ -723,7 +728,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             excludePatterns: c.config.excludePatterns,
             onProgress: (msg) => c.insight.detail(msg),
             semanticReranker: c.searchRouter.getSemanticReranker(),
-          });
+          }));
           await c.searchRouter.rebuildIndex(c.repoId);
           autoReindexed = true;
           effectiveCommit = result.commit;
@@ -1156,6 +1161,35 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             indexed: !!file,
             forward,
             reverse,
+          }, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── trace_dependencies ─────────────────────────────────
+  server.tool(
+    "trace_dependencies",
+    "Trace transitive dependency chains with configurable depth. Returns all files reachable from a starting file through import edges.",
+    {
+      filePath: z.string().min(1).describe("File path relative to repo root"),
+      direction: z.enum(["inbound", "outbound", "both"]).default("outbound").describe("Trace direction: outbound (what I import), inbound (who imports me), both"),
+      maxDepth: z.number().int().min(1).max(5).default(3).describe("Maximum traversal depth (1-5)"),
+    },
+    async ({ filePath, direction, maxDepth }) => {
+      const c = await getContext();
+      const deps = queries.traceTransitiveDeps(c.db, c.repoId, filePath, { direction, maxDepth });
+      const cycles = deps.filter(d => d.isCycle);
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            filePath,
+            direction,
+            maxDepth,
+            totalDependencies: deps.filter(d => !d.isCycle).length,
+            cyclesDetected: cycles.length,
+            dependencies: deps,
           }, null, 2),
         }],
       };

@@ -104,6 +104,7 @@ export const tickets = sqliteTable("tickets", {
   assigneeAgentId: text("assignee_agent_id"),
   resolvedByAgentId: text("resolved_by_agent_id"),
   commitSha: text("commit_sha").notNull(),
+  requiredRolesJson: text("required_roles_json"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { AgoraContext } from "../core/context.js";
 import { AgentIdSchema, SessionIdSchema } from "../core/input-hardening.js";
-import { fullIndex, incrementalIndex, getIndexedCommit } from "../indexing/indexer.js";
+import { fullIndex, incrementalIndex, getIndexedCommit, buildIndexOptions } from "../indexing/indexer.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
@@ -44,29 +44,22 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
 
       c.insight.info("Reindex requested...");
 
+      const indexOpts = buildIndexOptions({
+        repoPath: c.repoPath,
+        repoId: c.repoId,
+        db: c.db,
+        sensitiveFilePatterns: c.config.sensitiveFilePatterns,
+        secretPatterns: compileSecretPatterns(c.config.secretPatterns),
+        excludePatterns: c.config.excludePatterns,
+        onProgress: (msg) => c.insight.detail(msg),
+        semanticReranker: c.searchRouter.getSemanticReranker(),
+      });
+
       let indexResult;
       if (!indexedCommit || full) {
-        indexResult = await fullIndex({
-          repoPath: c.repoPath,
-          repoId: c.repoId,
-          db: c.db,
-          sensitiveFilePatterns: c.config.sensitiveFilePatterns,
-          secretPatterns: compileSecretPatterns(c.config.secretPatterns),
-          excludePatterns: c.config.excludePatterns,
-          onProgress: (msg) => c.insight.detail(msg),
-          semanticReranker: c.searchRouter.getSemanticReranker(),
-        });
+        indexResult = await fullIndex(indexOpts);
       } else {
-        indexResult = await incrementalIndex(indexedCommit, {
-          repoPath: c.repoPath,
-          repoId: c.repoId,
-          db: c.db,
-          sensitiveFilePatterns: c.config.sensitiveFilePatterns,
-          secretPatterns: compileSecretPatterns(c.config.secretPatterns),
-          excludePatterns: c.config.excludePatterns,
-          onProgress: (msg) => c.insight.detail(msg),
-          semanticReranker: c.searchRouter.getSemanticReranker(),
-        });
+        indexResult = await incrementalIndex(indexedCommit, indexOpts);
       }
 
       await c.searchRouter.rebuildIndex(c.repoId);
