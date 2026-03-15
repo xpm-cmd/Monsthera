@@ -10,6 +10,7 @@ import { checkToolAccess } from "../trust/tiers.js";
 import { getHead } from "../git/operations.js";
 import {
   buildGovernanceOptions,
+  buildConsensusPayload,
   evaluateTicketTransitionConsensus,
   GATED_ADVANCE_TARGET,
   GATED_TICKET_TRANSITIONS,
@@ -27,6 +28,7 @@ import {
 import type { RoleId } from "../../schemas/agent.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
 import { recordDashboardEvent } from "../dashboard/events.js";
+import { autoCompleteWorkGroups } from "../tools/work-group-tools.js";
 import type { CoordinationBus } from "../coordination/bus.js";
 import type { CouncilSpecializationId as CouncilSpecializationIdValue } from "../../schemas/council.js";
 import { CouncilSpecializationId } from "../../schemas/council.js";
@@ -606,19 +608,26 @@ export function updateTicketStatusRecord(
       })
     : [];
   const captureTargetStatus = shouldCaptureTicketKnowledge(input.status) ? input.status : null;
-  const knowledgeEntry = captureTargetStatus && input.skipKnowledgeCapture !== true
-    ? buildTicketResolutionKnowledgeEntry({
-        ticket,
-        targetStatus: captureTargetStatus,
-        transitionComment: input.comment ?? null,
-        actorAgentId: resolved.agentId,
-        actorSessionId: resolved.sessionId,
-        capturedAt: now,
-        history: queries.getTicketHistory(ctx.db, ticket.id),
-        comments: queries.getTicketComments(ctx.db, ticket.id),
-        linkedPatches,
-      })
-    : null;
+  let knowledgeEntry: ReturnType<typeof buildTicketResolutionKnowledgeEntry> | null = null;
+  if (captureTargetStatus && input.skipKnowledgeCapture !== true) {
+    const verdictRows = queries.getActiveReviewVerdicts(ctx.db, ticket.id);
+    const consensus = verdictRows.length > 0
+      ? buildConsensusPayload(ticket.ticketId, verdictRows)
+      : null;
+    knowledgeEntry = buildTicketResolutionKnowledgeEntry({
+      ticket,
+      targetStatus: captureTargetStatus,
+      transitionComment: input.comment ?? null,
+      actorAgentId: resolved.agentId,
+      actorSessionId: resolved.sessionId,
+      capturedAt: now,
+      history: queries.getTicketHistory(ctx.db, ticket.id),
+      comments: queries.getTicketComments(ctx.db, ticket.id),
+      linkedPatches,
+      verdicts: consensus?.verdicts,
+      consensus,
+    });
+  }
   const resolvedCommitSha = resolutionCommitShas[0] ?? input.commitSha?.trim() ?? null;
 
   // Shared SHA warning: warn if this commit is already associated with other resolved tickets
@@ -719,6 +728,16 @@ export function updateTicketStatusRecord(
     status: input.status,
     actorLabel: resolved.agentId,
   });
+
+  // Auto-complete work groups when a ticket reaches a completed status
+  const completedStatuses = ["resolved", "closed", "wont_fix"];
+  if (completedStatuses.includes(input.status)) {
+    try {
+      autoCompleteWorkGroups(ctx.db, ticket.id);
+    } catch {
+      // Non-fatal: work group auto-complete is a convenience feature
+    }
+  }
 
   // Rate-limit audit: warn if agent resolves >3 tickets in 1 hour (non-blocking)
   let resolutionRateWarning: string | null = null;

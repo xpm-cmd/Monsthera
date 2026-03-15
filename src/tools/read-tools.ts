@@ -18,6 +18,8 @@ import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
 import { analyzeFileComplexity } from "../analysis/complexity.js";
 import { analyzeTestCoverage } from "../analysis/test-coverage.js";
+import { analyzeCoupling } from "../analysis/coupling.js";
+import { findDependencyCycles } from "../analysis/cycles.js";
 import { suggestActionsForChanges } from "../dispatch/rules.js";
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import { BUILTIN_WORKFLOW_NAMES, listBuiltInWorkflows } from "../workflows/builtins.js";
@@ -998,6 +1000,57 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
     },
   );
 
+
+  // ─── analyze_coupling ──────────────────────────────────
+  server.tool(
+    "analyze_coupling",
+    "Analyze coupling metrics between files. Returns afferent (inbound), efferent (outbound), instability index, and total coupling per file. Uses existing import graph data.",
+    {
+      scope: z.string().optional().describe("Path prefix to scope analysis (e.g. 'src/api/')"),
+      sortBy: z.enum(["instability", "totalCoupling", "afferent", "efferent"]).default("totalCoupling").describe("Sort results by this metric"),
+      limit: z.number().int().min(1).max(100).default(20).describe("Max results to return"),
+    },
+    async ({ scope, sortBy, limit }) => {
+      const c = await getContext();
+      const metrics = analyzeCoupling(c.db, c.repoId, { scope, sortBy, limit });
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            scope: scope ?? "(all files)",
+            sortBy,
+            count: metrics.length,
+            metrics,
+          }, null, 2),
+        }],
+      };
+    },
+  );
+
+  // ─── find_dependency_cycles ────────────────────────────
+  server.tool(
+    "find_dependency_cycles",
+    "Detect circular import chains in the codebase. Returns deduplicated cycles sorted by length (shorter cycles first). Uses DFS on the existing import graph.",
+    {
+      scope: z.string().optional().describe("Path prefix to scope analysis (e.g. 'src/')"),
+      maxCycles: z.number().int().min(1).max(100).default(50).describe("Maximum number of cycles to report"),
+    },
+    async ({ scope, maxCycles }) => {
+      const c = await getContext();
+      const cycles = findDependencyCycles(c.db, c.repoId, { scope, maxCycles });
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            scope: scope ?? "(all files)",
+            totalCycles: cycles.length,
+            cycles,
+          }, null, 2),
+        }],
+      };
+    },
+  );
+
   // ─── suggest_actions ────────────────────────────────────
   server.tool(
     "suggest_actions",
@@ -1161,6 +1214,63 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             indexed: !!file,
             forward,
             reverse,
+          }, null, 2),
+        }],
+      };
+    },
+  );
+
+
+  // ─── find_references ────────────────────────────────────
+  server.tool(
+    "find_references",
+    "Find who calls/uses a given symbol (reverse) or what a symbol calls/uses (forward). Returns symbol-level reference edges extracted during indexing.",
+    {
+      symbolName: z.string().min(1).describe("Symbol name to search for"),
+      direction: z.enum(["forward", "reverse"]).default("reverse").describe(
+        "forward: what does this symbol call? reverse: who calls this symbol?"
+      ),
+      kind: z.enum(["call", "member_call", "type_ref", "all"]).default("all").describe(
+        "Filter by reference kind: call (direct function calls), member_call (method calls on objects), type_ref (type annotations/inheritance), all"
+      ),
+      limit: z.number().int().min(1).max(200).default(50).describe("Max results to return"),
+    },
+    async ({ symbolName, direction, kind, limit }) => {
+      const c = await getContext();
+      const filterKind = kind === "all" ? undefined : kind;
+
+      let results;
+      if (direction === "reverse") {
+        // Who references symbolName?
+        const rows = queries.getReferencesTo(c.db, c.repoId, symbolName, filterKind, limit);
+        results = rows.map((row) => ({
+          sourceFile: row.files.path,
+          sourceSymbol: row.symbol_references.sourceSymbolName,
+          targetName: row.symbol_references.targetName,
+          kind: row.symbol_references.referenceKind,
+          line: row.symbol_references.line,
+        }));
+      } else {
+        // What does symbolName reference?
+        const rows = queries.getReferencesFrom(c.db, c.repoId, symbolName, filterKind, limit);
+        results = rows.map((row) => ({
+          sourceFile: row.files.path,
+          sourceSymbol: row.symbol_references.sourceSymbolName,
+          targetName: row.symbol_references.targetName,
+          kind: row.symbol_references.referenceKind,
+          line: row.symbol_references.line,
+        }));
+      }
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            symbolName,
+            direction,
+            kind,
+            totalResults: results.length,
+            references: results,
           }, null, 2),
         }],
       };

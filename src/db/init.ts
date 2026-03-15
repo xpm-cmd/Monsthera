@@ -64,11 +64,30 @@ function createTables(sqlite: Database.Database): void {
       commit_sha TEXT,
       embedding BLOB
     )`,
+    `CREATE TABLE IF NOT EXISTS code_chunks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_id INTEGER NOT NULL REFERENCES files(id),
+      chunk_index INTEGER NOT NULL,
+      symbol_name TEXT,
+      kind TEXT,
+      start_line INTEGER NOT NULL,
+      end_line INTEGER NOT NULL,
+      content_hash TEXT,
+      embedding BLOB
+    )`,
     `CREATE TABLE IF NOT EXISTS imports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       source_file_id INTEGER NOT NULL REFERENCES files(id),
       target_path TEXT NOT NULL,
       kind TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS symbol_references (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_file_id INTEGER NOT NULL REFERENCES files(id),
+      source_symbol_name TEXT,
+      target_name TEXT NOT NULL,
+      reference_kind TEXT NOT NULL,
+      line INTEGER NOT NULL
     )`,
     `CREATE TABLE IF NOT EXISTS roles (
       id TEXT PRIMARY KEY,
@@ -508,4 +527,41 @@ function runMigrations(sqlite: Database.Database): void {
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_job_slots_loop_status ON job_slots(repo_id, loop_id, status)`).run();
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_job_slots_agent ON job_slots(agent_id)`).run();
   sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_job_slots_ticket ON job_slots(repo_id, ticket_id)`).run();
+
+  // Migration 19: Create symbol_references table for symbol-level reference tracking
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS symbol_references (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_file_id INTEGER NOT NULL REFERENCES files(id),
+    source_symbol_name TEXT,
+    target_name TEXT NOT NULL,
+    reference_kind TEXT NOT NULL,
+    line INTEGER NOT NULL
+  )`).run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_symbol_references_source_file ON symbol_references(source_file_id)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_symbol_references_target_name ON symbol_references(target_name)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_symbol_references_source_symbol ON symbol_references(source_symbol_name)").run();
+
+  // Migration 20: Create work_groups and work_group_tickets tables
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS work_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id INTEGER NOT NULL REFERENCES repos(id),
+    group_id TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    created_by TEXT NOT NULL,
+    tags_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`).run();
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS work_group_tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    work_group_id INTEGER NOT NULL REFERENCES work_groups(id),
+    ticket_id INTEGER NOT NULL REFERENCES tickets(id),
+    added_at TEXT NOT NULL,
+    UNIQUE(work_group_id, ticket_id)
+  )`).run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_work_groups_repo_status ON work_groups(repo_id, status)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_work_group_tickets_group ON work_group_tickets(work_group_id)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_work_group_tickets_ticket ON work_group_tickets(ticket_id)").run();
 }

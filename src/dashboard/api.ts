@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { z } from "zod/v4";
 import type * as schema from "../db/schema.js";
@@ -123,6 +123,26 @@ export function getOverview(deps: DashboardDeps) {
   const totalTickets = queries.getTotalTicketCount(deps.db, deps.repoId);
   const openTickets = queries.getOpenTicketCount(deps.db, deps.repoId);
 
+  // Dependency density metric (edges per active ticket, with type breakdown)
+  const totalDepsResult = deps.db
+    .select({ count: sql<number>`count(*)` })
+    .from(tables.ticketDependencies)
+    .get();
+  const totalDeps = totalDepsResult?.count ?? 0;
+  const activeTicketCount = Math.max(openTickets, 1);
+  const dependencyDensity = Math.round((totalDeps / activeTicketCount) * 100) / 100;
+
+  const depsByType = deps.db
+    .select({
+      type: tables.ticketDependencies.relationType,
+      count: sql<number>`count(*)`,
+    })
+    .from(tables.ticketDependencies)
+    .groupBy(tables.ticketDependencies.relationType)
+    .all();
+
+  const DENSITY_THRESHOLD = 3.0;
+
   return {
     version: VERSION,
     repoPath: deps.repoPath,
@@ -134,6 +154,14 @@ export function getOverview(deps: DashboardDeps) {
     totalTickets,
     openTickets,
     coordinationTopology: deps.bus.getTopology(),
+    dependencyHealth: {
+      totalEdges: totalDeps,
+      activeTickets: activeTicketCount,
+      density: dependencyDensity,
+      densityThreshold: DENSITY_THRESHOLD,
+      aboveThreshold: dependencyDensity > DENSITY_THRESHOLD,
+      byType: Object.fromEntries(depsByType.map((r) => [r.type, r.count])),
+    },
   };
 }
 

@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
+import { and, eq, or, sql } from "drizzle-orm";
 import { BUILT_IN_ROLES } from "../../schemas/agent.js";
 import { CouncilSpecializationId, CouncilVerdict } from "../../schemas/council.js";
 import type { AgoraContext } from "../core/context.js";
@@ -13,6 +14,7 @@ import {
   parseStringArrayJson,
 } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
+import * as tables from "../db/schema.js";
 import { recordDashboardEvent } from "../dashboard/events.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
@@ -867,7 +869,36 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         agentId,
         sessionId,
       });
-      return result.ok ? okJson(result.data) : errService(result);
+      if (!result.ok) return errService(result);
+
+      // Soft limit: warn when relatedTo edges exceed recommended threshold
+      const MAX_RELATED_TO = 3;
+      let warning: string | null = null;
+      if (relationType === "relates_to") {
+        const fromTicket = queries.getTicketByTicketId(c.db, fromTicketId, c.repoId);
+        if (fromTicket) {
+          const countResult = c.db
+            .select({ count: sql<number>`count(*)` })
+            .from(tables.ticketDependencies)
+            .where(and(
+              or(
+                eq(tables.ticketDependencies.fromTicketId, fromTicket.id),
+                eq(tables.ticketDependencies.toTicketId, fromTicket.id),
+              ),
+              eq(tables.ticketDependencies.relationType, "relates_to"),
+            ))
+            .get();
+          const totalRelated = countResult?.count ?? 0;
+          if (totalRelated > MAX_RELATED_TO) {
+            warning = `Ticket ${fromTicketId} now has ${totalRelated} relatedTo edges `
+              + `(recommended max: ${MAX_RELATED_TO}). `
+              + `Consider if this relationship adds scheduling or blocking value. `
+              + `Use "blocks" for true dependencies.`;
+          }
+        }
+      }
+
+      return okJson({ ...result.data, ...(warning ? { warning } : {}) });
     },
   );
 
@@ -899,6 +930,88 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
         sessionId,
       });
       return result.ok ? okJson(result.data) : errService(result);
+    },
+  );
+
+  // ─── prune_stale_relations ──────────────────────────────────
+  server.tool(
+    "prune_stale_relations",
+    "List and optionally remove relatedTo dependency edges on tickets resolved more than N days ago. Use dryRun=true to preview.",
+    {
+      dryRun: z.boolean().default(true).describe("Preview without deleting"),
+      olderThanDays: z.number().int().min(1).max(90).default(7).describe("Only prune edges on tickets resolved more than this many days ago"),
+      agentId: AgentIdSchema.describe("Requesting agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
+    },
+    async ({ dryRun, olderThanDays, agentId, sessionId }) => {
+      const c = await getContext();
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) return errText(result.error);
+      const resolved = result.agent;
+
+      const access = checkToolAccess("unlink_tickets", resolved.role, resolved.trustTier);
+      if (!access.allowed) return errJson({ denied: true, reason: access.reason });
+
+      const cutoff = new Date(Date.now() - olderThanDays * 86_400_000).toISOString();
+
+      // Find relatedTo edges where the source ticket is resolved and older than cutoff
+      const staleEdges = c.db
+        .select({
+          depId: tables.ticketDependencies.id,
+          fromTicketId: tables.ticketDependencies.fromTicketId,
+          toTicketId: tables.ticketDependencies.toTicketId,
+          fromTicketExtId: sql<string>`ft.ticket_id`,
+          toTicketExtId: sql<string>`tt.ticket_id`,
+          fromStatus: sql<string>`ft.status`,
+          toStatus: sql<string>`tt.status`,
+        })
+        .from(tables.ticketDependencies)
+        .innerJoin(
+          sql`tickets ft`,
+          sql`ft.id = ${tables.ticketDependencies.fromTicketId}`,
+        )
+        .innerJoin(
+          sql`tickets tt`,
+          sql`tt.id = ${tables.ticketDependencies.toTicketId}`,
+        )
+        .where(and(
+          eq(tables.ticketDependencies.relationType, "relates_to"),
+          sql`ft.status IN ('resolved', 'closed')`,
+          sql`ft.updated_at < ${cutoff}`,
+          sql`tt.status IN ('resolved', 'closed')`,
+          sql`tt.updated_at < ${cutoff}`,
+        ))
+        .all();
+
+      let pruned = 0;
+      if (!dryRun && staleEdges.length > 0) {
+        c.db.run(sql`BEGIN IMMEDIATE`);
+        try {
+          for (const edge of staleEdges) {
+            c.db.delete(tables.ticketDependencies)
+              .where(eq(tables.ticketDependencies.id, edge.depId))
+              .run();
+            pruned++;
+          }
+          c.db.run(sql`COMMIT`);
+        } catch (err) {
+          c.db.run(sql`ROLLBACK`);
+          throw err;
+        }
+      }
+
+      return okJson({
+        dryRun,
+        olderThanDays,
+        prunable: staleEdges.length,
+        pruned,
+        edges: staleEdges.map((e) => ({
+          fromTicketId: e.fromTicketExtId,
+          toTicketId: e.toTicketExtId,
+          fromStatus: e.fromStatus,
+          toStatus: e.toStatus,
+        })),
+      });
     },
   );
 }

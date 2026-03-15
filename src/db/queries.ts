@@ -93,6 +93,56 @@ export function getFilesImporting(db: DB, targetPath: string) {
     .all();
 }
 
+// --- Symbol References ---
+
+export function getReferencesTo(
+  db: DB,
+  repoId: number,
+  targetName: string,
+  kind?: "call" | "member_call" | "type_ref",
+  limit?: number,
+) {
+  const conditions = [
+    eq(tables.files.repoId, repoId),
+    eq(tables.symbolReferences.targetName, targetName),
+  ];
+  if (kind) {
+    conditions.push(eq(tables.symbolReferences.referenceKind, kind));
+  }
+  const q = db
+    .select()
+    .from(tables.symbolReferences)
+    .innerJoin(tables.files, eq(tables.symbolReferences.sourceFileId, tables.files.id))
+    .where(and(...conditions));
+  return limit ? q.limit(limit).all() : q.all();
+}
+
+export function getReferencesFrom(
+  db: DB,
+  repoId: number,
+  sourceSymbolName: string,
+  kind?: "call" | "member_call" | "type_ref",
+  limit?: number,
+) {
+  const conditions = [
+    eq(tables.files.repoId, repoId),
+    eq(tables.symbolReferences.sourceSymbolName, sourceSymbolName),
+  ];
+  if (kind) {
+    conditions.push(eq(tables.symbolReferences.referenceKind, kind));
+  }
+  const q = db
+    .select()
+    .from(tables.symbolReferences)
+    .innerJoin(tables.files, eq(tables.symbolReferences.sourceFileId, tables.files.id))
+    .where(and(...conditions));
+  return limit ? q.limit(limit).all() : q.all();
+}
+
+export function getReferencesForFile(db: DB, fileId: number) {
+  return db.select().from(tables.symbolReferences).where(eq(tables.symbolReferences.sourceFileId, fileId)).all();
+}
+
 type ImportGraphNode = {
   id: number;
   path: string;
@@ -1696,4 +1746,160 @@ function normalizeCommitShas(commitShas: readonly string[]): string[] {
     normalized.push(trimmed);
   }
   return normalized;
+}
+
+// --- Work Groups ---
+
+export function insertWorkGroup(
+  db: DB,
+  group: {
+    repoId: number;
+    groupId: string;
+    title: string;
+    description: string | null;
+    status: string;
+    createdBy: string;
+    tagsJson: string | null;
+    createdAt: string;
+    updatedAt: string;
+  },
+) {
+  return db.insert(tables.workGroups).values(group).returning().get();
+}
+
+export function getWorkGroupByGroupId(db: DB, groupId: string) {
+  return db.select().from(tables.workGroups).where(eq(tables.workGroups.groupId, groupId)).get();
+}
+
+export function updateWorkGroup(
+  db: DB,
+  id: number,
+  updates: {
+    title?: string;
+    description?: string | null;
+    status?: string;
+    tagsJson?: string | null;
+    updatedAt: string;
+  },
+) {
+  return db.update(tables.workGroups).set(updates).where(eq(tables.workGroups.id, id)).run();
+}
+
+export function addTicketToWorkGroup(
+  db: DB,
+  workGroupId: number,
+  ticketId: number,
+  addedAt: string,
+) {
+  return db.insert(tables.workGroupTickets).values({
+    workGroupId,
+    ticketId,
+    addedAt,
+  }).run();
+}
+
+export function removeTicketFromWorkGroup(
+  db: DB,
+  workGroupId: number,
+  ticketId: number,
+) {
+  return db.delete(tables.workGroupTickets).where(
+    and(
+      eq(tables.workGroupTickets.workGroupId, workGroupId),
+      eq(tables.workGroupTickets.ticketId, ticketId),
+    ),
+  ).run();
+}
+
+export function getWorkGroupTickets(db: DB, workGroupId: number) {
+  return db
+    .select()
+    .from(tables.workGroupTickets)
+    .innerJoin(tables.tickets, eq(tables.workGroupTickets.ticketId, tables.tickets.id))
+    .where(eq(tables.workGroupTickets.workGroupId, workGroupId))
+    .all();
+}
+
+export function getWorkGroupsForTicket(db: DB, ticketInternalId: number) {
+  return db
+    .select({
+      groupId: tables.workGroups.groupId,
+      title: tables.workGroups.title,
+      status: tables.workGroups.status,
+    })
+    .from(tables.workGroupTickets)
+    .innerJoin(tables.workGroups, eq(tables.workGroupTickets.workGroupId, tables.workGroups.id))
+    .where(eq(tables.workGroupTickets.ticketId, ticketInternalId))
+    .all();
+}
+
+export function listWorkGroups(
+  db: DB,
+  repoId: number,
+  opts?: { status?: string; tag?: string },
+) {
+  const conditions = [eq(tables.workGroups.repoId, repoId)];
+  if (opts?.status) {
+    conditions.push(eq(tables.workGroups.status, opts.status));
+  }
+
+  const groups = db
+    .select()
+    .from(tables.workGroups)
+    .where(and(...conditions))
+    .all();
+
+  if (opts?.tag) {
+    return groups.filter((g) => {
+      const tags = g.tagsJson ? JSON.parse(g.tagsJson) as string[] : [];
+      return tags.includes(opts.tag!);
+    });
+  }
+
+  return groups;
+}
+
+export function getWorkGroupProgress(db: DB, workGroupId: number) {
+  const rows = db
+    .select({
+      status: tables.tickets.status,
+      count: sql<number>`count(*)`,
+    })
+    .from(tables.workGroupTickets)
+    .innerJoin(tables.tickets, eq(tables.workGroupTickets.ticketId, tables.tickets.id))
+    .where(eq(tables.workGroupTickets.workGroupId, workGroupId))
+    .groupBy(tables.tickets.status)
+    .all();
+
+  const byStatus: Record<string, number> = {};
+  let total = 0;
+  let completed = 0;
+  const completedStatuses = new Set(["resolved", "closed", "wont_fix"]);
+
+  for (const row of rows) {
+    byStatus[row.status] = row.count;
+    total += row.count;
+    if (completedStatuses.has(row.status)) {
+      completed += row.count;
+    }
+  }
+
+  const blockers = db
+    .select({ ticketId: tables.tickets.ticketId, title: tables.tickets.title })
+    .from(tables.workGroupTickets)
+    .innerJoin(tables.tickets, eq(tables.workGroupTickets.ticketId, tables.tickets.id))
+    .where(
+      and(
+        eq(tables.workGroupTickets.workGroupId, workGroupId),
+        eq(tables.tickets.status, "blocked"),
+      ),
+    )
+    .all();
+
+  return {
+    totalTickets: total,
+    byStatus,
+    completionPercent: total > 0 ? Math.round((completed / total) * 100) : 0,
+    blockers,
+  };
 }

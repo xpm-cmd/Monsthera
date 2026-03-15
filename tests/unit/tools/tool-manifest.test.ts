@@ -3,7 +3,7 @@ import { CAPABILITY_TOOL_NAMES } from "../../../src/tools/tool-manifest.js";
 
 describe("tool-manifest", () => {
   it("exports the expected number of capability tools", () => {
-    expect(CAPABILITY_TOOL_NAMES.length).toBe(56);
+    expect(CAPABILITY_TOOL_NAMES.length).toBe(64);
   });
 
   it("contains all core MCP tool names", () => {

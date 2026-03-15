@@ -16,6 +16,8 @@ import { registerProtectionTools } from "./tools/protection-tools.js";
 import { registerWorkflowTools } from "./tools/workflow-tools.js";
 import { registerSimulationTools } from "./tools/simulation-tools.js";
 import { registerJobTools } from "./tools/job-tools.js";
+import { registerWorkGroupTools } from "./tools/work-group-tools.js";
+import { registerDecomposeTools } from "./tools/decompose-tools.js";
 import { installToolRuntimeInstrumentation } from "./tools/runtime-instrumentation.js";
 
 export function createAgoraServer(
@@ -48,6 +50,8 @@ export function createAgoraServer(
   registerWorkflowTools(server, getContext);
   registerSimulationTools(server, getContext);
   registerJobTools(server, getContext);
+  registerWorkGroupTools(server, getContext);
+  registerDecomposeTools(server, getContext);
 
   return server;
 }

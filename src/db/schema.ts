@@ -38,6 +38,20 @@ export const files = sqliteTable("files", {
   embedding: blob("embedding"),  // 384-dim float32 for semantic search, nullable
 });
 
+// --- Code Chunks ---
+
+export const codeChunks = sqliteTable("code_chunks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  fileId: integer("file_id").notNull().references(() => files.id),
+  chunkIndex: integer("chunk_index").notNull(),
+  symbolName: text("symbol_name"),  // function/class name, null for module-level
+  kind: text("kind"),  // "function", "class", "method", "module"
+  startLine: integer("start_line").notNull(),
+  endLine: integer("end_line").notNull(),
+  contentHash: text("content_hash"),
+  embedding: blob("embedding"),  // same dimension as files.embedding
+});
+
 // --- Imports ---
 
 export const imports = sqliteTable("imports", {
@@ -45,6 +59,17 @@ export const imports = sqliteTable("imports", {
   sourceFileId: integer("source_file_id").notNull().references(() => files.id),
   targetPath: text("target_path").notNull(),
   kind: text("kind").notNull(), // "import", "require", "from"
+});
+
+// --- Symbol References ---
+
+export const symbolReferences = sqliteTable("symbol_references", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sourceFileId: integer("source_file_id").notNull().references(() => files.id),
+  sourceSymbolName: text("source_symbol_name"),  // enclosing function/class, null = module-level
+  targetName: text("target_name").notNull(),      // called function/class/type name
+  referenceKind: text("reference_kind").notNull(), // "call" | "member_call" | "type_ref"
+  line: integer("line").notNull(),
 });
 
 // --- Notes ---
@@ -168,6 +193,31 @@ export const ticketDependencies = sqliteTable("ticket_dependencies", {
   createdByAgentId: text("created_by_agent_id").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+// --- Work Groups ---
+
+export const workGroups = sqliteTable("work_groups", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: integer("repo_id").notNull().references(() => repos.id),
+  groupId: text("group_id").notNull().unique(),  // WG-{uuid8}
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("open"),  // "open" | "completed" | "cancelled"
+  createdBy: text("created_by").notNull(),  // agentId
+  tagsJson: text("tags_json"),  // JSON array
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const workGroupTickets = sqliteTable("work_group_tickets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workGroupId: integer("work_group_id").notNull().references(() => workGroups.id),
+  ticketId: integer("ticket_id").notNull().references(() => tickets.id),
+  addedAt: text("added_at").notNull(),
+}, (table) => ({
+  uniqueGroupTicket: uniqueIndex("idx_work_group_tickets_unique")
+    .on(table.workGroupId, table.ticketId),
+}));
 
 // --- Coordination Messages ---
 

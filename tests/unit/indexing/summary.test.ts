@@ -12,6 +12,7 @@ describe("generateSummary", () => {
         { name: "Config", kind: "type", line: 15 },
       ],
       imports: [{ source: "node:fs", kind: "import" }],
+      references: [],
       lineCount: 20,
       leadingComment: "",
     };
@@ -32,13 +33,13 @@ describe("generateSummary", () => {
       line: i,
     }));
 
-    const result: ParseResult = { symbols, imports: [], lineCount: 50, leadingComment: "" };
+    const result: ParseResult = { symbols, imports: [], references: [], lineCount: 50, leadingComment: "" };
     const summary = generateSummary("vars.ts", result);
     expect(summary).toContain("(+5 more)");
   });
 
   it("handles empty parse result", () => {
-    const result: ParseResult = { symbols: [], imports: [], lineCount: 1, leadingComment: "" };
+    const result: ParseResult = { symbols: [], imports: [], references: [], lineCount: 1, leadingComment: "" };
     const summary = generateSummary("empty.ts", result);
     expect(summary).toBe("1 lines");
   });
