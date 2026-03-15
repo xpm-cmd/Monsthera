@@ -3318,7 +3318,7 @@ async function refreshJobBoard(){
           +'<span class="pill-role role-badge '+esc(roleClass)+'">'+esc(specLabel)+'</span></div>'
           +'<div class="pill-name">'+(isOpen?'(open slot)':esc(s.agent?s.agent.name:s.label))+'</div>'
           +(s.agent&&s.agent.model?'<div class="pill-note">'+esc(s.agent.model)+'</div>':'')
-          +(s.ticket?'<div class="pill-ticket" onclick="navigate(\'tickets\')">'+esc(s.ticket.ticketId)+'</div>':'')
+          +(s.ticket?'<div class="pill-ticket" onclick="navigate(\\x27tickets\\x27)">'+esc(s.ticket.ticketId)+'</div>':'')
           +(s.progressNote?'<div class="pill-note">'+esc(s.progressNote.slice(0,50))+'</div>':'')
           +'</div>';
       });
