@@ -101,14 +101,21 @@ export class SearchRouter {
 
     const fts5Results = await this.searchLexical(query, repoId, effectiveLimit, scope);
 
-    // Hybrid: run vector search in parallel and merge with FTS5 results
+    // Hybrid: run file + chunk vector search in parallel and merge with FTS5 results
     if (this.semantic?.isAvailable()) {
       try {
-        // Scope is now filtered at SQL level inside vectorSearch (not post-hoc)
-        const vectorResults = await this.semantic.vectorSearch(query, repoId, effectiveLimit, scope);
+        // Run both file-level and chunk-level vector search
+        const [vectorResults, chunkResults] = await Promise.all([
+          this.semantic.vectorSearch(query, repoId, effectiveLimit, scope),
+          this.semantic.vectorSearchChunks(query, repoId, effectiveLimit, scope),
+        ]);
+
+        // Merge chunk results into file-level vector results (take best score per file)
+        const combinedVector = mergeVectorAndChunkResults(vectorResults, chunkResults);
+
         return mergeResults(
           fts5Results,
-          vectorResults,
+          combinedVector,
           effectiveLimit,
           this.searchConfig.semanticBlendAlpha,
           !!scope,
@@ -209,4 +216,35 @@ export class SearchRouter {
   ): TicketFtsResult[] {
     return this.fts5.searchTickets(query, repoId, limit, opts);
   }
+}
+
+/**
+ * Merge file-level and chunk-level vector results.
+ * For each file, takes the higher score from either source.
+ * Chunk results provide finer precision; file results provide broad coverage.
+ */
+function mergeVectorAndChunkResults(
+  fileResults: SearchResult[],
+  chunkResults: SearchResult[],
+): SearchResult[] {
+  const scoreMap = new Map<string, number>();
+
+  for (const r of fileResults) {
+    scoreMap.set(r.path, r.score);
+  }
+
+  for (const r of chunkResults) {
+    const existing = scoreMap.get(r.path);
+    if (existing === undefined || r.score > existing) {
+      scoreMap.set(r.path, r.score);
+    }
+  }
+
+  const merged: SearchResult[] = [];
+  for (const [path, score] of scoreMap) {
+    merged.push({ path, score });
+  }
+
+  merged.sort((a, b) => b.score - a.score);
+  return merged;
 }

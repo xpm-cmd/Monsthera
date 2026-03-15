@@ -180,6 +180,76 @@ export class SemanticReranker {
   }
 
   /**
+   * Vector search at chunk granularity: embed the query and scan chunk embeddings.
+   * Returns results grouped by file with the best chunk similarity score.
+   * Provides finer precision than file-level vector search.
+   */
+  async vectorSearchChunks(query: string, repoId: number, limit = 10, scope?: string): Promise<SearchResult[]> {
+    const queryEmbedding = await this.embed(query);
+    if (!queryEmbedding) return [];
+
+    const queryMentionsTest = isTestRelatedQuery(query);
+
+    let sqlStr = `SELECT cc.id, cc.symbol_name, cc.start_line, cc.end_line, cc.embedding, f.path
+      FROM code_chunks cc
+      INNER JOIN files f ON f.id = cc.file_id
+      WHERE f.repo_id = ? AND cc.embedding IS NOT NULL`;
+    const params: unknown[] = [repoId];
+    if (scope) {
+      sqlStr += " AND f.path LIKE ?";
+      params.push(scope.replace(/%/g, "\%") + "%");
+    }
+
+    let rows: Array<{ id: number; symbol_name: string | null; start_line: number; end_line: number; embedding: Buffer; path: string }>;
+    try {
+      rows = this.opts.sqlite
+        .prepare(sqlStr)
+        .all(...params) as typeof rows;
+    } catch {
+      // code_chunks table may not exist yet
+      return [];
+    }
+
+    // Score each chunk, then pick the best chunk per file
+    const fileScores = new Map<string, { score: number; symbolName: string | null; startLine: number; endLine: number }>();
+
+    for (const row of rows) {
+      const chunkEmb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
+      let score = normalizedCosineSimilarity(queryEmbedding, chunkEmb);
+
+      if (!queryMentionsTest && isTestFile(row.path)) {
+        score *= this.searchConfig.penalties.testFiles;
+      }
+
+      const existing = fileScores.get(row.path);
+      if (!existing || score > existing.score) {
+        fileScores.set(row.path, {
+          score,
+          symbolName: row.symbol_name,
+          startLine: row.start_line,
+          endLine: row.end_line,
+        });
+      }
+    }
+
+    const scored: SearchResult[] = [];
+    for (const [path, info] of fileScores) {
+      scored.push({ path, score: info.score });
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit);
+  }
+
+  /**
+   * Store a chunk embedding in the database.
+   */
+  storeChunkEmbedding(chunkId: number, embedding: Float32Array): void {
+    const buf = Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength);
+    this.opts.sqlite.prepare("UPDATE code_chunks SET embedding = ? WHERE id = ?").run(buf, chunkId);
+  }
+
+  /**
    * Vector search: embed the query and scan file embeddings by cosine similarity.
    * Unlike rerank(), this is not gated by FTS5 — it can discover files with zero token overlap.
    * O(n) where n = files with embeddings (filtered by scope if provided).

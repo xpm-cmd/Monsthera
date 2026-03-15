@@ -22,6 +22,7 @@ const {
   semanticInitializeMock,
   semanticAvailableMock,
   semanticVectorSearchMock,
+  semanticVectorSearchChunksMock,
   mergeResultsMock,
 } = vi.hoisted(() => ({
   ftsSearchMock: vi.fn(),
@@ -44,6 +45,7 @@ const {
   semanticInitializeMock: vi.fn(),
   semanticAvailableMock: vi.fn(),
   semanticVectorSearchMock: vi.fn(),
+  semanticVectorSearchChunksMock: vi.fn(),
   mergeResultsMock: vi.fn(),
 }));
 
@@ -89,6 +91,7 @@ vi.mock("../../../src/search/semantic.js", () => ({
     initialize = semanticInitializeMock;
     isAvailable = semanticAvailableMock;
     vectorSearch = semanticVectorSearchMock;
+    vectorSearchChunks = semanticVectorSearchChunksMock;
   },
 }));
 
@@ -161,6 +164,7 @@ describe("SearchRouter", () => {
   it("runs hybrid search and merges lexical and semantic results when semantic is available", async () => {
     const lexicalResults = [{ path: "src/router.ts", score: 0.8 }];
     const vectorResults = [{ path: "src/router.ts", score: 0.9 }];
+    const chunkResults: SearchResult[] = [];
     const mergedResults = [{ path: "src/router.ts", score: 0.88 }];
     const router = createRouter({ semanticEnabled: true });
 
@@ -168,6 +172,7 @@ describe("SearchRouter", () => {
     semanticAvailableMock.mockReturnValue(true);
     ftsSearchMock.mockResolvedValueOnce(lexicalResults);
     semanticVectorSearchMock.mockResolvedValueOnce(vectorResults);
+    semanticVectorSearchChunksMock.mockResolvedValueOnce(chunkResults);
     mergeResultsMock.mockReturnValueOnce(mergedResults);
 
     await router.initialize();
@@ -175,6 +180,8 @@ describe("SearchRouter", () => {
 
     expect(ftsSearchMock).toHaveBeenCalledWith("hybrid routing", 1, 10, "src/");
     expect(semanticVectorSearchMock).toHaveBeenCalledWith("hybrid routing", 1, 10, "src/");
+    expect(semanticVectorSearchChunksMock).toHaveBeenCalledWith("hybrid routing", 1, 10, "src/");
+    // mergeResults receives the combined file+chunk vector results
     expect(mergeResultsMock).toHaveBeenCalledWith(lexicalResults, vectorResults, 10, 0.5, true);
     expect(results).toEqual(mergedResults);
     expect(router.getActiveBackendName()).toBe("fts5+semantic");
@@ -199,6 +206,7 @@ describe("SearchRouter", () => {
     semanticAvailableMock.mockReturnValue(true);
     ftsSearchMock.mockResolvedValueOnce([{ path: "src/router.ts", score: 0.8 }]);
     semanticVectorSearchMock.mockResolvedValueOnce([{ path: "src/router.ts", score: 0.9 }]);
+    semanticVectorSearchChunksMock.mockResolvedValueOnce([]);
     mergeResultsMock.mockReturnValueOnce([{ path: "src/router.ts", score: 0.865 }]);
 
     await router.initialize();

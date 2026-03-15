@@ -32,3 +32,7 @@ export const LARGE_FILE_THRESHOLD_LINES = 10_000;
 // Supported languages for symbol extraction
 export const SUPPORTED_LANGUAGES = ["typescript", "javascript", "python", "go", "rust"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+
+// Embedding dimension — matches the embedding model's native output dimension.
+// Xenova/all-MiniLM-L6-v2 produces 384-dim. Override via env for other models.
+export const EMBEDDING_DIMENSION = parseInt(process.env.AGORA_EMBEDDING_DIM ?? "384", 10);
