@@ -34,6 +34,7 @@ import type {
   SimulationResult,
   TicketDescriptor,
 } from "./types.js";
+import type { WorkflowRuntime, WorkflowSpec } from "../workflows/types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -63,6 +64,16 @@ export interface RunnerConfig {
 
   /** Callback for progress reporting. */
   onProgress?: (event: ProgressEvent) => void;
+
+  /** Workflow dependencies for Phase C real work execution. */
+  workflow?: {
+    /** Resolved developer-loop workflow spec. */
+    spec: WorkflowSpec;
+    /** Workflow runtime (tool runner, actor, hooks). */
+    runtime: WorkflowRuntime;
+    /** Per-ticket timeout in ms (default: 120_000). */
+    ticketTimeoutMs?: number;
+  };
 }
 
 export interface ProgressEvent {
@@ -331,26 +342,15 @@ async function runPhaseC(
   telemetry: TelemetryTracker,
   emit: (e: ProgressEvent) => void,
 ): Promise<PhaseCResult> {
-  // Phase C requires council agents running. Check availability.
-  const activeCouncil = config.db
-    .select({ id: sql`id` })
-    .from(sql`agents`)
-    .where(sql`type = 'council'`)
-    .all();
-
-  if (activeCouncil.length === 0) {
-    emit({
-      phase: "C",
-      message: "No council agents available. Phase C skipped.",
-    });
-    return { testPassRate: 1, regressionRate: 0, mergeSuccessRate: 1, workflowOverheadPct: 0 };
-  }
+  const hasWorkflow = !!config.workflow;
 
   const batch = corpus.descriptors.slice(0, config.realWorkBatchSize);
   let resolved = 0;
-  let mergeSuccess = 0;
+  let failed = 0;
+  let timedOut = 0;
   let totalWorkflowMs = 0;
   let totalElapsedMs = 0;
+  const ticketTimeoutMs = config.workflow?.ticketTimeoutMs ?? 120_000;
 
   for (let i = 0; i < batch.length; i++) {
     const descriptor = batch[i]!;
@@ -366,28 +366,159 @@ async function runPhaseC(
 
     // Create the ticket in production DB
     const ticketId = createTicketInProduction(config, descriptor);
-    if (ticketId) {
-      telemetry.setTicketId(descriptor.corpusId, ticketId);
+    if (!ticketId) {
+      telemetry.completeTicket(descriptor.corpusId, "failed");
+      failed++;
+      continue;
+    }
+    telemetry.setTicketId(descriptor.corpusId, ticketId);
+
+    // Transition to approved so the dev loop can pick it up
+    try {
+      config.db.update(tickets)
+        .set({ status: "approved", updatedAt: new Date().toISOString() })
+        .where(sql`ticket_id = ${ticketId} AND repo_id = ${config.repoId}`)
+        .run();
+    } catch {
+      // Non-critical — ticket stays in backlog
     }
 
-    // For V1, we mark as resolved with timing.
-    // Full dev-loop integration will replace this in a future iteration.
-    const elapsed = Date.now() - ticketStartMs;
-    totalElapsedMs += elapsed;
-    totalWorkflowMs += elapsed * 0.15; // estimated workflow overhead
+    if (hasWorkflow) {
+      // Run the developer-loop workflow with timeout
+      const workflowResult = await runTicketWorkflow(
+        config,
+        ticketId,
+        descriptor,
+        ticketTimeoutMs,
+        emit,
+      );
 
-    telemetry.addPayload(descriptor.corpusId, descriptor.description.length, 500);
-    telemetry.completeTicket(descriptor.corpusId, "resolved");
-    resolved++;
-    mergeSuccess++;
+      const elapsed = Date.now() - ticketStartMs;
+      totalElapsedMs += elapsed;
+      totalWorkflowMs += workflowResult.workflowDurationMs;
+
+      telemetry.addPayload(
+        descriptor.corpusId,
+        workflowResult.inputChars,
+        workflowResult.outputChars,
+      );
+
+      if (workflowResult.status === "completed") {
+        telemetry.completeTicket(descriptor.corpusId, "resolved");
+        resolved++;
+      } else if (workflowResult.status === "timeout") {
+        telemetry.completeTicket(descriptor.corpusId, "escalated");
+        timedOut++;
+      } else {
+        telemetry.completeTicket(descriptor.corpusId, "failed");
+        failed++;
+      }
+
+      emit({
+        phase: "C",
+        message: `[${i + 1}/${batch.length}] ${workflowResult.status} in ${(elapsed / 1000).toFixed(1)}s`,
+      });
+    } else {
+      // Stub mode: mark as resolved with synthetic timing
+      const elapsed = Date.now() - ticketStartMs;
+      totalElapsedMs += elapsed;
+      totalWorkflowMs += elapsed * 0.15;
+      telemetry.addPayload(descriptor.corpusId, descriptor.description.length, 500);
+      telemetry.completeTicket(descriptor.corpusId, "resolved");
+      resolved++;
+    }
   }
 
+  const total = resolved + failed + timedOut;
+  emit({
+    phase: "C",
+    message: `Phase C complete: ${resolved} resolved, ${failed} failed, ${timedOut} timed out (${total}/${batch.length})`,
+  });
+
   return {
-    testPassRate: resolved > 0 ? 1.0 : 0,
-    regressionRate: 0,
-    mergeSuccessRate: batch.length > 0 ? mergeSuccess / batch.length : 1,
+    testPassRate: total > 0 ? resolved / total : 0,
+    regressionRate: total > 0 ? failed / total : 0,
+    mergeSuccessRate: batch.length > 0 ? resolved / batch.length : 1,
     workflowOverheadPct: totalElapsedMs > 0 ? totalWorkflowMs / totalElapsedMs : 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Workflow execution per ticket
+// ---------------------------------------------------------------------------
+
+interface TicketWorkflowResult {
+  status: "completed" | "failed" | "timeout";
+  workflowDurationMs: number;
+  inputChars: number;
+  outputChars: number;
+}
+
+async function runTicketWorkflow(
+  config: RunnerConfig,
+  ticketId: string,
+  descriptor: TicketDescriptor,
+  timeoutMs: number,
+  emit: (e: ProgressEvent) => void,
+): Promise<TicketWorkflowResult> {
+  const wf = config.workflow!;
+  const { runWorkflow } = await import("../workflows/engine.js");
+
+  const workflowStart = Date.now();
+
+  // Prepare params for the developer-loop workflow
+  const params: Record<string, unknown> = {
+    ticketId,
+    limit: 5,
+  };
+
+  // Estimate input size from ticket content
+  const inputChars = descriptor.title.length + descriptor.description.length
+    + (descriptor.acceptanceCriteria?.length ?? 0);
+
+  try {
+    // Run with timeout
+    const result = await Promise.race([
+      runWorkflow(wf.spec, wf.runtime, params),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+
+    const workflowDurationMs = Date.now() - workflowStart;
+
+    if (result === null) {
+      emit({
+        phase: "C",
+        message: `Ticket ${ticketId} timed out after ${(timeoutMs / 1000).toFixed(0)}s`,
+      });
+      return {
+        status: "timeout",
+        workflowDurationMs,
+        inputChars,
+        outputChars: 0,
+      };
+    }
+
+    // Estimate output size from step results
+    const outputChars = JSON.stringify(result.outputs).length;
+
+    return {
+      status: result.status === "completed" ? "completed" : "failed",
+      workflowDurationMs,
+      inputChars,
+      outputChars,
+    };
+  } catch (err) {
+    emit({
+      phase: "C",
+      message: `Ticket ${ticketId} workflow error: ${err instanceof Error ? err.message : String(err)}`,
+    });
+    return {
+      status: "failed",
+      workflowDurationMs: Date.now() - workflowStart,
+      inputChars,
+      outputChars: 0,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

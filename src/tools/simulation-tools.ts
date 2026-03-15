@@ -6,6 +6,12 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AgoraContext } from "../core/context.js";
 import { runSimulation, type RunnerConfig, type ProgressEvent } from "../simulation/runner.js";
+import { getToolRunner } from "./tool-runner.js";
+import * as queries from "../db/queries.js";
+import { loadCustomWorkflows, findCustomWorkflow } from "../workflows/loader.js";
+import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
+import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
+import { resolveReviewerAssignments } from "./workflow-tools.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -24,8 +30,10 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
         .describe("Which phase to run: all, A (generate), B (sandbox), C (real work), D (persist)"),
       outputPath: z.string().default(".agora/simulation-results.jsonl")
         .describe("JSONL output path relative to repo root"),
+      ticketTimeoutMs: z.number().int().min(10_000).max(600_000).default(120_000)
+        .describe("Per-ticket workflow timeout in ms (default 120000)"),
     },
-    async ({ targetCorpusSize, realWorkBatchSize, skipRealWork, phase, outputPath }) => {
+    async ({ targetCorpusSize, realWorkBatchSize, skipRealWork, phase, outputPath, ticketTimeoutMs }) => {
       try {
         const c = await getContext();
         const { resolve } = await import("node:path");
@@ -47,6 +55,85 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
           outputPath: resolve(c.repoPath, outputPath),
           onProgress,
         };
+
+        // Wire up workflow runtime for Phase C when real work is enabled
+        if (!skipRealWork) {
+          const runner = getToolRunner(server);
+          const customWorkflows = await loadCustomWorkflows(c.repoPath, {
+            validateTool: (toolName) => runner.has(toolName),
+          });
+          const devLoop = findCustomWorkflow(customWorkflows.workflows, "developer-loop");
+
+          if (devLoop) {
+            // Create a simulation agent for workflow execution
+            const simAgentId = `sim-runner-${Date.now().toString(36)}`;
+            const simSessionId = `sim-session-${Date.now().toString(36)}`;
+            queries.upsertAgent(c.db, {
+              id: simAgentId,
+              name: "simulation-runner",
+              type: "claude-code",
+              roleId: "developer",
+              trustTier: "A",
+              registeredAt: new Date().toISOString(),
+            });
+            queries.insertSession(c.db, {
+              id: simSessionId,
+              agentId: simAgentId,
+              connectedAt: new Date().toISOString(),
+              lastActivity: new Date().toISOString(),
+            });
+
+            config.workflow = {
+              spec: devLoop.spec,
+              runtime: {
+                runner,
+                actor: { agentId: simAgentId, sessionId: simSessionId },
+                workflowName: "developer-loop",
+                loadReviewVerdicts: async (ticketId) => {
+                  const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
+                  if (!ticket) return null;
+                  return queries.getActiveReviewVerdicts(c.db, ticket.id);
+                },
+                sendCoordination: async (request) => {
+                  c.bus.send({
+                    from: simAgentId,
+                    to: request.targetAgentId ?? null,
+                    type: "broadcast",
+                    payload: {
+                      kind: "review_request",
+                      ticketId: request.ticketId,
+                      roles: request.roles,
+                      workflowName: request.workflowName,
+                      stepKey: request.stepKey,
+                      requestedBy: request.requestedBy,
+                      timeoutSeconds: request.timeoutSeconds,
+                    },
+                  });
+                },
+                resolveReviewers: async (roles, ticketId) => {
+                  const catalog = await loadRepoAgentCatalog(c.repoPath);
+                  const liveSessions = queries.getLiveSessions(
+                    c.db,
+                    new Date(Date.now() - HEARTBEAT_TIMEOUT_MS).toISOString(),
+                  );
+                  const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
+                  return resolveReviewerAssignments({
+                    roles,
+                    availableReviewRoles: catalog.availableReviewRoles,
+                    liveSessions,
+                    requireDistinctModels: (c.config?.governance?.modelDiversity?.strict ?? true)
+                      && ticket?.severity !== "critical",
+                    maxReviewersPerModel: c.config?.governance?.modelDiversity?.maxVotersPerModel ?? 3,
+                    getAgent: (reviewerAgentId) => queries.getAgent(c.db, reviewerAgentId),
+                  });
+                },
+              },
+              ticketTimeoutMs,
+            };
+          } else {
+            progressLog.push("[sim] Warning: developer-loop workflow not found, Phase C will use stub mode");
+          }
+        }
 
         const result = await runSimulation(config);
 
