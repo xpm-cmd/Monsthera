@@ -26,46 +26,57 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
         .describe("JSONL output path relative to repo root"),
     },
     async ({ targetCorpusSize, realWorkBatchSize, skipRealWork, phase, outputPath }) => {
-      const c = await getContext();
-      const { resolve } = await import("node:path");
+      try {
+        const c = await getContext();
+        const { resolve } = await import("node:path");
 
-      const progressLog: string[] = [];
-      const onProgress = (event: ProgressEvent) => {
-        progressLog.push(`[sim] Phase ${event.phase}: ${event.message}`);
-      };
+        const progressLog: string[] = [];
+        const onProgress = (event: ProgressEvent) => {
+          progressLog.push(`[sim] Phase ${event.phase}: ${event.message}`);
+        };
 
-      const config: RunnerConfig = {
-        db: c.db,
-        sqlite: c.sqlite,
-        repoId: c.repoId,
-        repoPath: c.repoPath,
-        phase: phase as RunnerConfig["phase"],
-        targetCorpusSize,
-        realWorkBatchSize,
-        skipRealWork,
-        outputPath: resolve(c.repoPath, outputPath),
-        onProgress,
-      };
+        const config: RunnerConfig = {
+          db: c.db,
+          sqlite: c.sqlite,
+          repoId: c.repoId,
+          repoPath: c.repoPath,
+          phase: phase as RunnerConfig["phase"],
+          targetCorpusSize,
+          realWorkBatchSize,
+          skipRealWork,
+          outputPath: resolve(c.repoPath, outputPath),
+          onProgress,
+        };
 
-      const result = await runSimulation(config);
+        const result = await runSimulation(config);
 
-      const output = {
-        runId: result.runId,
-        phasesRun: result.phasesRun,
-        corpusSize: result.corpus?.descriptors.length ?? 0,
-        rejected: result.corpus?.rejections.length ?? 0,
-        compositeScore: result.result?.compositeScore ?? null,
-        deltas: result.result?.deltas ?? null,
-        summary: result.summary,
-        progressLog,
-      };
+        const output = {
+          runId: result.runId,
+          phasesRun: result.phasesRun,
+          corpusSize: result.corpus?.descriptors.length ?? 0,
+          rejected: result.corpus?.rejections.length ?? 0,
+          compositeScore: result.result?.compositeScore ?? null,
+          deltas: result.result?.deltas ?? null,
+          summary: result.summary,
+          progressLog,
+        };
 
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify(output, null, 2),
-        }],
-      };
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify(output, null, 2),
+          }],
+        };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const stack = err instanceof Error ? err.stack : undefined;
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ error: message, stack }, null, 2),
+          }],
+        };
+      }
     },
   );
 }
