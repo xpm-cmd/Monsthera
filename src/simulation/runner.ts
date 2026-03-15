@@ -67,12 +67,12 @@ export interface RunnerConfig {
 
   /** Workflow dependencies for Phase C real work execution. */
   workflow?: {
-    /** Resolved developer-loop workflow spec. */
-    spec: WorkflowSpec;
+    /** Resolved workflow specs keyed by name. */
+    specs: Record<string, WorkflowSpec>;
     /** Workflow runtime (tool runner, actor, hooks). */
     runtime: WorkflowRuntime;
-    /** Per-ticket timeout in ms (default: 120_000). */
-    ticketTimeoutMs?: number;
+    /** Per-step timeout in ms (default: 120_000). */
+    stepTimeoutMs?: number;
   };
 }
 
@@ -350,7 +350,7 @@ async function runPhaseC(
   let timedOut = 0;
   let totalWorkflowMs = 0;
   let totalElapsedMs = 0;
-  const ticketTimeoutMs = config.workflow?.ticketTimeoutMs ?? 120_000;
+  const stepTimeoutMs = config.workflow?.stepTimeoutMs ?? 120_000;
 
   for (let i = 0; i < batch.length; i++) {
     const descriptor = batch[i]!;
@@ -364,7 +364,7 @@ async function runPhaseC(
       detail: { model: descriptor.suggestedModel, corpusId: descriptor.corpusId },
     });
 
-    // Create the ticket in production DB
+    // Create the ticket in production DB (starts in backlog)
     const ticketId = createTicketInProduction(config, descriptor);
     if (!ticketId) {
       telemetry.completeTicket(descriptor.corpusId, "failed");
@@ -373,40 +373,30 @@ async function runPhaseC(
     }
     telemetry.setTicketId(descriptor.corpusId, ticketId);
 
-    // Transition to approved so the dev loop can pick it up
-    try {
-      config.db.update(tickets)
-        .set({ status: "approved", updatedAt: new Date().toISOString() })
-        .where(sql`ticket_id = ${ticketId} AND repo_id = ${config.repoId}`)
-        .run();
-    } catch {
-      // Non-critical — ticket stays in backlog
-    }
-
     if (hasWorkflow) {
-      // Run the developer-loop workflow with timeout
-      const workflowResult = await runTicketWorkflow(
+      // Run the full pipeline: plan → council → dev → council
+      const pipelineResult = await runTicketPipeline(
         config,
         ticketId,
         descriptor,
-        ticketTimeoutMs,
+        stepTimeoutMs,
         emit,
       );
 
       const elapsed = Date.now() - ticketStartMs;
       totalElapsedMs += elapsed;
-      totalWorkflowMs += workflowResult.workflowDurationMs;
+      totalWorkflowMs += pipelineResult.workflowDurationMs;
 
       telemetry.addPayload(
         descriptor.corpusId,
-        workflowResult.inputChars,
-        workflowResult.outputChars,
+        pipelineResult.inputChars,
+        pipelineResult.outputChars,
       );
 
-      if (workflowResult.status === "completed") {
+      if (pipelineResult.status === "completed") {
         telemetry.completeTicket(descriptor.corpusId, "resolved");
         resolved++;
-      } else if (workflowResult.status === "timeout") {
+      } else if (pipelineResult.status === "timeout") {
         telemetry.completeTicket(descriptor.corpusId, "escalated");
         timedOut++;
       } else {
@@ -416,10 +406,17 @@ async function runPhaseC(
 
       emit({
         phase: "C",
-        message: `[${i + 1}/${batch.length}] ${workflowResult.status} in ${(elapsed / 1000).toFixed(1)}s`,
+        message: `[${i + 1}/${batch.length}] ${pipelineResult.status} in ${(elapsed / 1000).toFixed(1)}s — reached ${pipelineResult.reachedStage}`,
       });
     } else {
-      // Stub mode: mark as resolved with synthetic timing
+      // Stub mode: force-advance and mark as resolved with synthetic timing
+      try {
+        config.db.update(tickets)
+          .set({ status: "approved", updatedAt: new Date().toISOString() })
+          .where(sql`ticket_id = ${ticketId} AND repo_id = ${config.repoId}`)
+          .run();
+      } catch { /* non-critical */ }
+
       const elapsed = Date.now() - ticketStartMs;
       totalElapsedMs += elapsed;
       totalWorkflowMs += elapsed * 0.15;
@@ -444,81 +441,158 @@ async function runPhaseC(
 }
 
 // ---------------------------------------------------------------------------
-// Workflow execution per ticket
+// Full pipeline per ticket: plan → council → dev → council
 // ---------------------------------------------------------------------------
 
-interface TicketWorkflowResult {
+type PipelineStage = "backlog" | "technical_analysis" | "council_approve" | "dev_loop" | "council_review" | "ready_for_commit";
+
+interface PipelineResult {
   status: "completed" | "failed" | "timeout";
+  reachedStage: PipelineStage;
   workflowDurationMs: number;
   inputChars: number;
   outputChars: number;
 }
 
-async function runTicketWorkflow(
+async function runTicketPipeline(
   config: RunnerConfig,
   ticketId: string,
   descriptor: TicketDescriptor,
-  timeoutMs: number,
+  stepTimeoutMs: number,
   emit: (e: ProgressEvent) => void,
-): Promise<TicketWorkflowResult> {
+): Promise<PipelineResult> {
   const wf = config.workflow!;
   const { runWorkflow } = await import("../workflows/engine.js");
-
-  const workflowStart = Date.now();
-
-  // Prepare params for the developer-loop workflow
-  const params: Record<string, unknown> = {
-    ticketId,
-    limit: 5,
-  };
-
-  // Estimate input size from ticket content
+  const pipelineStart = Date.now();
+  let totalOutputChars = 0;
   const inputChars = descriptor.title.length + descriptor.description.length
     + (descriptor.acceptanceCriteria?.length ?? 0);
 
-  try {
-    // Run with timeout
+  const agentId = wf.runtime.actor.agentId;
+  const sessionId = wf.runtime.actor.sessionId;
+
+  // Helper: run a workflow with timeout
+  async function runWithTimeout(spec: WorkflowSpec, params: Record<string, unknown>, label: string) {
+    emit({ phase: "C", message: `  ${label} for ${ticketId}...` });
     const result = await Promise.race([
-      runWorkflow(wf.spec, wf.runtime, params),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+      runWorkflow(spec, wf.runtime, params),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), stepTimeoutMs)),
     ]);
+    if (result) {
+      totalOutputChars += JSON.stringify(result.outputs).length;
+    }
+    return result;
+  }
 
-    const workflowDurationMs = Date.now() - workflowStart;
+  try {
+    // ── Stage 1: backlog → technical_analysis ──
+    config.db.update(tickets)
+      .set({ status: "technical_analysis", updatedAt: new Date().toISOString() })
+      .where(sql`ticket_id = ${ticketId} AND repo_id = ${config.repoId}`)
+      .run();
 
-    if (result === null) {
-      emit({
-        phase: "C",
-        message: `Ticket ${ticketId} timed out after ${(timeoutMs / 1000).toFixed(0)}s`,
-      });
-      return {
-        status: "timeout",
-        workflowDurationMs,
-        inputChars,
-        outputChars: 0,
-      };
+    // ── Stage 2: Run council-loop to review and advance to approved ──
+    const councilSpec = wf.specs["council-loop"];
+    if (councilSpec) {
+      const councilResult = await runWithTimeout(councilSpec, {
+        ticketId,
+        transition: "technical_analysis_to_approved",
+        targetStatus: "approved",
+        callerAgentId: agentId,
+        callerSpecialization: "correctness",
+      }, "Council review (approve)");
+
+      if (councilResult === null) {
+        return { status: "timeout", reachedStage: "council_approve", workflowDurationMs: Date.now() - pipelineStart, inputChars, outputChars: totalOutputChars };
+      }
+      if (councilResult.status === "failed") {
+        return { status: "failed", reachedStage: "council_approve", workflowDurationMs: Date.now() - pipelineStart, inputChars, outputChars: totalOutputChars };
+      }
+    } else {
+      // No council workflow — force-advance
+      config.db.update(tickets)
+        .set({ status: "approved", updatedAt: new Date().toISOString() })
+        .where(sql`ticket_id = ${ticketId} AND repo_id = ${config.repoId}`)
+        .run();
     }
 
-    // Estimate output size from step results
-    const outputChars = JSON.stringify(result.outputs).length;
+    // Check if ticket actually reached approved
+    const statusAfterCouncil = getTicketStatus(config, ticketId);
+    if (statusAfterCouncil !== "approved") {
+      emit({ phase: "C", message: `  Council did not approve ${ticketId} (status: ${statusAfterCouncil})` });
+      return { status: "failed", reachedStage: "council_approve", workflowDurationMs: Date.now() - pipelineStart, inputChars, outputChars: totalOutputChars };
+    }
+
+    // ── Stage 3: Run developer-loop ──
+    const devSpec = wf.specs["developer-loop"];
+    if (devSpec) {
+      const devResult = await runWithTimeout(devSpec, {
+        ticketId,
+        limit: 5,
+      }, "Developer loop");
+
+      if (devResult === null) {
+        return { status: "timeout", reachedStage: "dev_loop", workflowDurationMs: Date.now() - pipelineStart, inputChars, outputChars: totalOutputChars };
+      }
+      if (devResult.status === "failed") {
+        return { status: "failed", reachedStage: "dev_loop", workflowDurationMs: Date.now() - pipelineStart, inputChars, outputChars: totalOutputChars };
+      }
+    }
+
+    // Move to in_review if dev loop didn't already
+    const statusAfterDev = getTicketStatus(config, ticketId);
+    if (statusAfterDev === "approved" || statusAfterDev === "in_progress") {
+      config.db.update(tickets)
+        .set({ status: "in_review", updatedAt: new Date().toISOString() })
+        .where(sql`ticket_id = ${ticketId} AND repo_id = ${config.repoId}`)
+        .run();
+    }
+
+    // ── Stage 4: Run council-loop for review → ready_for_commit ──
+    if (councilSpec) {
+      const reviewResult = await runWithTimeout(councilSpec, {
+        ticketId,
+        transition: "in_review_to_ready_for_commit",
+        targetStatus: "ready_for_commit",
+        callerAgentId: agentId,
+        callerSpecialization: "correctness",
+      }, "Council review (commit)");
+
+      if (reviewResult === null) {
+        return { status: "timeout", reachedStage: "council_review", workflowDurationMs: Date.now() - pipelineStart, inputChars, outputChars: totalOutputChars };
+      }
+    }
 
     return {
-      status: result.status === "completed" ? "completed" : "failed",
-      workflowDurationMs,
+      status: "completed",
+      reachedStage: "ready_for_commit",
+      workflowDurationMs: Date.now() - pipelineStart,
       inputChars,
-      outputChars,
+      outputChars: totalOutputChars,
     };
   } catch (err) {
     emit({
       phase: "C",
-      message: `Ticket ${ticketId} workflow error: ${err instanceof Error ? err.message : String(err)}`,
+      message: `  Pipeline error for ${ticketId}: ${err instanceof Error ? err.message : String(err)}`,
     });
     return {
       status: "failed",
-      workflowDurationMs: Date.now() - workflowStart,
+      reachedStage: "backlog",
+      workflowDurationMs: Date.now() - pipelineStart,
       inputChars,
-      outputChars: 0,
+      outputChars: totalOutputChars,
     };
   }
+}
+
+function getTicketStatus(config: RunnerConfig, ticketId: string): string | null {
+  const row = config.db
+    .select({ status: tickets.status })
+    .from(tickets)
+    .where(sql`ticket_id = ${ticketId} AND repo_id = ${config.repoId}`)
+    .limit(1)
+    .all();
+  return row[0]?.status ?? null;
 }
 
 // ---------------------------------------------------------------------------

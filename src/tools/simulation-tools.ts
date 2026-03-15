@@ -63,6 +63,7 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
             validateTool: (toolName) => runner.has(toolName),
           });
           const devLoop = findCustomWorkflow(customWorkflows.workflows, "developer-loop");
+          const councilLoop = findCustomWorkflow(customWorkflows.workflows, "council-loop");
 
           if (devLoop) {
             // Create a simulation agent for workflow execution
@@ -83,8 +84,15 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
               lastActivity: new Date().toISOString(),
             });
 
+            const specs: Record<string, import("../workflows/types.js").WorkflowSpec> = {
+              "developer-loop": devLoop.spec,
+            };
+            if (councilLoop) {
+              specs["council-loop"] = councilLoop.spec;
+            }
+
             config.workflow = {
-              spec: devLoop.spec,
+              specs,
               runtime: {
                 runner,
                 actor: { agentId: simAgentId, sessionId: simSessionId },
@@ -128,7 +136,7 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
                   });
                 },
               },
-              ticketTimeoutMs,
+              stepTimeoutMs: ticketTimeoutMs,
             };
           } else {
             progressLog.push("[sim] Warning: developer-loop workflow not found, Phase C will use stub mode");
