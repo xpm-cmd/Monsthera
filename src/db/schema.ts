@@ -232,6 +232,32 @@ export const sessions = sqliteTable("sessions", {
   worktreeBranch: text("worktree_branch"),   // null for non-dev sessions
 });
 
+// --- Job Slots (loop workforce management) ---
+
+export const jobSlots = sqliteTable("job_slots", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  repoId: integer("repo_id").notNull().references(() => repos.id),
+  slotId: text("slot_id").notNull().unique(),
+  loopId: text("loop_id").notNull(),
+  role: text("role").notNull(),
+  specialization: text("specialization"),
+  label: text("label").notNull(),
+  description: text("description"),
+  systemPrompt: text("system_prompt"),
+  contextJson: text("context_json"),
+  ticketId: text("ticket_id"),
+  status: text("status").notNull().default("open"),
+  agentId: text("agent_id"),
+  sessionId: text("session_id"),
+  claimedAt: text("claimed_at"),
+  activeSince: text("active_since"),
+  completedAt: text("completed_at"),
+  lastHeartbeat: text("last_heartbeat"),
+  progressNote: text("progress_note"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 // --- Commit Locks (serializes merge-to-main across agents) ---
 
 export const commitLocks = sqliteTable("commit_locks", {

@@ -256,6 +256,39 @@ tr.clickable.active td{background:rgba(0,255,136,.06);color:var(--text)}
 .board-card-flags{display:flex;gap:.35rem;flex-wrap:wrap;margin-bottom:.35rem}
 .board-card-meta{display:flex;gap:.4rem;flex-wrap:wrap;font-size:.68rem;color:var(--text3)}
 .board-card-sub{font-size:.68rem;color:var(--text3);font-family:monospace}
+.board-card-agents{display:flex;flex-direction:column;gap:.3rem;margin-top:.45rem;padding-top:.4rem;border-top:1px solid rgba(255,255,255,.05)}
+.agent-badge{display:flex;align-items:center;gap:.35rem;font-size:.65rem;color:var(--text2)}
+.agent-badge .agent-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.agent-dot.online{background:#22c55e;animation:heartbeat 1.5s ease-in-out infinite}
+.agent-dot.idle{background:#f59e0b;opacity:.5}
+.agent-dot.offline{background:#ef4444;opacity:.3}
+.agent-dot.open{background:#4a5567;opacity:.3}
+.agent-badge .agent-note{color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px}
+@keyframes heartbeat{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.5);opacity:1}}
+@keyframes agent-pulse{0%,100%{box-shadow:0 0 0 0 rgba(0,255,136,.3)}50%{box-shadow:0 0 14px 5px rgba(0,255,136,.12)}}
+.board-card.has-active-agent{animation:agent-pulse 2.5s ease-in-out infinite}
+@keyframes card-enter{from{opacity:0;transform:translateY(20px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+.board-card.entering{animation:card-enter .4s cubic-bezier(.16,1,.3,1)}
+@keyframes abandoned-shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+.agent-badge.abandoned{animation:abandoned-shake .5s ease-in-out}
+@keyframes note-update{from{background:rgba(0,255,136,.1)}to{background:transparent}}
+.agent-note.updated{animation:note-update 1s ease-out}
+.role-badge{display:inline-block;padding:.1rem .35rem;border-radius:4px;font-size:.6rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.role-badge.developer{background:rgba(59,130,246,.15);color:#6ba3f7}
+.role-badge.reviewer{background:rgba(168,85,247,.15);color:#c084fc}
+.role-badge.facilitator{background:rgba(245,158,11,.15);color:#fbbf24}
+.role-badge.planner{background:rgba(6,182,212,.15);color:#22d3ee}
+.agent-summary-panel{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.5rem;padding:.75rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:1rem}
+.agent-pill{display:flex;flex-direction:column;gap:.2rem;padding:.5rem;border-radius:6px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);transition:all .2s}
+.agent-pill:hover{border-color:rgba(0,255,136,.25)}
+.agent-pill.open-slot{opacity:.4;border-style:dashed}
+.agent-pill .pill-role{font-size:.65rem;font-weight:600}
+.agent-pill .pill-name{font-size:.72rem;color:var(--text)}
+.agent-pill .pill-ticket{font-size:.6rem;color:var(--blue);cursor:pointer}
+.agent-pill .pill-note{font-size:.58rem;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agent-summary-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}
+.agent-summary-title{font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+.agent-summary-stats{font-size:.65rem;color:var(--text3)}
 .field{display:flex;flex-direction:column;gap:.35rem;margin-bottom:.7rem}
 .field label{font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
 .field input,.field textarea,.field select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:.6rem .7rem;font-size:.8rem}
@@ -341,6 +374,10 @@ footer a{color:var(--accent);text-decoration:none}
       <div class="nav-item" data-route="improvement" onclick="navigate('improvement')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         IMPROVEMENT
+      </div>
+      <div class="nav-item" data-route="jobboard" onclick="navigate('jobboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="8" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="16" y2="21"/></svg>
+        JOB BOARD <span class="nav-count" id="nav-count-jobs">0</span>
       </div>
       <div class="sidebar-separator"></div>
       <div class="nav-item" data-route="activity" onclick="navigate('activity')">
@@ -827,6 +864,7 @@ function renderRoute(){
     case 'knowledge': renderKnowledgeScreen(host); break;
     case 'workflows': renderWorkflowsScreen(host); break;
     case 'improvement': renderImprovementScreen(host); break;
+    case 'jobboard': renderJobBoardScreen(host); break;
     case 'activity': renderActivityScreen(host); break;
     case 'settings': renderSettingsScreen(host); break;
     default: renderMissionControl(host);
@@ -1753,7 +1791,11 @@ function renderTicketsSection(tickets,metrics){
             +(flags.length?'<div class="board-card-flags">'+flags.join('')+'</div>':'')
             +'<div class="board-card-meta"><span class="badge badge-'+(TICKET_STATUS_CLS[ticket.status]||'blue')+'">'+esc(ticket.status)+'</span><span class="badge badge-'+(ticket.severity==='critical'?'red':ticket.severity==='high'?'orange':'blue')+'">'+esc(ticket.severity)+'</span><span>P'+esc(String(ticket.priority))+'</span></div>'
             +'<div class="board-card-meta"><span>'+(ticket.assignee?esc(ticket.assignee):'unassigned')+'</span><span>'+esc(new Date(ticket.updatedAt).toLocaleDateString())+'</span><span>'+esc(ticketStatusLabel(ticket.status))+' '+esc(formatStatusAge(ticket.statusAgeDays,ticket.statusAgeHours))+'</span></div>'
-            +(ticket.inReviewStale?'<div class="board-card-meta"><span title="'+esc(ticket.lastReviewActivityAt?formatTicketConversationTime(ticket.lastReviewActivityAt).title:'No recent review activity')+'">'+esc(formatIdleLabel(ticket.inReviewIdleDays,ticket.inReviewIdleHours))+'</span></div>':'');
+            +(ticket.inReviewStale?'<div class="board-card-meta"><span title="'+esc(ticket.lastReviewActivityAt?formatTicketConversationTime(ticket.lastReviewActivityAt).title:'No recent review activity')+'">'+esc(formatIdleLabel(ticket.inReviewIdleDays,ticket.inReviewIdleHours))+'</span></div>':'')
+            +buildAgentBadgesHtml(ticket);
+          if(ticket.agents&&ticket.agents.some(function(a){return a.presence==='online'})){
+            card.classList.add('has-active-agent');
+          }
           list.appendChild(card);
         });
       }
@@ -3188,6 +3230,127 @@ async function refresh(){
   }
 }
 
+/* ── Agent Badges in Ticket Cards ─────────────── */
+function buildAgentBadgesHtml(ticket){
+  if(!ticket.agents||!ticket.agents.length) return '';
+  var badges=ticket.agents.map(function(a){
+    var roleClass=a.role||'developer';
+    var dotClass=a.presence||'open';
+    var label=a.agentName||a.label||a.role;
+    var note=a.progressNote?' · '+esc(a.progressNote.slice(0,40)):'';
+    return '<div class="agent-badge"><span class="agent-dot '+esc(dotClass)+'"></span>'
+      +'<span class="role-badge '+esc(roleClass)+'">'+esc(a.specialization||a.role)+'</span>'
+      +'<span>'+esc(label)+'</span>'
+      +'<span class="agent-note">'+note+'</span></div>';
+  }).join('');
+  return '<div class="board-card-agents">'+badges+'</div>';
+}
+
+/* ── Screen: Job Board ────────────────────────── */
+/* NOTE: All user-facing strings passed through esc() (HTML entity escaping) */
+/* Data is server-generated from DB queries, not direct user input */
+function renderJobBoardScreen(host){
+  host.textContent='';
+  var header=document.createElement('div');
+  header.className='main-header';
+  header.innerHTML='<div><div class="main-title">Job Board</div><div class="main-subtitle">Loop workforce &amp; agent assignments</div></div>'
+    +'<div class="header-actions"><button class="btn" onclick="refreshJobBoard()">Refresh</button></div>';
+  host.appendChild(header);
+  var summary=document.createElement('div');
+  summary.id='jobboard-summary';
+  host.appendChild(summary);
+  var board=document.createElement('div');
+  board.id='jobboard-board';
+  host.appendChild(board);
+  refreshJobBoard();
+}
+
+async function refreshJobBoard(){
+  try{
+    var data=await api('jobboard');
+    if(!data) return;
+    var summaryEl=document.getElementById('jobboard-summary');
+    var boardEl=document.getElementById('jobboard-board');
+    if(!summaryEl||!boardEl) return;
+
+    /* Update nav count */
+    var activeSlots=data.slots.filter(function(s){return s.status==='active'||s.status==='claimed'}).length;
+    var countEl=document.getElementById('nav-count-jobs');
+    if(countEl) countEl.textContent=String(data.slots.length);
+
+    if(!data.slots.length){
+      summaryEl.textContent='';
+      var emptyDiv=document.createElement('div');
+      emptyDiv.className='empty';
+      emptyDiv.textContent='No loops created yet. Use create_loop to start a loop.';
+      summaryEl.appendChild(emptyDiv);
+      boardEl.textContent='';
+      return;
+    }
+
+    /* Agent summary panel — built from server DB data, all strings escaped */
+    var loopGroups={};
+    data.slots.forEach(function(s){
+      if(!loopGroups[s.loopId]) loopGroups[s.loopId]={slots:[],stats:{open:0,claimed:0,active:0,completed:0,abandoned:0}};
+      loopGroups[s.loopId].slots.push(s);
+      if(loopGroups[s.loopId].stats[s.status]!==undefined) loopGroups[s.loopId].stats[s.status]++;
+    });
+
+    var panelHtml='';
+    Object.keys(loopGroups).forEach(function(loopId){
+      var group=loopGroups[loopId];
+      var stats=group.stats;
+      var working=stats.claimed+stats.active;
+      panelHtml+='<div style="margin-bottom:1rem">'
+        +'<div class="agent-summary-header">'
+        +'<div class="agent-summary-title">LOOP: '+esc(loopId)+'</div>'
+        +'<div class="agent-summary-stats">'+working+'/'+group.slots.length+' active &middot; '+stats.open+' open &middot; '+stats.completed+' completed</div>'
+        +'</div>'
+        +'<div class="agent-summary-panel">';
+      group.slots.forEach(function(s){
+        var isOpen=s.status==='open';
+        var roleClass=s.role||'developer';
+        var specLabel=s.specialization?s.specialization:s.role;
+        var dotClass=isOpen?'open':s.presence||'offline';
+        panelHtml+='<div class="agent-pill'+(isOpen?' open-slot':'')+'">'
+          +'<div style="display:flex;align-items:center;gap:.3rem">'
+          +'<span class="agent-dot '+esc(dotClass)+'"></span>'
+          +'<span class="pill-role role-badge '+esc(roleClass)+'">'+esc(specLabel)+'</span></div>'
+          +'<div class="pill-name">'+(isOpen?'(open slot)':esc(s.agent?s.agent.name:s.label))+'</div>'
+          +(s.agent&&s.agent.model?'<div class="pill-note">'+esc(s.agent.model)+'</div>':'')
+          +(s.ticket?'<div class="pill-ticket" onclick="navigate(\'tickets\')">'+esc(s.ticket.ticketId)+'</div>':'')
+          +(s.progressNote?'<div class="pill-note">'+esc(s.progressNote.slice(0,50))+'</div>':'')
+          +'</div>';
+      });
+      panelHtml+='</div></div>';
+    });
+    /* All values above are escaped via esc() — safe for innerHTML */
+    summaryEl.innerHTML=panelHtml;
+
+    /* Show linked ticket count below */
+    var loopTicketIds={};
+    data.slots.forEach(function(s){if(s.ticket) loopTicketIds[s.ticket.ticketId]=true});
+    var ticketCount=Object.keys(loopTicketIds).length;
+    if(ticketCount>0){
+      boardEl.textContent='';
+      var subtitle=document.createElement('div');
+      subtitle.className='main-subtitle';
+      subtitle.style.cssText='margin:1rem 0 .5rem';
+      subtitle.textContent='Tickets in active loops ('+ticketCount+')';
+      boardEl.appendChild(subtitle);
+    }else{
+      boardEl.textContent='';
+      var emptyTickets=document.createElement('div');
+      emptyTickets.className='empty';
+      emptyTickets.style.marginTop='1rem';
+      emptyTickets.textContent='No tickets linked to job slots yet. Agents will link tickets as they work.';
+      boardEl.appendChild(emptyTickets);
+    }
+  }catch(e){
+    console.error('refreshJobBoard error:',e);
+  }
+}
+
 /* ── SSE ─────────────────────────────────────── */
 function connectSSE(){
   var pulse=document.getElementById('pulse');
@@ -3214,6 +3377,13 @@ function connectSSE(){
   es.addEventListener('ticket_verdict_submitted',sseHandler('ticket_verdict_submitted'));
   es.addEventListener('ticket_commented',sseHandler('ticket_commented'));
   es.addEventListener('ticket_external_sync',sseHandler('ticket_external_sync'));
+  es.addEventListener('job_loop_created',sseHandler('job_loop_created'));
+  es.addEventListener('job_slot_claimed',sseHandler('job_slot_claimed'));
+  es.addEventListener('job_slot_active',sseHandler('job_slot_active'));
+  es.addEventListener('job_slot_completed',sseHandler('job_slot_completed'));
+  es.addEventListener('job_slot_released',sseHandler('job_slot_released'));
+  es.addEventListener('job_slot_abandoned',sseHandler('job_slot_abandoned'));
+  es.addEventListener('job_progress_update',sseHandler('job_progress_update'));
   es.onerror=function(){
     if(pulse){pulse.classList.add('disconnected');pulse.title='SSE disconnected';}
     es.close();setTimeout(connectSSE,5000);

@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 import { TrustTier } from "./evidence-bundle.js";
 
-export const RoleId = z.enum(["developer", "reviewer", "facilitator", "observer", "admin"]);
+export const RoleId = z.enum(["developer", "reviewer", "facilitator", "planner", "observer", "admin"]);
 export type RoleId = z.infer<typeof RoleId>;
 
 export const AgentIdentitySource = z.enum(["self_declared", "config", "peer_asserted", "system_assigned"]);
@@ -50,6 +50,7 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
         "link_tickets", "unlink_tickets",
         "lookup_dependencies", "export_audit",
         "list_protected_artifacts",
+        "list_jobs", "claim_job", "update_job_progress", "complete_job", "release_job",
       ],
       trustTier: "A",
       canBroadcast: true,
@@ -81,6 +82,40 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
         "link_tickets", "unlink_tickets",
         "lookup_dependencies", "export_audit",
         "list_protected_artifacts",
+        "list_jobs", "claim_job", "update_job_progress", "complete_job", "release_job",
+      ],
+      trustTier: "A",
+      canBroadcast: true,
+      canClaimFiles: false,
+      canProposePatch: false,
+      canProposeNote: true,
+      allowedNoteTypes: ["issue", "decision", "change_note", "gotcha"],
+      readableNoteTypes: ["issue", "decision", "change_note", "gotcha", "runbook", "repo_map", "module_map", "file_summary"],
+      canViewSharedLogs: true,
+      canCreateTicket: true,
+      canTransitionTicket: true,
+    },
+  },
+  planner: {
+    id: "planner",
+    name: "Planner",
+    description: "Deep-dives into backlog tickets, refines requirements, discusses with other planners, and prepares tickets for council review",
+    permissions: {
+      allowedTools: [
+        "get_code_pack", "get_change_pack", "get_issue_pack",
+        "run_workflow",
+        "propose_note",
+        "status", "capabilities", "schema",
+        "register_agent", "agent_status", "broadcast",
+        "send_coordination", "poll_coordination", "list_patches", "list_notes",
+        "store_knowledge", "search_knowledge", "query_knowledge",
+        "create_ticket", "update_ticket", "update_ticket_status",
+        "list_tickets", "search_tickets", "get_ticket", "comment_ticket",
+        "link_tickets", "unlink_tickets",
+        "analyze_complexity", "analyze_test_coverage",
+        "lookup_dependencies", "trace_dependencies",
+        "suggest_actions", "suggest_next_work",
+        "create_loop", "list_jobs", "claim_job", "update_job_progress", "complete_job", "release_job",
       ],
       trustTier: "A",
       canBroadcast: true,
@@ -107,6 +142,7 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
         "search_knowledge", "query_knowledge",
         "list_tickets", "search_tickets", "get_ticket",
         "lookup_dependencies",
+        "list_jobs",
       ],
       trustTier: "B",
       canBroadcast: false,
@@ -139,6 +175,7 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
         "analyze_complexity", "analyze_test_coverage",
         "lookup_dependencies", "export_audit",
         "list_protected_artifacts",
+        "create_loop", "list_jobs", "claim_job", "update_job_progress", "complete_job", "release_job",
       ],
       trustTier: "A",
       canBroadcast: true,

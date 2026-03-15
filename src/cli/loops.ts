@@ -12,7 +12,7 @@ import { createAgoraServer } from "../server.js";
 import { getToolRunner, type ToolRunner, type ToolRunnerCallResult } from "../tools/tool-runner.js";
 
 type LoopCommand = "plan" | "dev" | "council";
-type LoopRole = "facilitator" | "developer" | "reviewer";
+type LoopRole = "facilitator" | "developer" | "reviewer" | "planner";
 type WatchStopReason = "signal" | "max_runs" | "workflow_failed";
 type WorkflowPrintReason = "initial" | "changed" | "review_request" | "in_review_queue" | "technical_analysis_queue" | "ready_for_commit_queue" | "backlog_triage";
 type PlannerAutonomousActionReason = Extract<WorkflowPrintReason, "in_review_queue" | "technical_analysis_queue" | "ready_for_commit_queue" | "backlog_triage">;

@@ -489,7 +489,7 @@ export function updateTicketStatusRecord(
   // Resolution governance: resolver must be assignee or have elevated role
   if (input.status === "resolved" && ticket.assigneeAgentId && !isSystemActor) {
     const isAssignee = ticket.assigneeAgentId === resolved.agentId;
-    const isElevated = resolved.role === "facilitator" || resolved.role === "admin";
+    const isElevated = resolved.role === "facilitator" || resolved.role === "planner" || resolved.role === "admin";
     if (!isAssignee && !isElevated) {
       return err("denied",
         `Only the assignee (${ticket.assigneeAgentId}) or a facilitator/admin can resolve this ticket.`);

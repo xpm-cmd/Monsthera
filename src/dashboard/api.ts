@@ -397,8 +397,40 @@ export function getTicketsList(deps: DashboardDeps) {
       duplicateSignalScore: duplicateSignal?.score ?? 0,
       duplicateReasons: duplicateSignal?.reasons ?? [],
       duplicateTitle: duplicateSignal ? summarizeDuplicateReasons(duplicateSignal.reasons) : null,
+      agents: getTicketAgentBadges(deps, ticket.ticketId, now),
     };
   });
+}
+
+function getTicketAgentBadges(deps: DashboardDeps, ticketId: string, now: number) {
+  try {
+    const slots = queries.getJobSlotsByTicketId(deps.db, deps.repoId, ticketId);
+    if (slots.length === 0) return [];
+    const TWO_MINUTES = 2 * 60 * 1000;
+    const TEN_MINUTES = 10 * 60 * 1000;
+
+    return slots.map((s) => {
+      let presence: "online" | "idle" | "offline" | "open" = "open";
+      if (s.agentId && s.lastHeartbeat) {
+        const age = now - new Date(s.lastHeartbeat).getTime();
+        presence = age < TWO_MINUTES ? "online" : age < TEN_MINUTES ? "idle" : "offline";
+      }
+      const agent = s.agentId ? queries.getAgent(deps.db, s.agentId) : null;
+      return {
+        slotId: s.slotId,
+        role: s.role,
+        specialization: s.specialization,
+        label: s.label,
+        status: s.status,
+        agentName: agent?.name ?? null,
+        agentModel: agent?.model ?? null,
+        presence,
+        progressNote: s.progressNote,
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
@@ -1650,4 +1682,54 @@ export async function getSimulationTrends(deps: DashboardDeps): Promise<{
 export async function getSimulationLatest(deps: DashboardDeps): Promise<SimulationResult | null> {
   const runs = await readResults(simulationResultsPath(deps));
   return runs.length > 0 ? runs[runs.length - 1]! : null;
+}
+
+/**
+ * GET /api/jobboard — job slots with agent presence and ticket association.
+ */
+export function getJobBoard(deps: DashboardDeps, loopId?: string) {
+  const now = Date.now();
+  const TWO_MINUTES = 2 * 60 * 1000;
+  const TEN_MINUTES = 10 * 60 * 1000;
+
+  const loops = queries.getDistinctLoops(deps.db, deps.repoId);
+  const allSlots = loopId
+    ? queries.getJobSlotsByLoop(deps.db, deps.repoId, loopId)
+    : queries.getAllJobSlots(deps.db, deps.repoId);
+
+  const slots = allSlots.map((s) => {
+    let presence: "online" | "idle" | "offline" | "open" = "open";
+    if (s.agentId && s.lastHeartbeat) {
+      const age = now - new Date(s.lastHeartbeat).getTime();
+      presence = age < TWO_MINUTES ? "online" : age < TEN_MINUTES ? "idle" : "offline";
+    }
+
+    const agent = s.agentId ? queries.getAgent(deps.db, s.agentId) : null;
+
+    // Look up ticket title if linked
+    let ticket: { ticketId: string; title: string; status: string } | null = null;
+    if (s.ticketId) {
+      const t = queries.getTicketByTicketId(deps.db, s.ticketId, deps.repoId);
+      if (t) ticket = { ticketId: t.ticketId, title: t.title, status: t.status };
+    }
+
+    const timeInState = s.updatedAt ? now - new Date(s.updatedAt).getTime() : 0;
+
+    return {
+      slotId: s.slotId,
+      loopId: s.loopId,
+      role: s.role,
+      specialization: s.specialization,
+      label: s.label,
+      status: s.status,
+      agent: agent ? { id: agent.id, name: agent.name, model: agent.model, provider: agent.provider } : null,
+      presence,
+      ticket,
+      timeInState,
+      lastHeartbeat: s.lastHeartbeat,
+      progressNote: s.progressNote,
+    };
+  });
+
+  return { loops, slots };
 }

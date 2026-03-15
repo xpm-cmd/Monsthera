@@ -301,6 +301,8 @@ export function reapStaleSessions(
           .set({ claimedFilesJson: JSON.stringify([]) })
           .where(eq(tables.sessions.id, s.id))
           .run();
+        // Abandon any job slots held by this session
+        queries.abandonJobSlotsBySession(tx as unknown as BetterSQLite3Database<typeof schema>, s.id);
         reaped++;
       }
     }

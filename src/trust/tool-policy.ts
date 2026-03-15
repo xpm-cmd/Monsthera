@@ -57,4 +57,10 @@ export const TOOL_ACCESS_POLICY: Record<CapabilityToolName, ToolAccessPolicyEntr
   export_audit: { mode: "role" },
   run_simulation: { mode: "role" },
   run_optimization: { mode: "role" },
+  create_loop: { mode: "role" },
+  list_jobs: { mode: "role" },
+  claim_job: { mode: "role" },
+  update_job_progress: { mode: "session" },
+  complete_job: { mode: "session" },
+  release_job: { mode: "role" },
 };

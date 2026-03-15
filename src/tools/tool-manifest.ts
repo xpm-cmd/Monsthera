@@ -21,6 +21,12 @@ export const CAPABILITY_TOOL_NAMES = [
   "export_audit",
   "run_simulation",
   "run_optimization",
+  "create_loop",
+  "list_jobs",
+  "claim_job",
+  "update_job_progress",
+  "complete_job",
+  "release_job",
 ] as const;
 
 export type CapabilityToolName = (typeof CAPABILITY_TOOL_NAMES)[number];

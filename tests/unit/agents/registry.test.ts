@@ -12,6 +12,7 @@ function createTestDb() {
   for (const stmt of [
     `CREATE TABLE agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'unknown', provider TEXT, model TEXT, model_family TEXT, model_version TEXT, identity_source TEXT, role_id TEXT NOT NULL DEFAULT 'observer', trust_tier TEXT NOT NULL DEFAULT 'B', registered_at TEXT NOT NULL)`,
     `CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT, worktree_path TEXT, worktree_branch TEXT)`,
+    `CREATE TABLE job_slots (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, slot_id TEXT NOT NULL UNIQUE, loop_id TEXT NOT NULL, role TEXT NOT NULL, specialization TEXT, label TEXT NOT NULL, description TEXT, system_prompt TEXT, context_json TEXT, ticket_id TEXT, status TEXT NOT NULL DEFAULT 'open', agent_id TEXT, session_id TEXT, claimed_at TEXT, active_since TEXT, completed_at TEXT, last_heartbeat TEXT, progress_note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
   ]) {
     sqlite.prepare(stmt).run();
   }

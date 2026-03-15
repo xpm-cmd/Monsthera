@@ -41,6 +41,10 @@ export function checkToolAccess(
     return { allowed: false, reason: `Role ${roleId} cannot broadcast` };
   }
 
+  if (tool === "create_loop" && !["facilitator", "planner", "admin"].includes(roleId)) {
+    return { allowed: false, reason: `Only facilitators, planners, or admins can create loops` };
+  }
+
   if (tool === "claim_files" && !permissions.canClaimFiles) {
     return { allowed: false, reason: `Role ${roleId} cannot claim files` };
   }

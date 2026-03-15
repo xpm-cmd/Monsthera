@@ -24,7 +24,14 @@ export interface DashboardEvent {
     | "ticket_auto_transitioned"
     | "ticket_orphaned_owner_repaired"
     | "ticket_repair_spawned"
-    | "ticket_repair_resolved";
+    | "ticket_repair_resolved"
+    | "job_loop_created"
+    | "job_slot_claimed"
+    | "job_slot_active"
+    | "job_slot_completed"
+    | "job_slot_released"
+    | "job_slot_abandoned"
+    | "job_progress_update";
   data: Record<string, unknown>;
 }
 

@@ -1,6 +1,6 @@
 import type { WorkflowCatalogEntry, WorkflowSpec } from "./types.js";
 
-export const BUILTIN_WORKFLOW_NAMES = ["onboard", "deep-review", "ta-review", "deep-review-v2", "backlog-triage", "auto-resolve"] as const;
+export const BUILTIN_WORKFLOW_NAMES = ["onboard", "deep-review", "ta-review", "deep-review-v2", "backlog-triage", "auto-resolve", "take-job"] as const;
 export type BuiltInWorkflowName = (typeof BUILTIN_WORKFLOW_NAMES)[number];
 
 export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
@@ -228,6 +228,30 @@ export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
           ticketId: "{{params.ticketId}}",
           status: "resolved",
           comment: "Planner auto-resolve: ticket reached ready_for_commit, advancing to resolved.",
+        },
+      },
+    ],
+  },
+  "take-job": {
+    name: "take-job",
+    description: "Claim an available job slot in a loop and receive role-specific instructions.",
+    requiredParams: ["loopId"],
+    steps: [
+      {
+        key: "available",
+        tool: "list_jobs",
+        description: "List available job slots in the loop.",
+        input: {
+          loopId: "{{params.loopId}}",
+          status: "open",
+        },
+      },
+      {
+        key: "claim",
+        tool: "claim_job",
+        description: "Claim the first open slot matching your role.",
+        input: {
+          loopId: "{{params.loopId}}",
         },
       },
     ],

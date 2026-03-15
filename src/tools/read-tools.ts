@@ -332,7 +332,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             uniquenessKey: "provider+model",
             strictDiversityEligibility: "requires both provider and model",
           },
-          roles: ["developer", "reviewer", "facilitator", "observer", "admin"],
+          roles: ["developer", "reviewer", "facilitator", "planner", "observer", "admin"],
           coordinationTopologies: ["hub-spoke", "hybrid", "mesh"],
           maxCandidates: STAGE_A_MAX_CANDIDATES,
           maxExpanded: STAGE_B_MAX_EXPANDED,

@@ -480,4 +480,32 @@ function runMigrations(sqlite: Database.Database): void {
     acquired_at TEXT NOT NULL,
     released_at TEXT
   )`).run();
+
+  // Migration 18: Create job_slots table for loop workforce management
+  sqlite.prepare(`CREATE TABLE IF NOT EXISTS job_slots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id INTEGER NOT NULL REFERENCES repos(id),
+    slot_id TEXT NOT NULL UNIQUE,
+    loop_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    specialization TEXT,
+    label TEXT NOT NULL,
+    description TEXT,
+    system_prompt TEXT,
+    context_json TEXT,
+    ticket_id TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    agent_id TEXT,
+    session_id TEXT,
+    claimed_at TEXT,
+    active_since TEXT,
+    completed_at TEXT,
+    last_heartbeat TEXT,
+    progress_note TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_job_slots_loop_status ON job_slots(repo_id, loop_id, status)`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_job_slots_agent ON job_slots(agent_id)`).run();
+  sqlite.prepare(`CREATE INDEX IF NOT EXISTS idx_job_slots_ticket ON job_slots(repo_id, ticket_id)`).run();
 }

@@ -9,7 +9,7 @@ import {
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence,
   getIndexedFilesMetrics, getTicketMetrics, getAgentTimeline, getTicketTemplates, getSearchDebug,
   getDependencyGraph, getGovernanceSettings, getKnowledgeGraph,
-  getSimulationRuns, getSimulationTrends, getSimulationLatest,
+  getSimulationRuns, getSimulationTrends, getSimulationLatest, getJobBoard,
   STRICT_MODEL_DIVERSITY_DISABLED_REQUIRED_DISTINCT_MODELS,
   STRICT_MODEL_DIVERSITY_ENABLED_MAX_VOTERS_PER_MODEL,
   STRICT_MODEL_DIVERSITY_ENABLED_REQUIRED_DISTINCT_MODELS,
@@ -766,6 +766,10 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
     case "simulation/runs": return getSimulationRuns(deps);
     case "simulation/trends": return getSimulationTrends(deps);
     case "simulation/latest": return getSimulationLatest(deps);
+    case "jobboard": {
+      const loopIdParam = url.searchParams.get("loopId")?.trim() ?? undefined;
+      return getJobBoard(deps, loopIdParam);
+    }
     default: return null;
   }
 }
