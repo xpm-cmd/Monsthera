@@ -3,7 +3,7 @@ import { CAPABILITY_TOOL_NAMES } from "../../../src/tools/tool-manifest.js";
 
 describe("tool-manifest", () => {
   it("exports the expected number of capability tools", () => {
-    expect(CAPABILITY_TOOL_NAMES.length).toBe(49);
+    expect(CAPABILITY_TOOL_NAMES.length).toBe(50);
   });
 
   it("contains all core MCP tool names", () => {
@@ -68,6 +68,7 @@ describe("tool-manifest", () => {
 
     // Simulation
     expect(names.has("run_simulation")).toBe(true);
+    expect(names.has("run_optimization")).toBe(true);
   });
 
   it("contains no duplicate tool names", () => {
