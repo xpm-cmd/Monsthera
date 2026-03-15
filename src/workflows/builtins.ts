@@ -1,6 +1,6 @@
 import type { WorkflowCatalogEntry, WorkflowSpec } from "./types.js";
 
-export const BUILTIN_WORKFLOW_NAMES = ["onboard", "deep-review", "ta-review", "deep-review-v2", "backlog-triage"] as const;
+export const BUILTIN_WORKFLOW_NAMES = ["onboard", "deep-review", "ta-review", "deep-review-v2", "backlog-triage", "auto-resolve"] as const;
 export type BuiltInWorkflowName = (typeof BUILTIN_WORKFLOW_NAMES)[number];
 
 export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
@@ -196,6 +196,38 @@ export const BUILTIN_WORKFLOWS: Record<BuiltInWorkflowName, WorkflowSpec> = {
           ticketId: "{{params.ticketId}}",
           status: "technical_analysis",
           comment: "Planner auto-triage: ticket has description and affected paths — advancing to technical analysis.",
+        },
+      },
+    ],
+  },
+  "auto-resolve": {
+    name: "auto-resolve",
+    description: "Resolve a ready_for_commit ticket — verifies patches exist and advances to resolved.",
+    requiredParams: ["ticketId"],
+    steps: [
+      {
+        key: "ticket",
+        tool: "get_ticket",
+        description: "Load the ticket to verify it is ready for resolution.",
+        input: { ticketId: "{{params.ticketId}}" },
+      },
+      {
+        key: "patches",
+        tool: "list_patches",
+        description: "Verify that committed or validated patches exist for this ticket.",
+        onError: "continue" as const,
+        input: {},
+      },
+      {
+        key: "resolve",
+        tool: "update_ticket_status",
+        description: "Advance to resolved when ticket is ready_for_commit.",
+        condition: "steps.ticket.status === 'ready_for_commit'",
+        onError: "continue" as const,
+        input: {
+          ticketId: "{{params.ticketId}}",
+          status: "resolved",
+          comment: "Planner auto-resolve: ticket reached ready_for_commit, advancing to resolved.",
         },
       },
     ],

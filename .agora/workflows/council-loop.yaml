@@ -160,6 +160,17 @@ steps:
       reasoning: "Insufficient evidence for {{steps.ticket.ticketId}}: complexity and coverage analysis unavailable for {{steps.ticket.affectedPaths}}. Cannot assess gate readiness for {{params.transition}}."
       transition: "{{params.transition}}"
 
+  # 15b. Return ticket to in_progress when needs_revision verdict was submitted
+  - key: rejectToInProgress
+    tool: update_ticket_status
+    description: Send ticket back to in_progress so the developer loop can rework it.
+    condition: "!steps.consensus.advisoryReady && !steps.complexity && !steps.coverage"
+    onError: continue
+    input:
+      ticketId: "{{params.ticketId}}"
+      status: in_progress
+      comment: "Council review: needs_revision — insufficient evidence for {{params.transition}}. Returning to developer for rework."
+
   # 16. Persist review findings as institutional knowledge
   - key: reviewKnowledge
     tool: store_knowledge

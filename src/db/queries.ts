@@ -573,9 +573,13 @@ export function claimFilesAtomic(
 
 // --- Commit Locks ---
 
+/** Max time a commit lock can be held before auto-expiry (5 minutes). */
+const COMMIT_LOCK_TTL_MS = 5 * 60 * 1000;
+
 /**
  * Attempt to acquire the global commit lock.
  * Returns true if acquired, false if already held.
+ * Auto-expires stale locks older than COMMIT_LOCK_TTL_MS.
  * Uses SQLite transaction for atomicity.
  */
 export function acquireCommitLock(
@@ -585,7 +589,21 @@ export function acquireCommitLock(
     const existing = tx.select().from(tables.commitLocks)
       .where(sql`${tables.commitLocks.releasedAt} IS NULL`)
       .get();
-    if (existing) return false;
+
+    if (existing) {
+      // Auto-expire stale locks from crashed sessions
+      const acquiredAt = new Date(existing.acquiredAt).getTime();
+      const age = Date.now() - acquiredAt;
+      if (age > COMMIT_LOCK_TTL_MS) {
+        tx.update(tables.commitLocks)
+          .set({ releasedAt: new Date().toISOString() })
+          .where(eq(tables.commitLocks.id, existing.id))
+          .run();
+        // Fall through to acquire new lock
+      } else {
+        return false;
+      }
+    }
 
     tx.insert(tables.commitLocks).values({
       sessionId, agentId, ticketId: ticketId ?? null,

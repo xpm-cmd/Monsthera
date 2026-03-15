@@ -750,6 +750,14 @@ describe("loop CLI", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        tool: "get_ticket",
+        result: toolTextPayload({
+          ticketId: "TKT-dev111",
+          status: "approved",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         tool: "assign_ticket",
         result: toolTextPayload({
           ticketId: "TKT-dev111",
@@ -791,18 +799,21 @@ describe("loop CLI", () => {
       sleep: vi.fn().mockResolvedValue(undefined),
     });
 
-    expect(callTool).toHaveBeenNthCalledWith(4, "assign_ticket", {
+    expect(callTool).toHaveBeenNthCalledWith(4, "get_ticket", expect.objectContaining({
+      ticketId: "TKT-dev111",
+    }));
+    expect(callTool).toHaveBeenNthCalledWith(5, "assign_ticket", {
       ticketId: "TKT-dev111",
       assigneeAgentId: "agent-dev",
       agentId: "agent-dev",
       sessionId: "session-dev",
     });
-    expect(callTool).toHaveBeenNthCalledWith(5, "claim_files", {
+    expect(callTool).toHaveBeenNthCalledWith(6, "claim_files", {
       paths: ["src/feature.ts"],
       agentId: "agent-dev",
       sessionId: "session-dev",
     });
-    expect(callTool).toHaveBeenNthCalledWith(6, "update_ticket_status", {
+    expect(callTool).toHaveBeenNthCalledWith(7, "update_ticket_status", {
       ticketId: "TKT-dev111",
       status: "in_progress",
       comment: "Developer loop auto-take: claimed approved work for implementation",
@@ -867,6 +878,14 @@ describe("loop CLI", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        tool: "get_ticket",
+        result: toolTextPayload({
+          ticketId: "TKT-dev222",
+          status: "approved",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         tool: "assign_ticket",
         result: toolTextPayload({
           ticketId: "TKT-dev222",
@@ -908,18 +927,21 @@ describe("loop CLI", () => {
       sleep: vi.fn().mockResolvedValue(undefined),
     });
 
-    expect(callTool).toHaveBeenNthCalledWith(4, "assign_ticket", {
+    expect(callTool).toHaveBeenNthCalledWith(4, "get_ticket", expect.objectContaining({
+      ticketId: "TKT-dev222",
+    }));
+    expect(callTool).toHaveBeenNthCalledWith(5, "assign_ticket", {
       ticketId: "TKT-dev222",
       assigneeAgentId: "agent-dev",
       agentId: "agent-dev",
       sessionId: "session-dev",
     });
-    expect(callTool).toHaveBeenNthCalledWith(5, "claim_files", {
+    expect(callTool).toHaveBeenNthCalledWith(6, "claim_files", {
       paths: ["src/priority.ts"],
       agentId: "agent-dev",
       sessionId: "session-dev",
     });
-    expect(callTool).toHaveBeenNthCalledWith(6, "update_ticket_status", {
+    expect(callTool).toHaveBeenNthCalledWith(7, "update_ticket_status", {
       ticketId: "TKT-dev222",
       status: "in_progress",
       comment: "Developer loop auto-take: claimed approved work for implementation",

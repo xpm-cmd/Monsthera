@@ -74,6 +74,30 @@ export async function hasUnmergedCommits(
 }
 
 /**
+ * Rebase the agent's branch onto the current HEAD of main.
+ * Must be called from the worktree directory.
+ * Returns success/failure with conflict details.
+ */
+export async function rebaseOnMain(
+  worktreePath: string,
+): Promise<{ rebased: boolean; conflicts: string[] }> {
+  try {
+    await git(["rebase", "main"], { cwd: worktreePath });
+    return { rebased: true, conflicts: [] };
+  } catch {
+    try {
+      const conflictOutput = await git(["diff", "--name-only", "--diff-filter=U"], { cwd: worktreePath });
+      const conflicts = conflictOutput.split("\n").filter(Boolean);
+      await git(["rebase", "--abort"], { cwd: worktreePath });
+      return { rebased: false, conflicts };
+    } catch {
+      try { await git(["rebase", "--abort"], { cwd: worktreePath }); } catch { /* already clean */ }
+      return { rebased: false, conflicts: ["unknown conflict"] };
+    }
+  }
+}
+
+/**
  * Merge the agent's branch back to main with --no-ff.
  * Must be called from the main repo root (not the worktree).
  * Returns merge result with conflict list if any.

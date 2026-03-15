@@ -6,7 +6,7 @@ import { createAgoraContextLoader } from "../core/context-loader.js";
 import type { InsightStream } from "../core/insight-stream.js";
 import { acquireCommitLock, releaseCommitLock, updateSessionWorktree } from "../db/queries.js";
 import { getMainRepoRoot } from "../git/operations.js";
-import { createAgentWorktree, removeAgentWorktree, mergeAgentWork, hasUnmergedCommits } from "../git/worktree.js";
+import { createAgentWorktree, removeAgentWorktree, mergeAgentWork, hasUnmergedCommits, rebaseOnMain, runTestsInWorktree } from "../git/worktree.js";
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import { createAgoraServer } from "../server.js";
 import { getToolRunner, type ToolRunner, type ToolRunnerCallResult } from "../tools/tool-runner.js";
@@ -14,8 +14,8 @@ import { getToolRunner, type ToolRunner, type ToolRunnerCallResult } from "../to
 type LoopCommand = "plan" | "dev" | "council";
 type LoopRole = "facilitator" | "developer" | "reviewer";
 type WatchStopReason = "signal" | "max_runs" | "workflow_failed";
-type WorkflowPrintReason = "initial" | "changed" | "review_request" | "in_review_queue" | "technical_analysis_queue" | "backlog_triage";
-type PlannerAutonomousActionReason = Extract<WorkflowPrintReason, "in_review_queue" | "technical_analysis_queue" | "backlog_triage">;
+type WorkflowPrintReason = "initial" | "changed" | "review_request" | "in_review_queue" | "technical_analysis_queue" | "ready_for_commit_queue" | "backlog_triage";
+type PlannerAutonomousActionReason = Extract<WorkflowPrintReason, "in_review_queue" | "technical_analysis_queue" | "ready_for_commit_queue" | "backlog_triage">;
 
 interface LoopSpec {
   workflowName: string;
@@ -88,7 +88,7 @@ interface QueueTicketSummary {
 }
 
 interface PlannerAutonomousAction {
-  workflowName: "ta-review" | "deep-review-v2" | "backlog-triage";
+  workflowName: "ta-review" | "deep-review-v2" | "backlog-triage" | "auto-resolve";
   params: Record<string, unknown>;
   queueTicket: QueueTicketSummary;
   reason: PlannerAutonomousActionReason;
@@ -320,30 +320,60 @@ export async function cmdLoop(
     insight.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   } finally {
-    // Worktree cleanup: merge work back to main before ending session
+    // Worktree cleanup: rebase → test → merge → cleanup
     if (worktreeContext && registered) {
       try {
         const mainRoot = await getMainRepoRoot({ cwd: config.repoPath });
         const hasWork = await hasUnmergedCommits(mainRoot, worktreeContext.branchName);
         if (hasWork) {
-          const ctx = await getContext();
-          const lockAcquired = acquireCommitLock(ctx.db, registered.sessionId, registered.agentId);
-          if (lockAcquired) {
-            try {
-              const mergeResult = await mergeAgentWork(
-                mainRoot, worktreeContext.branchName,
-                `Merge agent work from ${agentName} (session ${registered.sessionId})`,
-              );
-              if (!mergeResult.merged) {
-                insight.warn(`Merge conflicts in ${mergeResult.conflicts.join(", ")} — branch preserved for manual resolution`);
-                worktreeContext = null; // skip worktree removal to preserve for manual fix
-              }
-            } finally {
-              releaseCommitLock(ctx.db, registered.sessionId);
-            }
-          } else {
-            insight.warn("Could not acquire commit lock — branch preserved for manual merge");
+          // Step 1: Rebase onto current main to ensure linear history
+          const rebaseResult = await rebaseOnMain(worktreeContext.worktreePath);
+          if (!rebaseResult.rebased) {
+            insight.warn(`Rebase conflicts in ${rebaseResult.conflicts.join(", ")} — branch preserved for manual resolution`);
             worktreeContext = null; // skip removal
+          } else {
+            // Step 2: Run tests in the rebased worktree before merging
+            const ctx = await getContext();
+            const testCmd = ctx.config?.devLoop?.testCommand ?? "npx vitest run --reporter=verbose 2>&1 | tail -50";
+            const testTimeout = ctx.config?.devLoop?.testTimeoutMs ?? 120_000;
+            const testResult = await runTestsInWorktree(worktreeContext.worktreePath, testCmd, testTimeout);
+
+            if (!testResult.passed) {
+              insight.warn(`Tests failed in worktree — not merging. Output:\n${testResult.output}`);
+              worktreeContext = null; // preserve worktree for debugging
+            } else {
+              // Step 3: Acquire lock and merge
+              const lockAcquired = acquireCommitLock(ctx.db, registered.sessionId, registered.agentId);
+              if (lockAcquired) {
+                try {
+                  const mergeResult = await mergeAgentWork(
+                    mainRoot, worktreeContext.branchName,
+                    `Merge agent work from ${agentName} (session ${registered.sessionId})`,
+                  );
+                  if (!mergeResult.merged) {
+                    insight.warn(`Merge conflicts in ${mergeResult.conflicts.join(", ")} — branch preserved for manual resolution`);
+                    worktreeContext = null; // skip worktree removal
+                  } else {
+                    // Step 4: Reindex so other agents see the new code immediately
+                    const reindexResult = await runner.callTool("request_reindex", {
+                      full: false,
+                      agentId: registered.agentId,
+                      sessionId: registered.sessionId,
+                    });
+                    if (reindexResult.ok) {
+                      insight.info("Post-merge reindex completed");
+                    } else {
+                      insight.warn(`Post-merge reindex failed: ${formatToolFailure(reindexResult)}`);
+                    }
+                  }
+                } finally {
+                  releaseCommitLock(ctx.db, registered.sessionId);
+                }
+              } else {
+                insight.warn("Could not acquire commit lock — branch preserved for manual merge");
+                worktreeContext = null; // skip removal
+              }
+            }
           }
         }
         if (worktreeContext) {
@@ -387,6 +417,8 @@ async function runWatchLoop(input: {
   const fingerprints = new Map<string, string>();
   let stopReason: WatchStopReason = "signal";
   let activeTicketId: string | null = null;
+  const rejectionCounts = new Map<string, number>();
+  const MAX_REJECTIONS = 3;
 
   try {
     printWatchEvent({
@@ -650,8 +682,16 @@ async function runWatchLoop(input: {
         if (loop === "dev") {
           // Phase 1: Check if we have an active ticket in progress
           if (activeTicketId) {
-            const ticketStatus = await getTicketStatus(runner, agent, activeTicketId);
-            if (ticketStatus === "in_progress") {
+            let ticketStatus = await getTicketStatus(runner, agent, activeTicketId);
+            // Retry once on transient failure before releasing ticket
+            if (ticketStatus === null) {
+              await sleepTimeout(1_000);
+              ticketStatus = await getTicketStatus(runner, agent, activeTicketId);
+            }
+            if (ticketStatus === null) {
+              // Still failing — keep ticket, don't abandon on transient error
+              feedbackLines.push(`getTicketStatus failed for ${activeTicketId}, retaining for next cycle`);
+            } else if (ticketStatus === "in_progress") {
               const patches = await listPatchesForTicket(runner, agent, activeTicketId);
               const hasValidatedPatch = patches.some((p) =>
                 p.state === "validated" || p.state === "committed",
@@ -678,25 +718,60 @@ async function runWatchLoop(input: {
                 activeTicketId = null;
               }
             } else {
-              feedbackLines.push(`Released ${activeTicketId} (status: ${ticketStatus ?? "unknown"})`);
+              // Ticket moved out of in_progress (blocked, in_review, etc.)
+              // Release claims so other agents can work on these paths
+              await runner.callTool("claim_files", {
+                paths: [],
+                agentId: agent.agentId,
+                sessionId: agent.sessionId,
+              }).catch(() => {});
+              feedbackLines.push(`Released ${activeTicketId} + claims (status: ${ticketStatus ?? "unknown"})`);
               activeTicketId = null;
             }
           }
 
-          // Phase 2: Take new work only if not actively working
+          // Phase 2: Resume rejected work or take new work
           if (!activeTicketId) {
-            const autoTakeOutcome = await maybeAutoTakeDeveloperWork({
-              runner,
-              agent,
-              cycle: cycles,
-              asJson,
-              payload: execution.payload,
-            });
-            if (autoTakeOutcome?.outcome === "taken") {
-              activeTicketId = autoTakeOutcome.ticketId;
-              feedbackLines.push(buildDeveloperAutoTakeFeedbackLine(autoTakeOutcome));
-            } else if (autoTakeOutcome) {
-              feedbackLines.push(buildDeveloperAutoTakeFeedbackLine(autoTakeOutcome));
+            // Priority A: Check for in_progress tickets assigned to us (council rejections)
+            const rejectedWork = findAssignedInProgressTicket(execution.payload, agent.agentId);
+            if (rejectedWork) {
+              const count = (rejectionCounts.get(rejectedWork.ticketId) ?? 0) + 1;
+              rejectionCounts.set(rejectedWork.ticketId, count);
+
+              if (count > MAX_REJECTIONS) {
+                // Escalate: too many rejections, move to blocked
+                await runner.callTool("update_ticket_status", {
+                  ticketId: rejectedWork.ticketId,
+                  status: "blocked",
+                  comment: `Developer loop: ticket rejected ${count} times by council — escalating to blocked for manual review.`,
+                  agentId: agent.agentId,
+                  sessionId: agent.sessionId,
+                }).catch(() => {});
+                await runner.callTool("claim_files", {
+                  paths: [],
+                  agentId: agent.agentId,
+                  sessionId: agent.sessionId,
+                }).catch(() => {});
+                feedbackLines.push(`Escalated ${rejectedWork.ticketId} to blocked after ${count} rejections`);
+              } else {
+                activeTicketId = rejectedWork.ticketId;
+                feedbackLines.push(`Resuming rejected ticket ${rejectedWork.ticketId} for rework (attempt ${count}/${MAX_REJECTIONS})`);
+              }
+            } else {
+              // Priority B: Take new approved work
+              const autoTakeOutcome = await maybeAutoTakeDeveloperWork({
+                runner,
+                agent,
+                cycle: cycles,
+                asJson,
+                payload: execution.payload,
+              });
+              if (autoTakeOutcome?.outcome === "taken") {
+                activeTicketId = autoTakeOutcome.ticketId;
+                feedbackLines.push(buildDeveloperAutoTakeFeedbackLine(autoTakeOutcome));
+              } else if (autoTakeOutcome) {
+                feedbackLines.push(buildDeveloperAutoTakeFeedbackLine(autoTakeOutcome));
+              }
             }
           }
         }
@@ -1208,7 +1283,20 @@ function selectPlannerAutonomousAction(payload: unknown): PlannerAutonomousActio
     };
   }
 
-  // Priority 3: Triage backlog tickets with complete readiness data
+  // Priority 3: Resolve ready_for_commit tickets (close the cycle)
+  const readyForCommitTicket = readTopQueueTicket(outputs.ready_for_commit);
+  if (readyForCommitTicket) {
+    return {
+      workflowName: "auto-resolve",
+      params: {
+        ticketId: readyForCommitTicket.ticketId,
+      },
+      queueTicket: readyForCommitTicket,
+      reason: "ready_for_commit_queue",
+    };
+  }
+
+  // Priority 4: Triage backlog tickets with complete readiness data
   const backlogReadiness = Array.isArray(outputs.backlogReadiness) ? outputs.backlogReadiness : [];
   const triageCandidate = backlogReadiness.find((item: unknown) =>
     isRecord(item)
@@ -1245,6 +1333,19 @@ async function maybeAutoTakeDeveloperWork(input: {
   const candidate = selectDeveloperAutoTakeCandidate(input.payload);
   if (!candidate) return null;
 
+  // Pre-check: verify ticket is still approved before taking (race guard)
+  const currentStatus = await getTicketStatus(input.runner, input.agent, candidate.ticketId);
+  if (currentStatus !== "approved") {
+    printWatchEvent({
+      event: "ticket_take_skipped",
+      loop: "dev",
+      cycle: input.cycle,
+      ticketId: candidate.ticketId,
+      message: `Ticket no longer approved (status: ${currentStatus ?? "unknown"}), skipping`,
+    }, input.asJson);
+    return null;
+  }
+
   const assignResult = await input.runner.callTool("assign_ticket", {
     ticketId: candidate.ticketId,
     assigneeAgentId: input.agent.agentId,
@@ -1275,12 +1376,19 @@ async function maybeAutoTakeDeveloperWork(input: {
       sessionId: input.agent.sessionId,
     });
     if (!claimResult.ok) {
+      // Rollback: release assignment since claims failed
+      await input.runner.callTool("assign_ticket", {
+        ticketId: candidate.ticketId,
+        assigneeAgentId: "",
+        agentId: input.agent.agentId,
+        sessionId: input.agent.sessionId,
+      }).catch(() => {});
       printWatchEvent({
         event: "ticket_take_failed",
         loop: "dev",
         cycle: input.cycle,
         ticketId: candidate.ticketId,
-        message: formatToolFailure(claimResult),
+        message: `claim_files failed, rolled back assignment: ${formatToolFailure(claimResult)}`,
       }, input.asJson);
       return {
         ticketId: candidate.ticketId,
@@ -1300,12 +1408,26 @@ async function maybeAutoTakeDeveloperWork(input: {
     sessionId: input.agent.sessionId,
   });
   if (!transitionResult.ok) {
+    // Rollback: release claims and assignment since transition failed
+    if (candidate.affectedPaths.length > 0) {
+      await input.runner.callTool("claim_files", {
+        paths: [],
+        agentId: input.agent.agentId,
+        sessionId: input.agent.sessionId,
+      }).catch(() => {});
+    }
+    await input.runner.callTool("assign_ticket", {
+      ticketId: candidate.ticketId,
+      assigneeAgentId: "",
+      agentId: input.agent.agentId,
+      sessionId: input.agent.sessionId,
+    }).catch(() => {});
     printWatchEvent({
       event: "ticket_take_failed",
       loop: "dev",
       cycle: input.cycle,
       ticketId: candidate.ticketId,
-      message: formatToolFailure(transitionResult),
+      message: `transition failed, rolled back claims+assignment: ${formatToolFailure(transitionResult)}`,
     }, input.asJson);
     return {
       ticketId: candidate.ticketId,
@@ -1503,6 +1625,34 @@ function selectDeveloperAutoTakeCandidate(payload: unknown): DeveloperAutoTakeCa
     ticketId: ticket.ticketId,
     affectedPaths,
   };
+}
+
+/**
+ * Scan the developer workflow's `inProgressTickets` output for a ticket
+ * assigned to the current agent. These are tickets that council rejected
+ * back to `in_progress` for rework.
+ */
+function findAssignedInProgressTicket(
+  payload: unknown,
+  agentId: string,
+): DeveloperAutoTakeCandidate | null {
+  const outputs = isRecord(payload) && isRecord(payload.outputs) ? payload.outputs : null;
+  if (!outputs) return null;
+
+  const inProgress = isRecord(outputs.inProgressTickets) && Array.isArray(outputs.inProgressTickets.tickets)
+    ? outputs.inProgressTickets.tickets
+    : [];
+
+  for (const entry of inProgress) {
+    if (!isRecord(entry) || typeof entry.ticketId !== "string") continue;
+    if (entry.assigneeAgentId !== agentId) continue;
+    const affectedPaths = Array.isArray(entry.affectedPaths)
+      ? entry.affectedPaths.filter((p): p is string => typeof p === "string")
+      : [];
+    return { ticketId: entry.ticketId, affectedPaths };
+  }
+
+  return null;
 }
 
 function readTopQueueTicket(value: unknown): QueueTicketSummary | null {

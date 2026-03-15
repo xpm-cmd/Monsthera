@@ -148,7 +148,7 @@ describe("read tool discovery", () => {
       query: "string (1-1000 chars)",
     });
     expect(JSON.parse(runWorkflow.content[0].text).inputSchema).toMatchObject({
-      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2|backlog-triage; custom: custom:<name>)",
+      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2|backlog-triage|auto-resolve; custom: custom:<name>)",
       params: "object (optional workflow parameters)",
       agentId: "string (required)",
       sessionId: "string (required)",
@@ -327,7 +327,7 @@ steps:
       expect.objectContaining({ name: "custom:repo-review" }),
     ]));
     expect(schemaPayload.inputSchema).toMatchObject({
-      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2|backlog-triage; custom: custom:repo-review)",
+      name: "string (built-in: onboard|deep-review|ta-review|deep-review-v2|backlog-triage|auto-resolve; custom: custom:repo-review)",
     });
   });
 

@@ -258,6 +258,10 @@ export const AgoraConfigSchema = z.object({
     overrides: {},
   }),
   lifecycle: LifecycleConfigSchema.default(DEFAULT_LIFECYCLE_CONFIG),
+  devLoop: z.object({
+    testCommand: z.string().default("npx vitest run --reporter=verbose 2>&1 | tail -50"),
+    testTimeoutMs: z.number().positive().default(120_000),
+  }).default(() => ({ testCommand: "npx vitest run --reporter=verbose 2>&1 | tail -50", testTimeoutMs: 120_000 })),
   repairSpawner: RepairSpawnerConfigSchema.default({ enabled: false, allowedSources: ["council_veto"] }),
   retrospective: RetrospectiveConfigSchema.default({ enabled: false, commentOnIdle: false }),
 });
