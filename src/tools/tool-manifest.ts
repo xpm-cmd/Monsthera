@@ -20,6 +20,7 @@ export const CAPABILITY_TOOL_NAMES = [
   "trace_dependencies",
   "export_audit",
   "run_simulation",
+  "run_optimization",
 ] as const;
 
 export type CapabilityToolName = (typeof CAPABILITY_TOOL_NAMES)[number];

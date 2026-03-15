@@ -56,4 +56,5 @@ export const TOOL_ACCESS_POLICY: Record<CapabilityToolName, ToolAccessPolicyEntr
   trace_dependencies: { mode: "public" },
   export_audit: { mode: "role" },
   run_simulation: { mode: "role" },
+  run_optimization: { mode: "role" },
 };
