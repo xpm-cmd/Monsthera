@@ -276,8 +276,8 @@ async function detectIssues(config: GeneratorConfig): Promise<AutoDetectedIssue[
       });
     }
 
-    // Missing test coverage (convention-based)
-    if (hasNoTestFile(file.path, sourceFiles.map((f) => f.path))) {
+    // Missing test coverage (convention-based) — check against ALL indexed paths (including test files)
+    if (hasNoTestFile(file.path, fileRows.map((f) => f.path))) {
       issues.push({
         signal: "missing_tests",
         filePath: file.path,
