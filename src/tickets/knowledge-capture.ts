@@ -1,5 +1,6 @@
 import { parseStringArrayJson } from "../core/input-hardening.js";
 import * as tables from "../db/schema.js";
+import type { NormalizedReviewVerdictRecord, ConsensusPayload } from "./consensus.js";
 
 type TicketRow = typeof tables.tickets.$inferSelect;
 type TicketHistoryRow = typeof tables.ticketHistory.$inferSelect;
@@ -12,6 +13,8 @@ const MAX_PATCH_SUMMARIES = 5;
 const MAX_AFFECTED_PATHS = 20;
 const MAX_CONTENT_LENGTH = 15_000;
 const MAX_TEXT_LENGTH = 320;
+const MAX_VERDICT_REASONING_LENGTH = 200;
+const MAX_DISSENT_REASONING_LENGTH = 300;
 
 export interface TicketKnowledgeCaptureInput {
   ticket: TicketRow;
@@ -23,6 +26,8 @@ export interface TicketKnowledgeCaptureInput {
   history: TicketHistoryRow[];
   comments: TicketCommentRow[];
   linkedPatches: PatchRow[];
+  verdicts?: NormalizedReviewVerdictRecord[];
+  consensus?: ConsensusPayload | null;
 }
 
 export function shouldCaptureTicketKnowledge(status: string): status is "resolved" | "closed" {
@@ -39,6 +44,7 @@ export function buildTicketResolutionKnowledgeEntry(
   const tags = uniqueStrings([
     ...parseStringArrayJson(input.ticket.tagsJson, { maxItems: 25, maxItemLength: 64 }),
     "ticket-resolution",
+    ...buildVerdictTags(input.verdicts, input.consensus),
   ]).slice(0, 25);
   const affectedPaths = parseStringArrayJson(input.ticket.affectedPathsJson, {
     maxItems: MAX_AFFECTED_PATHS,
@@ -57,6 +63,8 @@ export function buildTicketResolutionKnowledgeEntry(
   const history = [...input.history, finalHistoryEntry].slice(-MAX_HISTORY_ENTRIES);
   const recentComments = input.comments.slice(-MAX_COMMENT_SNIPPETS);
   const linkedPatches = input.linkedPatches.slice(0, MAX_PATCH_SUMMARIES);
+
+  const verdictSection = formatVerdictSection(input.verdicts ?? [], input.consensus ?? null);
 
   const content = [
     `Ticket: ${input.ticket.ticketId}`,
@@ -81,6 +89,7 @@ export function buildTicketResolutionKnowledgeEntry(
     "",
     "Transition History",
     ...buildHistorySummary(history),
+    ...(verdictSection ? ["", verdictSection] : []),
   ].join("\n");
 
   return {
@@ -96,6 +105,59 @@ export function buildTicketResolutionKnowledgeEntry(
     createdAt: input.capturedAt,
     updatedAt: input.capturedAt,
   };
+}
+
+export function formatVerdictSection(
+  verdicts: NormalizedReviewVerdictRecord[],
+  consensus: ConsensusPayload | null,
+): string {
+  if (verdicts.length === 0) return "";
+
+  const lines: string[] = ["Council Review Summary"];
+
+  if (consensus) {
+    lines.push(`- Quorum: ${consensus.counts.pass}/${consensus.requiredPasses} required passes`);
+    if (consensus.blockedByVeto) {
+      lines.push(`- VETOED by: ${consensus.vetoes.map((v) => v.specialization).join(", ")}`);
+    }
+    if (consensus.missingSpecializations.length > 0) {
+      lines.push(`- Missing specializations: ${consensus.missingSpecializations.join(", ")}`);
+    }
+  }
+
+  lines.push("");
+  lines.push("Verdicts by Role");
+  for (const v of verdicts) {
+    const label = v.verdict === "pass" ? "PASS" : v.verdict === "fail" ? "FAIL" : "ABSTAIN";
+    lines.push(`- ${v.specialization} [${label}]`);
+    if (v.reasoning) {
+      lines.push(`  > ${clipText(v.reasoning, MAX_VERDICT_REASONING_LENGTH)}`);
+    }
+  }
+
+  const dissent = verdicts.filter((v) => v.verdict === "fail");
+  if (dissent.length > 0) {
+    lines.push("");
+    lines.push("Dissenting Perspectives");
+    for (const d of dissent) {
+      lines.push(`- ${d.specialization}: ${clipText(d.reasoning ?? "No reasoning provided", MAX_DISSENT_REASONING_LENGTH)}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function buildVerdictTags(
+  verdicts?: NormalizedReviewVerdictRecord[],
+  consensus?: ConsensusPayload | null,
+): string[] {
+  if (!verdicts?.length) return [];
+  const tags: string[] = ["council-reviewed"];
+  if (consensus?.blockedByVeto) tags.push("was-vetoed");
+  for (const v of verdicts) {
+    tags.push(`reviewed-by:${v.specialization}`);
+  }
+  return tags;
 }
 
 function buildCommentSummary(comments: TicketCommentRow[]): string[] {
