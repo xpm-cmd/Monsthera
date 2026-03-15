@@ -925,6 +925,16 @@ export async function runOptimizationLoop(config: OptimizationConfig): Promise<O
         // Create isolated worktree
         const { worktreePath, branchName } = await createAgentWorktree(config.repoPath, sessionId);
 
+        // Symlink node_modules so tests can find dependencies
+        const { symlink } = await import("node:fs/promises");
+        try {
+          await symlink(
+            resolve(config.repoPath, "node_modules"),
+            resolve(worktreePath, "node_modules"),
+            "dir",
+          );
+        } catch { /* may already exist */ }
+
         try {
           // Run developer workflow to implement the fix
           const fixApplied = await applyFixInWorktree(
@@ -1141,8 +1151,17 @@ export async function runOptimizationLoop(config: OptimizationConfig): Promise<O
 // Impact ranking — sorts descriptors by expected composite score improvement
 // ---------------------------------------------------------------------------
 
+const FIXABLE_SIGNALS = new Set(["missing_tests", "deep_nesting"]);
+
 function rankByExpectedImpact(descriptors: TicketDescriptor[]): TicketDescriptor[] {
-  return [...descriptors].sort((a, b) => {
+  // Only include candidates with a programmatically fixable signal
+  // AND affected paths under src/ (our fixers only work on src/ files)
+  const fixable = descriptors.filter((d) =>
+    d.tags.some((t) => FIXABLE_SIGNALS.has(t))
+    && d.affectedPaths.length > 0
+    && d.affectedPaths.every((p) => p.startsWith("src/")),
+  );
+  return fixable.sort((a, b) => {
     const impactA = estimateImpact(a);
     const impactB = estimateImpact(b);
     return impactB - impactA;
@@ -1252,7 +1271,6 @@ async function fixMissingTests(
   const { readFile, mkdir } = await import("node:fs/promises");
   const { dirname, basename, relative } = await import("node:path");
   const { detectLanguage } = await import("../git/language.js");
-  const { parseFile } = await import("../indexing/parser.js");
 
   const lang = detectLanguage(targetPath);
   if (!lang || !["typescript", "javascript"].includes(lang)) return false;
@@ -1264,14 +1282,28 @@ async function fixMissingTests(
     return false;
   }
 
-  // Parse source to find exported symbols
-  const parsed = await parseFile(content, lang as "typescript" | "javascript");
-  const exports = parsed.symbols.filter((s) =>
-    s.kind === "function" || s.kind === "class" || s.kind === "method",
-  );
+  // Extract exported symbols directly from source text (more reliable than parser)
+  const exportedNames: Array<{ name: string; kind: "function" | "class" | "variable" }> = [];
+  for (const line of content.split("\n")) {
+    const fnMatch = line.match(/^export\s+(?:async\s+)?function\s+(\w+)/);
+    if (fnMatch) { exportedNames.push({ name: fnMatch[1]!, kind: "function" }); continue; }
+    const classMatch = line.match(/^export\s+class\s+(\w+)/);
+    if (classMatch) { exportedNames.push({ name: classMatch[1]!, kind: "class" }); continue; }
+    const constMatch = line.match(/^export\s+(?:const|let|var)\s+(\w+)/);
+    if (constMatch) { exportedNames.push({ name: constMatch[1]!, kind: "variable" }); continue; }
+    const typeMatch = line.match(/^export\s+(?:type|interface|enum)\s+(\w+)/);
+    if (typeMatch) continue; // skip types — not testable at runtime
+  }
 
-  if (exports.length === 0) {
-    emit({ iteration: iteration + 1, totalIterations, message: `  No exportable symbols in ${targetPath}` });
+  if (exportedNames.length === 0) {
+    emit({ iteration: iteration + 1, totalIterations, message: `  No exported runtime symbols in ${targetPath}` });
+    return false;
+  }
+  const exports = exportedNames;
+
+  // Only generate tests for files under src/ (known project structure)
+  if (!targetPath.startsWith("src/")) {
+    emit({ iteration: iteration + 1, totalIterations, message: `  Skipping non-src file: ${targetPath}` });
     return false;
   }
 
@@ -1291,7 +1323,6 @@ async function fixMissingTests(
 
   // Calculate relative import from test file to source
   const testDir = dirname(testAbsPath);
-  const sourceDir = dirname(absPath);
   let importPath = relative(testDir, absPath)
     .replace(/\\/g, "/")
     .replace(/\.(ts|tsx|js|jsx)$/, ".js");
@@ -1310,21 +1341,16 @@ async function fixMissingTests(
   ];
 
   for (const sym of exports.slice(0, 10)) {
-    if (sym.kind === "function") {
-      testLines.push(`  describe("${sym.name}", () => {`);
-      testLines.push(`    it("should be defined", () => {`);
-      testLines.push(`      expect(${sym.name}).toBeDefined();`);
-      testLines.push(`    });`);
-      testLines.push(`  });`);
-      testLines.push(``);
-    } else if (sym.kind === "class") {
-      testLines.push(`  describe("${sym.name}", () => {`);
-      testLines.push(`    it("should be a constructor", () => {`);
-      testLines.push(`      expect(${sym.name}).toBeDefined();`);
-      testLines.push(`    });`);
-      testLines.push(`  });`);
-      testLines.push(``);
-    }
+    const label = sym.kind === "class" ? "should be a constructor"
+      : sym.kind === "function" ? "should be callable"
+      : "should be defined";
+
+    testLines.push(`  describe("${sym.name}", () => {`);
+    testLines.push(`    it("${label}", () => {`);
+    testLines.push(`      expect(${sym.name}).toBeDefined();`);
+    testLines.push(`    });`);
+    testLines.push(`  });`);
+    testLines.push(``);
   }
 
   testLines.push(`});`);
