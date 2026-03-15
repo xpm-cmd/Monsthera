@@ -51,9 +51,17 @@ export interface ExtractedImport {
   kind: "import" | "require" | "from";
 }
 
+export interface ExtractedReference {
+  sourceSymbol: string | null;  // enclosing function/class, null = module-level
+  targetName: string;           // called function/class/type name
+  kind: "call" | "member_call" | "type_ref";
+  line: number;
+}
+
 export interface ParseResult {
   symbols: ExtractedSymbol[];
   imports: ExtractedImport[];
+  references: ExtractedReference[];
   lineCount: number;
   /** File-level leading comment/docstring extracted from AST (Nivel 2 enrichment). */
   leadingComment: string;
@@ -76,19 +84,24 @@ export async function parseFile(content: string, language: SupportedLanguage): P
 
   let symbols: ExtractedSymbol[];
   let imports: ExtractedImport[];
+  let references: ExtractedReference[];
 
   if (language === "typescript" || language === "javascript") {
     symbols = extractTSSymbols(root);
     imports = extractTSImports(root);
+    references = extractTSReferences(root);
   } else if (language === "go") {
     symbols = extractGoSymbols(root);
     imports = extractGoImports(root);
+    references = []; // TODO: Go references in future version
   } else if (language === "rust") {
     symbols = extractRustSymbols(root);
     imports = extractRustImports(root);
+    references = []; // TODO: Rust references in future version
   } else {
     symbols = extractPythonSymbols(root);
     imports = extractPythonImports(root);
+    references = []; // TODO: Python references in future version
   }
 
   const leadingComment = extractLeadingComment(root, language);
@@ -96,6 +109,7 @@ export async function parseFile(content: string, language: SupportedLanguage): P
   return {
     symbols,
     imports,
+    references,
     lineCount: content.split("\n").length,
     leadingComment,
   };
@@ -208,6 +222,129 @@ function extractTSImports(root: Parser.SyntaxNode): ExtractedImport[] {
   }
 
   return imports;
+}
+
+// --- TypeScript / JavaScript reference extraction ---
+
+/**
+ * Extract symbol-level references from a TS/JS AST.
+ * Identifies call expressions, member call expressions, and type references.
+ * Tracks the enclosing function/class/method as the source symbol.
+ */
+export function extractTSReferences(root: Parser.SyntaxNode): ExtractedReference[] {
+  const refs: ExtractedReference[] = [];
+
+  /**
+   * Find the first type_identifier in a subtree (for type annotations,
+   * extends/implements clauses).
+   */
+  function findTypeIdentifier(node: Parser.SyntaxNode): string | null {
+    if (node.type === "type_identifier" || node.type === "identifier") {
+      return node.text;
+    }
+    for (const child of node.children) {
+      const found = findTypeIdentifier(child);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function walk(node: Parser.SyntaxNode, enclosingSymbol: string | null): void {
+    // Update enclosing symbol context for function/method/class declarations
+    switch (node.type) {
+      case "function_declaration":
+      case "generator_function_declaration": {
+        const name = node.childForFieldName("name");
+        const newEnclosing = name?.text ?? enclosingSymbol;
+        for (const child of node.children) walk(child, newEnclosing);
+        return;
+      }
+      case "method_definition": {
+        const name = node.childForFieldName("name");
+        const newEnclosing = name?.text ?? enclosingSymbol;
+        for (const child of node.children) walk(child, newEnclosing);
+        return;
+      }
+      case "class_declaration": {
+        const name = node.childForFieldName("name");
+        const newEnclosing = name?.text ?? enclosingSymbol;
+
+        // Check for extends/implements clauses
+        for (const child of node.children) {
+          if (child.type === "extends_clause") {
+            const typeName = findTypeIdentifier(child);
+            if (typeName) {
+              refs.push({ sourceSymbol: newEnclosing, targetName: typeName, kind: "type_ref", line: child.startPosition.row });
+            }
+          } else if (child.type === "implements_clause") {
+            // Implements can have multiple types
+            for (const implChild of child.children) {
+              const typeName = findTypeIdentifier(implChild);
+              if (typeName && typeName !== "implements") {
+                refs.push({ sourceSymbol: newEnclosing, targetName: typeName, kind: "type_ref", line: implChild.startPosition.row });
+              }
+            }
+          }
+        }
+
+        for (const child of node.children) walk(child, newEnclosing);
+        return;
+      }
+      case "arrow_function": {
+        // Arrow functions: enclosing symbol is already set by variable declarator walk
+        for (const child of node.children) walk(child, enclosingSymbol);
+        return;
+      }
+    }
+
+    // Extract references
+    if (node.type === "call_expression") {
+      const fn = node.childForFieldName("function");
+      if (fn) {
+        if (fn.type === "member_expression") {
+          // obj.method() -> member_call
+          const prop = fn.childForFieldName("property");
+          if (prop) {
+            refs.push({
+              sourceSymbol: enclosingSymbol,
+              targetName: prop.text,
+              kind: "member_call",
+              line: node.startPosition.row,
+            });
+          }
+        } else if (fn.type === "identifier") {
+          // directCall() -> call
+          refs.push({
+            sourceSymbol: enclosingSymbol,
+            targetName: fn.text,
+            kind: "call",
+            line: node.startPosition.row,
+          });
+        }
+      }
+    }
+
+    // Type annotations: param: Type, variable: Type, return type
+    if (node.type === "type_annotation") {
+      const typeName = findTypeIdentifier(node);
+      if (typeName) {
+        refs.push({
+          sourceSymbol: enclosingSymbol,
+          targetName: typeName,
+          kind: "type_ref",
+          line: node.startPosition.row,
+        });
+      }
+    }
+
+    // Recurse into children (unless already handled above)
+    for (const child of node.children) {
+      walk(child, enclosingSymbol);
+    }
+  }
+
+  walk(root, null);
+  return refs;
 }
 
 // --- Python extraction ---

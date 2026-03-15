@@ -64,8 +64,10 @@ export async function fullIndex(opts: IndexOptions): Promise<IndexResult> {
   let filesIndexed = 0;
   let filesSkipped = 0;
 
-  // Clear existing records — imports first (FK → files.id)
+  // Clear existing records — code_chunks & imports first (FK → files.id)
+  db.delete(tables.codeChunks).run();
   db.delete(tables.imports).run();
+  db.delete(tables.symbolReferences).run();
   db.delete(tables.files).where(eq(tables.files.repoId, repoId)).run();
 
   for (const filePath of trackedFiles) {
@@ -158,13 +160,15 @@ export async function incrementalIndex(lastCommit: string, opts: IndexOptions): 
   db.run(sql`BEGIN IMMEDIATE`);
   try {
     for (const change of changedFiles) {
-      // Helper: delete a file and its imports (imports FK → files.id)
+      // Helper: delete a file, its imports and chunks (FK → files.id)
       const deleteFileByPath = () => {
         const existing = db.select({ id: tables.files.id }).from(tables.files)
           .where(and(eq(tables.files.repoId, repoId), eq(tables.files.path, change.path)))
           .get();
         if (existing) {
+          db.delete(tables.codeChunks).where(eq(tables.codeChunks.fileId, existing.id)).run();
           db.delete(tables.imports).where(eq(tables.imports.sourceFileId, existing.id)).run();
+          db.delete(tables.symbolReferences).where(eq(tables.symbolReferences.sourceFileId, existing.id)).run();
           db.delete(tables.files).where(eq(tables.files.id, existing.id)).run();
         }
       };
@@ -322,6 +326,19 @@ async function indexSingleFile(
           .run();
       }
 
+      // Insert symbol references
+      for (const ref of parseResult.references) {
+        db.insert(tables.symbolReferences)
+          .values({
+            sourceFileId: fileRecord.id,
+            sourceSymbolName: ref.sourceSymbol,
+            targetName: ref.targetName,
+            referenceKind: ref.kind,
+            line: ref.line,
+          })
+          .run();
+      }
+
       // Generate semantic embedding if available
       await maybeEmbed(opts, fileRecord.id, {
         path: filePath,
@@ -331,6 +348,9 @@ async function indexSingleFile(
         imports: parseResult.imports.map((i) => i.source),
         leadingComment: parseResult.leadingComment,
       });
+
+      // Generate chunk-level embeddings for functions/classes
+      await maybeEmbedChunks(opts, fileRecord.id, filePath, content, parseResult.symbols);
 
       return "indexed";
     } catch (err) {
@@ -415,6 +435,122 @@ async function maybeEmbed(
     }
   } catch {
     // Non-fatal: file is indexed but without embedding
+  }
+}
+
+export interface CodeChunk {
+  symbolName: string | null;
+  kind: string;
+  startLine: number;
+  endLine: number;
+  content: string;
+}
+
+/**
+ * Split file content into chunks based on parsed symbols.
+ * Each function/class/method becomes a chunk. Module-level code between
+ * symbols becomes a "module" chunk if non-trivial (>= 3 lines).
+ */
+export function splitIntoChunks(
+  content: string,
+  symbols: Array<{ name: string; kind?: string; line: number }>,
+): CodeChunk[] {
+  const lines = content.split("\n");
+  const totalLines = lines.length;
+  if (totalLines === 0) return [];
+
+  // Sort symbols by line number
+  const sorted = symbols
+    .filter((s) => s.kind === "function" || s.kind === "class" || s.kind === "method")
+    .sort((a, b) => a.line - b.line);
+
+  if (sorted.length === 0) {
+    // No functions/classes — treat entire file as one module chunk
+    if (totalLines >= 3) {
+      return [{
+        symbolName: null,
+        kind: "module",
+        startLine: 1,
+        endLine: totalLines,
+        content,
+      }];
+    }
+    return [];
+  }
+
+  const chunks: CodeChunk[] = [];
+
+  // Module-level code before first symbol
+  if (sorted[0]!.line > 3) {
+    chunks.push({
+      symbolName: null,
+      kind: "module",
+      startLine: 1,
+      endLine: sorted[0]!.line - 1,
+      content: lines.slice(0, sorted[0]!.line - 1).join("\n"),
+    });
+  }
+
+  // Each symbol gets a chunk from its start line to the next symbol (or EOF)
+  for (let i = 0; i < sorted.length; i++) {
+    const sym = sorted[i]!;
+    const nextLine = i + 1 < sorted.length ? sorted[i + 1]!.line - 1 : totalLines;
+    const startIdx = sym.line - 1; // 0-based
+    const endIdx = nextLine;       // exclusive
+
+    if (endIdx - startIdx < 3) continue; // Skip trivial chunks
+
+    chunks.push({
+      symbolName: sym.name,
+      kind: sym.kind ?? "function",
+      startLine: sym.line,
+      endLine: nextLine,
+      content: lines.slice(startIdx, endIdx).join("\n"),
+    });
+  }
+
+  return chunks;
+}
+
+async function maybeEmbedChunks(
+  opts: IndexOptions,
+  fileId: number,
+  filePath: string,
+  content: string,
+  symbols: Array<{ name: string; kind?: string; line: number }>,
+): Promise<void> {
+  if (!opts.semanticReranker?.isAvailable()) return;
+
+  const chunks = splitIntoChunks(content, symbols);
+  if (chunks.length === 0) return;
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i]!;
+    try {
+      const chunkText = [
+        `file: ${filePath}`,
+        `symbol: ${chunk.symbolName ?? "module-level"}`,
+        `kind: ${chunk.kind}`,
+        chunk.content.slice(0, 500), // Limit content for embedding input
+      ].join(". ");
+
+      const embedding = await opts.semanticReranker.embed(chunkText);
+      if (embedding) {
+        const contentHash = createHash("sha256").update(chunk.content).digest("hex");
+        opts.db.insert(tables.codeChunks).values({
+          fileId,
+          chunkIndex: i,
+          symbolName: chunk.symbolName,
+          kind: chunk.kind,
+          startLine: chunk.startLine,
+          endLine: chunk.endLine,
+          contentHash,
+          embedding: Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength),
+        }).run();
+      }
+    } catch {
+      // Non-fatal: chunk is skipped without embedding
+    }
   }
 }
 
