@@ -197,6 +197,8 @@ export async function runSimulation(config: RunnerConfig): Promise<RunnerResult>
     emit({ phase: "D", message: "Persisting results..." });
     phasesRun.push("D");
 
+    const codeHealth = measureCodeHealth(corpus);
+
     const metricsInput: MetricsInput = {
       db: config.db,
       repoId: config.repoId,
@@ -207,6 +209,8 @@ export async function runSimulation(config: RunnerConfig): Promise<RunnerResult>
       regressionRate,
       mergeSuccessRate,
       workflowOverheadPct,
+      testCoverageRatio: codeHealth.testCoverageRatio,
+      issueDensity: codeHealth.issueDensity,
     };
 
     const scorecard = computeScorecard(metricsInput);
@@ -753,6 +757,55 @@ function buildSummary(
   }
 
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Code health metrics (derived from corpus)
+// ---------------------------------------------------------------------------
+
+interface CodeHealthMetrics {
+  /** Ratio of source files that have a corresponding test file (0-1). */
+  testCoverageRatio: number;
+  /** Auto-detected issues per source file (lower = healthier). */
+  issueDensity: number;
+}
+
+/**
+ * Derive code health metrics from the simulation corpus.
+ *
+ * testCoverageRatio: counts how many unique source files appear in
+ * "missing_tests" signals vs total unique source files across all
+ * auto-detected descriptors. Files without a missing_tests signal
+ * are assumed to have tests.
+ *
+ * issueDensity: total auto-detected issues / unique source files.
+ */
+function measureCodeHealth(corpus: SimulationCorpus): CodeHealthMetrics {
+  const autoDetected = corpus.descriptors.filter((d) => d.source === "auto_detected");
+
+  // Collect unique source files referenced by auto-detected issues
+  const allSourceFiles = new Set<string>();
+  const missingTestFiles = new Set<string>();
+
+  for (const d of autoDetected) {
+    for (const p of d.affectedPaths) {
+      allSourceFiles.add(p);
+    }
+    // Check if this descriptor is about missing tests (title pattern from generator)
+    if (d.title.startsWith("Add tests for")) {
+      for (const p of d.affectedPaths) {
+        missingTestFiles.add(p);
+      }
+    }
+  }
+
+  const totalSourceFiles = Math.max(allSourceFiles.size, 1);
+  const filesWithTests = totalSourceFiles - missingTestFiles.size;
+
+  return {
+    testCoverageRatio: filesWithTests / totalSourceFiles,
+    issueDensity: autoDetected.length / totalSourceFiles,
+  };
 }
 
 // ---------------------------------------------------------------------------

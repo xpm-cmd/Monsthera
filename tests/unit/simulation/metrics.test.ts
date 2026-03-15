@@ -40,6 +40,8 @@ describe("metrics", () => {
       regressionRate: 0.0,
       mergeSuccessRate: 1.0,
       workflowOverheadPct: 0.1,
+      testCoverageRatio: 0.75,
+      issueDensity: 0.5,
       ...overrides,
     };
   }
@@ -248,7 +250,7 @@ describe("metrics", () => {
         phasesRun: ["A", "B"],
         velocity: { avgTimeToResolveMs: 60000, avgTimeInReviewMs: 10000, workflowOverheadPct: 0.15 },
         autonomy: { firstPassSuccessRate: 0.9, councilApprovalRate: 0.95, mergeSuccessRate: 1.0 },
-        quality: { testPassRate: 1.0, regressionRate: 0.0, ticketRetrievalPrecision5: 0.8, codeRetrievalPrecision5: 0.7 },
+        quality: { testPassRate: 1.0, regressionRate: 0.0, ticketRetrievalPrecision5: 0.8, codeRetrievalPrecision5: 0.7, testCoverageRatio: 0.75, issueDensity: 0.5 },
         cost: { avgPayloadCharsPerTicket: 15000, haikuSuccessRate: 0.85, sonnetSuccessRate: 0.95, escalationCount: 3, modelDistribution: { haiku: 40, sonnet: 10 }, note: "estimate" },
         compositeScore: 0.82,
         deltas: null,
@@ -287,7 +289,7 @@ describe("metrics", () => {
         phasesRun: ["A"],
         velocity: { avgTimeToResolveMs: 0, avgTimeInReviewMs: 0, workflowOverheadPct: 0 },
         autonomy: { firstPassSuccessRate: 0, councilApprovalRate: 0, mergeSuccessRate: 0 },
-        quality: { testPassRate: 0, regressionRate: 0, ticketRetrievalPrecision5: 0, codeRetrievalPrecision5: 0 },
+        quality: { testPassRate: 0, regressionRate: 0, ticketRetrievalPrecision5: 0, codeRetrievalPrecision5: 0, testCoverageRatio: 0, issueDensity: 0 },
         cost: { avgPayloadCharsPerTicket: 0, haikuSuccessRate: 0, sonnetSuccessRate: 0, escalationCount: 0, modelDistribution: { haiku: 0, sonnet: 0 }, note: "test" },
         compositeScore: 0,
         deltas: null,

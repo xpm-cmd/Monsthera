@@ -112,6 +112,10 @@ export interface QualityKPIs {
   regressionRate: number;
   ticketRetrievalPrecision5: number;
   codeRetrievalPrecision5: number;
+  /** Ratio of src/ files that have a corresponding test file (0-1). */
+  testCoverageRatio: number;
+  /** Auto-detected issues per source file (lower = healthier). */
+  issueDensity: number;
 }
 
 export interface CostKPIs {

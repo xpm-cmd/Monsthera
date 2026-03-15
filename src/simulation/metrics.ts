@@ -59,6 +59,11 @@ export interface MetricsInput {
 
   /** Workflow overhead percentage (0-1). */
   workflowOverheadPct: number;
+
+  /** Ratio of src/ files with corresponding test files (0-1). */
+  testCoverageRatio: number;
+  /** Auto-detected issues per source file (lower = healthier). */
+  issueDensity: number;
 }
 
 /**
@@ -72,6 +77,8 @@ export function computeScorecard(input: MetricsInput): KPIScorecard {
     regressionRate: input.regressionRate,
     ticketRetrievalPrecision5: input.ticketRetrievalPrecision5,
     codeRetrievalPrecision5: input.codeRetrievalPrecision5,
+    testCoverageRatio: input.testCoverageRatio,
+    issueDensity: input.issueDensity,
   };
   const cost = computeCost(input);
   const compositeScore = computeComposite(velocity, autonomy, quality, cost);
@@ -346,12 +353,16 @@ function normalizeDimension(kpis: VelocityKPIs | AutonomyKPIs | QualityKPIs | Co
   }
 
   if ("testPassRate" in kpis) {
-    // Quality: higher is better (already 0-1), except regressionRate (lower is better)
+    // Quality: higher is better (already 0-1), except regressionRate and issueDensity (lower is better)
+    // issueDensity normalized: 0 issues/file = 1.0, 2+ issues/file = 0.0
+    const issueScore = Math.max(0, 1 - kpis.issueDensity / 2);
     return (
-      kpis.testPassRate * 0.3 +
-      (1 - kpis.regressionRate) * 0.3 +
-      kpis.ticketRetrievalPrecision5 * 0.2 +
-      kpis.codeRetrievalPrecision5 * 0.2
+      kpis.testPassRate * 0.15 +
+      (1 - kpis.regressionRate) * 0.15 +
+      kpis.ticketRetrievalPrecision5 * 0.15 +
+      kpis.codeRetrievalPrecision5 * 0.15 +
+      kpis.testCoverageRatio * 0.20 +
+      issueScore * 0.20
     );
   }
 
