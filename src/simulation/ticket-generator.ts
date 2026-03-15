@@ -8,6 +8,8 @@
  * All descriptors pass through anti-basura validation before inclusion in the corpus.
  */
 
+import { stat } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq, sql, inArray } from "drizzle-orm";
 import { analyzeFileComplexity, type ComplexityMetrics } from "../analysis/complexity.js";
@@ -174,9 +176,13 @@ async function generateFromBacklog(config: GeneratorConfig): Promise<TicketDescr
 
     if (affectedPaths.length === 0) continue;
 
-    // Build complexity map
+    // Build complexity map (skip directories and missing files)
     const complexityByFile = new Map<string, ComplexityMetrics>();
     for (const p of affectedPaths) {
+      try {
+        const s = await stat(resolve(config.repoPath, p));
+        if (!s.isFile()) continue;
+      } catch { continue; }
       const analysis = await analyzeFileComplexity(config.repoPath, p);
       if (analysis.metrics) {
         complexityByFile.set(p, analysis.metrics);
@@ -227,7 +233,11 @@ async function detectIssues(config: GeneratorConfig): Promise<AutoDetectedIssue[
   });
 
   for (const file of sourceFiles) {
-    // Complexity analysis
+    // Complexity analysis (skip directories and missing files)
+    try {
+      const s = await stat(resolve(config.repoPath, file.path));
+      if (!s.isFile()) continue;
+    } catch { continue; }
     const analysis = await analyzeFileComplexity(config.repoPath, file.path);
     if (!analysis.metrics) continue;
 
