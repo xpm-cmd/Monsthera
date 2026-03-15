@@ -19,6 +19,7 @@ export const CAPABILITY_TOOL_NAMES = [
   "lookup_dependencies",
   "trace_dependencies",
   "export_audit",
+  "run_simulation",
 ] as const;
 
 export type CapabilityToolName = (typeof CAPABILITY_TOOL_NAMES)[number];

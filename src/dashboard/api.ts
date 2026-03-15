@@ -18,6 +18,8 @@ import type { KnowledgeScope, SearchKnowledgeOptions, KnowledgeSearchEntry } fro
 import type { TicketStatus } from "../../schemas/ticket.js";
 import { buildGovernanceOptions, buildTicketConsensusReport, inferConsensusTransitionForTicketStatus } from "../tickets/consensus.js";
 import { buildDuplicateDetectionInsights } from "../tickets/duplicate-detection.js";
+import { readResults } from "../simulation/metrics.js";
+import type { SimulationResult } from "../simulation/types.js";
 
 type DB = BetterSQLite3Database<typeof schema>;
 const SecretLineHitsSchema = z.array(z.object({ pattern: z.string().min(1).optional() }));
@@ -1591,4 +1593,61 @@ function summarizeDashboardQuorumProgress(consensus: ReturnType<typeof buildTick
     responded,
     total,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Simulation / Improvement endpoints
+// ---------------------------------------------------------------------------
+
+const DEFAULT_SIMULATION_RESULTS_PATH = ".agora/simulation-results.jsonl";
+
+function simulationResultsPath(deps: DashboardDeps): string {
+  const repoRoot = deps.mainRepoPath ?? deps.repoPath;
+  return `${repoRoot}/${DEFAULT_SIMULATION_RESULTS_PATH}`;
+}
+
+/**
+ * GET /api/simulation/runs — all historical simulation runs.
+ */
+export async function getSimulationRuns(deps: DashboardDeps): Promise<{
+  runs: SimulationResult[];
+  count: number;
+}> {
+  const runs = await readResults(simulationResultsPath(deps));
+  return { runs, count: runs.length };
+}
+
+/**
+ * GET /api/simulation/trends — per-dimension trend data across runs.
+ */
+export async function getSimulationTrends(deps: DashboardDeps): Promise<{
+  labels: string[];
+  velocity: number[];
+  autonomy: number[];
+  quality: number[];
+  cost: number[];
+  composite: number[];
+}> {
+  const runs = await readResults(simulationResultsPath(deps));
+
+  return {
+    labels: runs.map((r) => r.runId),
+    velocity: runs.map((r) => r.velocity.avgTimeToResolveMs),
+    autonomy: runs.map((r) =>
+      (r.autonomy.firstPassSuccessRate + r.autonomy.councilApprovalRate + r.autonomy.mergeSuccessRate) / 3,
+    ),
+    quality: runs.map((r) =>
+      (r.quality.testPassRate + (1 - r.quality.regressionRate) + r.quality.ticketRetrievalPrecision5 + r.quality.codeRetrievalPrecision5) / 4,
+    ),
+    cost: runs.map((r) => r.cost.avgPayloadCharsPerTicket),
+    composite: runs.map((r) => r.compositeScore),
+  };
+}
+
+/**
+ * GET /api/simulation/latest — most recent run result (or null).
+ */
+export async function getSimulationLatest(deps: DashboardDeps): Promise<SimulationResult | null> {
+  const runs = await readResults(simulationResultsPath(deps));
+  return runs.length > 0 ? runs[runs.length - 1]! : null;
 }

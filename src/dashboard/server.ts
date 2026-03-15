@@ -9,6 +9,7 @@ import {
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence,
   getIndexedFilesMetrics, getTicketMetrics, getAgentTimeline, getTicketTemplates, getSearchDebug,
   getDependencyGraph, getGovernanceSettings, getKnowledgeGraph,
+  getSimulationRuns, getSimulationTrends, getSimulationLatest,
   STRICT_MODEL_DIVERSITY_DISABLED_REQUIRED_DISTINCT_MODELS,
   STRICT_MODEL_DIVERSITY_ENABLED_MAX_VOTERS_PER_MODEL,
   STRICT_MODEL_DIVERSITY_ENABLED_REQUIRED_DISTINCT_MODELS,
@@ -762,6 +763,9 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
       const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(10000, Math.trunc(limitRaw))) : 10000;
       return exportAuditTrail({ db: deps.db, format, agentId, sessionId, since, until, limit });
     }
+    case "simulation/runs": return getSimulationRuns(deps);
+    case "simulation/trends": return getSimulationTrends(deps);
+    case "simulation/latest": return getSimulationLatest(deps);
     default: return null;
   }
 }

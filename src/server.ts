@@ -14,6 +14,7 @@ import { registerKnowledgeTools } from "./tools/knowledge-tools.js";
 import { registerTicketTools } from "./tools/ticket-tools.js";
 import { registerProtectionTools } from "./tools/protection-tools.js";
 import { registerWorkflowTools } from "./tools/workflow-tools.js";
+import { registerSimulationTools } from "./tools/simulation-tools.js";
 import { installToolRuntimeInstrumentation } from "./tools/runtime-instrumentation.js";
 
 export function createAgoraServer(
@@ -44,6 +45,7 @@ export function createAgoraServer(
   registerTicketTools(server, getContext);
   registerProtectionTools(server, getContext);
   registerWorkflowTools(server, getContext);
+  registerSimulationTools(server, getContext);
 
   return server;
 }

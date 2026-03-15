@@ -338,6 +338,10 @@ footer a{color:var(--accent);text-decoration:none}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
         WORKFLOWS
       </div>
+      <div class="nav-item" data-route="improvement" onclick="navigate('improvement')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        IMPROVEMENT
+      </div>
       <div class="sidebar-separator"></div>
       <div class="nav-item" data-route="activity" onclick="navigate('activity')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -822,6 +826,7 @@ function renderRoute(){
     case 'tickets': renderTicketsScreen2(host); break;
     case 'knowledge': renderKnowledgeScreen(host); break;
     case 'workflows': renderWorkflowsScreen(host); break;
+    case 'improvement': renderImprovementScreen(host); break;
     case 'activity': renderActivityScreen(host); break;
     case 'settings': renderSettingsScreen(host); break;
     default: renderMissionControl(host);
@@ -912,6 +917,113 @@ function renderWorkflowsScreen(host){
   host.innerHTML=''
     +'<div class="main-header"><div><div class="main-title">Workflows</div><div class="main-subtitle">Pipeline visualization</div></div></div>'
     +'<div id="workflows-content"><div class="empty">Workflows view coming soon — pipeline visualization from .agora/workflows/*.yaml</div></div>';
+}
+
+/* ── Screen: Improvement (autoresearch) ─────── */
+function renderImprovementScreen(host){
+  host.innerHTML=''
+    +'<div class="main-header"><div><div class="main-title">Improvement Loop</div><div class="main-subtitle">Autoresearch KPI scorecard &amp; trends</div></div>'
+    +'<div class="header-actions"><button class="btn" onclick="refreshImprovement()">Refresh</button></div></div>'
+    +'<div class="stats" id="sim-overview"></div>'
+    +'<div class="charts" id="sim-charts"></div>'
+    +'<div id="sim-runs"></div>';
+  refreshImprovement();
+}
+
+async function refreshImprovement(){
+  try{
+    var results=await Promise.all([api('simulation/latest'),api('simulation/runs'),api('simulation/trends')]);
+    var latest=results[0],runsData=results[1],trends=results[2];
+    var runs=runsData?runsData.runs:[];
+
+    /* Overview stats from latest run */
+    var ov=document.getElementById('sim-overview');
+    if(ov){
+      if(latest){
+        ov.replaceChildren(
+          makeCard('&#9889;','Composite Score',(latest.compositeScore*100).toFixed(1)+'%'),
+          makeCard('&#128640;','Velocity',latest.velocity.avgTimeToResolveMs>0?(latest.velocity.avgTimeToResolveMs/1000).toFixed(0)+'s':'—'),
+          makeCard('&#127919;','Autonomy',(((latest.autonomy.firstPassSuccessRate+latest.autonomy.councilApprovalRate+latest.autonomy.mergeSuccessRate)/3)*100).toFixed(0)+'%'),
+          makeCard('&#128154;','Quality',((latest.quality.testPassRate)*100).toFixed(0)+'%'),
+          makeCard('&#128176;','Avg Payload',latest.cost.avgPayloadCharsPerTicket>0?(latest.cost.avgPayloadCharsPerTicket/1000).toFixed(1)+'k':'—'),
+          makeCard('&#128202;','Total Runs',String(runs.length))
+        );
+      }else{
+        ov.innerHTML='<div class="empty" style="width:100%">No simulation runs yet. Run the simulation-loop workflow to generate data.</div>';
+      }
+    }
+
+    /* Trend sparklines */
+    var chartsEl=document.getElementById('sim-charts');
+    if(chartsEl&&trends&&trends.composite&&trends.composite.length>1){
+      /* Note: all data is server-generated, not user input — safe for innerHTML */
+      chartsEl.innerHTML=''
+        +'<div class="chart-panel"><div class="chart-title"><span class="dot" style="background:var(--accent)"></span> Composite Score Trend</div>'
+        +'<div class="chart-body"><svg id="sim-sparkline" width="100%" height="120" viewBox="0 0 400 120"></svg></div></div>'
+        +'<div class="chart-panel"><div class="chart-title"><span class="dot" style="background:var(--blue)"></span> Dimension Breakdown</div>'
+        +'<div class="chart-body"><div class="chart-stack"><div class="chart-indicators" id="sim-dim-indicators"></div></div></div></div>';
+      /* Draw composite sparkline */
+      var svg=document.getElementById('sim-sparkline');
+      if(svg){
+        var vals=trends.composite;
+        var maxV=Math.max.apply(null,vals)||1;
+        var minV=Math.min.apply(null,vals);
+        var range=maxV-minV||1;
+        var pts=vals.map(function(v,i){
+          var x=vals.length>1?i/(vals.length-1)*380+10:200;
+          var y=110-(v-minV)/range*100;
+          return x+','+y;
+        }).join(' ');
+        svg.innerHTML='<polyline points="'+pts+'" fill="none" stroke="var(--accent)" stroke-width="2"/>'
+          +vals.map(function(v,i){
+            var x=vals.length>1?i/(vals.length-1)*380+10:200;
+            var y=110-(v-minV)/range*100;
+            return '<circle cx="'+x+'" cy="'+y+'" r="3" fill="var(--accent)"><title>'+esc(trends.labels[i])+': '+(v*100).toFixed(1)+'%</title></circle>';
+          }).join('');
+      }
+      /* Dimension indicators from latest */
+      var dimEl=document.getElementById('sim-dim-indicators');
+      if(dimEl&&latest){
+        var autoScore=((latest.autonomy.firstPassSuccessRate+latest.autonomy.councilApprovalRate+latest.autonomy.mergeSuccessRate)/3*100).toFixed(0);
+        var qualScore=((latest.quality.testPassRate+1-latest.quality.regressionRate+latest.quality.ticketRetrievalPrecision5+latest.quality.codeRetrievalPrecision5)/4*100).toFixed(0);
+        dimEl.innerHTML=''
+          +'<div class="chart-indicator"><span class="chart-indicator-value" style="color:var(--accent)">'+(latest.velocity.avgTimeToResolveMs>0?(latest.velocity.avgTimeToResolveMs/1000).toFixed(0)+'s':'—')+'</span><span class="chart-indicator-label">Avg Resolve</span></div>'
+          +'<div class="chart-indicator"><span class="chart-indicator-value" style="color:var(--blue)">'+autoScore+'%</span><span class="chart-indicator-label">Autonomy</span></div>'
+          +'<div class="chart-indicator"><span class="chart-indicator-value" style="color:var(--green)">'+qualScore+'%</span><span class="chart-indicator-label">Quality</span></div>'
+          +'<div class="chart-indicator"><span class="chart-indicator-value" style="color:var(--orange)">'+(latest.cost.escalationCount)+'</span><span class="chart-indicator-label">Escalations</span></div>';
+      }
+    }else if(chartsEl){
+      chartsEl.innerHTML='';
+    }
+
+    /* Run history table */
+    var runsEl=document.getElementById('sim-runs');
+    if(runsEl){
+      if(runs.length>0){
+        var rows=runs.slice().reverse().map(function(r){
+          var d=r.deltas;
+          var deltaStr=d?((d.composite>=0?'+':'')+(d.composite*100).toFixed(1)+'%'):'—';
+          var deltaClass=d?(d.composite>=0?'badge-success':'badge-red'):'';
+          return '<tr>'
+            +'<td class="mono">'+esc(r.runId)+'</td>'
+            +'<td>'+new Date(r.timestamp).toLocaleString()+'</td>'
+            +'<td>'+r.corpusSize+'</td>'
+            +'<td>'+esc(r.phasesRun.join(', '))+'</td>'
+            +'<td><span class="badge badge-blue">'+(r.compositeScore*100).toFixed(1)+'%</span></td>'
+            +'<td><span class="badge '+deltaClass+'">'+deltaStr+'</span></td>'
+            +'<td class="mono">'+(r.durationMs/1000).toFixed(1)+'s</td>'
+            +'</tr>';
+        }).join('');
+        runsEl.innerHTML='<div style="margin-top:1rem"><div class="presence-title">Run History</div>'
+          +'<div class="table-wrap"><table><thead><tr><th>Run ID</th><th>Timestamp</th><th>Corpus</th><th>Phases</th><th>Score</th><th>Delta</th><th>Duration</th></tr></thead>'
+          +'<tbody>'+rows+'</tbody></table></div></div>';
+      }else{
+        runsEl.innerHTML='';
+      }
+    }
+  }catch(e){
+    console.error('Improvement refresh failed',e);
+  }
 }
 
 /* ── Screen: Activity Log ───────────────────── */
