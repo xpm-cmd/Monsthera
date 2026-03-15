@@ -979,14 +979,15 @@ export async function runOptimizationLoop(config: OptimizationConfig): Promise<O
         const { worktreePath, branchName } = await createAgentWorktree(config.repoPath, sessionId);
 
         // Symlink node_modules so tests can find dependencies
-        const { symlink } = await import("node:fs/promises");
-        try {
-          await symlink(
-            resolve(config.repoPath, "node_modules"),
-            resolve(worktreePath, "node_modules"),
-            "dir",
-          );
-        } catch { /* may already exist */ }
+        const { symlink, lstat } = await import("node:fs/promises");
+        const nmTarget = resolve(config.repoPath, "node_modules");
+        const nmLink = resolve(worktreePath, "node_modules");
+        if (nmTarget !== nmLink) {
+          try {
+            // Only create if link doesn't already exist
+            await lstat(nmLink).catch(() => symlink(nmTarget, nmLink, "dir"));
+          } catch { /* non-critical */ }
+        }
 
         try {
           // Run developer workflow to implement the fix
