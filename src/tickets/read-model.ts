@@ -71,6 +71,11 @@ export interface TicketDetailPayload {
     agentId: string;
     createdAt: string;
   }>;
+  workGroups: Array<{
+    groupId: string;
+    title: string;
+    status: string;
+  }>;
 }
 
 export interface TicketSummaryPayload {
@@ -161,6 +166,7 @@ export function buildTicketDetailPayload(
       agentId: entry.agentId,
       createdAt: entry.createdAt,
     })),
+    workGroups: queries.getWorkGroupsForTicket(db, ticket.id),
   };
 }
 
