@@ -2271,7 +2271,7 @@ function renderActivityTimeline(data){
     /* Ticket column: ID + status pill */
     var ticketHtml='-';
     if(ev.ticketId){
-      ticketHtml='<span class="atl-ticket-link" onclick="selectedTicketId=\''+esc(ev.ticketId)+'\';navigate(\'tickets\')">'+esc(ev.ticketId.slice(0,12))+'</span>';
+      ticketHtml='<span class="atl-ticket-link" onclick="selectedTicketId=\\x27'+esc(ev.ticketId)+'\\x27;navigate(\\x27tickets\\x27)">'+esc(ev.ticketId.slice(0,12))+'</span>';
       if(ev.ticketStatus) ticketHtml+=' <span class="atl-status '+esc(ev.ticketStatus)+'">'+esc(ev.ticketStatus.replace(/_/g,' '))+'</span>';
     }
 
@@ -3259,7 +3259,14 @@ async function refresh(){
       selectedActorSessionId=ticketActors.length?ticketActors[0].sessionId:null;
     }
 
-    /* Nav counts */
+    /* Nav counts — fetch convoy count in background */
+    api('convoy').then(function(cd){
+      var cc=cd&&cd.convoys?cd.convoys.length:0;
+      navCounts.convoys=cc;
+      var cel=document.getElementById('nav-count-convoys');
+      if(cel) cel.textContent=String(cc);
+      if(currentRoute==='convoys') refreshConvoys();
+    }).catch(function(){});
     navCounts={agents:agents.length,tickets:tickets.length,knowledge:knowledge.length,logs:logs.length};
     tabCounts={agents:agents.length,timeline:timeline.length,'activity-timeline':activityTimelineData.length,'search-debug':searchDebugState.data&&searchDebugState.data.mergedResults?searchDebugState.data.mergedResults.length:0,dependencies:depGraphState.nodes.length,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};
     updateCounts();
@@ -3601,7 +3608,7 @@ async function refreshConvoys(){
         (w.tickets||[]).forEach(function(t){
           var tc=t.status==='merged'?'var(--green)':t.status==='in_progress'?'var(--blue)':t.status==='dispatched'?'var(--text3)':t.status==='conflicted'?'var(--red)':t.status==='skipped'?'var(--orange)':'var(--text3)';
           html+='<div style="font-size:.6rem;padding:3px 8px;border-radius:4px;background:rgba(255,255,255,.05);border:1px solid '+tc+';color:'+tc+'" title="'+esc(t.status+(t.agentId?' ('+t.agentId+')':''))+'">'
-            +esc(t.ticketId.length>16?t.ticketId.slice(0,16)+'\\u2026':t.ticketId)
+            +esc(t.ticketId.length>16?t.ticketId.slice(0,16)+'\u2026':t.ticketId)
             +'</div>';
         });
         html+='</div></div>';
