@@ -36,6 +36,10 @@ export const CAPABILITY_TOOL_NAMES = [
   "remove_tickets_from_group",
   "list_work_groups",
   "decompose_goal",
+  "compute_waves",
+  "launch_convoy",
+  "advance_wave",
+  "get_wave_status",
 ] as const;
 
 export type CapabilityToolName = (typeof CAPABILITY_TOOL_NAMES)[number];

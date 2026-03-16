@@ -207,6 +207,10 @@ export const workGroups = sqliteTable("work_groups", {
   tagsJson: text("tags_json"),  // JSON array
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  currentWave: integer("current_wave"),
+  integrationBranch: text("integration_branch"),
+  wavePlanJson: text("wave_plan_json"),
+  launchedAt: text("launched_at"),
 });
 
 export const workGroupTickets = sqliteTable("work_group_tickets", {
@@ -214,6 +218,8 @@ export const workGroupTickets = sqliteTable("work_group_tickets", {
   workGroupId: integer("work_group_id").notNull().references(() => workGroups.id),
   ticketId: integer("ticket_id").notNull().references(() => tickets.id),
   addedAt: text("added_at").notNull(),
+  waveNumber: integer("wave_number"),
+  waveStatus: text("wave_status").default("pending"),
 }, (table) => ({
   uniqueGroupTicket: uniqueIndex("idx_work_group_tickets_unique")
     .on(table.workGroupId, table.ticketId),

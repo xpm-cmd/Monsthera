@@ -5,8 +5,10 @@ import type { AgoraContext } from "../core/context.js";
 import { createAgoraContextLoader } from "../core/context-loader.js";
 import type { InsightStream } from "../core/insight-stream.js";
 import { acquireCommitLock, releaseCommitLock, updateSessionWorktree } from "../db/queries.js";
+import * as queries from "../db/queries.js";
 import { getMainRepoRoot } from "../git/operations.js";
 import { createAgentWorktree, removeAgentWorktree, mergeAgentWork, hasUnmergedCommits, rebaseOnMain, runTestsInWorktree } from "../git/worktree.js";
+import { createConvoyWorktree, mergeTicketToIntegration, rebaseOnBranch } from "../waves/integration-branch.js";
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import { createAgoraServer } from "../server.js";
 import { getToolRunner, type ToolRunner, type ToolRunnerCallResult } from "../tools/tool-runner.js";
@@ -216,6 +218,7 @@ export async function cmdLoop(
 
   let registered: RegisteredLoopAgent | null = null;
   let worktreeContext: { worktreePath: string; branchName: string } | null = null;
+  let convoyContext: { integrationBranch: string; workGroupId: number; ticketInternalId: number } | null = null;
 
   try {
     const registration = await runner.callTool("register_agent", compactRecord({
@@ -251,7 +254,27 @@ export async function cmdLoop(
       try {
         const ctx = await getContext();
         const mainRoot = await getMainRepoRoot({ cwd: config.repoPath });
-        const wt = await createAgentWorktree(mainRoot, registered.sessionId);
+
+        // Check if the target ticket belongs to a launched convoy
+        const ticketPublicId = invocation.workflowParams?.ticketId as string | undefined;
+        if (ticketPublicId) {
+          const ticket = queries.getTicketByTicketId(ctx.db, ticketPublicId);
+          if (ticket) {
+            const convoyInfo = queries.getLaunchedWorkGroupsForTicket(ctx.db, ticket.id);
+            if (convoyInfo.length > 0 && convoyInfo[0]!.integrationBranch) {
+              const convoy = convoyInfo[0]!;
+              convoyContext = {
+                integrationBranch: convoy.integrationBranch!,
+                workGroupId: convoy.workGroupId,
+                ticketInternalId: ticket.id,
+              };
+            }
+          }
+        }
+
+        const wt = convoyContext
+          ? await createConvoyWorktree(mainRoot, registered.sessionId, convoyContext.integrationBranch)
+          : await createAgentWorktree(mainRoot, registered.sessionId);
         worktreeContext = wt;
         updateSessionWorktree(ctx.db, registered.sessionId, wt.worktreePath, wt.branchName);
         invocation = {
@@ -326,10 +349,16 @@ export async function cmdLoop(
         const mainRoot = await getMainRepoRoot({ cwd: config.repoPath });
         const hasWork = await hasUnmergedCommits(mainRoot, worktreeContext.branchName);
         if (hasWork) {
-          // Step 1: Rebase onto current main to ensure linear history
-          const rebaseResult = await rebaseOnMain(worktreeContext.worktreePath);
+          // Step 1: Rebase onto integration branch (convoy) or main (standard)
+          const rebaseResult = convoyContext
+            ? await rebaseOnBranch(worktreeContext.worktreePath, convoyContext.integrationBranch)
+            : await rebaseOnMain(worktreeContext.worktreePath);
           if (!rebaseResult.rebased) {
             insight.warn(`Rebase conflicts in ${rebaseResult.conflicts.join(", ")} — branch preserved for manual resolution`);
+            if (convoyContext) {
+              const ctx = await getContext();
+              queries.updateTicketWaveStatus(ctx.db, convoyContext.workGroupId, convoyContext.ticketInternalId, "conflict");
+            }
             worktreeContext = null; // skip removal
           } else {
             // Step 2: Run tests in the rebased worktree before merging
@@ -341,8 +370,32 @@ export async function cmdLoop(
             if (!testResult.passed) {
               insight.warn(`Tests failed in worktree — not merging. Output:\n${testResult.output}`);
               worktreeContext = null; // preserve worktree for debugging
+            } else if (convoyContext) {
+              // Convoy merge: merge into integration branch (no commit lock needed — per-convoy branch)
+              const mergeMsg = `Merge agent work from ${agentName} (session ${registered.sessionId})`;
+              const mergeResult = await mergeTicketToIntegration(
+                mainRoot, convoyContext.integrationBranch, worktreeContext.branchName, mergeMsg,
+              );
+              if (!mergeResult.merged) {
+                insight.warn(`Merge conflicts in ${mergeResult.conflicts.join(", ")} — branch preserved for manual resolution`);
+                queries.updateTicketWaveStatus(ctx.db, convoyContext.workGroupId, convoyContext.ticketInternalId, "conflict");
+                worktreeContext = null; // skip worktree removal
+              } else {
+                queries.updateTicketWaveStatus(ctx.db, convoyContext.workGroupId, convoyContext.ticketInternalId, "merged");
+                // Reindex so other agents see the new code immediately
+                const reindexResult = await runner.callTool("request_reindex", {
+                  full: false,
+                  agentId: registered.agentId,
+                  sessionId: registered.sessionId,
+                });
+                if (reindexResult.ok) {
+                  insight.info("Post-merge reindex completed (convoy integration branch)");
+                } else {
+                  insight.warn(`Post-merge reindex failed: ${formatToolFailure(reindexResult)}`);
+                }
+              }
             } else {
-              // Step 3: Acquire lock and merge
+              // Standard merge: acquire lock and merge to main
               const lockAcquired = acquireCommitLock(ctx.db, registered.sessionId, registered.agentId);
               if (lockAcquired) {
                 try {
@@ -354,7 +407,7 @@ export async function cmdLoop(
                     insight.warn(`Merge conflicts in ${mergeResult.conflicts.join(", ")} — branch preserved for manual resolution`);
                     worktreeContext = null; // skip worktree removal
                   } else {
-                    // Step 4: Reindex so other agents see the new code immediately
+                    // Reindex so other agents see the new code immediately
                     const reindexResult = await runner.callTool("request_reindex", {
                       full: false,
                       agentId: registered.agentId,

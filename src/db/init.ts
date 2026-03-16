@@ -564,4 +564,37 @@ function runMigrations(sqlite: Database.Database): void {
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_work_groups_repo_status ON work_groups(repo_id, status)").run();
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_work_group_tickets_group ON work_group_tickets(work_group_id)").run();
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_work_group_tickets_ticket ON work_group_tickets(ticket_id)").run();
+
+  // Migration 21: Wave scheduling columns for work groups
+  try {
+    sqlite.prepare("SELECT current_wave FROM work_groups LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE work_groups ADD COLUMN current_wave INTEGER").run();
+  }
+  try {
+    sqlite.prepare("SELECT integration_branch FROM work_groups LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE work_groups ADD COLUMN integration_branch TEXT").run();
+  }
+  try {
+    sqlite.prepare("SELECT wave_plan_json FROM work_groups LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE work_groups ADD COLUMN wave_plan_json TEXT").run();
+  }
+  try {
+    sqlite.prepare("SELECT launched_at FROM work_groups LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE work_groups ADD COLUMN launched_at TEXT").run();
+  }
+  try {
+    sqlite.prepare("SELECT wave_number FROM work_group_tickets LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE work_group_tickets ADD COLUMN wave_number INTEGER").run();
+  }
+  try {
+    sqlite.prepare("SELECT wave_status FROM work_group_tickets LIMIT 0").get();
+  } catch {
+    sqlite.prepare("ALTER TABLE work_group_tickets ADD COLUMN wave_status TEXT DEFAULT 'pending'").run();
+  }
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_wgt_wave ON work_group_tickets(work_group_id, wave_number)").run();
 }

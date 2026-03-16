@@ -1099,7 +1099,24 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       const approved = queries.getTicketsByRepo(c.db, c.repoId, { status: "approved" });
       const unassigned = approved.filter((t) => !t.assigneeAgentId);
 
-      const scored = unassigned.map((ticket) => {
+      // Wave-awareness: exclude tickets that belong to a launched convoy
+      // but are NOT in the current wave or NOT in "dispatched" status.
+      // Wrapped in try/catch for backwards compatibility with older DBs
+      // that may not have the work_group_tickets table yet.
+      let candidates = unassigned;
+      try {
+        candidates = unassigned.filter((ticket) => {
+          const convoyInfo = queries.getLaunchedWorkGroupsForTicket(c.db, ticket.id);
+          if (convoyInfo.length === 0) return true;
+          return convoyInfo.some(
+            (ci) => ci.waveNumber === ci.currentWave && ci.waveStatus === "dispatched"
+          );
+        });
+      } catch {
+        // Table may not exist in older DBs — skip wave filtering
+      }
+
+      const scored = candidates.map((ticket) => {
         const affected = parseStringArrayJson(ticket.affectedPathsJson, {
           maxItems: 100,
           maxItemLength: 500,
@@ -1109,6 +1126,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         ))];
         const rankingScore = overlapPaths.length * 100 + ticket.priority;
         return {
+          internalId: ticket.id,
           ticketId: ticket.ticketId,
           title: ticket.title,
           status: ticket.status,
@@ -1162,18 +1180,34 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
               reason: matchReason,
             },
             routingRecommendation,
-            suggestions: scored.slice(0, limit).map((ticket) => ({
-              ...ticket,
-              matchKind: ticket.overlapScore === 0
-                ? "no_match"
-                : ticket.rankingScore === topScore
-                  ? matchKind
-                  : "possible_match",
-              reason: ticket.overlapScore > 0
-                ? `${ticket.overlapScore} claimed path(s) overlap affected paths; priority=${ticket.priority}.`
-                : `No claimed-path overlap; priority=${ticket.priority}.`,
-            })),
-            totalApprovedUnassigned: unassigned.length,
+            suggestions: scored.slice(0, limit).map((ticket) => {
+              let waveContext: { groupId: string; wave: number | null; integrationBranch: string | null } | undefined;
+              try {
+                const convoyInfo = queries.getLaunchedWorkGroupsForTicket(c.db, ticket.internalId);
+                if (convoyInfo.length > 0) {
+                  waveContext = {
+                    groupId: convoyInfo[0]!.groupId,
+                    wave: convoyInfo[0]!.waveNumber,
+                    integrationBranch: convoyInfo[0]!.integrationBranch,
+                  };
+                }
+              } catch {
+                // Table may not exist in older DBs
+              }
+              return {
+                ...ticket,
+                matchKind: ticket.overlapScore === 0
+                  ? "no_match"
+                  : ticket.rankingScore === topScore
+                    ? matchKind
+                    : "possible_match",
+                reason: ticket.overlapScore > 0
+                  ? `${ticket.overlapScore} claimed path(s) overlap affected paths; priority=${ticket.priority}.`
+                  : `No claimed-path overlap; priority=${ticket.priority}.`,
+                waveContext,
+              };
+            }),
+            totalApprovedUnassigned: candidates.length,
             claimedPaths: claimed,
           }, null, 2),
         }],

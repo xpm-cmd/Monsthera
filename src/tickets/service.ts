@@ -737,6 +737,11 @@ export function updateTicketStatusRecord(
     } catch {
       // Non-fatal: work group auto-complete is a convenience feature
     }
+    try {
+      checkWaveAdvancement(ctx.db, ctx.bus, ticket.id);
+    } catch {
+      // Non-fatal: wave advancement check is a convenience feature
+    }
   }
 
   // Rate-limit audit: warn if agent resolves >3 tickets in 1 hour (non-blocking)
@@ -1373,5 +1378,29 @@ function resolveTicketRequiredRoles(
     return suggestions.requiredRoles;
   } catch {
     return [];
+  }
+}
+
+export function checkWaveAdvancement(
+  db: DB,
+  bus: CoordinationBus | undefined,
+  ticketInternalId: number,
+): void {
+  if (!bus) return;
+  const convoys = queries.getLaunchedWorkGroupsForTicket(db, ticketInternalId);
+  for (const convoy of convoys) {
+    if (convoy.currentWave == null || convoy.waveNumber !== convoy.currentWave) continue;
+    if (queries.isWaveComplete(db, convoy.workGroupId, convoy.currentWave)) {
+      bus.send({
+        from: "system",
+        to: null,
+        type: "broadcast",
+        payload: {
+          kind: "wave_complete",
+          groupId: convoy.groupId,
+          wave: convoy.currentWave,
+        },
+      });
+    }
   }
 }

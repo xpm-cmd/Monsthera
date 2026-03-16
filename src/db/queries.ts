@@ -1,4 +1,4 @@
-import { eq, and, like, desc, or, sql, notInArray, isNull, inArray } from "drizzle-orm";
+import { eq, and, like, desc, or, sql, notInArray, isNull, isNotNull, inArray } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { Database as SqliteDatabase } from "better-sqlite3";
 import { posix as pathPosix } from "node:path";
@@ -1902,4 +1902,146 @@ export function getWorkGroupProgress(db: DB, workGroupId: number) {
     completionPercent: total > 0 ? Math.round((completed / total) * 100) : 0,
     blockers,
   };
+}
+
+// ─── Wave Queries ──────────────────────────────
+
+export function getTicketWaveInfo(db: DB, workGroupId: number, ticketId: number) {
+  const row = db
+    .select({
+      waveNumber: tables.workGroupTickets.waveNumber,
+      waveStatus: tables.workGroupTickets.waveStatus,
+    })
+    .from(tables.workGroupTickets)
+    .where(
+      and(
+        eq(tables.workGroupTickets.workGroupId, workGroupId),
+        eq(tables.workGroupTickets.ticketId, ticketId),
+      ),
+    )
+    .get();
+  return row ?? undefined;
+}
+
+export function updateTicketWaveStatus(
+  db: DB,
+  workGroupId: number,
+  ticketId: number,
+  status: string,
+) {
+  return db
+    .update(tables.workGroupTickets)
+    .set({ waveStatus: status })
+    .where(
+      and(
+        eq(tables.workGroupTickets.workGroupId, workGroupId),
+        eq(tables.workGroupTickets.ticketId, ticketId),
+      ),
+    )
+    .run();
+}
+
+export function setWaveAssignments(
+  db: DB,
+  workGroupId: number,
+  assignments: Array<{ ticketId: number; waveNumber: number }>,
+) {
+  return db.transaction((tx) => {
+    for (const { ticketId, waveNumber } of assignments) {
+      tx.update(tables.workGroupTickets)
+        .set({ waveNumber })
+        .where(
+          and(
+            eq(tables.workGroupTickets.workGroupId, workGroupId),
+            eq(tables.workGroupTickets.ticketId, ticketId),
+          ),
+        )
+        .run();
+    }
+  });
+}
+
+export function getWaveTickets(db: DB, workGroupId: number, waveNumber: number) {
+  return db
+    .select({
+      ticketId: tables.tickets.id,
+      ticketPublicId: tables.tickets.ticketId,
+      title: tables.tickets.title,
+      status: tables.tickets.status,
+      waveStatus: tables.workGroupTickets.waveStatus,
+      affectedPathsJson: tables.tickets.affectedPathsJson,
+    })
+    .from(tables.workGroupTickets)
+    .innerJoin(tables.tickets, eq(tables.workGroupTickets.ticketId, tables.tickets.id))
+    .where(
+      and(
+        eq(tables.workGroupTickets.workGroupId, workGroupId),
+        eq(tables.workGroupTickets.waveNumber, waveNumber),
+      ),
+    )
+    .all();
+}
+
+export function isWaveComplete(db: DB, workGroupId: number, waveNumber: number): boolean {
+  const total = db
+    .select({ count: sql<number>`count(*)` })
+    .from(tables.workGroupTickets)
+    .where(
+      and(
+        eq(tables.workGroupTickets.workGroupId, workGroupId),
+        eq(tables.workGroupTickets.waveNumber, waveNumber),
+      ),
+    )
+    .get();
+
+  if (!total || total.count === 0) return false;
+
+  const notMerged = db
+    .select({ count: sql<number>`count(*)` })
+    .from(tables.workGroupTickets)
+    .where(
+      and(
+        eq(tables.workGroupTickets.workGroupId, workGroupId),
+        eq(tables.workGroupTickets.waveNumber, waveNumber),
+        sql`${tables.workGroupTickets.waveStatus} != 'merged'`,
+      ),
+    )
+    .get();
+
+  return notMerged!.count === 0;
+}
+
+export function updateWorkGroupConvoy(
+  db: DB,
+  groupId: number,
+  updates: {
+    currentWave?: number;
+    integrationBranch?: string;
+    wavePlanJson?: string;
+    launchedAt?: string;
+    updatedAt: string;
+  },
+) {
+  return db.update(tables.workGroups).set(updates).where(eq(tables.workGroups.id, groupId)).run();
+}
+
+export function getLaunchedWorkGroupsForTicket(db: DB, ticketInternalId: number) {
+  return db
+    .select({
+      groupId: tables.workGroups.groupId,
+      workGroupId: tables.workGroups.id,
+      currentWave: tables.workGroups.currentWave,
+      integrationBranch: tables.workGroups.integrationBranch,
+      waveNumber: tables.workGroupTickets.waveNumber,
+      waveStatus: tables.workGroupTickets.waveStatus,
+    })
+    .from(tables.workGroupTickets)
+    .innerJoin(tables.workGroups, eq(tables.workGroupTickets.workGroupId, tables.workGroups.id))
+    .where(
+      and(
+        eq(tables.workGroupTickets.ticketId, ticketInternalId),
+        isNotNull(tables.workGroups.launchedAt),
+      ),
+    )
+    .all();
 }

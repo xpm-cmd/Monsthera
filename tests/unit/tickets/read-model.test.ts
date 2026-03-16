@@ -20,6 +20,8 @@ function createTestDb() {
     CREATE TABLE ticket_history (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), from_status TEXT, to_status TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, comment TEXT, timestamp TEXT NOT NULL);
     CREATE TABLE ticket_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES tickets(id), agent_id TEXT NOT NULL, session_id TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE ticket_dependencies (id INTEGER PRIMARY KEY AUTOINCREMENT, from_ticket_id INTEGER NOT NULL REFERENCES tickets(id), to_ticket_id INTEGER NOT NULL REFERENCES tickets(id), relation_type TEXT NOT NULL, created_by_agent_id TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS work_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), group_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT, status TEXT NOT NULL DEFAULT 'open', created_by TEXT NOT NULL, tags_json TEXT, current_wave INTEGER, integration_branch TEXT, wave_plan_json TEXT, launched_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS work_group_tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, work_group_id INTEGER NOT NULL REFERENCES work_groups(id), ticket_id INTEGER NOT NULL REFERENCES tickets(id), wave_number INTEGER, wave_status TEXT DEFAULT 'pending', added_at TEXT NOT NULL, UNIQUE(work_group_id, ticket_id));
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
 }

@@ -41,6 +41,8 @@ import {
   mergeAgentWork,
   runTestsInWorktree,
 } from "../git/worktree.js";
+import { computeWaves, type BlocksEdge } from "../waves/scheduler.js";
+import { pathsOverlap } from "../core/path-overlap.js";
 import {
   incrementalIndex,
   buildIndexOptions,
@@ -376,84 +378,99 @@ async function runPhaseC(
   let totalElapsedMs = 0;
   const stepTimeoutMs = config.workflow?.stepTimeoutMs ?? 120_000;
 
-  for (let i = 0; i < batch.length; i++) {
-    const descriptor = batch[i]!;
-    const ticketStartMs = Date.now();
+  // ── Wave scheduling: compute execution waves from file-overlap DAG ──
+  const waveOrder = computeWaveOrder(batch, emit);
 
-    telemetry.startTicket(descriptor.corpusId, descriptor.suggestedModel);
+  for (let waveIdx = 0; waveIdx < waveOrder.length; waveIdx++) {
+    const wave = waveOrder[waveIdx]!;
 
-    emit({
-      phase: "C",
-      message: `[${i + 1}/${batch.length}] ${descriptor.title}`,
-      detail: { model: descriptor.suggestedModel, corpusId: descriptor.corpusId },
-    });
-
-    // Create the ticket in production DB (starts in backlog)
-    const ticketId = createTicketInProduction(config, descriptor);
-    if (!ticketId) {
-      telemetry.completeTicket(descriptor.corpusId, "failed");
-      failed++;
-      continue;
+    if (waveOrder.length > 1) {
+      emit({
+        phase: "C",
+        message: `── Wave ${waveIdx}/${waveOrder.length - 1}: ${wave.length} ticket(s) ──`,
+        detail: { wave: waveIdx, waveCount: waveOrder.length, ticketCount: wave.length },
+      });
     }
-    telemetry.setTicketId(descriptor.corpusId, ticketId);
 
-    if (hasWorkflow) {
-      // Run the full pipeline: plan → council → dev → council
-      const pipelineResult = await runTicketPipeline(
-        config,
-        ticketId,
-        descriptor,
-        stepTimeoutMs,
-        emit,
-      );
+    for (const descriptor of wave) {
+      const globalIdx = batch.indexOf(descriptor);
+      const ticketStartMs = Date.now();
 
-      const elapsed = Date.now() - ticketStartMs;
-      totalElapsedMs += elapsed;
-      totalWorkflowMs += pipelineResult.workflowDurationMs;
-
-      telemetry.addPayload(
-        descriptor.corpusId,
-        pipelineResult.inputChars,
-        pipelineResult.outputChars,
-      );
-
-      if (pipelineResult.status === "completed") {
-        telemetry.completeTicket(descriptor.corpusId, "resolved");
-        resolved++;
-      } else if (pipelineResult.status === "timeout") {
-        telemetry.completeTicket(descriptor.corpusId, "escalated");
-        timedOut++;
-      } else {
-        telemetry.completeTicket(descriptor.corpusId, "failed");
-        failed++;
-      }
+      telemetry.startTicket(descriptor.corpusId, descriptor.suggestedModel);
 
       emit({
         phase: "C",
-        message: `[${i + 1}/${batch.length}] ${pipelineResult.status} in ${(elapsed / 1000).toFixed(1)}s — reached ${pipelineResult.reachedStage}`,
+        message: `[${globalIdx + 1}/${batch.length}] ${descriptor.title}`,
+        detail: { model: descriptor.suggestedModel, corpusId: descriptor.corpusId, wave: waveIdx },
       });
-    } else {
-      // Stub mode: force-advance and mark as resolved with synthetic timing
-      try {
-        config.db.update(tickets)
-          .set({ status: "approved", updatedAt: new Date().toISOString() })
-          .where(sql`ticket_id = ${ticketId} AND repo_id = ${config.repoId}`)
-          .run();
-      } catch { /* non-critical */ }
 
-      const elapsed = Date.now() - ticketStartMs;
-      totalElapsedMs += elapsed;
-      totalWorkflowMs += elapsed * 0.15;
-      telemetry.addPayload(descriptor.corpusId, descriptor.description.length, 500);
-      telemetry.completeTicket(descriptor.corpusId, "resolved");
-      resolved++;
+      // Create the ticket in production DB (starts in backlog)
+      const ticketId = createTicketInProduction(config, descriptor);
+      if (!ticketId) {
+        telemetry.completeTicket(descriptor.corpusId, "failed");
+        failed++;
+        continue;
+      }
+      telemetry.setTicketId(descriptor.corpusId, ticketId);
+
+      if (hasWorkflow) {
+        // Run the full pipeline: plan → council → dev → council
+        const pipelineResult = await runTicketPipeline(
+          config,
+          ticketId,
+          descriptor,
+          stepTimeoutMs,
+          emit,
+        );
+
+        const elapsed = Date.now() - ticketStartMs;
+        totalElapsedMs += elapsed;
+        totalWorkflowMs += pipelineResult.workflowDurationMs;
+
+        telemetry.addPayload(
+          descriptor.corpusId,
+          pipelineResult.inputChars,
+          pipelineResult.outputChars,
+        );
+
+        if (pipelineResult.status === "completed") {
+          telemetry.completeTicket(descriptor.corpusId, "resolved");
+          resolved++;
+        } else if (pipelineResult.status === "timeout") {
+          telemetry.completeTicket(descriptor.corpusId, "escalated");
+          timedOut++;
+        } else {
+          telemetry.completeTicket(descriptor.corpusId, "failed");
+          failed++;
+        }
+
+        emit({
+          phase: "C",
+          message: `[${globalIdx + 1}/${batch.length}] ${pipelineResult.status} in ${(elapsed / 1000).toFixed(1)}s — reached ${pipelineResult.reachedStage}`,
+        });
+      } else {
+        // Stub mode: force-advance and mark as resolved with synthetic timing
+        try {
+          config.db.update(tickets)
+            .set({ status: "approved", updatedAt: new Date().toISOString() })
+            .where(sql`ticket_id = ${ticketId} AND repo_id = ${config.repoId}`)
+            .run();
+        } catch { /* non-critical */ }
+
+        const elapsed = Date.now() - ticketStartMs;
+        totalElapsedMs += elapsed;
+        totalWorkflowMs += elapsed * 0.15;
+        telemetry.addPayload(descriptor.corpusId, descriptor.description.length, 500);
+        telemetry.completeTicket(descriptor.corpusId, "resolved");
+        resolved++;
+      }
     }
   }
 
   const total = resolved + failed + timedOut;
   emit({
     phase: "C",
-    message: `Phase C complete: ${resolved} resolved, ${failed} failed, ${timedOut} timed out (${total}/${batch.length})`,
+    message: `Phase C complete: ${resolved} resolved, ${failed} failed, ${timedOut} timed out (${total}/${batch.length}). Waves: ${waveOrder.length}`,
   });
 
   return {
@@ -462,6 +479,94 @@ async function runPhaseC(
     mergeSuccessRate: batch.length > 0 ? resolved / batch.length : 1,
     workflowOverheadPct: totalElapsedMs > 0 ? totalWorkflowMs / totalElapsedMs : 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Wave ordering — compute execution waves from file-overlap dependencies
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute wave-ordered execution plan for a batch of ticket descriptors.
+ *
+ * Uses file-path overlap to infer "blocks" edges: when two descriptors
+ * share affected paths, the one listed earlier in the batch blocks the
+ * later one. This mirrors real convoy behavior where overlapping files
+ * need sequential execution.
+ *
+ * Returns an array of waves, each containing descriptors safe to execute
+ * in parallel within that wave.
+ */
+function computeWaveOrder(
+  batch: TicketDescriptor[],
+  emit: (e: ProgressEvent) => void,
+): TicketDescriptor[][] {
+  if (batch.length <= 1) {
+    return batch.length === 0 ? [] : [batch];
+  }
+
+  // Build synthetic "blocks" edges from file-path overlap.
+  // When two tickets share affected paths, the earlier one blocks the later.
+  const edges: BlocksEdge[] = [];
+  for (let i = 0; i < batch.length; i++) {
+    for (let j = i + 1; j < batch.length; j++) {
+      const a = batch[i]!;
+      const b = batch[j]!;
+      if (hasPathOverlap(a.affectedPaths, b.affectedPaths)) {
+        edges.push({ blocker: a.corpusId, blocked: b.corpusId });
+      }
+    }
+  }
+
+  if (edges.length === 0) {
+    // No overlaps — everything can run in a single wave
+    emit({
+      phase: "C",
+      message: `Wave scheduling: no file overlaps detected — 1 wave (all parallel)`,
+    });
+    return [batch];
+  }
+
+  const ticketIds = batch.map((d) => d.corpusId);
+  const result = computeWaves(ticketIds, edges);
+
+  if ("error" in result) {
+    // Should not happen with the directional overlap edges, but be safe
+    emit({
+      phase: "C",
+      message: `Wave scheduling: cycle detected — falling back to sequential`,
+    });
+    return batch.map((d) => [d]);
+  }
+
+  const plan = result;
+
+  emit({
+    phase: "C",
+    message: `Wave scheduling: ${plan.waveCount} waves from ${edges.length} dependency edge(s). Sizes: [${plan.waves.map((w) => w.length).join(", ")}]`,
+  });
+
+  // Map corpusId -> descriptor for quick lookup
+  const byCorpusId = new Map<string, TicketDescriptor>();
+  for (const d of batch) {
+    byCorpusId.set(d.corpusId, d);
+  }
+
+  // Build ordered waves of descriptors
+  return plan.waves.map((wave) =>
+    wave.map((corpusId) => byCorpusId.get(corpusId)!),
+  );
+}
+
+/**
+ * Check if two sets of affected paths have any overlap.
+ */
+function hasPathOverlap(pathsA: string[], pathsB: string[]): boolean {
+  for (const a of pathsA) {
+    for (const b of pathsB) {
+      if (pathsOverlap(a, b)) return true;
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ import { registerSimulationTools } from "./tools/simulation-tools.js";
 import { registerJobTools } from "./tools/job-tools.js";
 import { registerWorkGroupTools } from "./tools/work-group-tools.js";
 import { registerDecomposeTools } from "./tools/decompose-tools.js";
+import { registerWaveTools } from "./tools/wave-tools.js";
 import { installToolRuntimeInstrumentation } from "./tools/runtime-instrumentation.js";
 
 export function createAgoraServer(
@@ -52,6 +53,7 @@ export function createAgoraServer(
   registerJobTools(server, getContext);
   registerWorkGroupTools(server, getContext);
   registerDecomposeTools(server, getContext);
+  registerWaveTools(server, getContext);
 
   return server;
 }

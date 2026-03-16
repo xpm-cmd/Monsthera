@@ -73,4 +73,8 @@ export const TOOL_ACCESS_POLICY: Record<CapabilityToolName, ToolAccessPolicyEntr
   remove_tickets_from_group: { mode: "role" },
   list_work_groups: { mode: "session" },
   decompose_goal: { mode: "role" },
+  compute_waves: { mode: "role" },
+  launch_convoy: { mode: "role" },
+  advance_wave: { mode: "role" },
+  get_wave_status: { mode: "session" },
 };
