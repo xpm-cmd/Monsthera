@@ -51,6 +51,8 @@ export interface WorkflowStepSpec {
   condition?: string;
   onError?: WorkflowStepErrorMode;
   forEach?: string;
+  retries?: number;          // default 0, max 5
+  retryDelayMs?: number;     // default 1000 (exponential base)
 }
 
 export interface WorkflowSpec {
@@ -95,6 +97,7 @@ export interface WorkflowStepResult {
   items?: WorkflowItemResult[];
   errorCode?: string;
   message?: string;
+  retryCount?: number;
 }
 
 export interface WorkflowResult {

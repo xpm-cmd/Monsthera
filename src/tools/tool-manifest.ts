@@ -40,6 +40,7 @@ export const CAPABILITY_TOOL_NAMES = [
   "launch_convoy",
   "advance_wave",
   "get_wave_status",
+  "spawn_agent",
 ] as const;
 
 export type CapabilityToolName = (typeof CAPABILITY_TOOL_NAMES)[number];

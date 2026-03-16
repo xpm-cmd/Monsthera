@@ -1,0 +1,260 @@
+import { describe, it, expect } from "vitest";
+import { runOrchestrator, type OrchestratorCallbacks, type OrchestratorConfig, type OrchestratorProblem } from "../../../src/orchestrator/loop.js";
+
+function buildConfig(overrides: Partial<OrchestratorConfig> = {}): OrchestratorConfig {
+  return {
+    groupId: "WG-test",
+    maxConcurrentAgents: 3,
+    testCommand: "pnpm test",
+    testTimeoutMs: 120_000,
+    pollIntervalMs: 100,
+    repoPath: "/tmp/repo",
+    ...overrides,
+  };
+}
+
+function buildCallbacks(overrides: Partial<OrchestratorCallbacks> = {}): OrchestratorCallbacks & {
+  toolCalls: Array<{ name: string; params: Record<string, unknown> }>;
+  spawned: string[];
+  killed: number[];
+  problems: OrchestratorProblem[];
+} {
+  const toolCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
+  const spawned: string[] = [];
+  const killed: number[] = [];
+  const problems: OrchestratorProblem[] = [];
+
+  return {
+    toolCalls,
+    spawned,
+    killed,
+    problems,
+    callTool: async (name, params) => {
+      toolCalls.push({ name, params });
+
+      if (name === "register_agent") return { agentId: "orch-agent", sessionId: "orch-session" };
+      if (name === "compute_waves") return { waveCount: 2 };
+      if (name === "launch_convoy") return { integrationBranch: "integration/WG-test" };
+      if (name === "get_wave_status") return { dispatchedTickets: ["TKT-a"], currentWave: 0 };
+      if (name === "spawn_agent") return { spawnedAgentId: `spawn-${params.ticketId}`, worktreePath: "/tmp/wt", ticketId: params.ticketId };
+      if (name === "advance_wave") return { advanced: true, mergedTickets: ["TKT-a"], conflictedTickets: [], allWavesComplete: false };
+      if (name === "end_session") return { ended: true };
+      return {};
+    },
+    spawnProcess: async (_worktreePath, ticketId) => {
+      spawned.push(ticketId);
+      return { pid: 1000 + spawned.length, ticketId, sessionId: `session-${ticketId}` };
+    },
+    killProcess: async (pid) => {
+      killed.push(pid);
+    },
+    isProcessAlive: () => false, // In tests, processes finish immediately
+    log: () => {},
+    sleep: async () => {},
+    ...overrides,
+  };
+}
+
+describe("orchestrator loop", () => {
+  it("happy path: registers, computes waves, spawns, advances, and completes", async () => {
+    const cbs = buildCallbacks({
+      callTool: async (name, params) => {
+        cbs.toolCalls.push({ name, params });
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "compute_waves") return { waveCount: 1 };
+        if (name === "launch_convoy") return { integrationBranch: "int/WG" };
+        if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1", "TKT-2"] };
+        if (name === "spawn_agent") return { worktreePath: "/tmp/wt", ticketId: params.ticketId };
+        if (name === "advance_wave") return { mergedTickets: ["TKT-1", "TKT-2"], conflictedTickets: [], allWavesComplete: true };
+        if (name === "end_session") return {};
+        return {};
+      },
+    });
+
+    const result = await runOrchestrator(buildConfig({ maxConcurrentAgents: 5 }), cbs);
+
+    expect(result.wavesCompleted).toBe(1);
+    expect(result.totalWaves).toBe(1);
+    expect(result.mergedTickets).toEqual(["TKT-1", "TKT-2"]);
+    expect(result.finalMerged).toBe(true);
+    expect(result.skippedTickets).toHaveLength(0);
+    expect(cbs.spawned).toEqual(["TKT-1", "TKT-2"]);
+  });
+
+  it("handles conflict: skips conflicted tickets", async () => {
+    const cbs = buildCallbacks({
+      callTool: async (name, params) => {
+        cbs.toolCalls.push({ name, params });
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "compute_waves") return { waveCount: 1 };
+        if (name === "launch_convoy") return { integrationBranch: "int/WG" };
+        if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
+        if (name === "spawn_agent") return { worktreePath: "/tmp/wt", ticketId: params.ticketId };
+        if (name === "advance_wave") return {
+          mergedTickets: [],
+          conflictedTickets: ["TKT-1"],
+          conflictDetails: ["src/a.ts"],
+          allWavesComplete: true,
+        };
+        if (name === "end_session") return {};
+        return {};
+      },
+    });
+
+    const result = await runOrchestrator(buildConfig(), cbs);
+
+    expect(result.skippedTickets).toContain("TKT-1");
+    expect(result.mergedTickets).toHaveLength(0);
+  });
+
+  it("handles test failure: skips culprit via bisect", async () => {
+    const cbs = buildCallbacks({
+      callTool: async (name, params) => {
+        cbs.toolCalls.push({ name, params });
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "compute_waves") return { waveCount: 1 };
+        if (name === "launch_convoy") return { integrationBranch: "int/WG" };
+        if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
+        if (name === "spawn_agent") return { worktreePath: "/tmp/wt", ticketId: params.ticketId };
+        if (name === "advance_wave") return {
+          mergedTickets: [],
+          conflictedTickets: [],
+          testFailed: true,
+          bisectCulprit: "TKT-1",
+          allWavesComplete: true,
+        };
+        if (name === "end_session") return {};
+        return {};
+      },
+    });
+
+    const result = await runOrchestrator(buildConfig(), cbs);
+
+    expect(result.skippedTickets).toContain("TKT-1");
+  });
+
+  it("concurrency: respects maxConcurrentAgents limit", async () => {
+    let concurrentCount = 0;
+    let maxConcurrent = 0;
+
+    const cbs = buildCallbacks({
+      callTool: async (name, params) => {
+        cbs.toolCalls.push({ name, params });
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "compute_waves") return { waveCount: 1 };
+        if (name === "launch_convoy") return { integrationBranch: "int/WG" };
+        if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1", "TKT-2", "TKT-3", "TKT-4", "TKT-5"] };
+        if (name === "spawn_agent") return { worktreePath: "/tmp/wt", ticketId: params.ticketId };
+        if (name === "advance_wave") return { mergedTickets: ["TKT-1", "TKT-2", "TKT-3", "TKT-4", "TKT-5"], conflictedTickets: [], allWavesComplete: true };
+        if (name === "end_session") return {};
+        return {};
+      },
+      spawnProcess: async (_, ticketId) => {
+        concurrentCount++;
+        maxConcurrent = Math.max(maxConcurrent, concurrentCount);
+        cbs.spawned.push(ticketId);
+        return { pid: 1000 + cbs.spawned.length, ticketId, sessionId: `s-${ticketId}` };
+      },
+    });
+
+    const result = await runOrchestrator(buildConfig({ maxConcurrentAgents: 2, pollIntervalMs: 1 }), cbs);
+
+    expect(cbs.spawned).toHaveLength(5);
+    expect(result.mergedTickets).toHaveLength(5);
+  });
+
+  it("LLM fallback: onProblem returns abort → orchestration stops", async () => {
+    const cbs = buildCallbacks({
+      callTool: async (name, params) => {
+        cbs.toolCalls.push({ name, params });
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "compute_waves") return { waveCount: 1 };
+        if (name === "launch_convoy") return { integrationBranch: "int/WG" };
+        if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
+        if (name === "spawn_agent") return { worktreePath: "/tmp/wt", ticketId: params.ticketId };
+        if (name === "advance_wave") return {
+          mergedTickets: [],
+          conflictedTickets: ["TKT-1"],
+          allWavesComplete: false,
+        };
+        if (name === "end_session") return {};
+        return {};
+      },
+      onProblem: async (problem) => {
+        cbs.problems.push(problem);
+        return { action: "abort" };
+      },
+    });
+
+    const result = await runOrchestrator(buildConfig(), cbs);
+
+    expect(cbs.problems.length).toBeGreaterThanOrEqual(1);
+    expect(cbs.problems[0]!.kind).toBe("conflict");
+    expect(result.finalMerged).toBe(false);
+  });
+
+  it("spawn failure: skips ticket by default", async () => {
+    const cbs = buildCallbacks({
+      callTool: async (name, params) => {
+        cbs.toolCalls.push({ name, params });
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "compute_waves") return { waveCount: 1 };
+        if (name === "launch_convoy") return { integrationBranch: "int/WG" };
+        if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
+        if (name === "spawn_agent") return { worktreePath: "/tmp/wt", ticketId: params.ticketId };
+        if (name === "advance_wave") return { mergedTickets: [], conflictedTickets: [], allWavesComplete: true };
+        if (name === "end_session") return {};
+        return {};
+      },
+      spawnProcess: async () => {
+        throw new Error("Process spawn failed");
+      },
+    });
+
+    const result = await runOrchestrator(buildConfig(), cbs);
+
+    expect(result.skippedTickets).toContain("TKT-1");
+  });
+
+  it("zero waves: returns immediately", async () => {
+    const cbs = buildCallbacks({
+      callTool: async (name, params) => {
+        cbs.toolCalls.push({ name, params });
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "compute_waves") return { waveCount: 0 };
+        return {};
+      },
+    });
+
+    const result = await runOrchestrator(buildConfig(), cbs);
+
+    expect(result.wavesCompleted).toBe(0);
+    expect(result.totalWaves).toBe(0);
+    const toolNames = cbs.toolCalls.map((c) => c.name);
+    expect(toolNames).not.toContain("launch_convoy");
+  });
+
+  it("timeout: stuck agent detected and killed after stale poll cycles", async () => {
+    let pollCycles = 0;
+    const cbs = buildCallbacks({
+      callTool: async (name, params) => {
+        cbs.toolCalls.push({ name, params });
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "compute_waves") return { waveCount: 1 };
+        if (name === "launch_convoy") return { integrationBranch: "int/WG" };
+        if (name === "get_wave_status") return { dispatchedTickets: ["TKT-stuck"] };
+        if (name === "spawn_agent") return { worktreePath: "/tmp/wt", ticketId: params.ticketId };
+        if (name === "advance_wave") return { mergedTickets: [], conflictedTickets: [], allWavesComplete: true };
+        if (name === "end_session") return {};
+        return {};
+      },
+      isProcessAlive: () => true, // Process never finishes
+      sleep: async () => { pollCycles++; },
+    });
+
+    const result = await runOrchestrator(buildConfig(), cbs);
+
+    expect(result.skippedTickets).toContain("TKT-stuck");
+    expect(cbs.killed.length).toBeGreaterThanOrEqual(1);
+  });
+});

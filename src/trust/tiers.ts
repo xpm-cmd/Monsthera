@@ -45,6 +45,10 @@ export function checkToolAccess(
     return { allowed: false, reason: `Only facilitators, planners, or admins can create loops` };
   }
 
+  if (tool === "spawn_agent" && !["facilitator", "admin"].includes(roleId)) {
+    return { allowed: false, reason: `Only facilitators or admins can spawn agents` };
+  }
+
   if (tool === "claim_files" && !permissions.canClaimFiles) {
     return { allowed: false, reason: `Role ${roleId} cannot claim files` };
   }

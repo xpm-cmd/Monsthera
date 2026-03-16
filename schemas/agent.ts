@@ -178,6 +178,8 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
         "lookup_dependencies", "export_audit",
         "list_protected_artifacts",
         "create_loop", "list_jobs", "claim_job", "update_job_progress", "complete_job", "release_job",
+        "spawn_agent",
+        "compute_waves", "launch_convoy", "advance_wave", "get_wave_status",
       ],
       trustTier: "A",
       canBroadcast: true,

@@ -625,6 +625,167 @@ describe("workflow engine", () => {
     expect(result.status).toBe("completed");
   });
 
+  it("retries a failing step up to the configured retry count", async () => {
+    let callCount = 0;
+    const sleepCalls: number[] = [];
+
+    const spec: WorkflowSpec = {
+      name: "retry-demo",
+      description: "demo",
+      steps: [
+        {
+          key: "flaky",
+          tool: "analyze_complexity",
+          input: { filePath: "src/a.ts" },
+          retries: 2,
+          retryDelayMs: 1000,
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({
+      analyze_complexity: async () => {
+        callCount++;
+        if (callCount < 3) {
+          return fail("analyze_complexity", "execution_failed", "transient error");
+        }
+        return ok("analyze_complexity", { score: 5 });
+      },
+    });
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      sleep: async (ms) => { sleepCalls.push(ms); },
+    });
+
+    expect(result.status).toBe("completed");
+    expect(callCount).toBe(3);
+    expect(result.steps[0]!.retryCount).toBe(2); // succeeded on attempt 3
+    // Exponential backoff: 1000ms, 2000ms
+    expect(sleepCalls).toEqual([1000, 2000]);
+  });
+
+  it("returns last failure when all retries are exhausted", async () => {
+    const spec: WorkflowSpec = {
+      name: "retry-exhaust",
+      description: "demo",
+      steps: [
+        {
+          key: "always_fails",
+          tool: "analyze_complexity",
+          input: { filePath: "src/a.ts" },
+          retries: 2,
+          retryDelayMs: 100,
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({
+      analyze_complexity: async () => fail("analyze_complexity", "execution_failed", "permanent error"),
+    });
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      sleep: async () => {},
+    });
+
+    expect(result.status).toBe("failed");
+    expect(runner.calls).toHaveLength(3); // initial + 2 retries
+    expect(result.steps[0]!.retryCount).toBe(2);
+    expect(result.steps[0]!.errorCode).toBe("execution_failed");
+  });
+
+  it("does not retry tool_not_found errors", async () => {
+    const spec: WorkflowSpec = {
+      name: "no-retry-missing",
+      description: "demo",
+      steps: [
+        {
+          key: "missing",
+          tool: "nonexistent_tool" as any,
+          input: {},
+          retries: 3,
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({});
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      sleep: async () => {},
+    });
+
+    expect(result.status).toBe("failed");
+    expect(runner.calls).toHaveLength(0); // runner.has() returned false, no calls made
+    expect(result.steps[0]!.errorCode).toBe("tool_not_found");
+  });
+
+  it("caps retries at 5 even if spec says more", async () => {
+    let callCount = 0;
+
+    const spec: WorkflowSpec = {
+      name: "retry-cap",
+      description: "demo",
+      steps: [
+        {
+          key: "capped",
+          tool: "analyze_complexity",
+          input: {},
+          retries: 100,
+          retryDelayMs: 1,
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({
+      analyze_complexity: async () => {
+        callCount++;
+        return fail("analyze_complexity", "execution_failed", "error");
+      },
+    });
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+      sleep: async () => {},
+    });
+
+    expect(result.status).toBe("failed");
+    expect(callCount).toBe(6); // initial + 5 retries (capped)
+    expect(result.steps[0]!.retryCount).toBe(5);
+  });
+
+  it("defaults to no retries (retries=0)", async () => {
+    const spec: WorkflowSpec = {
+      name: "no-retry",
+      description: "demo",
+      steps: [
+        {
+          key: "once",
+          tool: "analyze_complexity",
+          input: {},
+        },
+      ],
+    };
+
+    const runner = new FakeRunner({
+      analyze_complexity: async () => fail("analyze_complexity", "execution_failed", "error"),
+    });
+
+    const result = await runWorkflow(spec, {
+      runner,
+      actor: { agentId: "agent-dev", sessionId: "session-dev" },
+    });
+
+    expect(result.status).toBe("failed");
+    expect(runner.calls).toHaveLength(1);
+    expect(result.steps[0]!.retryCount).toBeUndefined();
+  });
+
   it("falls back to broadcast when resolveReviewers is not provided", async () => {
     const spec: WorkflowSpec = {
       name: "dispatch-fallback",

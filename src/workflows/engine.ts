@@ -36,6 +36,7 @@ type StepCallResult = {
   durationMs: number;
   errorCode?: string;
   message?: string;
+  retryCount?: number;
 };
 
 export async function runWorkflow(
@@ -156,6 +157,7 @@ async function executeStep(
       output: single.output,
       errorCode: single.errorCode,
       message: single.message,
+      retryCount: single.retryCount,
     },
     output: single.output,
   };
@@ -259,17 +261,42 @@ async function executeSingleCall(
     sessionId: runtime.actor.sessionId,
   };
 
-  const startedAt = Date.now();
-  const result = runtime.runner.has(step.tool)
-    ? await runtime.runner.callTool(step.tool, input)
-    : ({
-        ok: false,
-        tool: step.tool,
-        errorCode: "tool_not_found",
-        message: `Tool not found: ${step.tool}`,
-      } satisfies ToolRunnerCallResult);
+  const maxRetries = Math.min(step.retries ?? 0, 5);
+  const baseDelayMs = step.retryDelayMs ?? 1000;
+  const sleep = runtime.sleep ?? defaultSleep;
 
-  return normalizeStepCall(result, input, Date.now() - startedAt);
+  let lastResult: StepCallResult | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      await sleep(baseDelayMs * Math.pow(2, attempt - 1));
+    }
+
+    const startedAt = Date.now();
+    const result = runtime.runner.has(step.tool)
+      ? await runtime.runner.callTool(step.tool, input)
+      : ({
+          ok: false,
+          tool: step.tool,
+          errorCode: "tool_not_found",
+          message: `Tool not found: ${step.tool}`,
+        } satisfies ToolRunnerCallResult);
+
+    lastResult = normalizeStepCall(result, input, Date.now() - startedAt);
+
+    if (lastResult.status === "completed") {
+      if (attempt > 0) lastResult.retryCount = attempt;
+      return lastResult;
+    }
+
+    // tool_not_found is not retryable
+    if (!result.ok && result.errorCode === "tool_not_found") {
+      return lastResult;
+    }
+  }
+
+  if (maxRetries > 0) lastResult!.retryCount = maxRetries;
+  return lastResult!;
 }
 
 async function executeQuorumCheckpoint(

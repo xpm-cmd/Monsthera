@@ -20,6 +20,7 @@ import { cmdPatch } from "./cli/patches.js";
 import { cmdKnowledge } from "./cli/knowledge.js";
 import { cmdLoop } from "./cli/loops.js";
 import { cmdTool } from "./cli/tools.js";
+import { cmdOrchestrate } from "./cli/orchestrator.js";
 import {
   CROSS_INSTANCE_SEARCH_PATH,
   CrossInstanceSearchRequestSchema,
@@ -87,6 +88,9 @@ async function main() {
       break;
     case "facilitator":
       await cmdLoop(config, insight, ["plan", ...args.slice(1)]);
+      break;
+    case "orchestrate":
+      await cmdOrchestrate(config, insight, args.slice(1));
       break;
     case "serve":
     case undefined:
@@ -661,6 +665,7 @@ function printHelp() {
   console.error("  knowledge      Repo/global knowledge inspection");
   console.error("  loop           Run a repo-local planner/developer/council workflow");
   console.error("  facilitator    Alias for `agora loop plan`");
+  console.error("  orchestrate    Run convoy orchestrator for a work group");
   console.error("  tool           Invoke a local Agora MCP tool from CLI");
   console.error("");
   console.error("Options:");
