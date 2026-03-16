@@ -30,6 +30,7 @@ import {
   type TicketServiceError,
 } from "../tickets/service.js";
 import { reapStaleSessions } from "../agents/registry.js";
+import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
 import { classifyResultForLogging, recordRuntimeEventWithContext } from "../tools/runtime-instrumentation.js";
 import { z } from "zod/v4";
@@ -77,6 +78,10 @@ const TICKET_SYNC_EVENT_TYPES = new Set<DashboardEvent["type"]>([
   "ticket_verdict_submitted",
   "ticket_commented",
   "ticket_linked",
+  "convoy_started",
+  "convoy_wave_started",
+  "convoy_wave_advanced",
+  "convoy_completed",
 ]);
 
 const SECURITY_HEADERS = {
@@ -211,6 +216,15 @@ export function startDashboard(
       // SSE endpoint for real-time events
       if (path === "/api/events") {
         sse.addClient(res);
+        return;
+      }
+
+      // GET /api/convoy — convoy status overview
+      if (path === "/api/convoy" && req.method === "GET") {
+        const groupIdFilter = url.searchParams.get("groupId");
+        const convoys = buildConvoyStatus(deps, groupIdFilter);
+        res.writeHead(200, { "Content-Type": "application/json", ...SECURITY_HEADERS });
+        res.end(JSON.stringify({ convoys }));
         return;
       }
 
@@ -776,5 +790,72 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
       return getJobBoard(deps, loopIdParam);
     }
     default: return null;
+  }
+}
+
+// ── Convoy status ──
+
+interface ConvoyStatus {
+  groupId: string;
+  status: string;
+  integrationBranch: string;
+  totalWaves: number;
+  currentWave: number;
+  waves: Array<{
+    index: number;
+    status: string;
+    tickets: Array<{
+      ticketId: string;
+      status: string;
+      agentId?: string;
+    }>;
+  }>;
+  startedAt: string;
+}
+
+export function buildConvoyStatus(deps: DashboardDeps, groupIdFilter?: string | null): ConvoyStatus[] {
+  const groups = queries.listWorkGroups(deps.db, deps.repoId, {});
+
+  return groups
+    .filter((g) => g.launchedAt !== null)
+    .filter((g) => !groupIdFilter || g.groupId === groupIdFilter)
+    .map((g) => {
+      const wavePlan = safeParseJson(g.wavePlanJson);
+      const waveArrays: string[][] = Array.isArray(wavePlan.waves) ? wavePlan.waves : [];
+      const ticketRows = queries.getWorkGroupTickets(deps.db, g.id);
+
+      const waves = waveArrays.map((waveTicketIds: string[], i: number) => ({
+        index: i,
+        status: i < (g.currentWave ?? 0) ? "completed" : i === (g.currentWave ?? 0) ? "active" : "pending",
+        tickets: waveTicketIds.map((tid) => {
+          // Join result shape: { work_group_tickets: {...}, tickets: {...} }
+          const row = ticketRows.find((t) => t.tickets.ticketId === tid);
+          return {
+            ticketId: tid,
+            status: row?.work_group_tickets.waveStatus ?? "dispatched",
+            ...(row?.tickets.assigneeAgentId ? { agentId: row.tickets.assigneeAgentId } : {}),
+          };
+        }),
+      }));
+
+      return {
+        groupId: g.groupId,
+        status: g.status === "completed" ? "completed" : g.launchedAt ? "active" : "pending",
+        integrationBranch: g.integrationBranch ?? "",
+        totalWaves: waveArrays.length,
+        currentWave: g.currentWave ?? 0,
+        waves,
+        startedAt: g.launchedAt ?? g.createdAt,
+      };
+    });
+}
+
+function safeParseJson(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+  } catch {
+    return {};
   }
 }

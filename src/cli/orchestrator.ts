@@ -5,6 +5,9 @@ import { runOrchestrator, type OrchestratorCallbacks, type OrchestratorConfig } 
 import { createAgoraContextLoader } from "../core/context-loader.js";
 import { createAgoraServer } from "../server.js";
 import { getToolRunner } from "../tools/tool-runner.js";
+import { recordDashboardEvent } from "../dashboard/events.js";
+import { cleanupOrphanedWorktrees } from "../git/worktree.js";
+import * as queries from "../db/queries.js";
 import { spawn } from "node:child_process";
 
 export async function cmdOrchestrate(
@@ -23,6 +26,7 @@ export async function cmdOrchestrate(
   const testTimeoutMs = parseInt(getArg(args, "--test-timeout") ?? "120000", 10);
   const pollIntervalMs = parseInt(getArg(args, "--poll-interval") ?? "10000", 10);
   const llmFallback = args.includes("--llm-fallback");
+  const maxRetries = parseInt(getArg(args, "--max-retries") ?? "1", 10);
 
   let context: AgoraContext | null = null;
   const baseGetContext = createAgoraContextLoader(config, insight, { startLifecycleSweep: false });
@@ -41,6 +45,7 @@ export async function cmdOrchestrate(
     testTimeoutMs,
     pollIntervalMs,
     llmFallback,
+    maxRetries,
     repoPath: config.repoPath,
   };
 
@@ -90,6 +95,31 @@ export async function cmdOrchestrate(
           return { action: "skip" };
         }
       : undefined,
+    onEvent: (event) => {
+      insight.info(`[convoy] ${event.type}`);
+      if (context) {
+        try {
+          recordDashboardEvent(context.db, context.repoId, {
+            type: mapConvoyEventType(event.type),
+            data: event as unknown as Record<string, unknown>,
+          });
+        } catch {
+          // non-fatal
+        }
+      }
+    },
+    cleanupWorktrees: async () => {
+      try {
+        const ctx = await getContext();
+        const active = queries.getActiveSessions(ctx.db).map((s) => s.id);
+        const result = await cleanupOrphanedWorktrees(config.repoPath, new Set(active));
+        if (result.removed.length > 0) {
+          insight.info(`Cleaned up ${result.removed.length} orphaned worktree(s)`);
+        }
+      } catch {
+        // non-fatal
+      }
+    },
   };
 
   insight.info(`Starting orchestration for ${groupId} (max ${maxConcurrentAgents} agents)`);
@@ -112,4 +142,19 @@ function getArg(args: string[], flag: string): string | undefined {
   const idx = args.indexOf(flag);
   if (idx === -1 || idx + 1 >= args.length) return undefined;
   return args[idx + 1];
+}
+
+type ConvoyEventType = "convoy_started" | "convoy_wave_started" | "convoy_agent_spawned"
+  | "convoy_agent_finished" | "convoy_wave_advanced" | "convoy_completed";
+
+function mapConvoyEventType(eventType: string): ConvoyEventType {
+  switch (eventType) {
+    case "convoy_started": return "convoy_started";
+    case "wave_started": return "convoy_wave_started";
+    case "agent_spawned": return "convoy_agent_spawned";
+    case "agent_finished": return "convoy_agent_finished";
+    case "wave_advanced": return "convoy_wave_advanced";
+    case "convoy_completed": return "convoy_completed";
+    default: return "convoy_started"; // fallback
+  }
 }

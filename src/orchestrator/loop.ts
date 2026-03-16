@@ -2,7 +2,10 @@
  * Deterministic orchestrator loop that drives convoy lifecycle.
  *
  * 90% deterministic — only invokes LLM (via onProblem callback) when problems occur.
+ * Falls back to deterministic resolveProblem() heuristic when no onProblem is set.
  */
+
+import { resolveProblem, type ProblemContext } from "./problem-heuristic.js";
 
 export interface OrchestratorConfig {
   groupId: string;
@@ -12,6 +15,7 @@ export interface OrchestratorConfig {
   pollIntervalMs?: number;
   llmFallback?: boolean;
   repoPath: string;
+  maxRetries?: number; // default 1
 }
 
 export interface OrchestratorCallbacks {
@@ -22,6 +26,8 @@ export interface OrchestratorCallbacks {
   log: (level: "info" | "warn" | "error", msg: string) => void;
   sleep: (ms: number) => Promise<void>;
   onProblem?: (problem: OrchestratorProblem) => Promise<OrchestratorDecision>;
+  onEvent?: (event: OrchestratorEvent) => void;
+  cleanupWorktrees?: () => Promise<void>;
 }
 
 export interface SpawnedAgent {
@@ -52,6 +58,22 @@ export interface OrchestratorResult {
   durationMs: number;
 }
 
+export type OrchestratorEvent =
+  | { type: "convoy_started"; groupId: string; totalWaves: number; integrationBranch: string }
+  | { type: "wave_started"; groupId: string; wave: number; ticketCount: number }
+  | { type: "agent_spawned"; groupId: string; ticketId: string; pid: number }
+  | { type: "agent_finished"; groupId: string; ticketId: string; pid: number; durationMs: number }
+  | { type: "agent_timeout"; groupId: string; ticketId: string; pid: number }
+  | { type: "wave_advanced"; groupId: string; wave: number; merged: string[]; skipped: string[] }
+  | { type: "problem_resolved"; groupId: string; problem: OrchestratorProblem; decision: OrchestratorDecision }
+  | { type: "convoy_completed"; groupId: string; result: OrchestratorResult };
+
+interface ActiveProcess {
+  pid: number;
+  stalePollCount: number;
+  startedAt: number;
+}
+
 const MAX_STALE_POLLS = 5;
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -80,9 +102,12 @@ export async function runOrchestrator(
   const startedAt = Date.now();
   const pollIntervalMs = config.pollIntervalMs ?? 10_000;
   const isAlive = callbacks.isProcessAlive ?? defaultIsProcessAlive;
+  const emit = callbacks.onEvent ?? (() => {});
   const mergedTickets: string[] = [];
   const skippedTickets: string[] = [];
   const failedTickets: string[] = [];
+  const conflictHistory: string[] = [];
+  const retryBudget = new Map<string, number>();
   let wavesCompleted = 0;
   let totalWaves = 0;
   let finalMerged = false;
@@ -96,6 +121,13 @@ export async function runOrchestrator(
     failedTickets,
     finalMerged,
     durationMs: Date.now() - startedAt,
+  });
+
+  const buildProblemContext = (ticketId: string, waveTicketCount: number): ProblemContext => ({
+    retriesRemaining: retryBudget.get(ticketId) ?? 0,
+    waveTicketCount,
+    completedTicketCount: mergedTickets.length,
+    conflictHistory,
   });
 
   // 1. REGISTER as facilitator
@@ -127,7 +159,9 @@ export async function runOrchestrator(
     agentId,
     sessionId,
   }));
-  callbacks.log("info", `Convoy launched: integration branch ${launchResult.integrationBranch ?? "unknown"}`);
+  const integrationBranch = String(launchResult.integrationBranch ?? "unknown");
+  callbacks.log("info", `Convoy launched: integration branch ${integrationBranch}`);
+  emit({ type: "convoy_started", groupId: config.groupId, totalWaves, integrationBranch });
 
   // 4. FOR each wave
   for (let wave = 0; wave < totalWaves; wave++) {
@@ -147,15 +181,25 @@ export async function runOrchestrator(
       continue;
     }
 
+    emit({ type: "wave_started", groupId: config.groupId, wave: wave + 1, ticketCount: waveTickets.length });
+
+    // Initialize retry budget for wave tickets
+    for (const ticketId of waveTickets) {
+      if (!retryBudget.has(ticketId)) {
+        retryBudget.set(ticketId, config.maxRetries ?? 1);
+      }
+    }
+
     // 4b. SPAWN agents (throttled)
-    const activeProcesses = new Map<string, { pid: number; stalePollCount: number }>();
+    const activeProcesses = new Map<string, ActiveProcess>();
+    const waveSkipped: string[] = [];
 
     for (const ticketId of waveTickets) {
       // Throttle: wait until a slot opens
       while (activeProcesses.size >= config.maxConcurrentAgents) {
         await callbacks.sleep(pollIntervalMs);
-        reapFinishedProcesses(activeProcesses, isAlive, callbacks);
-        await handleTimeouts(activeProcesses, config, callbacks, skippedTickets);
+        reapFinishedProcesses(activeProcesses, isAlive, callbacks, emit, config.groupId);
+        await handleTimeouts(activeProcesses, config, callbacks, skippedTickets, emit, config.groupId, buildProblemContext, waveTickets.length);
       }
 
       try {
@@ -172,16 +216,27 @@ export async function runOrchestrator(
         activeProcesses.set(ticketId, {
           pid: spawned.pid,
           stalePollCount: 0,
+          startedAt: Date.now(),
         });
         callbacks.log("info", `Spawned agent for ${ticketId} (pid=${spawned.pid})`);
+        emit({ type: "agent_spawned", groupId: config.groupId, ticketId, pid: spawned.pid });
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
-        const decision = await handleProblem(callbacks, { kind: "spawn_failure", ticketId, error });
+        const problem: OrchestratorProblem = { kind: "spawn_failure", ticketId, error };
+        const ctx = buildProblemContext(ticketId, waveTickets.length);
+        const decision = await handleProblem(callbacks, problem, ctx);
+        emit({ type: "problem_resolved", groupId: config.groupId, problem, decision });
+
         if (decision.action === "abort") {
           callbacks.log("error", "Aborting orchestration due to spawn failure");
+          emit({ type: "convoy_completed", groupId: config.groupId, result: buildResult() });
           return buildResult();
         }
+        if (decision.action === "retry") {
+          decrementRetryBudget(retryBudget, ticketId);
+        }
         skippedTickets.push(ticketId);
+        waveSkipped.push(ticketId);
         callbacks.log("warn", `Skipped ${ticketId} (spawn failure: ${error})`);
       }
     }
@@ -189,8 +244,8 @@ export async function runOrchestrator(
     // 4c. POLL until wave complete — processes that exit are reaped as done
     while (activeProcesses.size > 0) {
       await callbacks.sleep(pollIntervalMs);
-      reapFinishedProcesses(activeProcesses, isAlive, callbacks);
-      await handleTimeouts(activeProcesses, config, callbacks, skippedTickets);
+      reapFinishedProcesses(activeProcesses, isAlive, callbacks, emit, config.groupId);
+      await handleTimeouts(activeProcesses, config, callbacks, skippedTickets, emit, config.groupId, buildProblemContext, waveTickets.length);
     }
 
     // 4d. ADVANCE wave
@@ -206,33 +261,53 @@ export async function runOrchestrator(
     // Handle conflicts from advance
     const conflicted = asStringArray(advanceResult.conflictedTickets);
     for (const ticketId of conflicted) {
-      const decision = await handleProblem(callbacks, {
+      const problem: OrchestratorProblem = {
         kind: "conflict",
         ticketId,
         conflicts: asStringArray(advanceResult.conflictDetails),
-      });
-      if (decision.action === "abort") {
+      };
+      const ctx = buildProblemContext(ticketId, waveTickets.length);
+      const decision = await handleProblem(callbacks, problem, ctx);
+      emit({ type: "problem_resolved", groupId: config.groupId, problem, decision });
+
+      if (decision.action === "retry") {
+        // Retry means: skip this wave, but mark for potential re-attempt
+        decrementRetryBudget(retryBudget, ticketId);
+        conflictHistory.push(ticketId);
+        skippedTickets.push(ticketId);
+        waveSkipped.push(ticketId);
+        callbacks.log("warn", `Skipped ${ticketId} (conflict, may retry in future wave)`);
+      } else if (decision.action === "abort") {
         callbacks.log("error", "Aborting orchestration due to conflict");
+        emit({ type: "convoy_completed", groupId: config.groupId, result: buildResult() });
         return buildResult();
+      } else {
+        skippedTickets.push(ticketId);
+        waveSkipped.push(ticketId);
+        callbacks.log("warn", `Skipped ${ticketId} (conflict)`);
       }
-      skippedTickets.push(ticketId);
-      callbacks.log("warn", `Skipped ${ticketId} (conflict)`);
     }
 
     // Handle test failures
     if (advanceResult.testFailed) {
       const culprit = advanceResult.bisectCulprit ? String(advanceResult.bisectCulprit) : null;
-      const decision = await handleProblem(callbacks, {
+      const problem: OrchestratorProblem = {
         kind: "test_failure",
         ticketId: culprit ?? "unknown",
         culprit,
-      });
+      };
+      const ctx = buildProblemContext(culprit ?? "unknown", waveTickets.length);
+      const decision = await handleProblem(callbacks, problem, ctx);
+      emit({ type: "problem_resolved", groupId: config.groupId, problem, decision });
+
       if (decision.action === "abort") {
         callbacks.log("error", "Aborting orchestration due to test failure");
+        emit({ type: "convoy_completed", groupId: config.groupId, result: buildResult() });
         return buildResult();
       }
       if (culprit) {
         skippedTickets.push(culprit);
+        waveSkipped.push(culprit);
         callbacks.log("warn", `Skipped ${culprit} (test failure, bisected)`);
       }
     }
@@ -240,6 +315,8 @@ export async function runOrchestrator(
     // Track merged tickets from this wave
     const waveMerged = asStringArray(advanceResult.mergedTickets);
     mergedTickets.push(...waveMerged);
+
+    emit({ type: "wave_advanced", groupId: config.groupId, wave: wave + 1, merged: waveMerged, skipped: waveSkipped });
 
     wavesCompleted++;
 
@@ -257,18 +334,33 @@ export async function runOrchestrator(
     // non-fatal
   }
 
-  return buildResult();
+  // 6. CLEANUP worktrees
+  if (callbacks.cleanupWorktrees) {
+    try {
+      await callbacks.cleanupWorktrees();
+    } catch {
+      // non-fatal
+    }
+  }
+
+  const result = buildResult();
+  emit({ type: "convoy_completed", groupId: config.groupId, result });
+  return result;
 }
 
 /** Remove finished processes (those whose PID is no longer alive). */
 function reapFinishedProcesses(
-  activeProcesses: Map<string, { pid: number; stalePollCount: number }>,
+  activeProcesses: Map<string, ActiveProcess>,
   isAlive: (pid: number) => boolean,
   callbacks: OrchestratorCallbacks,
+  emit: (event: OrchestratorEvent) => void,
+  groupId: string,
 ): void {
   for (const [ticketId, proc] of activeProcesses) {
     if (!isAlive(proc.pid)) {
-      callbacks.log("info", `Agent for ${ticketId} finished (pid=${proc.pid})`);
+      const durationMs = Date.now() - proc.startedAt;
+      callbacks.log("info", `Agent for ${ticketId} finished (pid=${proc.pid}, ${durationMs}ms)`);
+      emit({ type: "agent_finished", groupId, ticketId, pid: proc.pid, durationMs });
       activeProcesses.delete(ticketId);
     } else {
       proc.stalePollCount++;
@@ -278,10 +370,14 @@ function reapFinishedProcesses(
 
 /** Handle timeout for agents that have been stale for too many poll cycles. */
 async function handleTimeouts(
-  activeProcesses: Map<string, { pid: number; stalePollCount: number }>,
+  activeProcesses: Map<string, ActiveProcess>,
   config: OrchestratorConfig,
   callbacks: OrchestratorCallbacks,
   skippedTickets: string[],
+  emit: (event: OrchestratorEvent) => void,
+  groupId: string,
+  buildCtx: (ticketId: string, waveTicketCount: number) => ProblemContext,
+  waveTicketCount: number,
 ): Promise<void> {
   for (const [ticketId, proc] of activeProcesses) {
     if (proc.stalePollCount >= MAX_STALE_POLLS) {
@@ -292,16 +388,18 @@ async function handleTimeouts(
         // best-effort kill
       }
 
-      const decision = await handleProblem(callbacks, {
+      emit({ type: "agent_timeout", groupId, ticketId, pid: proc.pid });
+
+      const problem: OrchestratorProblem = {
         kind: "timeout",
         ticketId,
         elapsedMs: proc.stalePollCount * (config.pollIntervalMs ?? 10_000),
-      });
-      if (decision.action === "abort") {
-        skippedTickets.push(ticketId);
-      } else {
-        skippedTickets.push(ticketId);
-      }
+      };
+      const ctx = buildCtx(ticketId, waveTicketCount);
+      const decision = await handleProblem(callbacks, problem, ctx);
+      emit({ type: "problem_resolved", groupId, problem, decision });
+
+      skippedTickets.push(ticketId);
       activeProcesses.delete(ticketId);
     }
   }
@@ -310,9 +408,18 @@ async function handleTimeouts(
 async function handleProblem(
   callbacks: OrchestratorCallbacks,
   problem: OrchestratorProblem,
+  context?: ProblemContext,
 ): Promise<OrchestratorDecision> {
   if (callbacks.onProblem) {
     return callbacks.onProblem(problem);
   }
+  if (context) {
+    return resolveProblem(problem, context);
+  }
   return { action: "skip" };
+}
+
+function decrementRetryBudget(budget: Map<string, number>, ticketId: string): void {
+  const remaining = budget.get(ticketId) ?? 0;
+  budget.set(ticketId, Math.max(0, remaining - 1));
 }

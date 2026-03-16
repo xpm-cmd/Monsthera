@@ -147,7 +147,7 @@ export interface KPIDeltas {
 // Simulation run result (one line in JSONL)
 // ---------------------------------------------------------------------------
 
-export type SimulationPhase = "A" | "B" | "C" | "D";
+export type SimulationPhase = "A" | "B" | "C" | "D" | "E";
 
 export interface CorpusSources {
   backlog: number;
@@ -170,6 +170,15 @@ export interface SimulationResult {
   cost: CostKPIs;
   compositeScore: number;
   deltas: KPIDeltas | null;
+  orchestrator?: OrchestratorKPIs;
+}
+
+export interface OrchestratorKPIs {
+  spawnSuccessRate: number;       // spawned / attempted
+  waveCompletionRate: number;     // waves completed / total waves
+  conflictRecoveryRate: number;   // conflicts retried+merged / total conflicts
+  durationMs: number;
+  eventsCollected: number;
 }
 
 // ---------------------------------------------------------------------------

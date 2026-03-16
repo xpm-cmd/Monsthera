@@ -34,8 +34,8 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
         .describe("Max tickets to process in real work phase (default 50)"),
       skipRealWork: z.boolean().default(true)
         .describe("Skip Phase C real work execution (default true)"),
-      phase: z.enum(["all", "A", "B", "C", "D"]).default("all")
-        .describe("Which phase to run: all, A (generate), B (sandbox), C (real work), D (persist)"),
+      phase: z.enum(["all", "A", "B", "C", "D", "E"]).default("all")
+        .describe("Which phase to run: all, A (generate), B (sandbox), C (real work), D (persist), E (orchestrator)"),
       outputPath: z.string().default(".agora/simulation-results.jsonl")
         .describe("JSONL output path relative to repo root"),
       ticketTimeoutMs: z.number().int().min(10_000).max(600_000).default(120_000)

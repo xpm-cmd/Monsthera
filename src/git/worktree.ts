@@ -147,6 +147,39 @@ export async function listAgentWorktrees(mainRepoRoot: string): Promise<Worktree
 }
 
 /**
+ * Remove worktrees whose sessionId is NOT in the active set.
+ * Reuses listAgentWorktrees() to find candidates and removeAgentWorktree() to clean up.
+ */
+export async function cleanupOrphanedWorktrees(
+  mainRepoRoot: string,
+  activeSessions: Set<string>,
+  opts?: { dryRun?: boolean },
+): Promise<{ removed: string[]; errors: Array<{ sessionId: string; error: string }> }> {
+  const worktrees = await listAgentWorktrees(mainRepoRoot);
+  const removed: string[] = [];
+  const errors: Array<{ sessionId: string; error: string }> = [];
+
+  for (const wt of worktrees) {
+    const sessionId = wt.branch.replace("agora/agent/", "");
+    if (activeSessions.has(sessionId)) continue;
+
+    if (opts?.dryRun) {
+      removed.push(sessionId);
+      continue;
+    }
+
+    try {
+      await removeAgentWorktree(mainRepoRoot, sessionId);
+      removed.push(sessionId);
+    } catch (err) {
+      errors.push({ sessionId, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return { removed, errors };
+}
+
+/**
  * Run a test command in the agent's worktree.
  * Returns pass/fail with output summary.
  */

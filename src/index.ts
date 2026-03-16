@@ -21,6 +21,7 @@ import { cmdKnowledge } from "./cli/knowledge.js";
 import { cmdLoop } from "./cli/loops.js";
 import { cmdTool } from "./cli/tools.js";
 import { cmdOrchestrate } from "./cli/orchestrator.js";
+import { cmdWorktree } from "./cli/worktree.js";
 import {
   CROSS_INSTANCE_SEARCH_PATH,
   CrossInstanceSearchRequestSchema,
@@ -91,6 +92,9 @@ async function main() {
       break;
     case "orchestrate":
       await cmdOrchestrate(config, insight, args.slice(1));
+      break;
+    case "worktree":
+      await cmdWorktree(config, insight, args.slice(1));
       break;
     case "serve":
     case undefined:

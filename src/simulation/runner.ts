@@ -1,10 +1,11 @@
 /**
- * Simulation runner — 4-phase orchestration.
+ * Simulation runner — 5-phase orchestration.
  *
  * Phase A: Generate corpus (ticket descriptors from 3 sources)
  * Phase B: Measure infrastructure (sandbox DB, FTS5 retrieval quality)
  * Phase C: Execute real work (dev loop + council, sequential)
  * Phase D: Persist results + compare with previous runs
+ * Phase E: Orchestrator integration test (convoy lifecycle with simulated agents)
  *
  * Each phase is independently runnable via the `phase` parameter.
  */
@@ -33,6 +34,7 @@ import type {
   SimulationPhase,
   SimulationResult,
   TicketDescriptor,
+  OrchestratorKPIs,
 } from "./types.js";
 import type { WorkflowRuntime, WorkflowSpec } from "../workflows/types.js";
 import {
@@ -48,6 +50,11 @@ import {
   buildIndexOptions,
   getIndexedCommit,
 } from "../indexing/indexer.js";
+import {
+  runOrchestrator,
+  type OrchestratorCallbacks,
+  type OrchestratorEvent,
+} from "../orchestrator/loop.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -62,7 +69,7 @@ export interface RunnerConfig {
   repoId: number;
   repoPath: string;
 
-  /** Which phases to run. "all" = A+B+C+D. */
+  /** Which phases to run. "all" = A+B+C+D+E. */
   phase: "all" | SimulationPhase;
 
   /** Max tickets to generate in Phase A. */
@@ -257,6 +264,23 @@ export async function runSimulation(config: RunnerConfig): Promise<RunnerResult>
       phase: "D",
       message: `Results persisted. Composite=${scorecard.compositeScore.toFixed(3)}${deltaStr}`,
     });
+  }
+
+  // ─── Phase E: Orchestrator Integration ─────────────────
+  if (shouldRun("E") && corpus) {
+    emit({ phase: "E", message: "Orchestrator integration test..." });
+    phasesRun.push("E");
+
+    const orchestratorKPIs = await runPhaseE(config, corpus, emit);
+
+    emit({
+      phase: "E",
+      message: `Orchestrator: spawn=${(orchestratorKPIs.spawnSuccessRate * 100).toFixed(0)}%, waves=${(orchestratorKPIs.waveCompletionRate * 100).toFixed(0)}%, events=${orchestratorKPIs.eventsCollected}, duration=${orchestratorKPIs.durationMs}ms`,
+    });
+
+    if (simResult) {
+      simResult.orchestrator = orchestratorKPIs;
+    }
   }
 
   const summary = buildSummary(runId, phasesRun, corpus, simResult);
@@ -598,7 +622,7 @@ async function runTicketPipeline(
     + (descriptor.acceptanceCriteria?.length ?? 0);
 
   const agentId = wf.runtime.actor.agentId;
-  const sessionId = wf.runtime.actor.sessionId;
+  const _sessionId = wf.runtime.actor.sessionId;
 
   // Helper: run a workflow with timeout
   async function runWithTimeout(spec: WorkflowSpec, params: Record<string, unknown>, label: string) {
@@ -1362,8 +1386,8 @@ async function applyFixInWorktree(
   emit: (e: OptimizationEvent) => void,
   iteration: number,
 ): Promise<boolean> {
-  const { readFile, mkdir } = await import("node:fs/promises");
-  const { dirname } = await import("node:path");
+  const { readFile: _readFile, mkdir: _mkdir } = await import("node:fs/promises");
+  const { dirname: _dirname } = await import("node:path");
 
   const signal = descriptor.tags.find((t): t is FixSignal =>
     ["missing_tests", "deep_nesting", "high_complexity", "large_file", "high_coupling"].includes(t),
@@ -1644,6 +1668,102 @@ async function fixDeepNesting(
 // ---------------------------------------------------------------------------
 // Re-index after merging changes
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Phase E: Orchestrator integration test
+// ---------------------------------------------------------------------------
+
+async function runPhaseE(
+  config: RunnerConfig,
+  corpus: SimulationCorpus,
+  emit: (e: ProgressEvent) => void,
+): Promise<OrchestratorKPIs> {
+  const groupId = `WG-sim-${Date.now().toString(36).slice(-6)}`;
+  const ticketBatch = corpus.descriptors.slice(0, Math.min(6, corpus.descriptors.length));
+
+  // Simulated tool responses — deterministic, no real DB needed
+  let waveCallCount = 0;
+  const events: OrchestratorEvent[] = [];
+  const spawnAttempts = { total: 0, success: 0 };
+  const simulatedProcesses = new Map<number, { alive: boolean; finishAt: number }>();
+
+  // Split tickets into 2 waves for simulation
+  const mid = Math.ceil(ticketBatch.length / 2);
+  const wave0Tickets = ticketBatch.slice(0, mid).map((d) => d.title.replace(/\s+/g, "-").slice(0, 20));
+  const wave1Tickets = ticketBatch.slice(mid).map((d) => d.title.replace(/\s+/g, "-").slice(0, 20));
+  const callbacks: OrchestratorCallbacks = {
+    callTool: async (name, params) => {
+      if (name === "register_agent") return { agentId: "sim-orch", sessionId: "sim-session" };
+      if (name === "compute_waves") return { waveCount: wave1Tickets.length > 0 ? 2 : 1 };
+      if (name === "launch_convoy") return { integrationBranch: `agora/convoy/${groupId}` };
+      if (name === "get_wave_status") {
+        const tickets = waveCallCount === 0 ? wave0Tickets : wave1Tickets;
+        waveCallCount++;
+        return { dispatchedTickets: tickets, currentWave: waveCallCount - 1 };
+      }
+      if (name === "spawn_agent") {
+        return { worktreePath: `/tmp/sim-wt/${params.ticketId}`, ticketId: params.ticketId };
+      }
+      if (name === "advance_wave") {
+        const waveIdx = waveCallCount - 1;
+        const tickets = waveIdx <= 1 ? wave0Tickets : wave1Tickets;
+        return {
+          mergedTickets: tickets,
+          conflictedTickets: [],
+          allWavesComplete: waveIdx >= (wave1Tickets.length > 0 ? 2 : 1),
+        };
+      }
+      if (name === "end_session") return { ended: true };
+      return {};
+    },
+    spawnProcess: async (_worktreePath, ticketId) => {
+      spawnAttempts.total++;
+      spawnAttempts.success++;
+      const pid = 50000 + spawnAttempts.total;
+      simulatedProcesses.set(pid, { alive: true, finishAt: Date.now() + 10 });
+      return { pid, ticketId, sessionId: `sim-e-${ticketId}` };
+    },
+    killProcess: async () => { /* no-op */ },
+    isProcessAlive: (pid) => {
+      const proc = simulatedProcesses.get(pid);
+      if (!proc) return false;
+      if (Date.now() >= proc.finishAt) {
+        proc.alive = false;
+        return false;
+      }
+      return proc.alive;
+    },
+    log: () => {},
+    sleep: async (ms) => { await new Promise((r) => setTimeout(r, Math.min(ms, 5))); },
+    onEvent: (event) => { events.push(event); },
+  };
+
+  const phaseStart = Date.now();
+  const result = await runOrchestrator(
+    {
+      groupId,
+      maxConcurrentAgents: 2,
+      pollIntervalMs: 5,
+      repoPath: config.repoPath,
+    },
+    callbacks,
+  );
+
+  const kpis: OrchestratorKPIs = {
+    spawnSuccessRate: spawnAttempts.total > 0 ? spawnAttempts.success / spawnAttempts.total : 1,
+    waveCompletionRate: result.totalWaves > 0 ? result.wavesCompleted / result.totalWaves : 1,
+    conflictRecoveryRate: 1, // No conflicts injected in happy path
+    durationMs: Date.now() - phaseStart,
+    eventsCollected: events.length,
+  };
+
+  emit({
+    phase: "E",
+    message: `Orchestrator ran ${result.wavesCompleted}/${result.totalWaves} waves, ${result.mergedTickets.length} merged, ${events.length} events`,
+  });
+
+  return kpis;
+}
 
 async function reindexAfterChange(config: OptimizationConfig): Promise<void> {
   try {

@@ -403,6 +403,10 @@ footer a{color:var(--accent);text-decoration:none}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 0 0-2 2v3a2 2 0 1 1 0 4v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3a2 2 0 1 1 0-4V7a2 2 0 0 0-2-2H5z"/></svg>
         TICKETS <span class="nav-count" id="nav-count-tickets">0</span>
       </div>
+      <div class="nav-item" data-route="convoys" onclick="navigate('convoys')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        CONVOYS <span class="nav-count" id="nav-count-convoys">0</span>
+      </div>
       <div class="nav-item" data-route="knowledge" onclick="navigate('knowledge')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.5V20h6v-2.5c2.9-1.2 5-4.1 5-7.5a8 8 0 0 0-8-8z"/><path d="M9 22h6"/></svg>
         KNOWLEDGE <span class="nav-count" id="nav-count-knowledge">0</span>
@@ -907,6 +911,7 @@ function renderRoute(){
     case 'jobboard': renderJobBoardScreen(host); break;
     case 'activity': renderActivityScreen(host); break;
     case 'settings': renderSettingsScreen(host); break;
+    case 'convoys': renderConvoysScreen(host); break;
     default: renderMissionControl(host);
   }
 }
@@ -3520,6 +3525,101 @@ async function refreshJobBoard(){
   }
 }
 
+/* ── Screen: Convoys ─────────────────────────── */
+function renderConvoysScreen(host){
+  host.textContent='';
+  var header=document.createElement('div');
+  header.className='main-header';
+  header.innerHTML='<div><div class="main-title">Convoys</div><div class="main-subtitle">Wave-based orchestration progress</div></div>'
+    +'<div class="header-actions"><button class="btn" onclick="refreshConvoys()">Refresh</button></div>';
+  host.appendChild(header);
+  var container=document.createElement('div');
+  container.id='convoy-container';
+  host.appendChild(container);
+  refreshConvoys();
+}
+
+async function refreshConvoys(){
+  try{
+    var data=await api('convoy');
+    if(!data) return;
+    var container=document.getElementById('convoy-container');
+    if(!container) return;
+    var convoys=data.convoys||[];
+
+    /* nav count */
+    var countEl=document.getElementById('nav-count-convoys');
+    if(countEl) countEl.textContent=String(convoys.length);
+
+    if(!convoys.length){
+      container.innerHTML='<div class="empty">No convoys launched yet. Use the orchestrator to start a convoy.</div>';
+      return;
+    }
+
+    /* All values below are escaped via esc() — safe for innerHTML (same pattern as renderJobBoardScreen) */
+    var html='';
+    convoys.forEach(function(c){
+      var statusColor=c.status==='completed'?'var(--green)':c.status==='active'?'var(--blue)':'var(--text3)';
+      var wavePercent=c.totalWaves>0?Math.round((c.currentWave/c.totalWaves)*100):0;
+      var convoyId='convoy-detail-'+esc(c.groupId);
+
+      html+='<div class="card" style="margin-bottom:1rem;cursor:pointer" onclick="toggleConvoyDetail(\\x27'+esc(c.groupId)+'\\x27)">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">'
+        +'<div style="display:flex;align-items:center;gap:.75rem">'
+        +'<span class="mono" style="font-weight:600;font-size:.9rem">'+esc(c.groupId)+'</span>'
+        +'<span style="font-size:.65rem;padding:2px 8px;border-radius:10px;background:'+statusColor+';color:#000;font-weight:600;text-transform:uppercase">'+esc(c.status)+'</span>'
+        +'</div>'
+        +'<span style="font-size:.7rem;color:var(--text2)">'+esc(c.startedAt||'')+'</span>'
+        +'</div>';
+
+      /* Wave progress bar */
+      html+='<div style="margin-bottom:.5rem">'
+        +'<div style="display:flex;justify-content:space-between;font-size:.7rem;color:var(--text2);margin-bottom:.25rem">'
+        +'<span>Wave '+c.currentWave+' / '+c.totalWaves+'</span>'
+        +'<span>'+wavePercent+'%</span></div>'
+        +'<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">'
+        +'<div style="height:100%;width:'+wavePercent+'%;background:var(--accent);border-radius:3px;transition:width .3s"></div>'
+        +'</div></div>';
+
+      if(c.integrationBranch){
+        html+='<div style="font-size:.65rem;color:var(--text3);margin-bottom:.5rem">Branch: '+esc(c.integrationBranch)+'</div>';
+      }
+
+      /* Expandable wave detail */
+      html+='<div id="'+convoyId+'" style="display:none;margin-top:.75rem;border-top:1px solid var(--border);padding-top:.75rem">';
+      (c.waves||[]).forEach(function(w){
+        var waveStatusColor=w.status==='completed'?'var(--green)':w.status==='active'?'var(--blue)':'var(--text3)';
+        html+='<div style="margin-bottom:.65rem">'
+          +'<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem">'
+          +'<span style="width:8px;height:8px;border-radius:50%;background:'+waveStatusColor+'"></span>'
+          +'<span style="font-size:.75rem;font-weight:600">Wave '+(w.index+1)+'</span>'
+          +'<span style="font-size:.65rem;color:var(--text3);text-transform:uppercase">'+esc(w.status)+'</span>'
+          +'</div>';
+
+        /* Ticket grid */
+        html+='<div style="display:flex;flex-wrap:wrap;gap:.35rem;padding-left:1.1rem">';
+        (w.tickets||[]).forEach(function(t){
+          var tc=t.status==='merged'?'var(--green)':t.status==='in_progress'?'var(--blue)':t.status==='dispatched'?'var(--text3)':t.status==='conflicted'?'var(--red)':t.status==='skipped'?'var(--orange)':'var(--text3)';
+          html+='<div style="font-size:.6rem;padding:3px 8px;border-radius:4px;background:rgba(255,255,255,.05);border:1px solid '+tc+';color:'+tc+'" title="'+esc(t.status+(t.agentId?' ('+t.agentId+')':''))+'">'
+            +esc(t.ticketId.length>16?t.ticketId.slice(0,16)+'\\u2026':t.ticketId)
+            +'</div>';
+        });
+        html+='</div></div>';
+      });
+      html+='</div></div>';
+    });
+    container.innerHTML=html;
+  }catch(e){
+    var c2=document.getElementById('convoy-container');
+    if(c2) c2.innerHTML='<div class="empty">Failed to load convoy data.</div>';
+  }
+}
+
+function toggleConvoyDetail(groupId){
+  var el=document.getElementById('convoy-detail-'+groupId);
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
+}
+
 /* ── SSE ─────────────────────────────────────── */
 function connectSSE(){
   var pulse=document.getElementById('pulse');
@@ -3553,6 +3653,17 @@ function connectSSE(){
   es.addEventListener('job_slot_released',sseHandler('job_slot_released'));
   es.addEventListener('job_slot_abandoned',sseHandler('job_slot_abandoned'));
   es.addEventListener('job_progress_update',sseHandler('job_progress_update'));
+  var convoyHandler=function(eventType){
+    return function(){
+      addLiveFeedEvent(eventType,'');
+      refresh();
+      if(currentRoute==='convoys') refreshConvoys();
+    };
+  };
+  es.addEventListener('convoy_started',convoyHandler('convoy_started'));
+  es.addEventListener('convoy_wave_started',convoyHandler('convoy_wave_started'));
+  es.addEventListener('convoy_wave_advanced',convoyHandler('convoy_wave_advanced'));
+  es.addEventListener('convoy_completed',convoyHandler('convoy_completed'));
   es.onerror=function(){
     if(pulse){pulse.classList.add('disconnected');pulse.title='SSE disconnected';}
     es.close();setTimeout(connectSSE,5000);

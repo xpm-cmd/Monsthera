@@ -31,7 +31,13 @@ export interface DashboardEvent {
     | "job_slot_completed"
     | "job_slot_released"
     | "job_slot_abandoned"
-    | "job_progress_update";
+    | "job_progress_update"
+    | "convoy_started"
+    | "convoy_wave_started"
+    | "convoy_agent_spawned"
+    | "convoy_agent_finished"
+    | "convoy_wave_advanced"
+    | "convoy_completed";
   data: Record<string, unknown>;
 }
 
