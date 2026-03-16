@@ -17,3 +17,14 @@ tmp/
 .vscode/
 .idea/
 .mcp.json
+
+# Tool / AI config
+.claude/
+.gemini/
+GEMINI.md
+AGENT-MEMORY-CONTEXT.md
+
+# Misc
+*.bak
+*.png
+package-lock.json
