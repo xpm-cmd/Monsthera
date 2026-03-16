@@ -969,6 +969,38 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
     },
   );
 
+  // ─── list_verdicts ─────────────────────────────────────────
+  server.tool(
+    "list_verdicts",
+    "List an agent's submitted council verdicts (active only, across tickets)",
+    {
+      agentId: AgentIdSchema.describe("Your agent ID"),
+      sessionId: SessionIdSchema.describe("Active session ID"),
+      targetAgentId: AgentIdSchema.optional().describe("Agent to query (defaults to caller)"),
+      ticketId: TicketIdSchema.optional().describe("Filter by ticket ID"),
+      specialization: z.string().optional().describe("Filter by specialization"),
+      limit: z.number().int().min(1).max(100).default(50),
+    },
+    async ({ agentId, sessionId, targetAgentId, ticketId, specialization, limit }) => {
+      const c = await getContext();
+      const result = resolveAgent(c, agentId, sessionId);
+      if (!result.ok) return errText(result.error);
+      const resolved = result.agent;
+
+      const access = checkToolAccess("list_tickets", resolved.role, resolved.trustTier);
+      if (!access.allowed) return errJson({ denied: true, reason: access.reason });
+
+      const queryAgentId = targetAgentId ?? resolved.agentId;
+      const verdicts = queries.listVerdictsByAgent(c.db, c.repoId, queryAgentId, {
+        ticketId,
+        specialization,
+        limit,
+      });
+
+      return okJson({ agentId: queryAgentId, count: verdicts.length, verdicts });
+    },
+  );
+
   // ─── prune_stale_relations ──────────────────────────────────
   server.tool(
     "prune_stale_relations",

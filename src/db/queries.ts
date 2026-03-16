@@ -1236,6 +1236,60 @@ export function getVerdictHistory(db: DB, ticketInternalId: number, specializati
   }
 }
 
+export function listVerdictsByAgent(
+  db: DB,
+  repoId: number,
+  agentId: string,
+  opts?: { ticketId?: string; specialization?: string; limit?: number },
+): Array<{
+  ticketId: string;
+  specialization: string;
+  verdict: string;
+  reasoning: string;
+  createdAt: string;
+}> {
+  try {
+    const conditions = [
+      eq(tables.reviewVerdicts.agentId, agentId),
+      isNull(tables.reviewVerdicts.supersededBy),
+      eq(tables.tickets.repoId, repoId),
+    ];
+    if (opts?.ticketId) {
+      conditions.push(eq(tables.tickets.ticketId, opts.ticketId));
+    }
+    if (opts?.specialization) {
+      conditions.push(eq(tables.reviewVerdicts.specialization, opts.specialization));
+    }
+    const limit = Math.min(opts?.limit ?? 50, 100);
+
+    const rows = db
+      .select({
+        ticketId: tables.tickets.ticketId,
+        specialization: tables.reviewVerdicts.specialization,
+        verdict: tables.reviewVerdicts.verdict,
+        reasoning: tables.reviewVerdicts.reasoning,
+        createdAt: tables.reviewVerdicts.createdAt,
+      })
+      .from(tables.reviewVerdicts)
+      .innerJoin(tables.tickets, eq(tables.reviewVerdicts.ticketId, tables.tickets.id))
+      .where(and(...conditions))
+      .orderBy(desc(tables.reviewVerdicts.createdAt), desc(tables.reviewVerdicts.id))
+      .limit(limit)
+      .all();
+
+    return rows.map((r) => ({
+      ticketId: r.ticketId,
+      specialization: r.specialization,
+      verdict: r.verdict,
+      reasoning: r.reasoning ? (r.reasoning.length > 200 ? r.reasoning.slice(0, 200) + "…" : r.reasoning) : "",
+      createdAt: r.createdAt,
+    }));
+  } catch (error) {
+    if (isMissingTableError(error, "review_verdicts")) return [];
+    throw error;
+  }
+}
+
 // --- Patch ↔ Ticket link ---
 
 export function linkPatchToTicket(db: DB, patchInternalId: number, ticketInternalId: number) {

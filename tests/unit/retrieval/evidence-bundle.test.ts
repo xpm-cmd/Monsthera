@@ -1,9 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { buildEvidenceBundle } from "../../../src/retrieval/evidence-bundle.js";
 import type { SearchResult } from "../../../src/search/interface.js";
+
+vi.mock("../../../src/git/operations.js", () => ({
+  getFileContent: vi.fn().mockResolvedValue("const x = 1;\n"),
+}));
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -130,5 +134,51 @@ describe("buildEvidenceBundle", () => {
     });
 
     expect(bundle.candidates).toHaveLength(0);
+  });
+
+  it("limits expanded files when maxFiles is set", async () => {
+    const searchResults: SearchResult[] = [
+      { path: "src/index.ts", score: 0.9 },
+      { path: "src/utils.ts", score: 0.7 },
+    ];
+
+    const bundle = await buildEvidenceBundle({
+      query: "test",
+      repoId: 1,
+      repoPath: "/repo",
+      commit: "abc123",
+      trustTier: "A",
+      searchBackend: "fts5",
+      searchResults,
+      db,
+      expand: true,
+      maxFiles: 1,
+    });
+
+    expect(bundle.candidates).toHaveLength(2);
+    expect(bundle.expanded).toHaveLength(1);
+    expect(bundle.expanded[0]!.path).toBe("src/index.ts");
+  });
+
+  it("expands all candidates when maxFiles is omitted", async () => {
+    const searchResults: SearchResult[] = [
+      { path: "src/index.ts", score: 0.9 },
+      { path: "src/utils.ts", score: 0.7 },
+    ];
+
+    const bundle = await buildEvidenceBundle({
+      query: "test",
+      repoId: 1,
+      repoPath: "/repo",
+      commit: "abc123",
+      trustTier: "A",
+      searchBackend: "fts5",
+      searchResults,
+      db,
+      expand: true,
+    });
+
+    expect(bundle.candidates).toHaveLength(2);
+    expect(bundle.expanded).toHaveLength(2);
   });
 });

@@ -380,6 +380,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           query: "string (1-1000 chars, required)",
           scope: "string (optional path prefix filter)",
           expand: "boolean (default false)",
+          maxFiles: "number 1-20 (optional, limits expanded files when expand=true)",
           verbosity: "enum: full|compact|minimal (default full)",
         },
         get_change_pack: {
@@ -695,9 +696,10 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       query: z.string().trim().min(1).max(1000).describe("Search query"),
       scope: z.string().optional().describe("Path scope filter"),
       expand: z.boolean().default(false).describe("Include code spans"),
+      maxFiles: z.number().int().min(1).max(20).optional().describe("Max files to expand when expand=true"),
       verbosity: ReadToolVerbositySchema.default("full").describe("Response verbosity"),
     },
-    async ({ query, scope, expand, verbosity }) => {
+    async ({ query, scope, expand, maxFiles, verbosity }) => {
       const c = await getContext();
       const head = await getHead({ cwd: c.repoPath });
       const indexedCommit = getIndexedCommit(c.db, c.repoId);
@@ -759,6 +761,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         searchResults,
         db: c.db,
         expand: verbosity === "full" ? expand : false,
+        maxFiles,
         secretPatterns: compileSecretPatterns(c.config.secretPatterns),
       });
 

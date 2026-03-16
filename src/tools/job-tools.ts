@@ -337,14 +337,14 @@ export function registerJobTools(server: McpServer, getContext: GetContext): voi
           };
         }
         updates.status = newStatus;
-        if (newStatus === "active") updates.activeSince = now;
+        if (newStatus === "active" && currentStatus !== "active") updates.activeSince = now;
         if (newStatus === "completed") updates.completedAt = now;
       }
 
       queries.updateJobSlot(c.db, targetSlotId, updates as Partial<typeof import("../db/schema.js").jobSlots.$inferInsert>);
 
       const eventType = newStatus === "completed" ? "job_slot_completed"
-        : newStatus === "active" ? "job_slot_active"
+        : (newStatus === "active" && slot.status !== "active") ? "job_slot_active"
         : "job_progress_update";
 
       recordDashboardEvent(c.db, c.repoId, {

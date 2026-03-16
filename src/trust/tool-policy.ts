@@ -43,6 +43,7 @@ export const TOOL_ACCESS_POLICY: Record<CapabilityToolName, ToolAccessPolicyEntr
   assign_council: { mode: "role" },
   submit_verdict: { mode: "role" },
   check_consensus: { mode: "role" },
+  list_verdicts: { mode: "role" },
   link_tickets: { mode: "role" },
   prune_stale_relations: { mode: "role" },
   unlink_tickets: { mode: "role" },

@@ -6,6 +6,7 @@ export const GetCodePackInput = z.object({
   fields: z.array(z.string()).optional(),
   format: z.enum(["json", "ndjson"]).default("json"),
   expand: z.boolean().default(false), // request Stage B expansion
+  maxFiles: z.number().int().min(1).max(20).optional().describe("Max files to expand when expand=true (default: all up to internal limit)"),
 });
 export type GetCodePackInput = z.infer<typeof GetCodePackInput>;
 

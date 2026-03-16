@@ -1988,4 +1988,154 @@ describe("ticket tools", () => {
 
     expect(queries.getKnowledgeByKey(db, `solution:ticket:${skippedTicketId.toLowerCase()}`)).toBeUndefined();
   });
+
+  // ─── list_verdicts ──────────────────────────────────────────
+
+  it("list_verdicts returns submitted verdicts for an agent", async () => {
+    const created = await createTicket();
+    const ticketId = JSON.parse(created.content[0].text).ticketId as string;
+
+    await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("submit_verdict")({
+      ticketId,
+      specialization: "security",
+      verdict: "fail",
+      reasoning: buildVerdictReasoning("security", "fail"),
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const result = await handler("list_verdicts")({
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    const data = JSON.parse(result.content[0].text);
+    expect(data.agentId).toBe("agent-review");
+    expect(data.count).toBe(2);
+    expect(data.verdicts).toHaveLength(2);
+    expect(data.verdicts[0]).toHaveProperty("ticketId", ticketId);
+    expect(data.verdicts[0]).toHaveProperty("specialization");
+    expect(data.verdicts[0]).toHaveProperty("verdict");
+    expect(data.verdicts[0]).toHaveProperty("reasoning");
+    expect(data.verdicts[0]).toHaveProperty("createdAt");
+  });
+
+  it("list_verdicts filters by ticketId", async () => {
+    const t1 = await createTicket({ title: "Ticket 1" });
+    const t2 = await createTicket({ title: "Ticket 2" });
+    const ticketId1 = JSON.parse(t1.content[0].text).ticketId as string;
+    const ticketId2 = JSON.parse(t2.content[0].text).ticketId as string;
+
+    await handler("submit_verdict")({
+      ticketId: ticketId1,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("submit_verdict")({
+      ticketId: ticketId2,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const result = await handler("list_verdicts")({
+      agentId: "agent-review",
+      sessionId: "session-review",
+      ticketId: ticketId1,
+    });
+    const data = JSON.parse(result.content[0].text);
+    expect(data.count).toBe(1);
+    expect(data.verdicts[0].ticketId).toBe(ticketId1);
+  });
+
+  it("list_verdicts filters by specialization", async () => {
+    const created = await createTicket();
+    const ticketId = JSON.parse(created.content[0].text).ticketId as string;
+
+    await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    await handler("submit_verdict")({
+      ticketId,
+      specialization: "security",
+      verdict: "fail",
+      reasoning: buildVerdictReasoning("security", "fail"),
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const result = await handler("list_verdicts")({
+      agentId: "agent-review",
+      sessionId: "session-review",
+      specialization: "security",
+    });
+    const data = JSON.parse(result.content[0].text);
+    expect(data.count).toBe(1);
+    expect(data.verdicts[0].specialization).toBe("security");
+    expect(data.verdicts[0].verdict).toBe("fail");
+  });
+
+  it("list_verdicts supports targetAgentId to query another agent", async () => {
+    const created = await createTicket();
+    const ticketId = JSON.parse(created.content[0].text).ticketId as string;
+
+    // agent-admin submits a verdict
+    await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+
+    // agent-review queries agent-admin's verdicts
+    const result = await handler("list_verdicts")({
+      agentId: "agent-review",
+      sessionId: "session-review",
+      targetAgentId: "agent-admin",
+    });
+    const data = JSON.parse(result.content[0].text);
+    expect(data.agentId).toBe("agent-admin");
+    expect(data.count).toBe(1);
+  });
+
+  it("list_verdicts truncates long reasoning to 200 chars", async () => {
+    const created = await createTicket();
+    const ticketId = JSON.parse(created.content[0].text).ticketId as string;
+
+    const longReasoning = "architect pass review references src/dashboard/html.ts and explains the concrete architect concerns for this ticket in code terms. " + "x".repeat(200);
+    await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: longReasoning,
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    const result = await handler("list_verdicts")({
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+    const data = JSON.parse(result.content[0].text);
+    expect(data.verdicts[0].reasoning.length).toBeLessThanOrEqual(201); // 200 + ellipsis char
+  });
 });

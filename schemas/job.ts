@@ -11,7 +11,7 @@ export const JobSlotStatusSchema = z.enum(JOB_SLOT_STATUSES);
 export const JOB_SLOT_TRANSITIONS: Record<JobSlotStatus, readonly JobSlotStatus[]> = {
   open:      ["claimed"],
   claimed:   ["active", "abandoned", "open"],
-  active:    ["completed", "abandoned", "open"],
+  active:    ["active", "completed", "abandoned", "open"],
   completed: [],
   abandoned: ["open"],
 };

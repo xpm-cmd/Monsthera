@@ -16,8 +16,8 @@ describe("JOB_SLOT_TRANSITIONS", () => {
     expect(JOB_SLOT_TRANSITIONS.claimed).toEqual(["active", "abandoned", "open"]);
   });
 
-  it("active can go to completed, abandoned, open", () => {
-    expect(JOB_SLOT_TRANSITIONS.active).toEqual(["completed", "abandoned", "open"]);
+  it("active can go to active (heartbeat), completed, abandoned, open", () => {
+    expect(JOB_SLOT_TRANSITIONS.active).toEqual(["active", "completed", "abandoned", "open"]);
   });
 
   it("completed is terminal (no transitions)", () => {

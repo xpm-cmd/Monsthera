@@ -18,6 +18,7 @@ export interface BundleBuildOptions {
   searchResults: SearchResult[];
   db: BetterSQLite3Database<typeof schema>;
   expand: boolean;
+  maxFiles?: number;
   secretPatterns?: SecretPattern[];
 }
 
@@ -60,7 +61,8 @@ export async function buildEvidenceBundle(opts: BundleBuildOptions): Promise<Evi
   let expanded: ExpandedBundleCandidate[] = [];
 
   if (opts.expand && opts.trustTier === "A") {
-    expanded = await expandCandidates(candidates.slice(0, STAGE_B_MAX_EXPANDED), opts);
+    const expandLimit = opts.maxFiles ?? STAGE_B_MAX_EXPANDED;
+    expanded = await expandCandidates(candidates.slice(0, expandLimit), opts);
   }
 
   const timestamp = new Date().toISOString();

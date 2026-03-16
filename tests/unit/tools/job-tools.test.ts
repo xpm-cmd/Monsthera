@@ -709,6 +709,62 @@ describe("update_job_progress", () => {
     expect(payload.updated).toBe(true);
   });
 
+  it("allows active→active heartbeat self-transition", async () => {
+    insertAgent(db, "agent-dev", "session-dev", "developer");
+    const slotId = insertSlot(sqlite, {
+      loopId: "loop-1",
+      role: "developer",
+      label: "Dev Work",
+      status: "active",
+      agentId: "agent-dev",
+    });
+
+    // Set a known activeSince so we can verify it is NOT reset
+    const originalActiveSince = "2025-01-01T00:00:00.000Z";
+    sqlite.prepare("UPDATE job_slots SET active_since = ? WHERE slot_id = ?").run(originalActiveSince, slotId);
+
+    // First heartbeat
+    const result1 = await handler(server, "update_job_progress")({
+      slotId,
+      status: "active",
+      progressNote: "Still working",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result1.isError).toBeUndefined();
+    const payload1 = parse(result1);
+    expect(payload1.updated).toBe(true);
+    expect(payload1.status).toBe("active");
+    expect(payload1.lastHeartbeat).toBeTruthy();
+
+    // Verify activeSince was NOT reset
+    const row1 = sqlite.prepare("SELECT active_since, last_heartbeat FROM job_slots WHERE slot_id = ?").get(slotId) as any;
+    expect(row1.active_since).toBe(originalActiveSince);
+    expect(row1.last_heartbeat).toBeTruthy();
+
+    const firstHeartbeat = row1.last_heartbeat;
+
+    // Second heartbeat — should also succeed
+    const result2 = await handler(server, "update_job_progress")({
+      slotId,
+      status: "active",
+      progressNote: "Making progress",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    expect(result2.isError).toBeUndefined();
+    const payload2 = parse(result2);
+    expect(payload2.updated).toBe(true);
+    expect(payload2.status).toBe("active");
+
+    // Verify activeSince still unchanged, heartbeat updated
+    const row2 = sqlite.prepare("SELECT active_since, last_heartbeat FROM job_slots WHERE slot_id = ?").get(slotId) as any;
+    expect(row2.active_since).toBe(originalActiveSince);
+    expect(row2.last_heartbeat).toBeTruthy();
+  });
+
   it("transitions active to completed", async () => {
     insertAgent(db, "agent-dev", "session-dev", "developer");
     const slotId = insertSlot(sqlite, {
