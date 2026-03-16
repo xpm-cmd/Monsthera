@@ -246,7 +246,11 @@ const TRANSITION_NOISE_RE =
   /^(council review:|workflow .+:|planner auto-|developer loop auto-|advancing to|moved to|advanced to)/i;
 const LOOP_RETRO_RE = /^\[loop retrospective\]/i;
 
-const PLAN_TAG_RE = /^\[(technical analysis|plan iteration|plan review|plan|implementation plan)\]/i;
+// Plan pipeline has 3 distinct phases — keep latest of each type so the
+// developer gets: codebase context (TA) + implementation steps (Plan) + validation (Review).
+const PLAN_TA_RE = /^\[(technical analysis)\]/i;
+const PLAN_ITERATION_RE = /^\[(plan iteration|plan|implementation plan)\]/i;
+const PLAN_REVIEW_RE = /^\[(plan review)\]/i;
 
 interface RawComment {
   agentId: string;
@@ -258,7 +262,9 @@ const MAX_RECENT_COMMENTS = 5;
 const MAX_COMMENT_LENGTH = 2000;
 
 function distillComments(comments: RawComment[]): RawComment[] {
-  const plans: RawComment[] = [];
+  let latestTA: RawComment | null = null;
+  let latestPlan: RawComment | null = null;
+  let latestReview: RawComment | null = null;
   const actionable: RawComment[] = [];
 
   for (const c of comments) {
@@ -273,24 +279,23 @@ function distillComments(comments: RawComment[]): RawComment[] {
     // Skip loop retrospective entries
     if (LOOP_RETRO_RE.test(text)) continue;
 
-    // Keep plan comments (most recent wins per tag type)
-    if (PLAN_TAG_RE.test(text)) {
-      plans.push(c);
-      continue;
-    }
+    // Plan pipeline: keep latest of each phase (TA → Plan → Review)
+    if (PLAN_TA_RE.test(text)) { latestTA = c; continue; }
+    if (PLAN_REVIEW_RE.test(text)) { latestReview = c; continue; }
+    if (PLAN_ITERATION_RE.test(text)) { latestPlan = c; continue; }
 
     // Everything else is actionable discussion
     actionable.push(c);
   }
 
-  // Keep only the latest plan comment (the final validated plan)
-  const latestPlan = plans.length > 0 ? plans[plans.length - 1] : null;
-
   // Keep the most recent actionable comments
   const recentActionable = actionable.slice(-MAX_RECENT_COMMENTS);
 
+  // Assemble: plan pipeline phases first (in pipeline order), then discussion
   const result: RawComment[] = [];
+  if (latestTA) result.push(latestTA);
   if (latestPlan) result.push(latestPlan);
+  if (latestReview) result.push(latestReview);
   result.push(...recentActionable);
 
   // Truncate long comments
