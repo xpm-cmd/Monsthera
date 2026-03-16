@@ -9,7 +9,7 @@ import {
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence,
   getIndexedFilesMetrics, getTicketMetrics, getAgentTimeline, getTicketTemplates, getSearchDebug,
   getDependencyGraph, getGovernanceSettings, getKnowledgeGraph,
-  getSimulationRuns, getSimulationTrends, getSimulationLatest, getJobBoard,
+  getSimulationRuns, getSimulationTrends, getSimulationLatest, getJobBoard, getActivityTimeline,
   STRICT_MODEL_DIVERSITY_DISABLED_REQUIRED_DISTINCT_MODELS,
   STRICT_MODEL_DIVERSITY_ENABLED_MAX_VOTERS_PER_MODEL,
   STRICT_MODEL_DIVERSITY_ENABLED_REQUIRED_DISTINCT_MODELS,
@@ -711,6 +711,11 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
     case "overview": return getOverview(deps);
     case "agents": return getAgentsList(deps);
     case "agent-timeline": return getAgentTimeline(deps);
+    case "activity-timeline": {
+      const limitStr = url.searchParams.get("limit");
+      const timelineLimit = limitStr ? Math.max(1, Math.min(500, Math.trunc(Number(limitStr)))) : 100;
+      return getActivityTimeline(deps, timelineLimit);
+    }
     case "logs": {
       const rawSince = url.searchParams.get("since")?.trim();
       const sinceParam = rawSince ? rawSince : undefined;

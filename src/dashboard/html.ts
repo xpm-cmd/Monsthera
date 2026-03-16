@@ -100,6 +100,46 @@ code,pre,.mono{font-family:'JetBrains Mono',monospace}
 .tab .count{background:rgba(255,255,255,.05);color:var(--text3);font-size:.6rem;padding:1px 5px;border-radius:4px;margin-left:.3rem}
 .tab.active .count{color:var(--accent);background:rgba(0,255,136,.1)}
 
+/* ── Activity Timeline ────────────────────── */
+.atl-table{width:100%;border-collapse:collapse;font-size:.72rem}
+.atl-table th{text-align:left;padding:.5rem .6rem;color:var(--text3);font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1}
+.atl-table td{padding:.45rem .6rem;border-bottom:1px solid rgba(255,255,255,.03);vertical-align:top;line-height:1.5}
+.atl-table tr:hover td{background:rgba(255,255,255,.02)}
+.atl-wrap{max-height:600px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)}
+.atl-icon{display:inline-block;width:18px;text-align:center;margin-right:.3rem;font-size:.8rem}
+.atl-role{display:inline-block;font-size:.58rem;padding:1px 5px;border-radius:3px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-left:.35rem}
+.atl-role.facilitator{background:rgba(0,255,136,.12);color:var(--green)}
+.atl-role.developer{background:rgba(68,136,255,.12);color:var(--blue)}
+.atl-role.reviewer{background:rgba(136,68,255,.12);color:var(--purple)}
+.atl-role.planner{background:rgba(255,136,0,.12);color:var(--orange)}
+.atl-role.observer{background:rgba(255,255,255,.06);color:var(--text3)}
+.atl-role.admin{background:rgba(255,68,68,.12);color:var(--red)}
+.atl-status{display:inline-block;font-size:.58rem;padding:1px 5px;border-radius:3px;font-weight:500}
+.atl-status.backlog{background:rgba(255,255,255,.06);color:var(--text3)}
+.atl-status.technical_analysis{background:rgba(255,136,0,.12);color:var(--orange)}
+.atl-status.approved{background:rgba(0,255,136,.12);color:var(--green)}
+.atl-status.in_progress{background:rgba(68,136,255,.12);color:var(--blue)}
+.atl-status.in_review{background:rgba(136,68,255,.12);color:var(--purple)}
+.atl-status.ready_for_commit{background:rgba(6,182,212,.12);color:var(--cyan)}
+.atl-status.resolved{background:rgba(0,255,136,.2);color:var(--green)}
+.atl-status.blocked{background:rgba(255,68,68,.12);color:var(--red)}
+.atl-verdict{display:inline-block;font-size:.62rem;padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:.03em}
+.atl-verdict.pass{background:rgba(0,255,136,.15);color:var(--green)}
+.atl-verdict.fail{background:rgba(255,68,68,.15);color:var(--red)}
+.atl-detail{color:var(--text2);font-size:.65rem;margin-top:.15rem;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.atl-detail:hover{white-space:normal;overflow:visible}
+.atl-cat{display:inline-block;width:3px;height:16px;border-radius:2px;margin-right:.4rem;vertical-align:middle}
+.atl-cat.governance{background:var(--purple)}
+.atl-cat.development{background:var(--blue)}
+.atl-cat.planning{background:var(--orange)}
+.atl-cat.system{background:var(--text3)}
+.atl-cat.jobs{background:var(--cyan)}
+.atl-time-sep{text-align:center;padding:.6rem 0;color:var(--text3);font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.atl-time-sep span{background:var(--surface);padding:0 .8rem}
+.atl-ticket-link{color:var(--blue);cursor:pointer;text-decoration:none}
+.atl-ticket-link:hover{text-decoration:underline}
+.atl-agent-name{color:var(--text);font-weight:500}
+
 /* ── Sections & tables ──────────────────────── */
 .section{display:none}.section.active{display:block}
 .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;max-height:500px;overflow-y:auto}
@@ -448,7 +488,7 @@ let currentRoute='mission';
 let liveFeedEvents=[];
 let selectedAgentId=null;
 let navCounts={agents:0,tickets:0,knowledge:0,logs:0};
-let tabCounts={agents:0,timeline:0,'search-debug':0,dependencies:0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
+let tabCounts={agents:0,timeline:0,'activity-timeline':0,'search-debug':0,dependencies:0,logs:0,patches:0,notes:0,knowledge:0,tickets:0};
 let selectedTicketId=null;
 let selectedTicketDetail=null;
 let selectedActorSessionId=null;
@@ -1070,7 +1110,8 @@ function renderActivityScreen(host){
     +'<div class="main-header"><div><div class="main-title">Activity Log</div><div class="main-subtitle">Events, patches &amp; notes</div></div>'
     +'<div class="header-actions"><button class="btn" onclick="refresh()">Refresh</button></div></div>'
     +'<div style="margin-bottom:1rem"><div class="tab-bar" id="tab-bar"></div></div>'
-    +'<div id="logs" class="section active"></div>'
+    +'<div id="activity-timeline" class="section active"></div>'
+    +'<div id="logs" class="section"></div>'
     +'<div id="patches" class="section"></div>'
     +'<div id="notes" class="section"></div>'
     +'<div id="timeline" class="section"></div>'
@@ -1079,7 +1120,7 @@ function renderActivityScreen(host){
   /* build sub-tabs for activity view */
   var bar=document.getElementById('tab-bar');
   if(bar){
-    var activityTabs=[['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['timeline','Agent Timeline'],['search-debug','Search Debug'],['dependencies','Dependencies']];
+    var activityTabs=[['activity-timeline','Timeline'],['logs','Activity Log'],['patches','Patches'],['notes','Notes'],['timeline','Agent Timeline'],['search-debug','Search Debug'],['dependencies','Dependencies']];
     activityTabs.forEach(function(t,i){
       var id=t[0],label=t[1];
       var btn=document.createElement('button');
@@ -2141,6 +2182,125 @@ function renderPresence(agents){
   });
 }
 
+/* ── Activity Timeline (enriched) ──────────── */
+/* NOTE: All user-facing data is passed through esc() (HTML entity escaping) */
+/* Data originates from server-side DB queries, not raw user input */
+var activityTimelineData=[];
+
+function atlIcon(type){
+  if(type.startsWith('ticket_verdict')) return '&#x1F5F3;';
+  if(type==='ticket_created') return '&#x1F3AB;';
+  if(type==='ticket_status_changed') return '&#x27A1;';
+  if(type==='ticket_commented') return '&#x1F4AC;';
+  if(type==='ticket_assigned'||type==='ticket_unassigned') return '&#x1F464;';
+  if(type==='ticket_linked') return '&#x1F517;';
+  if(type==='ticket_auto_transitioned') return '&#x26A1;';
+  if(type==='patch_proposed') return '&#x1F4E6;';
+  if(type==='note_added') return '&#x1F4DD;';
+  if(type==='knowledge_stored') return '&#x1F4DA;';
+  if(type.startsWith('job_slot')) return '&#x1F3AF;';
+  if(type==='job_loop_created') return '&#x1F504;';
+  if(type==='job_progress_update') return '&#x1F4CA;';
+  if(type==='agent_registered') return '&#x1F916;';
+  if(type==='index_updated') return '&#x1F50D;';
+  return '&#x25CF;';
+}
+
+function atlTimeSep(prev,curr){
+  if(!prev) return '';
+  var pDate=new Date(prev);
+  var cDate=new Date(curr);
+  var diffMs=pDate.getTime()-cDate.getTime();
+  if(diffMs<5*60*1000) return '';
+  var diffMin=Math.floor(diffMs/60000);
+  var label='';
+  if(diffMin<60) label=diffMin+' min gap';
+  else if(diffMin<1440) label=Math.floor(diffMin/60)+'h '+diffMin%60+'m gap';
+  else label=Math.floor(diffMin/1440)+'d ago';
+  return '<tr><td colspan="5" class="atl-time-sep"><span>'+esc('— '+label+' —')+'</span></td></tr>';
+}
+
+function renderActivityTimeline(data){
+  activityTimelineData=data||[];
+  var section=document.getElementById('activity-timeline');
+  if(!section) return;
+  if(!data||!data.length){
+    section.textContent='No activity recorded yet';
+    return;
+  }
+  var rows='';
+  var prevTs=null;
+  for(var i=0;i<data.length;i++){
+    var ev=data[i];
+    rows+=atlTimeSep(prevTs,ev.timestamp);
+    prevTs=ev.timestamp;
+
+    var icon='<span class="atl-icon">'+atlIcon(ev.type)+'</span>';
+    var catBar='<span class="atl-cat '+esc(ev.category||'system')+'"></span>';
+
+    /* Agent column: name + role badge */
+    var agentHtml='<span class="atl-agent-name">'+esc(ev.agentName||'-')+'</span>';
+    if(ev.agentRole) agentHtml+='<span class="atl-role '+esc(ev.agentRole)+'">'+esc(ev.agentRole)+'</span>';
+
+    /* Action column: icon + readable action */
+    var actionHtml=catBar+icon+esc(ev.action||ev.type.replace(/_/g,' '));
+
+    /* Verdict enrichment */
+    if(ev.type==='ticket_verdict_submitted'&&ev.detail){
+      var parts=ev.detail.split(' \xB7 ');
+      var spec=parts[0]||'';
+      var verd=parts[1]||'';
+      var quorum=parts[2]||'';
+      var excerpt=parts.slice(3).join(' \xB7 ')||'';
+      actionHtml=catBar+icon+'voted <span class="atl-verdict '+esc(verd.toLowerCase())+'">'+esc(verd)+'</span> as '+esc(spec);
+      if(quorum) actionHtml+=' <span style="color:var(--text3);font-size:.6rem">('+esc(quorum)+')</span>';
+      if(excerpt) actionHtml+='<div class="atl-detail" title="'+esc(excerpt)+'">'+esc(excerpt)+'</div>';
+    }
+
+    /* Patch stats enrichment */
+    if(ev.type==='patch_proposed'&&ev.detail){
+      actionHtml=catBar+icon+'proposed patch';
+      actionHtml+='<div class="atl-detail">'+esc(ev.detail)+'</div>';
+    }
+
+    /* Ticket column: ID + status pill */
+    var ticketHtml='-';
+    if(ev.ticketId){
+      ticketHtml='<span class="atl-ticket-link" onclick="selectedTicketId=\''+esc(ev.ticketId)+'\';navigate(\'tickets\')">'+esc(ev.ticketId.slice(0,12))+'</span>';
+      if(ev.ticketStatus) ticketHtml+=' <span class="atl-status '+esc(ev.ticketStatus)+'">'+esc(ev.ticketStatus.replace(/_/g,' '))+'</span>';
+    }
+
+    /* Detail column */
+    var detailHtml='';
+    if(ev.detail&&ev.type!=='ticket_verdict_submitted'&&ev.type!=='patch_proposed'){
+      detailHtml='<span class="atl-detail" style="display:inline" title="'+esc(ev.detail)+'">'+esc(ev.detail)+'</span>';
+    }
+
+    /* Time column */
+    var evDate=new Date(ev.timestamp);
+    var now=new Date();
+    var diffSec=Math.floor((now.getTime()-evDate.getTime())/1000);
+    var timeLabel='';
+    if(diffSec<60) timeLabel=diffSec+'s ago';
+    else if(diffSec<3600) timeLabel=Math.floor(diffSec/60)+'m ago';
+    else if(diffSec<86400) timeLabel=Math.floor(diffSec/3600)+'h ago';
+    else timeLabel=evDate.toLocaleDateString();
+
+    rows+='<tr>'
+      +'<td style="white-space:nowrap;color:var(--text3);font-size:.65rem" title="'+esc(evDate.toLocaleString())+'">'+esc(timeLabel)+'</td>'
+      +'<td>'+agentHtml+'</td>'
+      +'<td>'+actionHtml+'</td>'
+      +'<td>'+ticketHtml+'</td>'
+      +'<td>'+detailHtml+'</td>'
+      +'</tr>';
+  }
+
+  section.innerHTML='<div class="atl-wrap"><table class="atl-table">'
+    +'<thead><tr><th>Time</th><th>Agent</th><th>Action</th><th>Ticket</th><th>Detail</th></tr></thead>'
+    +'<tbody>'+rows+'</tbody>'
+    +'</table></div>';
+}
+
 function renderAgentTimelineSection(timeline){
   var section=document.getElementById('timeline');
   if(!timeline||!timeline.length){
@@ -3096,7 +3256,7 @@ async function refresh(){
 
     /* Nav counts */
     navCounts={agents:agents.length,tickets:tickets.length,knowledge:knowledge.length,logs:logs.length};
-    tabCounts={agents:agents.length,timeline:timeline.length,'search-debug':searchDebugState.data&&searchDebugState.data.mergedResults?searchDebugState.data.mergedResults.length:0,dependencies:depGraphState.nodes.length,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};
+    tabCounts={agents:agents.length,timeline:timeline.length,'activity-timeline':activityTimelineData.length,'search-debug':searchDebugState.data&&searchDebugState.data.mergedResults?searchDebugState.data.mergedResults.length:0,dependencies:depGraphState.nodes.length,logs:logs.length,patches:patches.length,notes:notes.length,knowledge:knowledge.length,tickets:tickets.length};
     updateCounts();
 
     /* Route-specific rendering */
@@ -3184,6 +3344,15 @@ async function refresh(){
     }
 
     if(currentRoute==='activity'){
+      /* Activity Timeline (enriched) */
+      var atlSection=document.getElementById('activity-timeline');
+      if(atlSection&&atlSection.classList.contains('active')){
+        try{
+          var atlData=await api('activity-timeline?limit=100');
+          renderActivityTimeline(atlData);
+        }catch(e){console.error('Activity timeline failed:',e);}
+      }
+
       /* Logs */
       var logsEl=document.getElementById('logs');
       if(logsEl) logsEl.replaceChildren(makeTable(

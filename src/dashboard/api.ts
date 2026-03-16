@@ -253,6 +253,126 @@ export function getEventLogsList(deps: DashboardDeps, limit = 500, since?: strin
   }));
 }
 
+// ─── Activity Timeline (enriched dashboard events) ──────────────────
+export function getActivityTimeline(deps: DashboardDeps, limit = 100) {
+  const events = queries.getDashboardEventsByRepo(deps.db, deps.repoId, { limit })
+    .sort((a, b) => b.id - a.id); // newest first
+
+  // Build agent name lookup
+  const agents = queries.getAllAgents(deps.db);
+  const agentMap = new Map<string, { name: string; role: string }>();
+  for (const a of agents) {
+    agentMap.set(a.id, { name: a.name, role: a.roleId });
+  }
+
+  // Build ticket title lookup from recent tickets
+  const tickets = queries.getTicketsByRepo(deps.db, deps.repoId);
+  const ticketMap = new Map<string, { title: string; status: string }>();
+  for (const t of tickets) {
+    ticketMap.set(t.ticketId, { title: t.title, status: t.status });
+  }
+
+  return events.map((event) => {
+    const data = JSON.parse(event.dataJson) as Record<string, unknown>;
+    const agentId = (data.agentId ?? data.creatorAgentId ?? data.releasedBy ?? null) as string | null;
+    const agent = agentId ? agentMap.get(agentId) : null;
+    const ticketId = (data.ticketId ?? data.fromTicketId ?? null) as string | null;
+    const ticket = ticketId ? ticketMap.get(ticketId) : null;
+
+    return {
+      id: event.id,
+      type: event.eventType as string,
+      timestamp: event.timestamp,
+      agentId,
+      agentName: agent?.name ?? agentId ?? null,
+      agentRole: agent?.role ?? null,
+      ticketId,
+      ticketTitle: ticket?.title ?? null,
+      ticketStatus: ticket?.status ?? null,
+      action: describeEvent(event.eventType as string, data),
+      detail: buildEventDetail(event.eventType as string, data),
+      category: categorizeEvent(event.eventType as string),
+    };
+  });
+}
+
+function describeEvent(type: string, data: Record<string, unknown>): string {
+  switch (type) {
+    case "ticket_created": return "created ticket";
+    case "ticket_assigned": return data.autoAssigned ? "auto-assigned ticket" : "assigned ticket";
+    case "ticket_unassigned": return "unassigned ticket";
+    case "ticket_status_changed": return `moved ticket ${data.previousStatus} → ${data.status}`;
+    case "ticket_verdict_submitted": return `voted ${String(data.verdict).toUpperCase()} as ${data.specialization}`;
+    case "ticket_commented": return "commented on ticket";
+    case "ticket_linked": return `linked tickets (${data.relationType})`;
+    case "ticket_auto_transitioned": return `auto-advanced ticket → ${data.status}`;
+    case "ticket_external_sync": return "synced ticket externally";
+    case "ticket_orphaned_owner_repaired": return "repaired orphaned ticket";
+    case "ticket_repair_spawned": return "spawned repair ticket";
+    case "ticket_repair_resolved": return "resolved repair ticket";
+    case "agent_registered": return "registered";
+    case "session_changed": return "session changed";
+    case "patch_proposed": return "proposed patch";
+    case "note_added": return "added note";
+    case "knowledge_stored": return "stored knowledge";
+    case "index_updated": return "index updated";
+    case "event_logged": return "event logged";
+    case "job_loop_created": return `created loop "${data.loopId}" (${data.slotCount} slots)`;
+    case "job_slot_claimed": return `claimed job slot ${data.label}`;
+    case "job_slot_active": return `activated job slot`;
+    case "job_slot_completed": return `completed job ${data.label}`;
+    case "job_slot_released": return "released job slot";
+    case "job_slot_abandoned": return "abandoned job slot";
+    case "job_progress_update": return `progress: ${typeof data.progressNote === "string" ? data.progressNote.slice(0, 80) : "update"}`;
+    default: return type.replace(/_/g, " ");
+  }
+}
+
+function buildEventDetail(type: string, data: Record<string, unknown>): string | null {
+  switch (type) {
+    case "ticket_verdict_submitted": {
+      const parts: string[] = [];
+      if (data.specialization) parts.push(String(data.specialization));
+      if (data.verdict) parts.push(String(data.verdict).toUpperCase());
+      if (data.responded != null && data.required != null) {
+        parts.push(`${data.responded}/${data.required} quorum`);
+      }
+      if (data.reasoning && typeof data.reasoning === "string") {
+        parts.push(data.reasoning.slice(0, 120));
+      }
+      return parts.join(" · ") || null;
+    }
+    case "ticket_status_changed":
+      return `${data.previousStatus} → ${data.status}`;
+    case "patch_proposed": {
+      const parts: string[] = [];
+      if (data.message) parts.push(String(data.message).slice(0, 80));
+      if (data.affectedFiles && Array.isArray(data.affectedFiles)) {
+        parts.push(`${data.affectedFiles.length} files`);
+      }
+      return parts.join(" · ") || null;
+    }
+    case "ticket_assigned":
+      return data.assigneeAgentId ? `→ ${data.assigneeAgentId}` : null;
+    case "job_loop_created":
+      return `template: ${data.template}, ${data.slotCount} slots`;
+    case "job_slot_claimed":
+      return data.specialization ? `role: ${data.role}, spec: ${data.specialization}` : `role: ${data.role}`;
+    case "job_progress_update":
+      return typeof data.progressNote === "string" ? data.progressNote.slice(0, 200) : null;
+    default:
+      return null;
+  }
+}
+
+function categorizeEvent(type: string): "governance" | "development" | "planning" | "system" | "jobs" {
+  if (type.startsWith("ticket_verdict") || type === "ticket_auto_transitioned") return "governance";
+  if (type === "patch_proposed" || type === "ticket_status_changed") return "development";
+  if (type === "ticket_created" || type === "ticket_commented" || type === "ticket_linked") return "planning";
+  if (type.startsWith("job_")) return "jobs";
+  return "system";
+}
+
 function classifyIndexedFile(language: string | null, path: string): string {
   if (language?.trim()) return language.trim();
 
