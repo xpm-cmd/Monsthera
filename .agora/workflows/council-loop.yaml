@@ -31,16 +31,17 @@ steps:
       ticketId: "{{params.ticketId}}"
       transition: "{{params.transition}}"
 
-  # 4. Advance immediately if quorum already met
+  # 4. Early exit when quorum already met — no verdict needed from this reviewer
+  #    The auto-advance system handles the state transition when quorum is reached.
+  #    This step just logs that the reviewer found quorum already satisfied.
   - key: advanceExisting
-    tool: update_ticket_status
-    description: Advance ticket when consensus was already reached before this cycle.
+    tool: comment_ticket
+    description: Note that quorum was already met before this reviewer ran. No verdict submitted.
     condition: "steps.consensus.advisoryReady"
     onError: continue
     input:
       ticketId: "{{params.ticketId}}"
-      status: "{{params.targetStatus}}"
-      comment: "Council autonomous review: quorum already met, advancing."
+      content: "[Council Review] {{params.callerSpecialization}}: quorum already met for {{params.transition}}, no additional verdict needed."
 
   # 5. Collect historical and decision context related to the ticket
   - key: issuePack
@@ -134,11 +135,14 @@ steps:
       councilAgentId: "{{params.callerAgentId}}"
       specialization: "{{params.callerSpecialization}}"
 
-  # 14. Submit pass verdict ONLY when evidence gathering succeeded
+  # 14. Submit pass verdict when any evidence was gathered
+  #     The council reviewer's job is to vote based on available evidence.
+  #     Partial evidence (e.g., codePack but no complexity) is still useful.
+  #     Only needs_revision when literally zero evidence was collected.
   - key: verdict
     tool: submit_verdict
-    description: Evidence-backed pass verdict when complexity and coverage data are available.
-    condition: "!steps.consensus.advisoryReady && steps.complexity && steps.coverage"
+    description: Evidence-backed pass verdict when any review evidence is available.
+    condition: "!steps.consensus.advisoryReady && (steps.complexity || steps.coverage || steps.codePack || steps.pathCodePacks)"
     onError: continue
     input:
       ticketId: "{{params.ticketId}}"
@@ -147,29 +151,24 @@ steps:
       reasoning: "{{params.callerSpecialization}} review for {{steps.ticket.ticketId}} ({{steps.ticket.title}}): examined {{steps.ticket.affectedPaths}} with complexity={{steps.complexity}}, coverage={{steps.coverage}}, ripple={{steps.rippleAnalysis}}, suggestions={{steps.suggestions}}. Evidence supports {{params.transition}}."
       transition: "{{params.transition}}"
 
-  # 15. Submit needs_revision when evidence is insufficient
+  # 15. Submit needs_revision only when zero evidence was collected
   - key: verdictRevision
     tool: submit_verdict
-    description: Block advancement when structural evidence could not be gathered.
-    condition: "!steps.consensus.advisoryReady && !steps.complexity && !steps.coverage"
+    description: Flag insufficient evidence only when no code, complexity, or coverage data was gathered at all.
+    condition: "!steps.consensus.advisoryReady && !steps.complexity && !steps.coverage && !steps.codePack && !steps.pathCodePacks"
     onError: continue
     input:
       ticketId: "{{params.ticketId}}"
       specialization: "{{params.callerSpecialization}}"
       verdict: needs_revision
-      reasoning: "Insufficient evidence for {{steps.ticket.ticketId}}: complexity and coverage analysis unavailable for {{steps.ticket.affectedPaths}}. Cannot assess gate readiness for {{params.transition}}."
+      reasoning: "Insufficient evidence for {{steps.ticket.ticketId}}: no code search, complexity, or coverage analysis could be gathered for {{steps.ticket.affectedPaths}}. Cannot assess gate readiness for {{params.transition}}."
       transition: "{{params.transition}}"
 
-  # 15b. Return ticket to in_progress when needs_revision verdict was submitted
-  - key: rejectToInProgress
-    tool: update_ticket_status
-    description: Send ticket back to in_progress so the developer loop can rework it.
-    condition: "!steps.consensus.advisoryReady && !steps.complexity && !steps.coverage"
-    onError: continue
-    input:
-      ticketId: "{{params.ticketId}}"
-      status: in_progress
-      comment: "Council review: needs_revision — insufficient evidence for {{params.transition}}. Returning to developer for rework."
+  # NOTE: The workflow does NOT move ticket state (no rejectToInProgress).
+  # State transitions are handled by the auto-advance system when quorum is met,
+  # or by the facilitator/orchestrator. This prevents cascade bugs when multiple
+  # reviewers run in parallel — the first to reach quorum auto-advances, and
+  # later reviewers' workflows must not undo that advancement.
 
   # 16. Persist review findings as institutional knowledge
   - key: reviewKnowledge
@@ -196,13 +195,12 @@ steps:
       ticketId: "{{params.ticketId}}"
       transition: "{{params.transition}}"
 
-  # 18. Handle veto — transition to blocked when consensus is vetoed
-  - key: handleVeto
-    tool: update_ticket_status
-    description: Move ticket to blocked when architect/security veto prevents advancement.
+  # 18. Record veto notice (does NOT move ticket state — facilitator handles that)
+  - key: vetoNotice
+    tool: comment_ticket
+    description: Post a veto notice when architect/security veto is detected. State transitions are handled by the facilitator or orchestrator, not the workflow.
     condition: "!steps.consensus.advisoryReady && steps.finalConsensus.blockedByVeto"
     onError: continue
     input:
       ticketId: "{{params.ticketId}}"
-      status: blocked
-      comment: "Council review: architect/security veto blocks {{params.transition}}. See review note for details."
+      content: "[Veto Notice] {{params.callerSpecialization}} detected architect/security veto blocking {{params.transition}} for {{steps.ticket.ticketId}}. Facilitator action required."
