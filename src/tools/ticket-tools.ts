@@ -22,6 +22,7 @@ import { getHead } from "../git/operations.js";
 import {
   TicketStatus, TicketSeverity,
 } from "../../schemas/ticket.js";
+import { DEFAULT_AUTO_ADVANCE_EXCLUDED_TAGS } from "../../schemas/governance.js";
 import type { TicketStatus as TicketStatusType } from "../../schemas/ticket.js";
 import {
   assignTicketRecord,
@@ -92,6 +93,26 @@ function buildSpecializationGuidance(specialization: string): string {
     default:
       return "reference concrete code or design evidence";
   }
+}
+
+function resolveVerdictAuthorization(
+  agentId: string,
+  specialization: string,
+  ticketInternalId: number,
+  context: { db: AgoraContext["db"]; config: any; role: string },
+): { authorized: boolean; authorizedBy: string | null; reason?: string } {
+  // 1. Admin always authorized
+  if (context.role === "admin") return { authorized: true, authorizedBy: "admin_override" };
+
+  // 2. Check explicit council assignment
+  const assignment = queries.getCouncilAssignment(context.db, ticketInternalId, agentId, specialization);
+  if (assignment) return { authorized: true, authorizedBy: "council_assignment" };
+
+  // 3. If requireBinding is false, allow with "binding_disabled" audit trail
+  if (!context.config?.governance?.requireBinding) return { authorized: true, authorizedBy: "binding_disabled" };
+
+  // 4. Not authorized
+  return { authorized: false, authorizedBy: null, reason: `Agent ${agentId} is not assigned as ${specialization}` };
 }
 
 function validateReviewerModelVoterCap(input: {
@@ -630,14 +651,16 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const ticket = queries.getTicketByTicketId(c.db, ticketId, c.repoId);
       if (!ticket) return errText(`Ticket not found: ${ticketId}`);
 
-      if (c.config?.governance?.requireBinding && resolved.role !== "admin") {
-        const assignment = queries.getCouncilAssignment(c.db, ticket.id, resolved.agentId, specialization);
-        if (!assignment) {
-          return errJson({
-            denied: true,
-            reason: `Agent ${resolved.agentId} is not assigned as ${specialization} for ${ticketId}`,
-          });
-        }
+      const authResult = resolveVerdictAuthorization(resolved.agentId, specialization, ticket.id, {
+        db: c.db,
+        config: c.config,
+        role: resolved.role,
+      });
+      if (!authResult.authorized) {
+        return errJson({
+          denied: true,
+          reason: authResult.reason ?? `Agent ${resolved.agentId} is not authorized for ${specialization}`,
+        });
       }
 
       const reasoningValidation = validateVerdictReasoning({
@@ -711,8 +734,20 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
 
       let autoAdvanced: { previousStatus: string; status: string } | null = null;
       const ticketTags = parseStringArrayJson(ticket.tagsJson, { maxItems: 25, maxItemLength: 64 });
-      const excludedTags = c.config?.governance?.autoAdvanceExcludedTags ?? ["umbrella", "tracking", "discussion"];
+      const excludedTags = c.config?.governance?.autoAdvanceExcludedTags ?? DEFAULT_AUTO_ADVANCE_EXCLUDED_TAGS;
       const hasExcludedTag = excludedTags.length > 0 && ticketTags.some((tag) => excludedTags.includes(tag));
+      if (hasExcludedTag) {
+        const matchedTag = ticketTags.find((tag) => excludedTags.includes(tag));
+        recordDashboardEvent(c.db, c.repoId, {
+          type: "auto_advance_skipped",
+          data: {
+            ticketId,
+            reason: "excluded_tag",
+            matchedTag,
+            tags: ticketTags,
+          },
+        });
+      }
       if (consensus.advisoryReady && c.config?.governance?.autoAdvance !== false && !hasExcludedTag) {
         const target = GATED_ADVANCE_TARGET[ticket.status as TicketStatusType];
         if (target) {
@@ -787,6 +822,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
 
       return okJson({
         ticketId,
+        verdictAuthorizedBy: authResult.authorizedBy,
         verdict: {
           specialization: stored.specialization,
           verdict: stored.verdict,

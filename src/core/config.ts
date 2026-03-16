@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod/v4";
 import { CouncilSpecializationId, COUNCIL_SPECIALIZATIONS } from "../../schemas/council.js";
-import { GovernanceConfigSchema } from "../../schemas/governance.js";
+import { DEFAULT_AUTO_ADVANCE_EXCLUDED_TAGS, GovernanceConfigSchema } from "../../schemas/governance.js";
 import { TicketSeverity } from "../../schemas/ticket.js";
 import { DEFAULT_AGORA_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_DB_NAME } from "./constants.js";
 import {
@@ -252,7 +252,7 @@ export const AgoraConfigSchema = z.object({
     backlogPlanningGate: { enforce: true, minIterations: 3, requiredDistinctModels: 2 },
     requireBinding: false,
     autoAdvance: true,
-    autoAdvanceExcludedTags: ["umbrella", "tracking", "discussion"],
+    autoAdvanceExcludedTags: DEFAULT_AUTO_ADVANCE_EXCLUDED_TAGS,
   }),
   toolRateLimits: ToolRateLimitConfigSchema.default({
     defaultPerMinute: 10,

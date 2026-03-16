@@ -7,6 +7,9 @@ const NON_ANALYTICAL_SPECIALIZATIONS = new Set<CouncilSpecializationIdValue>(["d
 export const GOVERNANCE_ANALYTICAL_SPECIALIZATIONS: CouncilSpecializationIdValue[] =
   COUNCIL_SPECIALIZATIONS.filter((s) => !NON_ANALYTICAL_SPECIALIZATIONS.has(s));
 
+/** Tags that prevent auto-advance regardless of quorum results. */
+export const DEFAULT_AUTO_ADVANCE_EXCLUDED_TAGS = ["umbrella", "tracking", "discussion", "no-advance"];
+
 /**
  * Model diversity configuration for council governance.
  * When strict is true, verdicts from agents sharing the same normalized
@@ -53,7 +56,7 @@ export const GovernanceConfigSchema = z.object({
   }),
   requireBinding: z.boolean().default(false),
   autoAdvance: z.boolean().default(true),
-  autoAdvanceExcludedTags: z.array(z.string().min(1).max(64)).default(["umbrella", "tracking", "discussion"]),
+  autoAdvanceExcludedTags: z.array(z.string().min(1).max(64)).default(DEFAULT_AUTO_ADVANCE_EXCLUDED_TAGS),
 });
 
 export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;

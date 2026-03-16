@@ -18,6 +18,8 @@ export interface DashboardEvent {
     | "ticket_unassigned"
     | "ticket_status_changed"
     | "ticket_verdict_submitted"
+    | "auto_advance_skipped"
+    | "admin_governance_bypass"
     | "ticket_commented"
     | "ticket_linked"
     | "ticket_external_sync"

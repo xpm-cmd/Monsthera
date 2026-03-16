@@ -1587,6 +1587,148 @@ describe("ticket tools", () => {
     });
   });
 
+  it("skips auto-advance for tickets tagged with no-advance", async () => {
+    config.governance = {
+      nonVotingRoles: ["facilitator"],
+      modelDiversity: { strict: true, maxVotersPerModel: 3 },
+      reviewerIndependence: { strict: true, identityKey: "agent" },
+      requireBinding: false,
+      autoAdvance: true,
+      autoAdvanceExcludedTags: ["umbrella", "tracking", "discussion", "no-advance"],
+    };
+
+    for (const [agentId, sessionId] of [["agent-review", "session-review"], ["agent-dev", "session-dev"], ["agent-dev-2", "session-dev-2"], ["agent-admin", "session-admin"]] as const) {
+      queries.upsertAgent(db, {
+        ...(queries.getAgent(db, agentId) ?? {
+          id: agentId,
+          name: agentId,
+          type: "test",
+          roleId: agentId === "agent-admin" ? "admin" : agentId === "agent-review" ? "reviewer" : "developer",
+          trustTier: "A",
+          registeredAt: now,
+        }),
+        provider: agentId === "agent-admin" ? "anthropic" : "openai",
+        model: agentId === "agent-admin" ? "opus" : "gpt-5",
+      });
+      if (!queries.getSession(db, sessionId)) {
+        queries.insertSession(db, {
+          id: sessionId,
+          agentId,
+          state: "active",
+          connectedAt: now,
+          lastActivity: now,
+        });
+      }
+    }
+
+    const createResult = await createTicket({ tags: ["no-advance", "feature"], severity: "critical" });
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    let lastPayload: any = null;
+    for (const reviewer of [
+      { specialization: "architect" as const, agentId: "agent-review", sessionId: "session-review" },
+      { specialization: "simplifier" as const, agentId: "agent-dev", sessionId: "session-dev" },
+      { specialization: "security" as const, agentId: "agent-dev-2", sessionId: "session-dev-2" },
+      { specialization: "performance" as const, agentId: "agent-admin", sessionId: "session-admin" },
+    ]) {
+      const verdictResult = await handler("submit_verdict")({
+        ticketId,
+        specialization: reviewer.specialization,
+        verdict: "pass",
+        reasoning: buildVerdictReasoning(reviewer.specialization),
+        agentId: reviewer.agentId,
+        sessionId: reviewer.sessionId,
+      });
+      expect(verdictResult.isError).not.toBe(true);
+      lastPayload = JSON.parse(verdictResult.content[0].text);
+    }
+
+    expect(lastPayload.consensus.quorumMet).toBe(true);
+    expect(lastPayload.consensus.advisoryReady).toBe(true);
+    expect(lastPayload.autoAdvanced).toBeNull();
+
+    const ticket = queries.getTicketByTicketId(db, ticketId)!;
+    expect(ticket.status).toBe("technical_analysis");
+  });
+
+  it("auto-advances tickets without excluded tags when quorum is met (no-advance regression)", async () => {
+    config.governance = {
+      nonVotingRoles: ["facilitator"],
+      modelDiversity: { strict: true, maxVotersPerModel: 3 },
+      reviewerIndependence: { strict: true, identityKey: "agent" },
+      requireBinding: false,
+      autoAdvance: true,
+      autoAdvanceExcludedTags: ["umbrella", "tracking", "discussion", "no-advance"],
+    };
+
+    for (const [agentId, sessionId] of [["agent-review", "session-review"], ["agent-dev", "session-dev"], ["agent-dev-2", "session-dev-2"], ["agent-admin", "session-admin"]] as const) {
+      queries.upsertAgent(db, {
+        ...(queries.getAgent(db, agentId) ?? {
+          id: agentId,
+          name: agentId,
+          type: "test",
+          roleId: agentId === "agent-admin" ? "admin" : agentId === "agent-review" ? "reviewer" : "developer",
+          trustTier: "A",
+          registeredAt: now,
+        }),
+        provider: agentId === "agent-admin" ? "anthropic" : "openai",
+        model: agentId === "agent-admin" ? "opus" : "gpt-5",
+      });
+      if (!queries.getSession(db, sessionId)) {
+        queries.insertSession(db, {
+          id: sessionId,
+          agentId,
+          state: "active",
+          connectedAt: now,
+          lastActivity: now,
+        });
+      }
+    }
+
+    const createResult = await createTicket({ tags: ["feature", "api"], severity: "critical" });
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("update_ticket_status")({
+      ticketId,
+      status: "technical_analysis",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    let lastPayload: any = null;
+    for (const reviewer of [
+      { specialization: "architect" as const, agentId: "agent-review", sessionId: "session-review" },
+      { specialization: "simplifier" as const, agentId: "agent-dev", sessionId: "session-dev" },
+      { specialization: "security" as const, agentId: "agent-dev-2", sessionId: "session-dev-2" },
+      { specialization: "performance" as const, agentId: "agent-admin", sessionId: "session-admin" },
+    ]) {
+      const verdictResult = await handler("submit_verdict")({
+        ticketId,
+        specialization: reviewer.specialization,
+        verdict: "pass",
+        reasoning: buildVerdictReasoning(reviewer.specialization),
+        agentId: reviewer.agentId,
+        sessionId: reviewer.sessionId,
+      });
+      expect(verdictResult.isError).not.toBe(true);
+      lastPayload = JSON.parse(verdictResult.content[0].text);
+    }
+
+    expect(lastPayload.consensus.quorumMet).toBe(true);
+    expect(lastPayload.consensus.advisoryReady).toBe(true);
+    expect(lastPayload.autoAdvanced).toMatchObject({
+      previousStatus: "technical_analysis",
+      status: "approved",
+    });
+  });
+
   it("denies a fourth same-model council voter even on critical tickets", async () => {
     config.governance = {
       nonVotingRoles: ["facilitator"],
@@ -1658,6 +1800,112 @@ describe("ticket tools", () => {
     expect(denied.isError).toBe(true);
     expect(denied.content[0].text).toContain("Model voter cap exceeded");
     expect(denied.content[0].text).toContain("\"validation\": \"model_voter_cap\"");
+  });
+
+  it("authorizes verdict via council_assignment when agent has assignment", async () => {
+    config.governance = {
+      requireBinding: false,
+      nonVotingRoles: ["facilitator"],
+      modelDiversity: { strict: false, maxVotersPerModel: 3 },
+      reviewerIndependence: { strict: true, identityKey: "agent" },
+    };
+
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    await handler("assign_council")({
+      ticketId,
+      councilAgentId: "agent-review",
+      specialization: "architect",
+      agentId: "agent-dev",
+      sessionId: "session-dev",
+    });
+
+    const result = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.isError).not.toBe(true);
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.verdictAuthorizedBy).toBe("council_assignment");
+  });
+
+  it("authorizes verdict via admin_override for admin agents", async () => {
+    config.governance = {
+      requireBinding: true,
+      nonVotingRoles: ["facilitator"],
+      modelDiversity: { strict: false, maxVotersPerModel: 3 },
+      reviewerIndependence: { strict: true, identityKey: "agent" },
+    };
+
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const result = await handler("submit_verdict")({
+      ticketId,
+      specialization: "security",
+      verdict: "pass",
+      reasoning: buildVerdictReasoning("security"),
+      agentId: "agent-admin",
+      sessionId: "session-admin",
+    });
+
+    expect(result.isError).not.toBe(true);
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.verdictAuthorizedBy).toBe("admin_override");
+  });
+
+  it("authorizes verdict via binding_disabled when requireBinding is false and no assignment", async () => {
+    config.governance = {
+      requireBinding: false,
+      nonVotingRoles: ["facilitator"],
+      modelDiversity: { strict: false, maxVotersPerModel: 3 },
+      reviewerIndependence: { strict: true, identityKey: "agent" },
+    };
+
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const result = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      reasoning: buildVerdictReasoning("architect"),
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.isError).not.toBe(true);
+    const payload = JSON.parse(result.content[0].text);
+    expect(payload.verdictAuthorizedBy).toBe("binding_disabled");
+  });
+
+  it("rejects verdict when requireBinding is true and agent has no assignment", async () => {
+    config.governance = {
+      requireBinding: true,
+      nonVotingRoles: ["facilitator"],
+      modelDiversity: { strict: false, maxVotersPerModel: 3 },
+      reviewerIndependence: { strict: true, identityKey: "agent" },
+    };
+
+    const createResult = await createTicket();
+    const ticketId = JSON.parse(createResult.content[0].text).ticketId;
+
+    const result = await handler("submit_verdict")({
+      ticketId,
+      specialization: "architect",
+      verdict: "pass",
+      agentId: "agent-review",
+      sessionId: "session-review",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("is not assigned as architect");
   });
 
   it("denies observer verdict submission", async () => {

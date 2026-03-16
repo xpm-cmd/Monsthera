@@ -551,7 +551,8 @@ export function updateTicketStatusRecord(
     );
   }
 
-  if (resolved.role !== "admin") {
+  {
+    const isAdmin = resolved.role === "admin";
     const isGated = (GATED_TICKET_TRANSITIONS as readonly string[]).includes(`${current}→${input.status}`);
     const verdictRows = isGated ? queries.getActiveReviewVerdicts(ctx.db, ticket.id) : [];
     const governanceOpts = isGated
@@ -575,25 +576,43 @@ export function updateTicketStatusRecord(
         })
       : null;
     if (consensus && !consensus.advisoryReady) {
-      return err(
-        "invalid_request",
-        buildConsensusBlockMessage(key, consensus),
-        {
-          transition: consensus.transition,
-          requiredPasses: consensus.requiredPasses,
-          counts: consensus.counts,
-          passesNeeded: Math.max(0, consensus.requiredPasses - consensus.counts.pass),
-          quorumMet: consensus.quorumMet,
-          blockedByVeto: consensus.blockedByVeto,
-          councilSpecializations: consensus.councilSpecializations,
-          vetoSpecializations: consensus.vetoSpecializations,
-          missingSpecializations: consensus.missingSpecializations,
-          requiredRoles: consensus.requiredRoles,
-          missingRequiredRoles: consensus.missingRequiredRoles,
-          vetoes: consensus.vetoes,
-          verdicts: consensus.verdicts,
-        },
-      );
+      if (isAdmin) {
+        // Admin bypasses gated transition — log warning + dashboard event for audit trail
+        ctx.insight.warn(
+          `Admin bypassed gated transition ${key} for ${input.ticketId} without council quorum (${consensus.counts.pass}/${consensus.requiredPasses} passes)`,
+        );
+        recordDashboardEvent(ctx.db, ctx.repoId, {
+          type: "admin_governance_bypass",
+          data: {
+            ticketId: input.ticketId,
+            transition: key,
+            agentId: resolved.agentId,
+            passCount: consensus.counts.pass,
+            requiredPasses: consensus.requiredPasses,
+            comment: input.comment ?? null,
+          },
+        });
+      } else {
+        return err(
+          "invalid_request",
+          buildConsensusBlockMessage(key, consensus),
+          {
+            transition: consensus.transition,
+            requiredPasses: consensus.requiredPasses,
+            counts: consensus.counts,
+            passesNeeded: Math.max(0, consensus.requiredPasses - consensus.counts.pass),
+            quorumMet: consensus.quorumMet,
+            blockedByVeto: consensus.blockedByVeto,
+            councilSpecializations: consensus.councilSpecializations,
+            vetoSpecializations: consensus.vetoSpecializations,
+            missingSpecializations: consensus.missingSpecializations,
+            requiredRoles: consensus.requiredRoles,
+            missingRequiredRoles: consensus.missingRequiredRoles,
+            vetoes: consensus.vetoes,
+            verdicts: consensus.verdicts,
+          },
+        );
+      }
     }
   }
 
