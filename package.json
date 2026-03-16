@@ -67,7 +67,7 @@
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.8.0",
     "drizzle-orm": "^0.45.1",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "0.20.8",
