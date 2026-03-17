@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/agora-mcp"><img src="https://img.shields.io/npm/v/agora-mcp" alt="npm version"></a>
   <a href="https://github.com/xpm-cmd/Agora/actions"><img src="https://github.com/xpm-cmd/Agora/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BUSL--1.1-blue.svg" alt="BUSL-1.1 License"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js >= 22">
 </p>
 
@@ -20,7 +20,7 @@
   <a href="#architecture">Architecture</a> &middot;
   <a href="#dashboard">Dashboard</a> &middot;
   <a href="#contributing">Contributing</a> &middot;
-  <a href="LICENSE">MIT License</a>
+  <a href="LICENSE">License</a>
 </p>
 
 ---
@@ -35,13 +35,19 @@ Everything runs locally. No cloud. No API keys. Configuration lives in `.agora/c
 
 ## Features
 
-- **Git-aware indexing** &mdash; Tree-sitter parsing for TS, JS, Python, Go, Rust. Symbols, summaries, secret detection, and 384-dim embeddings per file. Binary assets auto-excluded via configurable `excludePatterns`.
-- **Hybrid search** &mdash; FTS5 full-text + semantic vector search merged with tuned alpha weights. Scope filtering, test/config-file penalties, evidence bundles, and a search debugger UI for ranking internals.
-- **Ticketing and backlog** &mdash; Structured tickets with workflow states, comments, linked patches, dependency links, search, and dashboard actions for create, assign, and transition.
-- **Multi-agent coordination** &mdash; Agent registry, session management, file claims, coordination messages, patch proposals with stale-rejection, and shared presence tracking.
-- **Trust & security** &mdash; Two-tier access (A/B), four roles (developer, reviewer, observer, admin), optional registration auth, and configurable secret scanning rules.
+- **Git-aware indexing** &mdash; Tree-sitter parsing for TS, JS, Python, Go, Rust. Symbols, summaries, imports, symbol references, code chunks, secret detection, and 384-dim embeddings per file and chunk. Binary assets auto-excluded via configurable `excludePatterns`.
+- **Hybrid search** &mdash; FTS5 full-text + semantic vector search merged with tuned alpha weights. Scope filtering, test/config-file penalties, evidence bundles, chunk-level embeddings, and a search debugger UI for ranking internals.
+- **Ticketing and backlog** &mdash; Structured tickets with 10 workflow states, comments, linked patches, dependency links (`blocks`/`relates_to`), council review with quorum-based governance, and dashboard actions for create, assign, and transition.
+- **Multi-agent coordination** &mdash; Agent registry, session management, file claims, coordination messages with lane-aware bus, patch proposals with stale-rejection, shared presence tracking, and agent spawning.
+- **Governance & council review** &mdash; Quorum-based ticket advancement with specialized council roles (security, architecture, testing, performance, documentation). Verdicts are append-only with supersession tracking.
+- **Wave orchestration & convoys** &mdash; Parallel ticket execution through wave scheduling. Convoys group independent tickets into waves, spawn agents per ticket, and manage integration branches for coordinated merges.
+- **Job board** &mdash; Loop-based workforce management with job slots, claim/release lifecycle, heartbeat monitoring, and progress tracking for developer, reviewer, and planner loops.
+- **Goal decomposition** &mdash; Structured goal breakdown into tasks with DAG-validated dependency graphs. Dry-run validation before ticket creation.
+- **Simulation framework** &mdash; Multi-phase simulation runs (A→E) for testing ticket workflows, council review, and wave orchestration without side effects.
+- **Trust & security** &mdash; Two-tier access (A/B), four roles (developer, reviewer, observer, admin), optional registration auth, configurable secret scanning rules, and tool-level rate limiting.
 - **Knowledge Store** &mdash; Two-scope architecture (repo-local + global cross-project). Seven knowledge types with FTS5-backed search and semantic reranking when available.
-- **Dashboard** &mdash; Command center with live agents, activity charts, agent timeline, search debugger, tickets board/table, knowledge views, and read/write ticket actions on the local server.
+- **Work groups** &mdash; Aggregate tracking for multi-ticket features with auto-completion when all tickets resolve.
+- **Dashboard** &mdash; Command center with live agents, activity charts, agent timeline, search debugger, tickets board/table, knowledge views, convoy status, and read/write ticket actions on the local server.
 - **Obsidian export** &mdash; One-click button in dashboard or CLI command to export all knowledge as Markdown with YAML frontmatter.
 
 ## Install
@@ -102,19 +108,25 @@ Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 
 ## Tools
 
-42 MCP tools organized by domain:
+72 MCP tools organized by domain:
 
 | Domain | Tools |
 |--------|-------|
 | **Search** | `status`, `capabilities`, `schema`, `get_code_pack`, `get_change_pack`, `get_issue_pack`, `search_remote_instances` |
-| **Agents** | `register_agent`, `agent_status`, `broadcast`, `claim_files`, `end_session` |
+| **Agents** | `register_agent`, `agent_status`, `broadcast`, `claim_files`, `end_session`, `spawn_agent` |
 | **Coordination** | `send_coordination`, `poll_coordination` |
 | **Patches** | `propose_patch`, `list_patches` |
 | **Notes** | `propose_note`, `list_notes` |
 | **Knowledge** | `store_knowledge`, `search_knowledge`, `query_knowledge`, `archive_knowledge`, `delete_knowledge` |
-| **Tickets** | `create_ticket`, `assign_ticket`, `update_ticket_status`, `update_ticket`, `list_tickets`, `search_tickets`, `get_ticket`, `comment_ticket`, `link_tickets`, `unlink_tickets` |
+| **Tickets** | `create_ticket`, `assign_ticket`, `update_ticket_status`, `update_ticket`, `list_tickets`, `search_tickets`, `get_ticket`, `comment_ticket`, `link_tickets`, `unlink_tickets`, `prune_stale_relations` |
+| **Council** | `assign_council`, `submit_verdict`, `check_consensus`, `list_verdicts` |
 | **Protection** | `add_protected_artifact`, `remove_protected_artifact`, `list_protected_artifacts` |
-| **Analysis** | `analyze_complexity`, `analyze_test_coverage`, `suggest_actions`, `lookup_dependencies` |
+| **Analysis** | `analyze_complexity`, `analyze_test_coverage`, `analyze_coupling`, `find_dependency_cycles`, `suggest_actions`, `suggest_next_work`, `lookup_dependencies`, `find_references`, `trace_dependencies` |
+| **Workflows** | `run_workflow`, `decompose_goal` |
+| **Jobs** | `create_loop`, `list_jobs`, `claim_job`, `update_job_progress`, `complete_job`, `release_job` |
+| **Work Groups** | `create_work_group`, `update_work_group`, `add_tickets_to_group`, `remove_tickets_from_group`, `list_work_groups` |
+| **Waves** | `compute_waves`, `launch_convoy`, `advance_wave`, `get_wave_status` |
+| **Simulation** | `run_simulation`, `run_optimization` |
 | **Index** | `request_reindex` |
 | **Export** | `export_audit` |
 
@@ -163,23 +175,28 @@ Patch review guidance:
 ## Architecture
 
 ```
-agora serve
+agora serve / agora orchestrate / agora loop
     |
     +---> MCP Server (stdio | HTTP)
     |        |
-    |        +---> 42 Tools ---> Trust Layer (Tier A/B + Roles)
+    |        +---> 72 Tools ---> Trust Layer (Tier A/B + Roles + Rate Limits)
     |        |                      |
-    |        |       Search --------+---> FTS5 + Semantic Hybrid + Scope Filter
+    |        |       Search --------+---> FTS5 + Semantic Hybrid + Chunk Embeddings
     |        |       Evidence Bundles ---> Stage A (top 10) + Stage B (expand 5)
-    |        |       Coordination Bus --> shared DB-backed coordination
+    |        |       Coordination Bus --> lane-aware DB-backed messaging
     |        |       Knowledge Store --> repo (.agora/) + global (~/.agora/)
-    |        |       Ticketing -------> lifecycle + comments + patch linkage + dependencies
+    |        |       Ticketing -------> lifecycle + council review + governance
+    |        |       Waves -----------> convoy scheduling + integration branches
+    |        |       Jobs ------------> loop workforce + slot management
     |        |
     |        +---> Repo DB (.agora/agora.db)
     |        +---> Global DB (~/.agora/knowledge.db)
     |
+    +---> Orchestrator (multi-agent loop coordination)
+    |        +---> Agent Spawning + Failover + Problem Handling
+    |
     +---> Dashboard (http://localhost:3141)
-             +---> Live Agents + Timeline + Search Debug + Tickets + Charts
+             +---> Agents + Timeline + Tickets + Knowledge + Convoys + Charts
 ```
 
 ### Search Pipeline
@@ -241,7 +258,19 @@ agora export --obsidian --vault ~/MyVault        # Export to specific vault
 ```
 agora v1.0.0
 
-Commands:  serve | init | index | status | export | ticket | patch | knowledge | tool
+Commands:
+  serve              Start MCP server (stdio or HTTP) + dashboard
+  init               Create .agora/config.json and local DB
+  index              Full or incremental index of tracked files
+  status             Check index status, backend, and live sessions
+  export             Export knowledge to Obsidian vault
+  ticket             Ticket management (summary, create, show)
+  patch              Patch management (list, show)
+  knowledge          Knowledge store operations (search, list)
+  tool               Direct MCP tool invocation (list, inspect, call)
+  loop               Run agent loops (plan, dev, council) with --watch mode
+  facilitator        Run the facilitator loop (planner + dispatcher)
+  orchestrate        Multi-agent orchestrator with spawn, failover, and convoy
 
 Options:
   --repo-path       Path to the git repository (default: cwd)
@@ -289,4 +318,4 @@ For security vulnerabilities, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE)
+[BUSL-1.1](LICENSE) — Converts to Apache 2.0 on 2030-03-12.

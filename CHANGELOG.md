@@ -4,9 +4,45 @@ All notable changes to Agora are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Symbol references + code chunks** — Tree-sitter extracts function calls, member calls, and type references into `symbol_references`. Code chunks store per-symbol line ranges with embeddings for finer semantic search (`c00d628`)
+- **Chunk-level semantic embeddings** — `agora index --semantic` generates 384-dim MiniLM embeddings per function/class chunk, enabling sub-file precision in vector search (`23134f1`)
+- **Work groups + convoy pattern** — Aggregate multi-ticket features in work groups with auto-completion. Convoy model groups independent tickets into waves for parallel execution (`6d1866c`)
+- **Goal decomposition** — `decompose_goal` tool breaks high-level goals into DAG-validated task graphs with dependency tracking and dry-run mode (`e45253a`)
+- **Coupling analysis + dependency cycles** — `analyze_coupling` scores file interconnectedness; `find_dependency_cycles` detects circular imports (`6be977e`)
+- **Activity timeline** — Dashboard enriched with agent/ticket context in the activity feed (`0bf3090`)
+- **Wave scheduler + convoy model** — Parallel ticket execution through computed waves with integration branches and coordinated merges (`13089f6`)
+- **Agent spawning + lane-aware bus** — `spawn_agent` tool, coordination bus with message lanes, failover chains for agent reliability (`57d7fe8`)
+- **Orchestrator hardening** — Phase 3 improvements: observability, cleanup, dashboard convoy views, simulation Phase E (`4a5d68c`)
+- **Governance enforcement + council review** — Quorum-based ticket advancement with specialized council roles, append-only verdicts with supersession, and audit trail (`b0aa5e1`)
+- **Job board** — Loop-based workforce management with typed job slots, claim/release lifecycle, and heartbeat monitoring
+- **Simulation framework** — Multi-phase (A→E) simulation runs for testing ticket workflows, council review, and wave orchestration
+- **Retention policy** — `pruneOldEvents()` utility for automatic cleanup of append-only event tables
+- **72 MCP tools** — Tool surface expanded from 23 to 72 across 17 domains
+
 ### Changed
 
 - **Session heartbeat timeout** — `HEARTBEAT_TIMEOUT_MS` now defaults to 3 hours so long-running implementation sessions keep the same agent identity across review and commit workflows (`c4bbcef`)
+- **Architecture layer cleanup** — Moved `dashboard/events.ts` → `core/events.ts`, `tools/tool-manifest.ts` → `core/tool-manifest.ts`, extracted `ToolRunnerCallResult` to `core/tool-types.ts`, and `autoCompleteWorkGroups` to `work-groups/completion.ts` to fix upward dependency violations
+- **Batch query optimization** — Eliminated N+1 queries in evidence bundle, semantic reranker, and knowledge search with batch `getFilesByPaths()`/`getKnowledgeByIds()`
+- **Dashboard resilience** — SSE debounce (2s), exponential backoff reconnection (1s→30s), `Promise.allSettled` for partial failure handling, refresh re-entrancy guard, `document.hidden` visibility check
+- **Vector search optimization** — Removed `content` column from initial knowledge vector scan to reduce memory pressure
+- **Batch inserts** — Indexer now uses single batch `INSERT` for imports and symbol references instead of per-row inserts
+
+### Fixed
+
+- **Command injection** — Shell metacharacter validation in `runTestsInWorktree` before `sh -c` execution
+- **XSS** — Added single-quote (`&#39;`) escaping to dashboard `esc()` function
+- **Path traversal** — Vault path validation in Obsidian export endpoint (must be within repo or home directory)
+- **TOCTOU races** — Converted 4 upsert functions (`upsertRepo`, `upsertAgent`, `upsertKnowledge`, `upsertCouncilAssignment`) to atomic `onConflictDoUpdate`
+- **Transaction safety** — `fullIndex()` wrapped in `BEGIN IMMEDIATE` transaction; Migration 11 `DROP`+`RENAME` wrapped in transaction
+- **LIKE injection** — Escaped `%` and `_` wildcards in `searchFilesByPath` and `getFilesImporting`
+- **YAML injection** — Obsidian export uses `JSON.stringify()` for safe YAML value serialization
+- **Zod import** — Fixed `simulation-tools.ts` to use `zod/v4` instead of `zod`
+- **Toast timer race** — Dashboard toast now clears previous timer before setting new one
+- **13 missing indexes** — Added indexes for high-traffic query patterns including `files(repo_id, path)`, `tickets(repo_id, status)`, `event_logs(timestamp)`, and more
+- **Global DB pragmas** — Added `foreign_keys = ON`, `busy_timeout = 5000`, `synchronous = NORMAL` to global database initialization
 
 ## [1.0.0] — 2026-03-09
 

@@ -77,20 +77,32 @@ refactor(trust): simplify role permission matrix
 
 ```
 src/
-├── core/          # Config, constants, error types, logging
-├── db/            # SQLite schema, queries, migrations
-├── git/           # Git operations, language detection
-├── indexing/      # Code parser, file indexer, summaries
-├── search/        # FTS5 backend, semantic reranker
+├── core/          # Config, constants, error types, events, tool manifest, tool types
+├── db/            # SQLite schema, queries, migrations, retention
+├── git/           # Git operations, worktree management, language detection
+├── indexing/      # Code parser, file indexer, summaries, chunk embeddings
+├── search/        # FTS5 backend, semantic reranker, search router
 ├── retrieval/     # Evidence bundle pipeline
-├── trust/         # Trust tiers, roles, secret scanning
-├── tools/         # MCP tool handlers (23 tools)
+├── trust/         # Trust tiers, roles, secret scanning, cross-instance auth
+├── tools/         # MCP tool handlers (72 tools across all domains)
 ├── agents/        # Agent registry, session management
-├── coordination/  # Inter-agent messaging bus
+├── coordination/  # Lane-aware inter-agent messaging bus
 ├── patches/       # Patch proposal and validation
-├── logging/       # Event logger with audit trail
-├── dashboard/     # Admin web UI (HTML + API)
-├── export/        # Obsidian markdown export
+├── logging/       # Event logger, audit trail, runtime instrumentation
+├── dashboard/     # Admin web UI (HTML + REST API + SSE)
+├── export/        # Obsidian markdown export, audit export
+├── tickets/       # Ticket service, lifecycle, consensus, council, repair spawner
+├── knowledge/     # Knowledge search (FTS5 + vector hybrid)
+├── analysis/      # Complexity, test coverage, coupling, dependency cycles
+├── cli/           # CLI command handlers (serve, loop, orchestrate, facilitator)
+├── workflows/     # Workflow engine, loader, schema, DAG validator, builtins
+├── simulation/    # Multi-phase simulation runner + optimization
+├── waves/         # Wave scheduler, integration branch management
+├── work-groups/   # Work group auto-completion logic
+├── dispatch/      # Task dispatch rules and action suggestions
+├── federation/    # Cross-instance federation
+├── orchestrator/  # Multi-agent orchestrator loop + problem heuristics
+├── repo-agents/   # Repository-scoped agent catalog
 └── server.ts      # MCP server factory
 ```
 
@@ -102,4 +114,4 @@ src/
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that your contributions will be licensed under the [BUSL-1.1](LICENSE) license.
