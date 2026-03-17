@@ -8,6 +8,7 @@ import * as queries from "../db/queries.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
 import { buildPatchListPayload } from "../patches/read-model.js";
+import { recordDashboardEvent } from "../core/events.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -104,6 +105,16 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
       }
 
       c.insight.info(`Patch ${validation.proposalId} by ${agentId}: ${state}`);
+      recordDashboardEvent(c.db, c.repoId, {
+        type: "patch_proposed",
+        data: {
+          proposalId: validation.proposalId,
+          ticketId: ticketId ?? null,
+          state,
+          agentId,
+          message,
+        },
+      });
 
       return {
         content: [{

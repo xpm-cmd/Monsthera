@@ -10,6 +10,7 @@ import {
 } from "../core/input-hardening.js";
 import { AgentRegistrationError, registerAgent, getAgentStatus, reapStaleSessions, disconnectSession } from "../agents/registry.js";
 import * as queries from "../db/queries.js";
+import { recordDashboardEvent } from "../core/events.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
@@ -42,6 +43,17 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
           { registrationAuth: c.config.registrationAuth },
         );
         c.insight.info(`Agent ${result.resumed ? "resumed" : "registered"}: ${name} (${result.agentId}) as ${result.role}`);
+        recordDashboardEvent(c.db, c.repoId, {
+          type: "agent_registered",
+          data: {
+            agentId: result.agentId,
+            sessionId: result.sessionId,
+            name,
+            role: result.role,
+            trustTier: result.trustTier,
+            resumed: result.resumed,
+          },
+        });
 
         return {
           content: [{
@@ -305,6 +317,14 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
 
       disconnectSession(c.db, sessionId);
       c.insight.info(`Session ended: ${sessionId} (agent: ${session.agentId})`);
+      recordDashboardEvent(c.db, c.repoId, {
+        type: "session_changed",
+        data: {
+          sessionId,
+          agentId: session.agentId,
+          state: "disconnected",
+        },
+      });
 
       return {
         content: [{

@@ -27,6 +27,7 @@ export async function cmdOrchestrate(
   const pollIntervalMs = parseInt(getArg(args, "--poll-interval") ?? "10000", 10);
   const llmFallback = args.includes("--llm-fallback");
   const maxRetries = parseInt(getArg(args, "--max-retries") ?? "1", 10);
+  const spawnCommand = getArg(args, "--spawn-command");
 
   let context: AgoraContext | null = null;
   const baseGetContext = createAgoraContextLoader(config, insight, { startLifecycleSweep: false });
@@ -57,25 +58,34 @@ export async function cmdOrchestrate(
       }
       return result.result;
     },
-    spawnProcess: async (worktreePath, ticketId) => {
-      const child = spawn("node", [
-        process.argv[1] ?? "agora",
-        "loop", "dev",
-        "--ticket", ticketId,
-        "--limit", "1",
-      ], {
-        cwd: worktreePath,
-        stdio: "ignore",
-        detached: true,
-      });
-      child.unref();
-
-      return {
-        pid: child.pid ?? 0,
-        ticketId,
-        sessionId: `spawn-${ticketId}`,
-      };
-    },
+    spawnProcess: spawnCommand
+      ? async (worktreePath, ticketId) => {
+          const expanded = spawnCommand
+            .replaceAll("{ticketId}", ticketId)
+            .replaceAll("{worktreePath}", worktreePath);
+          const parts = expanded.split(/\s+/);
+          const child = spawn(parts[0]!, parts.slice(1), {
+            cwd: worktreePath,
+            stdio: "ignore",
+            detached: true,
+          });
+          child.unref();
+          return { pid: child.pid ?? 0, ticketId, sessionId: `spawn-${ticketId}` };
+        }
+      : async (worktreePath, ticketId) => {
+          const child = spawn("node", [
+            process.argv[1] ?? "agora",
+            "loop", "dev",
+            "--ticket", ticketId,
+            "--limit", "1",
+          ], {
+            cwd: worktreePath,
+            stdio: "ignore",
+            detached: true,
+          });
+          child.unref();
+          return { pid: child.pid ?? 0, ticketId, sessionId: `spawn-${ticketId}` };
+        },
     killProcess: async (pid) => {
       try {
         process.kill(pid);
@@ -99,9 +109,10 @@ export async function cmdOrchestrate(
       insight.info(`[convoy] ${event.type}`);
       if (context) {
         try {
+          const { type: _t, ...data } = event as unknown as Record<string, unknown>;
           recordDashboardEvent(context.db, context.repoId, {
             type: mapConvoyEventType(event.type),
-            data: event as unknown as Record<string, unknown>,
+            data,
           });
         } catch {
           // non-fatal

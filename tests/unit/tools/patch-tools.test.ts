@@ -29,6 +29,7 @@ function createTestDb() {
     CREATE TABLE sessions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), state TEXT NOT NULL DEFAULT 'active', connected_at TEXT NOT NULL, last_activity TEXT NOT NULL, claimed_files_json TEXT, worktree_path TEXT, worktree_branch TEXT);
     CREATE TABLE tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), ticket_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'backlog', severity TEXT NOT NULL DEFAULT 'medium', priority INTEGER NOT NULL DEFAULT 5, tags_json TEXT, affected_paths_json TEXT, acceptance_criteria TEXT, creator_agent_id TEXT NOT NULL, creator_session_id TEXT NOT NULL, assignee_agent_id TEXT, resolved_by_agent_id TEXT, commit_sha TEXT NOT NULL, required_roles_json TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE patches (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL REFERENCES repos(id), proposal_id TEXT NOT NULL UNIQUE, base_commit TEXT NOT NULL, bundle_id TEXT, state TEXT NOT NULL, diff TEXT NOT NULL, message TEXT NOT NULL, touched_paths_json TEXT, dry_run_result_json TEXT, agent_id TEXT NOT NULL, session_id TEXT NOT NULL, committed_sha TEXT, ticket_id INTEGER REFERENCES tickets(id), created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
 }
@@ -136,5 +137,45 @@ describe("patch tools", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("Ticket not found");
     expect(queries.getPatchesByRepo(db, repoId)).toHaveLength(0);
+  });
+
+  it("records patch_proposed dashboard event on successful submission", async () => {
+    const proposePatch = server.handlers.get("propose_patch")!;
+    await proposePatch({
+      diff: "--- a/src/file.ts\n+++ b/src/file.ts\n@@ -1 +1 @@\n-old\n+new",
+      message: "Fix bug",
+      baseCommit: "abc1234",
+      agentId: "agent-1",
+      sessionId: "session-1",
+    });
+
+    const events = sqlite.prepare(
+      "SELECT event_type, data_json FROM dashboard_events WHERE repo_id = ?",
+    ).all(repoId) as Array<{ event_type: string; data_json: string }>;
+    expect(events).toHaveLength(1);
+    expect(events[0]!.event_type).toBe("patch_proposed");
+    const data = JSON.parse(events[0]!.data_json);
+    expect(data).toMatchObject({
+      proposalId: "patch-123",
+      state: "validated",
+      agentId: "agent-1",
+      message: "Fix bug",
+      ticketId: null,
+    });
+  });
+
+  it("does not record patch_proposed event on dry run", async () => {
+    const proposePatch = server.handlers.get("propose_patch")!;
+    await proposePatch({
+      diff: "--- a/src/file.ts\n+++ b/src/file.ts\n@@ -1 +1 @@\n-old\n+new",
+      message: "Test",
+      baseCommit: "abc1234",
+      agentId: "agent-1",
+      sessionId: "session-1",
+      dryRun: true,
+    });
+
+    const events = sqlite.prepare("SELECT * FROM dashboard_events").all();
+    expect(events).toHaveLength(0);
   });
 });

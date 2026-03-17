@@ -42,6 +42,8 @@ function createTestDb() {
       worktree_path TEXT,
       worktree_branch TEXT
     );
+    CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
 }
@@ -49,9 +51,11 @@ function createTestDb() {
 describe("agent tools", () => {
   let sqlite: InstanceType<typeof Database>;
   let db: ReturnType<typeof createTestDb>["db"];
+  let repoId: number;
 
   beforeEach(() => {
     ({ db, sqlite } = createTestDb());
+    repoId = queries.upsertRepo(db, "/test", "test").id;
   });
 
   afterEach(() => sqlite.close());
@@ -64,6 +68,7 @@ describe("agent tools", () => {
     const server = new FakeServer();
     registerAgentTools(server as unknown as McpServer, async () => ({
       db,
+      repoId,
       config: {
         registrationAuth: {
           enabled: false,
@@ -112,6 +117,7 @@ describe("agent tools", () => {
     };
     registerAgentTools(server as unknown as McpServer, async () => ({
       db,
+      repoId,
       config: {
         registrationAuth: {
           enabled: false,
@@ -470,5 +476,61 @@ describe("agent tools", () => {
     const session = queries.getSession(db, "session-dev");
     expect(session?.state).toBe("disconnected");
     expect(JSON.parse(session?.claimedFilesJson ?? "[]")).toEqual([]);
+  });
+
+  it("records agent_registered dashboard event on successful registration", async () => {
+    const registerAgent = setupServer();
+    await registerAgent({
+      name: "Dev",
+      type: "claude-code",
+      provider: "anthropic",
+      model: "claude-3.7-sonnet",
+      desiredRole: "developer",
+    });
+
+    const events = sqlite.prepare(
+      "SELECT event_type, data_json FROM dashboard_events WHERE repo_id = ?",
+    ).all(repoId) as Array<{ event_type: string; data_json: string }>;
+    expect(events).toHaveLength(1);
+    expect(events[0]!.event_type).toBe("agent_registered");
+    const data = JSON.parse(events[0]!.data_json);
+    expect(data).toMatchObject({
+      name: "Dev",
+      role: "developer",
+      trustTier: "A",
+      resumed: false,
+    });
+    expect(data.agentId).toBeDefined();
+    expect(data.sessionId).toBeDefined();
+  });
+
+  it("records agent_registered with resumed=true on re-registration", async () => {
+    const registerAgent = setupServer();
+    await registerAgent({ name: "Claude", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer" });
+    sqlite.prepare("UPDATE sessions SET state = 'disconnected'").run();
+    await registerAgent({ name: "Claude", type: "claude-code", provider: "anthropic", model: "opus-4", desiredRole: "developer" });
+
+    const events = sqlite.prepare(
+      "SELECT data_json FROM dashboard_events WHERE event_type = 'agent_registered'",
+    ).all() as Array<{ data_json: string }>;
+    expect(events).toHaveLength(2);
+    expect(JSON.parse(events[1]!.data_json).resumed).toBe(true);
+  });
+
+  it("records session_changed dashboard event when ending a session", async () => {
+    insertAgentWithSession("agent-dev", "session-dev", "developer");
+    const { handlers } = setupActionServer();
+    await handlers.get("end_session")!({ agentId: "agent-dev", sessionId: "session-dev" });
+
+    const events = sqlite.prepare(
+      "SELECT event_type, data_json FROM dashboard_events WHERE event_type = 'session_changed'",
+    ).all() as Array<{ event_type: string; data_json: string }>;
+    expect(events).toHaveLength(1);
+    const data = JSON.parse(events[0]!.data_json);
+    expect(data).toMatchObject({
+      sessionId: "session-dev",
+      agentId: "agent-dev",
+      state: "disconnected",
+    });
   });
 });

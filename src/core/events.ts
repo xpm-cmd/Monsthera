@@ -39,7 +39,9 @@ export interface DashboardEvent {
     | "convoy_agent_spawned"
     | "convoy_agent_finished"
     | "convoy_wave_advanced"
-    | "convoy_completed";
+    | "convoy_completed"
+    | "coordination_message_sent"
+    | "council_consensus_reached";
   data: Record<string, unknown>;
 }
 

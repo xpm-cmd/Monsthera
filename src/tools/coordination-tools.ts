@@ -5,6 +5,7 @@ import { AgentIdSchema, FlatMetadataSchema, SessionIdSchema } from "../core/inpu
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 import type { MessageType } from "../../schemas/coordination.js";
+import { recordDashboardEvent } from "../core/events.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -54,6 +55,15 @@ export function registerCoordinationTools(server: McpServer, getContext: GetCont
       });
 
       c.insight.debug(`[coord] ${type} from ${resolved.agentId} → ${to ?? "all"}`);
+      recordDashboardEvent(c.db, c.repoId, {
+        type: "coordination_message_sent",
+        data: {
+          messageId: msg.id,
+          messageType: type,
+          from: resolved.agentId,
+          to: to ?? "broadcast",
+        },
+      });
 
       return {
         content: [{

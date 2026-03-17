@@ -781,6 +781,16 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
           });
           if (advanceResult.ok) {
             autoAdvanced = { previousStatus: ticket.status, status: target };
+            recordDashboardEvent(c.db, c.repoId, {
+              type: "council_consensus_reached",
+              data: {
+                ticketId,
+                previousStatus: ticket.status,
+                newStatus: target,
+                passCount: consensus.counts.pass,
+                requiredPasses: consensus.requiredPasses,
+              },
+            });
           }
         }
       }

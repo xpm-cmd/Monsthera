@@ -43,6 +43,8 @@ role_id TEXT NOT NULL DEFAULT 'observer',
       worktree_path TEXT,
       worktree_branch TEXT
     );
+    CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
 }
@@ -52,9 +54,11 @@ describe("coordination tools", () => {
   let db: ReturnType<typeof createTestDb>["db"];
   let server: FakeServer;
   let bus: CoordinationBus;
+  let repoId: number;
 
   beforeEach(() => {
     ({ db, sqlite } = createTestDb());
+    repoId = queries.upsertRepo(db, "/test", "test").id;
     bus = new CoordinationBus();
 
     const now = new Date().toISOString();
@@ -83,6 +87,7 @@ describe("coordination tools", () => {
     server = new FakeServer();
     registerCoordinationTools(server as unknown as McpServer, async () => ({
       db,
+      repoId,
       bus,
       insight: {
         debug: vi.fn(),
@@ -148,5 +153,27 @@ describe("coordination tools", () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("Session not found");
+  });
+
+  it("records coordination_message_sent dashboard event", async () => {
+    await handler("send_coordination")({
+      type: "status_update",
+      payload: { domain: "ticket", ticketId: "TKT-123" },
+      to: "agent-review",
+      agentId: "agent-dev",
+      sessionId: "session-agent-dev",
+    });
+
+    const events = sqlite.prepare(
+      "SELECT event_type, data_json FROM dashboard_events WHERE event_type = 'coordination_message_sent'",
+    ).all() as Array<{ event_type: string; data_json: string }>;
+    expect(events).toHaveLength(1);
+    const data = JSON.parse(events[0]!.data_json);
+    expect(data).toMatchObject({
+      messageType: "status_update",
+      from: "agent-dev",
+      to: "agent-review",
+    });
+    expect(data.messageId).toBeDefined();
   });
 });

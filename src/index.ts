@@ -63,7 +63,7 @@ async function main() {
       await cmdIndex(config, insight, args.slice(1));
       break;
     case "status":
-      await cmdStatus(config, insight);
+      await cmdStatus(config, insight, args);
       break;
     case "export":
       await cmdExport(config, insight, args);
@@ -605,7 +605,7 @@ async function rebuildSearchIndexes(
   }
 }
 
-async function cmdStatus(config: ReturnType<typeof resolveConfig>, insight: InsightStream) {
+async function cmdStatus(config: ReturnType<typeof resolveConfig>, insight: InsightStream, args: string[] = []) {
   if (!(await isGitRepo({ cwd: config.repoPath }))) {
     insight.error("Not a git repository");
     process.exit(1);
@@ -621,6 +621,19 @@ async function cmdStatus(config: ReturnType<typeof resolveConfig>, insight: Insi
   const fileCount = queries.getFileCount(db, repoId);
   const agents = queries.getAllAgents(db);
   const activeSessions = queries.getActiveSessions(db);
+
+  if (args.includes("--json")) {
+    console.log(JSON.stringify({
+      version: VERSION,
+      repoPath: repoRoot,
+      dbPath: join(mainRepoRoot, config.agoraDir, config.dbName),
+      indexedCommit: indexedCommit ?? null,
+      fileCount,
+      agentCount: agents.length,
+      activeSessionCount: activeSessions.length,
+    }));
+    return;
+  }
 
   console.error(`Agora v${VERSION}`);
   console.error(`  Repo: ${repoRoot}`);

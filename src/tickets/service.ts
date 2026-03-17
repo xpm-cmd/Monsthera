@@ -323,10 +323,11 @@ export async function createTicketRecord(
   ctx.insight.info(`Ticket ${ticketId} created by ${resolved.agentId}`);
   recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_created",
-    data: { ticketId, status: "backlog", severity: input.severity, creatorAgentId: resolved.agentId },
+    data: { ticketId, title: input.title, status: "backlog", severity: input.severity, creatorAgentId: resolved.agentId },
   });
   broadcastTicketRealtime(ctx, resolved.agentId, "ticket_created", {
     ticketId,
+    title: input.title,
     status: "backlog",
     severity: input.severity,
     creatorAgentId: resolved.agentId,
@@ -828,12 +829,13 @@ export function commentTicketRecord(
 
   recordDashboardEvent(ctx.db, ctx.repoId, {
     type: "ticket_commented",
-    data: { ticketId: input.ticketId, commentId: comment.id, agentId: resolved.agentId },
+    data: { ticketId: input.ticketId, commentId: comment.id, agentId: resolved.agentId, contentPreview: input.content.slice(0, 120) },
   });
   broadcastTicketRealtime(ctx, resolved.agentId, "ticket_commented", {
     ticketId: input.ticketId,
     commentId: comment.id,
     agentId: resolved.agentId,
+    contentPreview: input.content.slice(0, 120),
   });
 
   return ok({
