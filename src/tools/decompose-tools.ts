@@ -8,6 +8,7 @@ import {
 } from "../core/input-hardening.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
+import { okJson, errText, errJson } from "./response-helpers.js";
 import {
   createTicketRecord,
   linkTicketsRecord,
@@ -187,16 +188,4 @@ export function registerDecomposeTools(server: McpServer, getContext: GetContext
   );
 }
 
-// --- Helpers ---
-
-function okJson(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
-}
-
-function errText(msg: string) {
-  return { content: [{ type: "text" as const, text: msg }], isError: true };
-}
-
-function errJson(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }], isError: true };
-}
+// Response helpers imported from ./response-helpers.js

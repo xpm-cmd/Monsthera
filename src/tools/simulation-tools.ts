@@ -2,7 +2,7 @@
  * MCP tool registration for `run_simulation` and `run_optimization`.
  */
 
-import { z } from "zod";
+import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AgoraContext } from "../core/context.js";
 import {

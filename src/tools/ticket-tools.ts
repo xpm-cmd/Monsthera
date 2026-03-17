@@ -18,6 +18,7 @@ import * as tables from "../db/schema.js";
 import { recordDashboardEvent } from "../dashboard/events.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
+import { okJson, errText, errJson, errService } from "./response-helpers.js";
 import { getHead } from "../git/operations.js";
 import {
   TicketStatus, TicketSeverity,
@@ -1084,23 +1085,4 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
   );
 }
 
-// --- Helpers ---
-
-function okJson(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
-}
-
-function errText(msg: string) {
-  return { content: [{ type: "text" as const, text: msg }], isError: true };
-}
-
-function errJson(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }], isError: true };
-}
-
-function errService(result: { message: string; data?: Record<string, unknown> }) {
-  if (result.data) {
-    return errJson({ error: result.message, ...result.data });
-  }
-  return errText(result.message);
-}
+// Response helpers imported from ./response-helpers.js

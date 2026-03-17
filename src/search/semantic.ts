@@ -97,8 +97,13 @@ export class SemanticReranker {
     // Normalize FTS5 scores to [0, 1]
     const maxFts5 = Math.max(...results.map((r) => r.score), 1);
 
+    // Batch-load file records to avoid N+1 queries
+    const filePaths = results.map((r) => r.path);
+    const fileRecords = queries.getFilesByPaths(this.opts.db, repoId, filePaths);
+    const fileMap = new Map(fileRecords.map((f) => [f.path, f]));
+
     const scored = results.map((result) => {
-      const fileRecord = queries.getFileByPath(this.opts.db, repoId, result.path);
+      const fileRecord = fileMap.get(result.path);
       const embedding = fileRecord ? this.getEmbedding(fileRecord.id) : null;
 
       if (!embedding) {

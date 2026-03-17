@@ -188,6 +188,11 @@ export async function runTestsInWorktree(
   testCommand: string,
   timeoutMs: number = 120_000,
 ): Promise<{ passed: boolean; output: string }> {
+  // Reject shell metacharacters to prevent command injection
+  const SHELL_METACHAR = /[;|&$`(){}><\n\\]/;
+  if (SHELL_METACHAR.test(testCommand)) {
+    return { passed: false, output: `Rejected: testCommand contains unsafe shell characters` };
+  }
   try {
     const { stdout, stderr } = await execFileAsync("sh", ["-c", testCommand], {
       cwd: worktreePath,

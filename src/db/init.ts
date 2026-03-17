@@ -316,6 +316,9 @@ export function initGlobalDatabase(): GlobalDbResult {
   const globalSqlite = new Database(dbPath);
 
   globalSqlite.pragma("journal_mode = WAL");
+  globalSqlite.pragma("foreign_keys = ON");
+  globalSqlite.pragma("busy_timeout = 5000");
+  globalSqlite.pragma("synchronous = NORMAL");
 
   globalSqlite.prepare(`CREATE TABLE IF NOT EXISTS knowledge (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -597,4 +600,19 @@ function runMigrations(sqlite: Database.Database): void {
     sqlite.prepare("ALTER TABLE work_group_tickets ADD COLUMN wave_status TEXT DEFAULT 'pending'").run();
   }
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_wgt_wave ON work_group_tickets(work_group_id, wave_number)").run();
+
+  // --- Additional indexes for high-traffic query patterns ---
+  sqlite.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_files_repo_path ON files(repo_id, path)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_files_repo_language ON files(repo_id, language)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_tickets_repo_status ON tickets(repo_id, status)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_event_logs_timestamp ON event_logs(timestamp)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_event_logs_agent ON event_logs(agent_id)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_event_logs_session ON event_logs(session_id)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_coordination_messages_repo_ts ON coordination_messages(repo_id, timestamp)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_dashboard_events_repo_id ON dashboard_events(repo_id, id)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_notes_repo_type ON notes(repo_id, type)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_patches_repo_state ON patches(repo_id, state)").run();
+  sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_imports_source_file ON imports(source_file_id)").run();
+  sqlite.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_index_state_repo ON index_state(repo_id)").run();
+  sqlite.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_deps_unique ON ticket_dependencies(from_ticket_id, to_ticket_id, relation_type)").run();
 }

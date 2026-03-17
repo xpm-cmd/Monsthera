@@ -456,7 +456,7 @@ footer a{color:var(--accent);text-decoration:none}
 <div class="toast" id="toast"></div>
 
 <script>
-const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const api=p=>fetch('/api/'+p).then(r=>r.json());
 const ROUTES=['mission','agents','tickets','knowledge','workflows','activity','settings'];
 const PALETTE=['#00FF88','#4488FF','#FF8800','#8844FF','#06b6d4','#ec4899','#FF4444','#14b8a6','#f97316','#6366f1'];
@@ -3235,11 +3235,15 @@ async function refreshGovernance(){
 }
 
 /* ── Main refresh ────────────────────────────── */
+var refreshInFlight=false;
 async function refresh(){
+  if(refreshInFlight) return;
+  refreshInFlight=true;
   try{
-    var results=await Promise.all([
+    var settled=await Promise.allSettled([
       api('overview'),api('agents'),api('agent-timeline'),api('logs'),api('patches'),api('notes'),api('knowledge'),api('presence'),api('tickets'),api('tickets/metrics'),api('files'),api('ticket-templates'),api('settings/governance')
     ]);
+    var results=settled.map(function(r){return r.status==='fulfilled'?r.value:null;});
     var o=results[0],agents=results[1],timeline=results[2],logs=results[3],patches=results[4],notes=results[5],knowledge=results[6],presence=results[7],tickets=results[8],ticketMetrics=results[9],files=results[10],ticketTemplates=results[11],settings=results[12];
     knowledgeCatalog=knowledge;
     dashboardAgents=agents;
@@ -3408,6 +3412,8 @@ async function refresh(){
     if(lastEl) lastEl.textContent='Updated '+new Date().toLocaleTimeString();
   }catch(e){
     console.error('Refresh failed:',e);
+  }finally{
+    refreshInFlight=false;
   }
 }
 
@@ -3628,15 +3634,21 @@ function toggleConvoyDetail(groupId){
 }
 
 /* ── SSE ─────────────────────────────────────── */
+var sseRefreshTimer=null;
+function debouncedRefresh(){
+  if(sseRefreshTimer!==null) return;
+  sseRefreshTimer=setTimeout(function(){sseRefreshTimer=null;refresh();},2000);
+}
+var sseRetryDelay=1000;
 function connectSSE(){
   var pulse=document.getElementById('pulse');
   var es=new EventSource('/api/events');
-  es.onopen=function(){if(pulse)pulse.classList.remove('disconnected');if(pulse)pulse.title='SSE connected'};
+  es.onopen=function(){if(pulse)pulse.classList.remove('disconnected');if(pulse)pulse.title='SSE connected';sseRetryDelay=1000;};
 
   var sseHandler=function(eventType){
     return function(){
       addLiveFeedEvent(eventType,'');
-      refresh();
+      debouncedRefresh();
     };
   };
 
@@ -3663,7 +3675,7 @@ function connectSSE(){
   var convoyHandler=function(eventType){
     return function(){
       addLiveFeedEvent(eventType,'');
-      refresh();
+      debouncedRefresh();
       if(currentRoute==='convoys') refreshConvoys();
     };
   };
@@ -3673,22 +3685,26 @@ function connectSSE(){
   es.addEventListener('convoy_completed',convoyHandler('convoy_completed'));
   es.onerror=function(){
     if(pulse){pulse.classList.add('disconnected');pulse.title='SSE disconnected';}
-    es.close();setTimeout(connectSSE,5000);
+    es.close();setTimeout(connectSSE,sseRetryDelay);
+    sseRetryDelay=Math.min(sseRetryDelay*2,30000);
   };
 }
 
 /* ── Toast ───────────────────────────────────── */
+var toastTimer=null;
 function showToast(msg,type){
   var t=document.getElementById('toast');
   if(!t) return;
+  if(toastTimer) clearTimeout(toastTimer);
   t.textContent=msg;
   t.className='toast '+type+' show';
-  setTimeout(function(){t.classList.remove('show')},4000);
+  toastTimer=setTimeout(function(){t.classList.remove('show');toastTimer=null;},4000);
 }
 
 init();
 connectSSE();
 setInterval(function(){
+  if(document.hidden) return;
   if(currentRoute==='mission'||currentRoute==='agents'){
     api('presence').then(function(agents){renderPresence(agents)}).catch(function(){});
   }

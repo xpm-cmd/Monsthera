@@ -39,7 +39,8 @@ export function exportToObsidian(opts: ObsidianExportOptions): { exported: numbe
   }
 
   for (const entry of entries) {
-    const typeDir = join(baseDir, entry.type);
+    const safeType = entry.type.replace(/[./\\]/g, "_");
+    const typeDir = join(baseDir, safeType);
     mkdirSync(typeDir, { recursive: true });
 
     const slug = slugify(entry.title);
@@ -65,13 +66,13 @@ function renderMarkdown(entry: KnowledgeEntry): string {
     "---",
     `type: ${entry.type}`,
     `scope: ${entry.scope}`,
-    `key: "${entry.key}"`,
+    `key: ${JSON.stringify(entry.key)}`,
     `status: ${entry.status ?? "active"}`,
-    `tags: [${tags.map((t) => `"${t}"`).join(", ")}]`,
+    `tags: [${tags.map((t) => JSON.stringify(t)).join(", ")}]`,
   ];
 
   if (entry.agentId) {
-    lines.push(`agentId: "${entry.agentId}"`);
+    lines.push(`agentId: ${JSON.stringify(entry.agentId)}`);
   }
 
   lines.push(

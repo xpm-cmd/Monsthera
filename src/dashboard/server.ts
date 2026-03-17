@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve as pathResolve } from "node:path";
+import { homedir } from "node:os";
 import type { InsightStream } from "../core/insight-stream.js";
 import { renderDashboard } from "./html.js";
 import { cleanupExpiredPayloads } from "../logging/event-logger.js";
@@ -232,6 +233,13 @@ export function startDashboard(
       if (path === "/api/export/obsidian" && req.method === "POST") {
         try {
           const vaultParam = url.searchParams.get("vault") ?? deps.repoPath;
+          const resolved = pathResolve(vaultParam);
+          const home = homedir();
+          if (!resolved.startsWith(deps.repoPath) && !resolved.startsWith(home)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "vault path must be within repo or home directory" }));
+            return;
+          }
           const result = exportToObsidian({
             vaultPath: vaultParam,
             repoDb: deps.db,

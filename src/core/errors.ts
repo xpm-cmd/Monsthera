@@ -1,3 +1,7 @@
+export function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export class AgoraError extends Error {
   constructor(
     message: string,

@@ -9,6 +9,10 @@ import * as tables from "./schema.js";
 type DB = BetterSQLite3Database<typeof schema>;
 type QueryDb = Pick<DB, "select" | "insert" | "update" | "delete">;
 
+function escapeLike(s: string): string {
+  return s.replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 const TICKET_RESOLUTION_COMMITS_COLUMN = "resolution_commits_json";
 const ticketResolutionCommitsColumnCache = new WeakMap<object, boolean>();
 const REVIEW_VERDICT_PENDING_REPLACEMENT = -1;
@@ -17,12 +21,10 @@ export const REVIEW_VERDICT_CLEARED_ON_RESET = 0;
 // --- Repos ---
 
 export function upsertRepo(db: DB, path: string, name: string): { id: number } {
-  const existing = db.select().from(tables.repos).where(eq(tables.repos.path, path)).get();
-  if (existing) return { id: existing.id };
-
   return db
     .insert(tables.repos)
     .values({ path, name, createdAt: new Date().toISOString() })
+    .onConflictDoUpdate({ target: tables.repos.path, set: { name } })
     .returning({ id: tables.repos.id })
     .get();
 }
@@ -41,11 +43,20 @@ export function getFileByPath(db: DB, repoId: number, path: string) {
     .get();
 }
 
+export function getFilesByPaths(db: DB, repoId: number, paths: string[]) {
+  if (paths.length === 0) return [];
+  return db
+    .select()
+    .from(tables.files)
+    .where(and(eq(tables.files.repoId, repoId), inArray(tables.files.path, paths)))
+    .all();
+}
+
 export function searchFilesByPath(db: DB, repoId: number, pattern: string) {
   return db
     .select()
     .from(tables.files)
-    .where(and(eq(tables.files.repoId, repoId), like(tables.files.path, `%${pattern}%`)))
+    .where(and(eq(tables.files.repoId, repoId), like(tables.files.path, `%${escapeLike(pattern)}%`)))
     .all();
 }
 
@@ -89,7 +100,7 @@ export function getFilesImporting(db: DB, targetPath: string) {
     .select()
     .from(tables.imports)
     .innerJoin(tables.files, eq(tables.imports.sourceFileId, tables.files.id))
-    .where(like(tables.imports.targetPath, `%${targetPath}%`))
+    .where(like(tables.imports.targetPath, `%${escapeLike(targetPath)}%`))
     .all();
 }
 
@@ -449,7 +460,6 @@ export function updatePatchState(db: DB, proposalId: string, state: string) {
 // --- Agents ---
 
 export function upsertAgent(db: DB, agent: typeof tables.agents.$inferInsert) {
-  const existing = db.select().from(tables.agents).where(eq(tables.agents.id, agent.id)).get();
   const identityFields = {
     provider: agent.provider ?? null,
     model: agent.model ?? null,
@@ -457,22 +467,18 @@ export function upsertAgent(db: DB, agent: typeof tables.agents.$inferInsert) {
     modelVersion: agent.modelVersion ?? null,
     identitySource: agent.identitySource ?? null,
   };
-  if (existing) {
-    db.update(tables.agents)
-      .set({
-        name: agent.name,
-        type: agent.type,
-        ...identityFields,
-        roleId: agent.roleId,
-        trustTier: agent.trustTier,
-      })
-      .where(eq(tables.agents.id, agent.id))
-      .run();
-    return db.select().from(tables.agents).where(eq(tables.agents.id, agent.id)).get();
-  }
   return db.insert(tables.agents).values({
     ...agent,
     ...identityFields,
+  }).onConflictDoUpdate({
+    target: tables.agents.id,
+    set: {
+      name: agent.name,
+      type: agent.type,
+      ...identityFields,
+      roleId: agent.roleId,
+      trustTier: agent.trustTier,
+    },
   }).returning().get();
 }
 
@@ -731,22 +737,19 @@ export function upsertKnowledge(
   db: QueryDb,
   entry: typeof tables.knowledge.$inferInsert,
 ): typeof tables.knowledge.$inferSelect {
-  const existing = db.select().from(tables.knowledge).where(eq(tables.knowledge.key, entry.key)).get();
-  if (existing) {
-    // Re-resolve/close updates the distilled content, but preserves the original actor/session attribution.
-    db.update(tables.knowledge)
-      .set({
+  // Re-resolve/close updates the distilled content, but preserves the original actor/session attribution.
+  return db.insert(tables.knowledge).values(entry)
+    .onConflictDoUpdate({
+      target: tables.knowledge.key,
+      set: {
         title: entry.title,
         content: entry.content,
         tagsJson: entry.tagsJson,
         status: entry.status ?? "active",
         updatedAt: new Date().toISOString(),
-      })
-      .where(eq(tables.knowledge.key, entry.key))
-      .run();
-    return db.select().from(tables.knowledge).where(eq(tables.knowledge.key, entry.key)).get()!;
-  }
-  return db.insert(tables.knowledge).values(entry).returning().get();
+      },
+    })
+    .returning().get();
 }
 
 export function getKnowledgeByKey(db: DB, key: string) {
@@ -755,6 +758,11 @@ export function getKnowledgeByKey(db: DB, key: string) {
 
 export function getKnowledgeById(db: DB, id: number) {
   return db.select().from(tables.knowledge).where(eq(tables.knowledge.id, id)).get();
+}
+
+export function getKnowledgeByIds(db: DB, ids: number[]) {
+  if (ids.length === 0) return [];
+  return db.select().from(tables.knowledge).where(inArray(tables.knowledge.id, ids)).all();
 }
 
 export function queryKnowledge(
@@ -1038,27 +1046,15 @@ export function upsertCouncilAssignment(
   db: DB,
   assignment: typeof tables.councilAssignments.$inferInsert,
 ): typeof tables.councilAssignments.$inferSelect {
-  const existing = db
-    .select()
-    .from(tables.councilAssignments)
-    .where(and(
-      eq(tables.councilAssignments.ticketId, assignment.ticketId),
-      eq(tables.councilAssignments.specialization, assignment.specialization),
-    ))
-    .get();
-
-  if (!existing) {
-    return db.insert(tables.councilAssignments).values(assignment).returning().get();
-  }
-
-  return db
-    .update(tables.councilAssignments)
-    .set({
-      agentId: assignment.agentId,
-      assignedByAgentId: assignment.assignedByAgentId,
-      assignedAt: assignment.assignedAt,
+  return db.insert(tables.councilAssignments).values(assignment)
+    .onConflictDoUpdate({
+      target: [tables.councilAssignments.ticketId, tables.councilAssignments.specialization],
+      set: {
+        agentId: assignment.agentId,
+        assignedByAgentId: assignment.assignedByAgentId,
+        assignedAt: assignment.assignedAt,
+      },
     })
-    .where(eq(tables.councilAssignments.id, existing.id))
     .returning()
     .get();
 }

@@ -90,10 +90,14 @@ export async function buildEvidenceBundle(opts: BundleBuildOptions): Promise<Evi
 
 function buildCandidates(opts: BundleBuildOptions): BundleCandidate[] {
   const { searchResults, db, repoId } = opts;
-  const candidates: BundleCandidate[] = [];
+  const sliced = searchResults.slice(0, STAGE_A_MAX_CANDIDATES);
+  const paths = sliced.map((r) => r.path);
+  const fileRecords = queries.getFilesByPaths(db, repoId, paths);
+  const fileMap = new Map(fileRecords.map((f) => [f.path, f]));
 
-  for (const result of searchResults.slice(0, STAGE_A_MAX_CANDIDATES)) {
-    const fileRecord = queries.getFileByPath(db, repoId, result.path);
+  const candidates: BundleCandidate[] = [];
+  for (const result of sliced) {
+    const fileRecord = fileMap.get(result.path);
     if (!fileRecord) continue;
 
     const symbols = fileRecord.symbolsJson ? JSON.parse(fileRecord.symbolsJson) : [];
@@ -116,9 +120,31 @@ async function expandCandidates(
   opts: BundleBuildOptions,
 ): Promise<ExpandedBundleCandidate[]> {
   const expanded: ExpandedBundleCandidate[] = [];
+  if (candidates.length === 0) return expanded;
+
+  // Batch-load file records and notes once (avoid N+1)
+  const paths = candidates.map((c) => c.path);
+  const fileRecords = queries.getFilesByPaths(opts.db, opts.repoId, paths);
+  const fileMap = new Map(fileRecords.map((f) => [f.path, f]));
+
+  const allNotes = queries.getNotesByRepo(opts.db, opts.repoId);
+  const notesByPath = new Map<string, string[]>();
+  for (const note of allNotes) {
+    if (note.linkedPathsJson) {
+      const linkedPaths = JSON.parse(note.linkedPathsJson) as string[];
+      for (const lp of linkedPaths) {
+        const existing = notesByPath.get(lp);
+        if (existing) {
+          existing.push(note.key);
+        } else {
+          notesByPath.set(lp, [note.key]);
+        }
+      }
+    }
+  }
 
   for (const candidate of candidates) {
-    const fileRecord = queries.getFileByPath(opts.db, opts.repoId, candidate.path);
+    const fileRecord = fileMap.get(candidate.path);
     let codeSpan: string | null = null;
     let spanLines: { start: number; end: number } | null = null;
     let redactionApplied = false;
@@ -150,19 +176,7 @@ async function expandCandidates(
       }
     }
 
-    // Find related notes
-    const relatedNotes: string[] = [];
-    if (fileRecord) {
-      const notes = queries.getNotesByRepo(opts.db, opts.repoId);
-      for (const note of notes) {
-        if (note.linkedPathsJson) {
-          const linkedPaths = JSON.parse(note.linkedPathsJson) as string[];
-          if (linkedPaths.includes(candidate.path)) {
-            relatedNotes.push(note.key);
-          }
-        }
-      }
-    }
+    const relatedNotes = fileRecord ? (notesByPath.get(candidate.path) ?? []) : [];
 
     expanded.push({
       ...candidate,

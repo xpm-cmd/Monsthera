@@ -97,8 +97,12 @@ export async function searchKnowledgeEntries(
 
   for (const target of targets) {
     const ftsResults = deps.searchRouter.searchKnowledge(target.sqlite, query, limit, opts.type);
+    // Batch-load knowledge entries to avoid N+1 queries
+    const ids = ftsResults.map((r) => r.knowledgeId);
+    const entries = queries.getKnowledgeByIds(target.db, ids);
+    const entryMap = new Map(entries.map((e) => [e.id, e]));
     for (const result of ftsResults) {
-      const entry = queries.getKnowledgeById(target.db, result.knowledgeId);
+      const entry = entryMap.get(result.knowledgeId);
       if (!entry?.content) continue;
       results.push({
         key: entry.key,
@@ -132,11 +136,17 @@ export async function searchKnowledgeEntries(
 
       for (const target of targets) {
         const vectorResults = reranker.searchKnowledgeByVector(target.sqlite, queryEmbedding, limit * 3);
+        // Batch-load full entries for vector results
+        const vectorIds = vectorResults
+          .filter((e) => (!opts.type || e.type === opts.type) && e.score >= 0.6)
+          .map((e) => e.id);
+        const fullEntries = queries.getKnowledgeByIds(target.db, vectorIds);
+        const fullEntryMap = new Map(fullEntries.map((e) => [e.id, e]));
         for (const entry of vectorResults) {
           if (opts.type && entry.type !== opts.type) continue;
           if (entry.score < 0.6) continue;
 
-          const fullEntry = queries.getKnowledgeById(target.db, entry.id);
+          const fullEntry = fullEntryMap.get(entry.id);
           if (!fullEntry?.content) continue;
 
           const resultKey = makeResultKey(target.scopeLabel, entry.key);

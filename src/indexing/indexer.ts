@@ -64,55 +64,66 @@ export async function fullIndex(opts: IndexOptions): Promise<IndexResult> {
   let filesIndexed = 0;
   let filesSkipped = 0;
 
-  // Clear existing records — code_chunks & imports first (FK → files.id)
-  db.delete(tables.codeChunks).run();
-  db.delete(tables.imports).run();
-  db.delete(tables.symbolReferences).run();
-  db.delete(tables.files).where(eq(tables.files.repoId, repoId)).run();
+  // Wrap all writes (deletes + inserts + index state) in a single transaction
+  // to prevent partial state on crash. The async calls inside (getFileContent)
+  // do I/O but all SQLite operations are synchronous via better-sqlite3.
+  db.run(sql`BEGIN IMMEDIATE`);
+  try {
+    // Clear existing records — code_chunks & imports first (FK → files.id)
+    db.delete(tables.codeChunks).run();
+    db.delete(tables.imports).run();
+    db.delete(tables.symbolReferences).run();
+    db.delete(tables.files).where(eq(tables.files.repoId, repoId)).run();
 
-  for (const filePath of trackedFiles) {
-    try {
-      const result = await indexSingleFile(filePath, commit, opts);
-      if (result === "skipped") {
+    for (const filePath of trackedFiles) {
+      try {
+        const result = await indexSingleFile(filePath, commit, opts);
+        if (result === "skipped") {
+          filesSkipped++;
+        } else {
+          filesIndexed++;
+        }
+      } catch (err) {
+        errors.push({ path: filePath, error: err instanceof Error ? err.message : String(err) });
         filesSkipped++;
-      } else {
-        filesIndexed++;
       }
-    } catch (err) {
-      errors.push({ path: filePath, error: err instanceof Error ? err.message : String(err) });
-      filesSkipped++;
     }
-  }
 
-  await validateCustomWorkflows(repoPath, onProgress);
+    await validateCustomWorkflows(repoPath, onProgress);
 
-  // Update index state
-  const now = new Date().toISOString();
-  const lastError = errors.length > 0
-    ? errors.map(e => `${e.path}: ${e.error}`).join('; ').slice(0, 1000)
-    : null;
-  const existing = db.select().from(tables.indexState).where(eq(tables.indexState.repoId, repoId)).get();
+    // Update index state
+    const now = new Date().toISOString();
+    const lastError = errors.length > 0
+      ? errors.map(e => `${e.path}: ${e.error}`).join('; ').slice(0, 1000)
+      : null;
+    const existing = db.select().from(tables.indexState).where(eq(tables.indexState.repoId, repoId)).get();
 
-  if (existing) {
-    db.update(tables.indexState)
-      .set({
-        dbIndexedCommit: commit,
-        indexedAt: now,
-        ...(errors.length === 0 ? { lastSuccess: now } : {}),
-        lastError,
-      })
-      .where(eq(tables.indexState.repoId, repoId))
-      .run();
-  } else {
-    db.insert(tables.indexState)
-      .values({
-        repoId,
-        dbIndexedCommit: commit,
-        indexedAt: now,
-        ...(errors.length === 0 ? { lastSuccess: now } : {}),
-        lastError,
-      })
-      .run();
+    if (existing) {
+      db.update(tables.indexState)
+        .set({
+          dbIndexedCommit: commit,
+          indexedAt: now,
+          ...(errors.length === 0 ? { lastSuccess: now } : {}),
+          lastError,
+        })
+        .where(eq(tables.indexState.repoId, repoId))
+        .run();
+    } else {
+      db.insert(tables.indexState)
+        .values({
+          repoId,
+          dbIndexedCommit: commit,
+          indexedAt: now,
+          ...(errors.length === 0 ? { lastSuccess: now } : {}),
+          lastError,
+        })
+        .run();
+    }
+
+    db.run(sql`COMMIT`);
+  } catch (err) {
+    db.run(sql`ROLLBACK`);
+    throw err;
   }
 
   onProgress?.(`Indexed ${filesIndexed} files, skipped ${filesSkipped}, ${errors.length} errors`);
