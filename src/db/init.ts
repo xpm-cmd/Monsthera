@@ -609,6 +609,12 @@ function runMigrations(sqlite: Database.Database): void {
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_wgt_wave ON work_group_tickets(work_group_id, wave_number)").run();
 
   // --- Additional indexes for high-traffic query patterns ---
+  // Deduplicate files before adding unique index (existing DBs may have dupes from re-indexing)
+  sqlite.prepare(`
+    DELETE FROM files WHERE id NOT IN (
+      SELECT MAX(id) FROM files GROUP BY repo_id, path
+    )
+  `).run();
   sqlite.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_files_repo_path ON files(repo_id, path)").run();
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_files_repo_language ON files(repo_id, language)").run();
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_tickets_repo_status ON tickets(repo_id, status)").run();
@@ -620,6 +626,19 @@ function runMigrations(sqlite: Database.Database): void {
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_notes_repo_type ON notes(repo_id, type)").run();
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_patches_repo_state ON patches(repo_id, state)").run();
   sqlite.prepare("CREATE INDEX IF NOT EXISTS idx_imports_source_file ON imports(source_file_id)").run();
+  // Deduplicate index_state before adding unique index
+  sqlite.prepare(`
+    DELETE FROM index_state WHERE id NOT IN (
+      SELECT MAX(id) FROM index_state GROUP BY repo_id
+    )
+  `).run();
   sqlite.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_index_state_repo ON index_state(repo_id)").run();
+  // Deduplicate ticket_dependencies before adding unique index (existing DBs may have dupes)
+  sqlite.prepare(`
+    DELETE FROM ticket_dependencies WHERE id NOT IN (
+      SELECT MIN(id) FROM ticket_dependencies
+      GROUP BY from_ticket_id, to_ticket_id, relation_type
+    )
+  `).run();
   sqlite.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_deps_unique ON ticket_dependencies(from_ticket_id, to_ticket_id, relation_type)").run();
 }
