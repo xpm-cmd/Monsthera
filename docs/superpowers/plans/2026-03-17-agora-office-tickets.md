@@ -83,7 +83,7 @@
   - Client disconnection is handled without crash
   - Events are correctly serialized as `data: JSON\n\n`
   - Event builders produce payloads matching shared types
-- **description:** Implement `SSEManager` class: `addClient(res)` sets SSE headers (Content-Type: text/event-stream, Cache-Control: no-cache, Connection: keep-alive), sends initial ping, stores reference and cleans up on `req.close`. `broadcast(event)` sends to all connected clients. Implement event builder functions that construct typed `SSEEvent` objects from raw DB data, normalizing field names (e.g., Agora uses `previousStatus`, SSE uses `previousStatus`). Enrich events with JOINs when fields are missing (e.g., `ticket_created` doesn't include `title` — do a lookup).
+- **description:** Implement `SSEManager` class: `addClient(res)` sets SSE headers (Content-Type: text/event-stream, Cache-Control: no-cache, Connection: keep-alive), sends initial ping, stores reference and cleans up on `req.close`. `broadcast(event)` sends to all connected clients. Implement event builder functions that construct typed `SSEEvent` objects from raw DB data, normalizing field names (e.g., Agora uses `previousStatus`, SSE uses `previousStatus`). Note: Agora events are now enriched with all needed fields (`ticket_created` includes `title`, `ticket_commented` includes `contentPreview`), so no JOINs are needed for most events.
 
 ---
 
@@ -99,7 +99,7 @@
   - Dashboard events are correctly mapped to SSE events
   - Session changes emit `agent:entered` / `agent:left`
   - SQLite busy errors are retried (3 times with backoff), not fatal
-- **description:** Implement the core polling engine (spec section 6). `PollState` with cursors: `lastDashboardEventId`, `lastAgentRowid`, `lastPatchId`, `lastCouncilAssignmentId`, `lastCoordinationMessageId`, maps for `activeSessions` and `patchStates`. `createInitialState(db)` factory that reads current cursors. `diffAndEmit(db, prevState, sseManager)` that: (1) reads `dashboard_events` WHERE id > cursor → maps to SSE events, (2) compares active sessions with snapshot → emits agent:entered/left, (3) reads new council_assignments/patches/coordination → emits corresponding events. `startPolling` with setInterval and try-catch with retry for SQLite busy (spec section 12). Filter dashboard_events by `repo_id` (spec section 6).
+- **description:** Implement the core polling engine (spec section 6). `PollState` with cursors: `lastDashboardEventId` and `lastCouncilAssignmentId` (only council_assignments lacks a dashboard event — agents, sessions, patches, and coordination are now covered by dashboard events). `createInitialState(db)` factory that reads current cursors. `diffAndEmit(db, prevState, sseManager)` that: (1) reads `dashboard_events` WHERE id > cursor → maps to SSE events (including `agent_registered` → `agent:entered`, `session_changed` → `agent:left`, `patch_proposed` → `patch:proposed`, `coordination_message_sent` → `coordination:message`), (2) reads new council_assignments → emits `council:assigned`. `startPolling` with setInterval and try-catch with retry for SQLite busy (spec section 12). Filter dashboard_events by `repo_id` (spec section 6).
 
 ---
 

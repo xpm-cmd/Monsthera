@@ -355,27 +355,15 @@ SELECT * FROM dashboard_events WHERE id > :lastSeenId ORDER BY id LIMIT 100
 | `convoy_agent_finished` | raw event object | Character exits |
 | `convoy_completed` | raw event object | General celebration |
 
-**Events Agora does NOT emit yet (require Agora changes, see section 17):**
+**All events listed above are actively emitted by Agora** (implemented in commits `3ee4973` and `6c993e9`). This includes `agent_registered`, `session_changed`, `patch_proposed`, `council_consensus_reached`, and `coordination_message_sent`. Event payloads are enriched with the fields Office needs (`title` in `ticket_created`, `contentPreview` in `ticket_commented`, structured convoy fields).
 
-| Missing event | Required data | Impact |
-|---|---|---|
-| `agent_registered` | `agentId`, `name`, `role`, `model` | Without this, character entry is not detected via dashboard_events |
-| `session_changed` | `sessionId`, `agentId`, `state` | Without this, agent entry/exit is not detected |
-| `patch_proposed` | `ticketId`, `agentId`, `proposalId` | Without this, developer code delivery is not detected |
-| `council_consensus_reached` | `ticketId`, `result` | Without this, council consensus must be inferred |
-| `coordination_message_sent` | `messageId`, `fromAgentId`, `type` | Without this, coordination_messages must be polled directly |
+### Complementary polling
 
-### Complementary polling (required until Agora emits the missing events)
+Only `council_assignments` requires direct polling (no dedicated dashboard event exists for assignment creation):
 
 | Table | Change detection | Frequency |
 |---|---|---|
-| `agents` | Track `MAX(rowid)`, compare with previous snapshot | Every 2s |
-| `sessions` | Query `WHERE state='active'`, compare set with previous snapshot | Every 2s |
-| `patches` | Track `MAX(id)` for new ones, `updated_at` for state changes | Every 2s |
 | `council_assignments` | Track `MAX(id)` | Every 2s |
-| `coordination_messages` | Track `MAX(id)` (for chat bubbles) | Every 2s |
-
-**Note:** If the changes from sections 17.1 and 17.2 are implemented in Agora, complementary polling is reduced to just `council_assignments` (which has no dedicated event).
 
 ### In-memory snapshot
 
@@ -384,15 +372,8 @@ interface PollState {
   // Primary cursor
   lastDashboardEventId: number;
 
-  // Complementary cursors (direct polling)
-  lastAgentRowid: number;
-  lastPatchId: number;
+  // Complementary cursor (only council_assignments lacks a dashboard event)
   lastCouncilAssignmentId: number;
-  lastCoordinationMessageId: number;
-
-  // Snapshots for mutable tables
-  activeSessions: Map<string, { agentId: string; state: string }>;
-  patchStates: Map<string, string>; // proposalId → state
 
   // Timestamp
   lastPollAt: string;
@@ -431,8 +412,8 @@ The backend translates raw Agora data into these normalized SSE events. The "Sou
 
 | SSE Event | Source | Payload | Visual Action |
 |---|---|---|---|
-| `agent:entered` | Poll: `sessions`+`agents` | `{ agentId, name, role, model }` | Character appears at lobby door |
-| `agent:left` | Poll: `sessions` | `{ agentId }` | Character walks to lobby and exits |
+| `agent:entered` | DE: `agent_registered` | `{ agentId, name, role, model }` | Character appears at lobby door |
+| `agent:left` | DE: `session_changed` | `{ agentId }` | Character walks to lobby and exits |
 | `ticket:created` | DE: `ticket_created` | `{ ticketId, title, severity, status }` | Post-it on whiteboard with bounce |
 | `ticket:moved` | DE: `ticket_status_changed` | `{ ticketId, previousStatus, newStatus, agentId }` | Transition (see table below) |
 | `ticket:assigned` | DE: `ticket_assigned` | `{ ticketId, agentId }` | Agent walks to desk |
@@ -440,19 +421,17 @@ The backend translates raw Agora data into these normalized SSE events. The "Sou
 | `ticket:commented` | DE: `ticket_commented` | `{ ticketId, agentId, contentPreview }` | Text bubble above character |
 | `verdict:submitted` | DE: `ticket_verdict_submitted` | `{ ticketId, agentId, specialization, verdict }` | Thumbs up/down in council |
 | `council:assigned` | Poll: `council_assignments` | `{ ticketId, agentId, specialization }` | Reviewer walks to meeting room |
-| `council:consensus` | DE: `council_consensus_reached` (*) | `{ ticketId, result }` | Confetti in meeting room |
-| `patch:proposed` | Poll: `patches` | `{ ticketId, agentId, proposalId }` | Developer "delivers document" |
+| `council:consensus` | DE: `council_consensus_reached` | `{ ticketId, result }` | Confetti in meeting room |
+| `patch:proposed` | DE: `patch_proposed` | `{ ticketId, agentId, proposalId }` | Developer "delivers document" |
 | `patch:committed` | Poll: `patches` state change | `{ ticketId, proposalId, committedSha }` | Rocket launches in deploy zone |
-| `coordination:message` | Poll: `coordination_messages` | `{ fromAgentId, toAgentId, type }` | Chat bubble between characters |
+| `coordination:message` | DE: `coordination_message_sent` | `{ fromAgentId, toAgentId, type }` | Chat bubble between characters |
 | `wave:advanced` | DE: `convoy_wave_advanced` | `{ groupId, wave }` | Wave desks light up |
 | `job:claimed` | DE: `job_slot_claimed` | `{ slotId, agentId, role, ticketId }` | Agent walks to station |
 | `job:completed` | DE: `job_slot_completed` | `{ slotId, agentId }` | Agent stands up |
 | `convoy:started` | DE: `convoy_started` | `{ groupId }` | Office activates |
 | `convoy:completed` | DE: `convoy_completed` | `{ groupId }` | General celebration |
 
-(*) Requires Agora change — see section 17.2.
-
-**Note on missing fields in Agora:** Some DE events don't include all the fields needed for the SSE payload (e.g., `ticket_created` doesn't include `title`, `ticket_commented` doesn't include `contentPreview`). The backend performs an additional JOIN/query to complete these fields. Section 17.1 proposes enriching these events in Agora to eliminate the extra queries.
+**Note:** All events now include the fields needed for the SSE payload. `ticket_created` includes `title`, `ticket_commented` includes `contentPreview` (first 120 chars), and convoy events include structured fields (`groupId`, `ticketId`, `wave`, `durationMs`, etc.). No additional JOINs are needed.
 
 ### Ticket transitions → animations
 
@@ -882,75 +861,60 @@ work_group_tickets (id, work_group_id, ticket_id, added_at)
 
 ---
 
-## 17. Required Changes in Agora (separate repo)
+## 17. Agora Changes — Status
 
-These are changes that should be implemented in the Agora repository **before or in parallel** with Agora Office development. They are Agora improvements that the visualization app needs or would benefit from.
+All required changes from the original gap analysis have been implemented in the Agora repository (commits `3ee4973` and `6c993e9`).
 
-### 17.1 REQUIRED — Emit missing events and enrich `data_json`
+### 17.1 DONE — Emit missing events and enrich `data_json`
 
-**Dual problem:**
-1. Some event types are defined in `DashboardEvent.type` (`src/core/events.ts`) but **never emitted**: `agent_registered`, `session_changed`, `patch_proposed`. They are "dead" types.
-2. Events that are emitted don't include sufficient information in `data_json`. For example, `ticket_created` doesn't include `title`, `ticket_commented` doesn't include `contentPreview`.
+**Events now actively emitted:**
 
-**Action part A — Emit missing events:**
-
-| Event | Where to emit in Agora | Fields in `data_json` |
+| Event | Emitted from | Key fields in `data_json` |
 |---|---|---|
-| `agent_registered` | `register_agent` tool handler | `agentId`, `name`, `role`, `model` |
-| `session_changed` | Session start/end handlers | `sessionId`, `agentId`, `state` (active/ended) |
-| `patch_proposed` | `propose_patch` tool handler | `ticketId`, `agentId`, `proposalId` |
+| `agent_registered` | `register_agent` handler | `agentId`, `name`, `role`, `trustTier`, `resumed` |
+| `session_changed` | `end_session` handler | `sessionId`, `agentId`, `state` |
+| `patch_proposed` | `propose_patch` handler | `proposalId`, `ticketId`, `agentId`, `state`, `message` |
+| `note_added` | `propose_note` handler | `key`, `noteType`, `action`, `noteId`, `agentId` |
+| `knowledge_stored` | `store_knowledge` handler | `key`, `knowledgeType`, `scope`, `title`, `knowledgeId`, `agentId` |
+| `index_updated` | `request_reindex` handler | `commit`, `filesIndexed`, `durationMs`, `full`, `agentId` |
 
-Without these 3 events, Agora Office needs direct polling of `agents`, `sessions`, and `patches`.
+**Enriched payloads:**
 
-**Action part B — Enrich existing events (missing fields marked with *):**
+| Event | Added fields |
+|---|---|
+| `ticket_created` | `title` |
+| `ticket_commented` | `contentPreview` (first 120 chars) |
+| Convoy events (`convoy_*`) | Structured fields (`groupId`, `ticketId`, `wave`, `durationMs`, etc.) — redundant `type` stripped from `data` |
 
-| Event | Current fields | Fields to add |
-|---|---|---|
-| `ticket_created` | `ticketId`, `status`, `severity`, `creatorAgentId` | `*title` |
-| `ticket_status_changed` | `ticketId`, `previousStatus`, `status` | `*agentId` (who caused the change) |
-| `ticket_commented` | `ticketId`, `commentId`, `agentId` | `*contentPreview` (first 100 chars) |
-| `convoy_wave_started` | raw event object | `*groupId`, `*waveNumber`, `*ticketIds` |
-| `convoy_agent_spawned` | raw event object | `*agentId`, `*role`, `*ticketId` |
-| `convoy_completed` | raw event object | `*groupId`, `*totalTickets`, `*totalWaves` |
+### 17.2 DONE — `council_consensus_reached` event
 
-**Impact:** Without part A, the backend needs direct polling of 3 additional tables. Without part B, the backend needs JOIN queries to complete missing fields on each poll cycle.
+New event type added to `DashboardEvent` union and emitted from `submit_verdict` when auto-advance succeeds.
 
-### 17.2 NICE-TO-HAVE — `council_consensus_reached` event
+**Payload:** `{ ticketId, previousStatus, newStatus, passCount, requiredPasses }`
 
-**Problem:** There is currently no specific `dashboard_events` event for when the council reaches consensus (quorum met). The app would have to infer it by comparing verdicts with the quorum configuration.
+### 17.3 DONE — `coordination_message_sent` event
 
-**Action:** Add `council_consensus_reached` as a new event type in `DashboardEvent.type` and emit it from the council workflow when `check_consensus` returns `advisoryReady: true`.
+New event type added to `DashboardEvent` union and emitted from `send_coordination`.
 
-**Payload:** `{ ticketId, result: 'approved' | 'vetoed', verdictSummary: {...} }`
+**Payload:** `{ messageId, messageType, from, to }`
 
-### 17.3 NICE-TO-HAVE — `coordination_message_sent` event
+### 17.4 DONE — `agora status --json`
 
-**Problem:** Coordination messages between agents don't generate `dashboard_events`. The app has to poll `coordination_messages` directly with `MAX(id)` cursor.
+`agora status --json` outputs JSON to stdout with: `version`, `repoPath`, `dbPath`, `indexedCommit`, `fileCount`, `agentCount`, `activeSessionCount`.
 
-**Action:** Add `coordination_message_sent` as an event type in `DashboardEvent` and emit it when inserting into `coordination_messages`.
+### 17.5 DONE — `--spawn-command` for orchestrator
 
-**Payload:** `{ messageId, fromAgentId, toAgentId, type, payloadPreview }`
+`agora orchestrate --spawn-command "cmd {ticketId} {worktreePath}"` allows custom agent runners (e.g., OpenCode).
 
-### 17.4 NICE-TO-HAVE — Stable path to Agora DB
+### 17.6 NOT A GAP — SSE endpoint
 
-**Problem:** The path to Agora's SQLite depends on the repo where it runs. For Agora Office, it's necessary to know where the `.agora/agora.db` of the project being observed is located.
+`src/dashboard/server.ts` already has a `DashboardSSE` class with `/api/events` endpoint that polls `getDashboardEventsAfter()` every 1 second and broadcasts via SSE on port 3141.
 
-**Action:** Document (or expose via `agora status --json`) the absolute path to the DB file. Alternatively, Agora could have a flag `agora serve --events-port 3002` that exposes `dashboard_events` as native SSE, eliminating the need for Agora Office to read the SQLite directly.
+### 17.7 FUTURE — Remote SSE decoupling
 
-**Note:** The `agora serve` flag would turn Agora Office into a pure SSE client (no dependency on better-sqlite3 or direct filesystem access), which is cleaner but is a larger change in Agora. For v1, direct SQLite reading can be maintained.
-
-### 17.5 FUTURE — `agora serve --events` (native SSE in Agora)
-
-If in the future Agora Office should be completely decoupled from the filesystem, Agora could expose a built-in SSE endpoint:
-
-```bash
-agora serve --events --port 3002
-```
-
-This would emit `dashboard_events` as real-time SSE, eliminating:
+If Agora Office needs to visualize remote Agora instances without filesystem access, Agora's existing SSE endpoint (`/api/events` on `agora serve`) can be used directly, eliminating:
 - The dependency on `better-sqlite3` in Agora Office
 - The need for filesystem access where Agora runs
 - The complexity of the polling + diff engine
-- Would allow visualizing remote Agora instances
 
-For v1, this is out of scope. It is mentioned as a future direction.
+For v1, direct SQLite reading is maintained as the primary approach.
