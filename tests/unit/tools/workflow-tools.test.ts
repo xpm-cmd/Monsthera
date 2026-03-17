@@ -75,6 +75,8 @@ function createTestDb() {
       last_success TEXT,
       last_error TEXT
     );
+    CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
     CREATE TABLE event_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       event_id TEXT NOT NULL UNIQUE,
@@ -180,6 +182,7 @@ describe("workflow tools", () => {
     registerPublicWorkflowFixtures(server, calls);
     registerKnowledgeTools(server as unknown as McpServer, async () => ({
       db,
+      repoId: 1,
       sqlite,
       globalDb: null,
       globalSqlite: null,
@@ -356,6 +359,7 @@ steps:
     registerPublicWorkflowFixtures(scopedServer, calls);
     registerKnowledgeTools(scopedServer as unknown as McpServer, async () => ({
       db,
+      repoId: 1,
       sqlite,
       globalDb: null,
       globalSqlite: null,

@@ -13,6 +13,7 @@ import { buildKnowledgeSearchPayload, searchKnowledgeEntries } from "../knowledg
 import { buildKnowledgeListPayload } from "../knowledge/read-model.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
+import { recordDashboardEvent } from "../core/events.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -99,6 +100,10 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       try { c.searchRouter.rebuildKnowledgeFts(targetSqlite); } catch { /* non-fatal */ }
 
       c.insight.info(`Knowledge stored: ${key} (${scope})`);
+      recordDashboardEvent(c.db, c.repoId, {
+        type: "knowledge_stored",
+        data: { key, knowledgeType: type, scope, title, knowledgeId: entry.id, agentId },
+      });
 
       return {
         content: [{

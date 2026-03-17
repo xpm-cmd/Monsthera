@@ -12,6 +12,7 @@ import { checkToolAccess, canReadNoteType, canWriteNoteType } from "../trust/tie
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
 import { resolveAgent } from "./resolve-agent.js";
+import { recordDashboardEvent } from "../core/events.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -80,6 +81,10 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
       if (existing) {
         queries.updateNote(c.db, key, content);
         c.insight.info(`Note updated: ${key} by ${agentId}`);
+        recordDashboardEvent(c.db, c.repoId, {
+          type: "note_added",
+          data: { key, noteType: type, action: "updated", agentId },
+        });
         return {
           content: [{
             type: "text" as const,
@@ -99,6 +104,10 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
       });
 
       c.insight.info(`Note created: ${key} by ${agentId}`);
+      recordDashboardEvent(c.db, c.repoId, {
+        type: "note_added",
+        data: { key, noteType: type, action: "created", noteId: note.id, agentId },
+      });
 
       return {
         content: [{

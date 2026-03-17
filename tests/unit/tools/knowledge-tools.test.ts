@@ -57,6 +57,8 @@ role_id TEXT NOT NULL DEFAULT 'observer',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
   `);
   return { db: drizzle(sqlite, { schema }), sqlite };
 }
@@ -104,9 +106,12 @@ describe("knowledge tools", () => {
       });
     }
 
+    const repoId = queries.upsertRepo(db, "/test", "test").id;
+
     server = new FakeServer();
     registerKnowledgeTools(server as unknown as McpServer, async () => ({
       db,
+      repoId,
       sqlite,
       globalDb: null,
       globalSqlite: null,

@@ -6,6 +6,7 @@ import { fullIndex, incrementalIndex, getIndexedCommit, buildIndexOptions } from
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
+import { recordDashboardEvent } from "../core/events.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -64,6 +65,16 @@ export function registerIndexTools(server: McpServer, getContext: GetContext): v
 
       await c.searchRouter.rebuildIndex(c.repoId);
       c.insight.info(`Reindex complete: ${indexResult.filesIndexed} files in ${indexResult.durationMs}ms`);
+      recordDashboardEvent(c.db, c.repoId, {
+        type: "index_updated",
+        data: {
+          commit: indexResult.commit,
+          filesIndexed: indexResult.filesIndexed,
+          durationMs: indexResult.durationMs,
+          full: !indexedCommit || full,
+          agentId: resolved.agentId,
+        },
+      });
 
       return {
         content: [{
