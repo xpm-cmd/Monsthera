@@ -763,6 +763,15 @@ export function updateTicketStatusRecord(
     }
   }
 
+  // Signal new approved ticket for convoy auto-refresh
+  if (input.status === "approved") {
+    try {
+      notifyConvoyNewApproval(ctx, ticket);
+    } catch {
+      // Non-fatal: convoy notification is a convenience feature
+    }
+  }
+
   // Rate-limit audit: warn if agent resolves >3 tickets in 1 hour (non-blocking)
   let resolutionRateWarning: string | null = null;
   if (input.status === "resolved" && !isSystemActor) {
@@ -1421,5 +1430,26 @@ export function checkWaveAdvancement(
         },
       });
     }
+  }
+}
+
+/** Broadcast that a new ticket has been approved, so running convoys can absorb it. */
+function notifyConvoyNewApproval(
+  ctx: TicketServiceBaseContext,
+  ticket: { repoId: number; ticketId: string },
+): void {
+  if (!ctx.bus) return;
+  const launchedGroups = queries.getLaunchedWorkGroupsInRepo(ctx.db, ticket.repoId);
+  for (const group of launchedGroups) {
+    ctx.bus.send({
+      from: "system",
+      to: null,
+      type: "broadcast",
+      payload: {
+        kind: "convoy_new_candidate",
+        groupId: group.groupId,
+        ticketId: ticket.ticketId,
+      },
+    });
   }
 }

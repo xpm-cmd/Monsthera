@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod/v4";
 import { CouncilSpecializationId, COUNCIL_SPECIALIZATIONS } from "../../schemas/council.js";
+import { ConvoyConfigSchema } from "../../schemas/convoy.js";
 import { DEFAULT_AUTO_ADVANCE_EXCLUDED_TAGS, GovernanceConfigSchema } from "../../schemas/governance.js";
 import { TicketSeverity } from "../../schemas/ticket.js";
 import { DEFAULT_AGORA_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_DB_NAME } from "./constants.js";
@@ -265,6 +266,7 @@ export const AgoraConfigSchema = z.object({
   }).default(() => ({ testCommand: "npx vitest run --reporter=verbose 2>&1 | tail -50", testTimeoutMs: 120_000 })),
   repairSpawner: RepairSpawnerConfigSchema.default({ enabled: false, allowedSources: ["council_veto"] }),
   retrospective: RetrospectiveConfigSchema.default({ enabled: false, commentOnIdle: false }),
+  convoy: ConvoyConfigSchema.default({ maxTicketsPerWave: 5, autoRefresh: true }),
 });
 
 export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
@@ -280,6 +282,7 @@ export type GovernanceConfig = z.infer<typeof GovernanceConfigSchema>;
 export type LifecycleConfig = z.infer<typeof LifecycleConfigSchema>;
 export type RepairSpawnerConfig = z.infer<typeof RepairSpawnerConfigSchema>;
 export type RetrospectiveConfig = z.infer<typeof RetrospectiveConfigSchema>;
+export type ConvoyConfig = z.infer<typeof ConvoyConfigSchema>;
 
 export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
   return AgoraConfigSchema.parse(partial);
@@ -307,7 +310,7 @@ export function mergeConfigSources(
   for (const source of sources) {
     if (!source) continue;
 
-    const { registrationAuth, crossInstance, ticketQuorum, governance, toolRateLimits, search, lifecycle, retrospective, ...rest } = source;
+    const { registrationAuth, crossInstance, ticketQuorum, governance, toolRateLimits, search, lifecycle, retrospective, convoy, ...rest } = source;
     Object.assign(merged, rest);
 
     if (registrationAuth) {
@@ -389,6 +392,13 @@ export function mergeConfigSources(
       merged.retrospective = {
         ...(merged.retrospective ?? {}),
         ...retrospective,
+      };
+    }
+
+    if (convoy) {
+      merged.convoy = {
+        ...(merged.convoy ?? {}),
+        ...convoy,
       };
     }
 

@@ -1152,8 +1152,75 @@ function showActivityTab(id,btn){
 function renderSettingsScreen(host){
   host.innerHTML=''
     +'<div class="main-header"><div><div class="main-title">Settings</div><div class="main-subtitle">Governance &amp; configuration</div></div></div>'
-    +'<div class="governance-panel" id="governance-panel"><div class="empty">Loading governance policy…</div></div>';
+    +'<div class="governance-panel" id="governance-panel"><div class="empty">Loading governance policy…</div></div>'
+    +'<div class="governance-panel" id="convoy-settings-panel" style="margin-top:1.5rem"><div class="empty">Loading convoy settings…</div></div>';
   refreshGovernance();
+  refreshConvoySettings();
+}
+
+var convoySettingsState={data:null,loading:true,saving:false};
+
+async function refreshConvoySettings(){
+  try{
+    convoySettingsState.data=await api('settings/convoy');
+    convoySettingsState.loading=false;
+    convoySettingsState.saving=false;
+    renderConvoySettingsPanel();
+  }catch(e){console.error('Convoy settings refresh failed:',e);}
+}
+
+function renderConvoySettingsPanel(){
+  var host=document.getElementById('convoy-settings-panel');
+  if(!host) return;
+  if(convoySettingsState.loading && !convoySettingsState.data){
+    host.innerHTML='<div class="empty">Loading convoy settings…</div>';
+    return;
+  }
+  var s=convoySettingsState.data;
+  if(!s){
+    host.innerHTML='<div class="empty">Convoy settings unavailable</div>';
+    return;
+  }
+  var autoRefresh=!!s.autoRefresh;
+  var maxTPW=s.maxTicketsPerWave||5;
+  var disabled=convoySettingsState.saving?' disabled':'';
+  host.innerHTML=''
+    +'<div class="governance-panel-head">'
+      +'<div><div class="governance-panel-title">Convoy Settings</div><div class="governance-panel-meta">Configure wave auto-refresh and concurrency limits for convoy execution.</div></div>'
+      +'<span class="badge badge-'+(autoRefresh?'success':'orange')+'">'+(autoRefresh?'Auto-refresh on':'Auto-refresh off')+'</span>'
+    +'</div>'
+    +'<label class="toggle-row" for="convoy-auto-refresh-toggle">'
+      +'<input id="convoy-auto-refresh-toggle" type="checkbox"'+(autoRefresh?' checked':'')+disabled+'>'
+      +'<span>Automatically absorb new approved tickets into active convoys when advancing waves.</span>'
+    +'</label>'
+    +'<div style="margin-top:1rem;display:flex;align-items:center;gap:1rem">'
+      +'<label style="white-space:nowrap">Max tickets per wave:</label>'
+      +'<input id="convoy-max-tpw" type="range" min="1" max="50" value="'+maxTPW+'"'+disabled+' style="flex:1">'
+      +'<span id="convoy-max-tpw-val" style="min-width:2ch;text-align:right;font-weight:bold">'+maxTPW+'</span>'
+    +'</div>'
+    +'<div class="governance-panel-actions" style="margin-top:1rem">'
+      +'<button class="btn btn-accent" id="convoy-save-btn"'+disabled+'>Save convoy settings</button>'
+    +'</div>';
+
+  var slider=document.getElementById('convoy-max-tpw');
+  var valSpan=document.getElementById('convoy-max-tpw-val');
+  if(slider) slider.addEventListener('input',function(){if(valSpan) valSpan.textContent=slider.value;});
+
+  var saveBtn=document.getElementById('convoy-save-btn');
+  if(saveBtn) saveBtn.addEventListener('click',async function(){
+    var ar=document.getElementById('convoy-auto-refresh-toggle');
+    var sl=document.getElementById('convoy-max-tpw');
+    convoySettingsState.saving=true;
+    renderConvoySettingsPanel();
+    try{
+      convoySettingsState.data=await apiPost('settings/convoy',{autoRefresh:!!ar.checked,maxTicketsPerWave:parseInt(sl.value)||5});
+      showToast('Convoy settings saved','success');
+    }catch(err){
+      showToast('Convoy save failed: '+String(err.message||err),'error');
+    }
+    convoySettingsState.saving=false;
+    renderConvoySettingsPanel();
+  });
 }
 
 /* ── Modal helpers ──────────────────────────── */

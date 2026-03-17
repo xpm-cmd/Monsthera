@@ -75,6 +75,7 @@ const TERMINAL_STATUSES = new Set(["resolved", "closed", "wont_fix"]);
 export function computeWaves(
   ticketIds: string[],
   blocksEdges: BlocksEdge[],
+  maxPerWave?: number,
 ): ComputeWavesResult {
   const n = ticketIds.length;
   if (n === 0) {
@@ -151,16 +152,33 @@ export function computeWaves(
     if (depth[i]! > maxDepth) maxDepth = depth[i]!;
   }
 
-  const waves: string[][] = [];
+  // Group by depth into initial wave buckets
+  const rawWaves: string[][] = [];
   for (let w = 0; w <= maxDepth; w++) {
-    waves.push([]);
+    rawWaves.push([]);
+  }
+  for (let i = 0; i < n; i++) {
+    rawWaves[depth[i]!]!.push(ticketIds[i]!);
+  }
+
+  // If maxPerWave is set, split oversized waves. Tickets within the same
+  // depth level have no mutual dependencies, so any partition is valid.
+  const waves: string[][] = [];
+  if (maxPerWave && maxPerWave > 0) {
+    for (const bucket of rawWaves) {
+      for (let i = 0; i < bucket.length; i += maxPerWave) {
+        waves.push(bucket.slice(i, i + maxPerWave));
+      }
+    }
+  } else {
+    waves.push(...rawWaves);
   }
 
   const ticketWaveMap = new Map<string, number>();
-  for (let i = 0; i < n; i++) {
-    const waveIdx = depth[i]!;
-    waves[waveIdx]!.push(ticketIds[i]!);
-    ticketWaveMap.set(ticketIds[i]!, waveIdx);
+  for (let w = 0; w < waves.length; w++) {
+    for (const tid of waves[w]!) {
+      ticketWaveMap.set(tid, w);
+    }
   }
 
   return {
@@ -183,9 +201,10 @@ export function computeWaves(
 export function preflightWorkGroup(
   tickets: TicketNode[],
   blocksEdges: BlocksEdge[],
+  maxPerWave?: number,
 ): PreflightResult {
   const ticketIds = tickets.map((t) => t.ticketId);
-  const result = computeWaves(ticketIds, blocksEdges);
+  const result = computeWaves(ticketIds, blocksEdges, maxPerWave);
 
   // Cycle?
   if ("error" in result) {

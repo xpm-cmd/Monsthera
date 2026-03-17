@@ -2095,3 +2095,92 @@ export function getLaunchedWorkGroupsForTicket(db: DB, ticketInternalId: number)
     )
     .all();
 }
+
+// --- Auto-refresh queries ---
+
+/** Find approved tickets in repo NOT already in the given work group. */
+export function getApprovedTicketsNotInGroup(
+  db: DB,
+  repoId: number,
+  workGroupId: number,
+) {
+  const inGroup = db
+    .select({ ticketId: tables.workGroupTickets.ticketId })
+    .from(tables.workGroupTickets)
+    .where(eq(tables.workGroupTickets.workGroupId, workGroupId));
+
+  return db
+    .select({
+      id: tables.tickets.id,
+      ticketId: tables.tickets.ticketId,
+      affectedPathsJson: tables.tickets.affectedPathsJson,
+    })
+    .from(tables.tickets)
+    .where(
+      and(
+        eq(tables.tickets.repoId, repoId),
+        eq(tables.tickets.status, "approved"),
+        notInArray(tables.tickets.id, inGroup),
+      ),
+    )
+    .all();
+}
+
+/** Bulk-add tickets to a work group with wave assignments in a transaction. */
+export function appendWaveAssignments(
+  db: DB,
+  workGroupId: number,
+  assignments: Array<{ ticketInternalId: number; waveNumber: number; addedAt: string }>,
+) {
+  return db.transaction((tx) => {
+    for (const a of assignments) {
+      tx.insert(tables.workGroupTickets)
+        .values({
+          workGroupId,
+          ticketId: a.ticketInternalId,
+          addedAt: a.addedAt,
+          waveNumber: a.waveNumber,
+          waveStatus: "pending",
+        })
+        .run();
+    }
+  });
+}
+
+/** Find all launched, open work groups in a repo. */
+export function getLaunchedWorkGroupsInRepo(db: DB, repoId: number) {
+  return db
+    .select({
+      id: tables.workGroups.id,
+      groupId: tables.workGroups.groupId,
+    })
+    .from(tables.workGroups)
+    .where(
+      and(
+        eq(tables.workGroups.repoId, repoId),
+        eq(tables.workGroups.status, "open"),
+        isNotNull(tables.workGroups.launchedAt),
+      ),
+    )
+    .all();
+}
+
+/** Get wave slot info: ticket count and aggregate status per wave number. */
+export function getWaveSlotInfo(db: DB, workGroupId: number) {
+  return db
+    .select({
+      waveNumber: tables.workGroupTickets.waveNumber,
+      ticketCount: sql<number>`count(*)`,
+      allMerged: sql<number>`sum(case when ${tables.workGroupTickets.waveStatus} = 'merged' then 0 else 1 end) = 0`,
+      anyDispatched: sql<number>`sum(case when ${tables.workGroupTickets.waveStatus} IN ('dispatched','merged','conflict','test_failed') then 1 else 0 end) > 0`,
+    })
+    .from(tables.workGroupTickets)
+    .where(
+      and(
+        eq(tables.workGroupTickets.workGroupId, workGroupId),
+        isNotNull(tables.workGroupTickets.waveNumber),
+      ),
+    )
+    .groupBy(tables.workGroupTickets.waveNumber)
+    .all();
+}

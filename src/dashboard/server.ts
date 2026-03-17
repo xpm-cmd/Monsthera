@@ -156,6 +156,11 @@ const UpdateModelDiversityBodySchema = z.object({
   enabled: z.boolean(),
 });
 
+const UpdateConvoySettingsBodySchema = z.object({
+  maxTicketsPerWave: z.number().int().min(1).max(50).optional(),
+  autoRefresh: z.boolean().optional(),
+});
+
 export function startDashboard(
   deps: DashboardDeps,
   port: number,
@@ -305,6 +310,23 @@ export function startDashboard(
         const settings = persistDashboardGovernanceSettings(deps, parsed.enabled);
         await logDashboardMutation(deps, {
           tool: "dashboard.update_governance.model_diversity",
+          input: raw,
+          result: { ok: true, data: settings },
+          startedAt,
+        });
+        res.writeHead(200, { "Content-Type": "application/json", ...SECURITY_HEADERS });
+        res.end(JSON.stringify(settings));
+        return;
+      }
+
+      if (path === "/api/settings/convoy" && req.method === "POST") {
+        const raw = await readJsonBody(req);
+        const parsed = validateBody(res, UpdateConvoySettingsBodySchema, raw);
+        if (!parsed) return;
+        const startedAt = Date.now();
+        const settings = persistConvoySettings(deps, parsed);
+        await logDashboardMutation(deps, {
+          tool: "dashboard.update_convoy_settings",
           input: raw,
           result: { ok: true, data: settings },
           startedAt,
@@ -669,6 +691,34 @@ function persistDashboardGovernanceSettings(
   return getGovernanceSettings(deps);
 }
 
+function getConvoySettings(deps: DashboardDeps) {
+  const configRepoPath = deps.mainRepoPath ?? deps.repoPath;
+  const rawConfig = loadConfigFile(configRepoPath);
+  const resolved = resolveConfig({ repoPath: configRepoPath, ...rawConfig });
+  return {
+    maxTicketsPerWave: resolved.convoy.maxTicketsPerWave,
+    autoRefresh: resolved.convoy.autoRefresh,
+  };
+}
+
+function persistConvoySettings(
+  deps: DashboardDeps,
+  update: { maxTicketsPerWave?: number; autoRefresh?: boolean },
+) {
+  const configRepoPath = deps.mainRepoPath ?? deps.repoPath;
+  const configPath = dashboardConfigPath(deps);
+  const rawConfig = loadConfigFile(configRepoPath) as Record<string, unknown>;
+  const existing = (rawConfig.convoy ?? {}) as Record<string, unknown>;
+  rawConfig.convoy = {
+    ...existing,
+    ...(update.maxTicketsPerWave !== undefined ? { maxTicketsPerWave: update.maxTicketsPerWave } : {}),
+    ...(update.autoRefresh !== undefined ? { autoRefresh: update.autoRefresh } : {}),
+  };
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(configPath, `${JSON.stringify(rawConfig, null, 2)}\n`, "utf-8");
+  return getConvoySettings(deps);
+}
+
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -762,6 +812,7 @@ async function routeApi(route: string, deps: DashboardDeps, url: URL): Promise<u
     case "tickets": return getTicketsList(deps);
     case "ticket-templates": return getTicketTemplates(deps);
     case "settings/governance": return getGovernanceSettings(deps);
+    case "settings/convoy": return getConvoySettings(deps);
     case "files": return getIndexedFilesMetrics(deps);
     case "presence": return getPresence(deps);
     case "dependency-graph": {

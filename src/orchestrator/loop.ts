@@ -163,8 +163,9 @@ export async function runOrchestrator(
   callbacks.log("info", `Convoy launched: integration branch ${integrationBranch}`);
   emit({ type: "convoy_started", groupId: config.groupId, totalWaves, integrationBranch });
 
-  // 4. FOR each wave
-  for (let wave = 0; wave < totalWaves; wave++) {
+  // 4. FOR each wave (dynamic: totalWaves may grow via auto-refresh)
+  let wave = 0;
+  while (wave < totalWaves) {
     callbacks.log("info", `=== Wave ${wave + 1}/${totalWaves} ===`);
 
     // 4a. Get current wave status to find dispatched tickets
@@ -312,6 +313,16 @@ export async function runOrchestrator(
       }
     }
 
+    // Check if auto-refresh extended the convoy with new waves
+    const autoRefresh = asRecord(advanceResult.autoRefresh ?? {});
+    const absorbedTickets = asStringArray(autoRefresh.absorbed);
+    const appendedNewWaves = Number(autoRefresh.appendedNewWaves ?? 0);
+    if (absorbedTickets.length > 0) {
+      totalWaves += appendedNewWaves;
+      const filledExisting = Number(autoRefresh.filledExistingWaves ?? 0);
+      callbacks.log("info", `Auto-refresh: absorbed ${absorbedTickets.length} ticket(s) (${filledExisting} filled existing, ${appendedNewWaves} new wave(s)). Total waves: ${totalWaves}`);
+    }
+
     // Track merged tickets from this wave
     const waveMerged = asStringArray(advanceResult.mergedTickets);
     mergedTickets.push(...waveMerged);
@@ -325,6 +336,8 @@ export async function runOrchestrator(
       callbacks.log("info", "All waves complete — final merge successful");
       break;
     }
+
+    wave++;
   }
 
   // 5. END session

@@ -6,6 +6,7 @@ import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import * as queries from "../db/queries.js";
 import { computeWaves, preflightWorkGroup, getReadyTickets, type TicketNode, type WavePlan } from "../waves/scheduler.js";
+import { placeNewTickets, type RefreshCandidate, type WaveSlot, type RefreshResult } from "../waves/auto-refresh.js";
 import { createIntegrationBranch, mergeIntegrationToMain } from "../waves/integration-branch.js";
 import { processWaveMergeQueue, type MergeQueueEntry } from "../waves/merge-queue.js";
 import type { MessageType } from "../../schemas/coordination.js";
@@ -72,8 +73,9 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
           : [],
       }));
 
-      // Run preflight validation
-      const preflight = preflightWorkGroup(nodes, blocksEdges);
+      // Run preflight validation (with maxPerWave from convoy config)
+      const maxPerWave = c.config.convoy?.maxTicketsPerWave;
+      const preflight = preflightWorkGroup(nodes, blocksEdges, maxPerWave);
 
       if (!preflight.valid) {
         return {
@@ -332,8 +334,12 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
         }
       }
 
-      // Parse wave plan to check if more waves exist
-      const wavePlan = JSON.parse(group.wavePlanJson!) as {
+      // --- Auto-refresh: scan for new approved tickets ---
+      const autoRefreshResult = await scanAndAbsorbNewTickets(c, group, currentWave);
+
+      // Re-read wave plan (may have been extended by auto-refresh)
+      const freshGroup = queries.getWorkGroupByGroupId(c.db, groupId)!;
+      const wavePlan = JSON.parse(freshGroup.wavePlanJson ?? group.wavePlanJson!) as {
         waveCount: number;
         waves: string[][];
       };
@@ -383,6 +389,7 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
               advanced: true,
               nextWave,
               dispatchedTickets: nextWaveTickets.map((t) => t.ticketPublicId),
+              autoRefresh: autoRefreshResult ?? undefined,
             }, null, 2),
           }],
         };
@@ -414,6 +421,7 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
               },
               branchErrors: branchErrors.length > 0 ? branchErrors : undefined,
               allWavesComplete: true,
+              autoRefresh: autoRefreshResult ?? undefined,
               finalMerge: {
                 merged: finalMerge.merged,
                 commitSha: finalMerge.commitSha,
@@ -531,6 +539,25 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
         readyTickets = getReadyTickets(reconstructedPlan, currentWave, ticketStatuses);
       }
 
+      // Auto-refresh info: show pending candidates
+      let autoRefreshInfo: {
+        enabled: boolean;
+        maxTicketsPerWave: number;
+        pendingCandidates: number;
+        candidateTicketIds: string[];
+      } | undefined;
+
+      if (launched) {
+        const convoyConfig = c.config.convoy;
+        const candidates = queries.getApprovedTicketsNotInGroup(c.db, c.repoId, group.id);
+        autoRefreshInfo = {
+          enabled: convoyConfig?.autoRefresh ?? true,
+          maxTicketsPerWave: convoyConfig?.maxTicketsPerWave ?? 5,
+          pendingCandidates: candidates.length,
+          candidateTicketIds: candidates.map((t) => t.ticketId),
+        };
+      }
+
       return {
         content: [{
           type: "text" as const,
@@ -546,9 +573,185 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
             waves: waveSummaries,
             currentWaveDetails,
             readyTickets,
+            autoRefresh: autoRefreshInfo,
           }, null, 2),
         }],
       };
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Auto-refresh helper
+// ---------------------------------------------------------------------------
+
+interface AutoRefreshOutput {
+  absorbed: string[];
+  filledExistingWaves: number;
+  appendedNewWaves: number;
+  deferred: string[];
+  fileOverlapWarnings: RefreshResult["fileOverlapWarnings"];
+}
+
+async function scanAndAbsorbNewTickets(
+  c: AgoraContext,
+  group: NonNullable<ReturnType<typeof queries.getWorkGroupByGroupId>>,
+  currentWave: number,
+): Promise<AutoRefreshOutput | null> {
+  const convoyConfig = c.config.convoy;
+  if (!convoyConfig?.autoRefresh) return null;
+
+  const candidates = queries.getApprovedTicketsNotInGroup(c.db, c.repoId, group.id);
+  if (candidates.length === 0) return null;
+
+  const maxTicketsPerWave = convoyConfig.maxTicketsPerWave ?? 5;
+
+  // Gather dependency info for each candidate
+  const refreshCandidates: RefreshCandidate[] = [];
+  for (const cand of candidates) {
+    const deps = queries.getTicketDependencies(c.db, cand.id);
+    const blockerTicketIds: string[] = [];
+    for (const dep of deps.incoming) {
+      if (dep.relationType === "blocks") {
+        const blocker = queries.getTicketById(c.db, dep.fromTicketId);
+        if (blocker) blockerTicketIds.push(blocker.ticketId);
+      }
+    }
+    refreshCandidates.push({
+      ticketId: cand.ticketId,
+      internalId: cand.id,
+      affectedPaths: cand.affectedPathsJson
+        ? (JSON.parse(cand.affectedPathsJson) as string[])
+        : [],
+      blockerTicketIds,
+    });
+  }
+
+  // Build existing wave slots from the current convoy state
+  const slotInfo = queries.getWaveSlotInfo(c.db, group.id);
+  const waveTicketsCache = new Map<number, Array<{ affectedPathsJson: string | null }>>();
+
+  const existingWaves: WaveSlot[] = slotInfo.map((s) => {
+    let status: WaveSlot["status"];
+    if (s.allMerged) {
+      status = "completed";
+    } else if (s.anyDispatched) {
+      status = "dispatched";
+    } else {
+      status = "pending";
+    }
+
+    // Fetch existing paths for overlap checking
+    const waveTickets = queries.getWaveTickets(c.db, group.id, s.waveNumber!);
+    waveTicketsCache.set(s.waveNumber!, waveTickets);
+
+    const existingPaths = waveTickets.map((t) =>
+      t.affectedPathsJson ? (JSON.parse(t.affectedPathsJson) as string[]) : [],
+    );
+
+    return {
+      waveIndex: s.waveNumber!,
+      currentCount: s.ticketCount,
+      status,
+      existingPaths,
+    };
+  });
+
+  // Build convoy context
+  const groupTickets = queries.getWorkGroupTickets(c.db, group.id);
+  const convoyTicketIds = new Set(groupTickets.map((gt) => gt.tickets.ticketId));
+  const convoyTicketWaveMap = new Map<string, number>();
+  for (const gt of groupTickets) {
+    const wgt = gt.work_group_tickets;
+    if (wgt.waveNumber !== null) {
+      convoyTicketWaveMap.set(gt.tickets.ticketId, wgt.waveNumber);
+    }
+  }
+
+  // Place new tickets
+  const result = placeNewTickets(
+    refreshCandidates,
+    existingWaves,
+    currentWave,
+    convoyTicketIds,
+    convoyTicketWaveMap,
+    maxTicketsPerWave,
+  );
+
+  if (result.placements.size === 0) return null;
+
+  // Persist placements
+  const now = new Date().toISOString();
+  const absorbed: string[] = [];
+  let filledExisting = 0;
+  const existingMaxWave = existingWaves.length > 0
+    ? Math.max(...existingWaves.map((w) => w.waveIndex))
+    : -1;
+
+  // Separate into fill (existing waves) vs append (new waves)
+  const fillAssignments: Array<{ ticketInternalId: number; waveNumber: number }> = [];
+  const appendAssignments: Array<{ ticketInternalId: number; waveNumber: number; addedAt: string }> = [];
+
+  for (const [ticketId, waveIndex] of result.placements) {
+    const cand = refreshCandidates.find((c) => c.ticketId === ticketId);
+    if (!cand) continue;
+
+    absorbed.push(ticketId);
+
+    if (waveIndex <= existingMaxWave) {
+      // Fill into existing wave — ticket needs to be added to group first
+      fillAssignments.push({ ticketInternalId: cand.internalId, waveNumber: waveIndex });
+      filledExisting++;
+    } else {
+      appendAssignments.push({ ticketInternalId: cand.internalId, waveNumber: waveIndex, addedAt: now });
+    }
+  }
+
+  // Add tickets to work group and set wave assignments
+  for (const fa of fillAssignments) {
+    queries.addTicketToWorkGroup(c.db, group.id, fa.ticketInternalId, now);
+    // Set wave number via direct update
+    queries.setWaveAssignments(c.db, group.id, [{ ticketId: fa.ticketInternalId, waveNumber: fa.waveNumber }]);
+  }
+
+  if (appendAssignments.length > 0) {
+    queries.appendWaveAssignments(c.db, group.id, appendAssignments);
+  }
+
+  // Update wavePlanJson with new waves and mappings
+  const storedPlan = JSON.parse(group.wavePlanJson!) as {
+    waves: string[][];
+    waveCount: number;
+    ticketWaveMap: Record<string, number>;
+    blockers: Record<string, string[]>;
+  };
+
+  // Extend waves array for new appended waves
+  for (const [ticketId, waveIndex] of result.placements) {
+    while (storedPlan.waves.length <= waveIndex) {
+      storedPlan.waves.push([]);
+    }
+    storedPlan.waves[waveIndex]!.push(ticketId);
+    storedPlan.ticketWaveMap[ticketId] = waveIndex;
+
+    // Add blocker info
+    const cand = refreshCandidates.find((c) => c.ticketId === ticketId);
+    if (cand && cand.blockerTicketIds.length > 0) {
+      storedPlan.blockers[ticketId] = cand.blockerTicketIds;
+    }
+  }
+  storedPlan.waveCount = storedPlan.waves.length;
+
+  queries.updateWorkGroupConvoy(c.db, group.id, {
+    wavePlanJson: JSON.stringify(storedPlan),
+    updatedAt: now,
+  });
+
+  return {
+    absorbed,
+    filledExistingWaves: filledExisting,
+    appendedNewWaves: result.newWavesAppended,
+    deferred: result.deferred,
+    fileOverlapWarnings: result.fileOverlapWarnings,
+  };
 }
