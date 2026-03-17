@@ -11,7 +11,7 @@ import type { SearchRouter } from "../search/router.js";
 import type { CoordinationBus } from "../coordination/bus.js";
 import type { TicketStatus as TicketStatusType } from "../../schemas/ticket.js";
 import { getAgentPresenceSummary } from "../agents/registry.js";
-import { recordDashboardEvent } from "../dashboard/events.js";
+import { recordDashboardEvent } from "../core/events.js";
 import { spawnRepairTicket } from "./repair-spawner.js";
 import { assignTicketRecord, commentTicketRecord, updateTicketStatusRecord } from "./service.js";
 import {

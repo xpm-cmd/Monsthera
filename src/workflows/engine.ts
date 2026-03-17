@@ -1,4 +1,4 @@
-import type { ToolRunnerCallResult } from "../tools/tool-runner.js";
+import type { ToolRunnerCallResult } from "../core/tool-types.js";
 import { CouncilSpecializationId, type CouncilSpecializationId as CouncilSpecialization } from "../../schemas/council.js";
 import { GOVERNANCE_ANALYTICAL_SPECIALIZATIONS } from "../../schemas/governance.js";
 import { buildConsensusPayload, type ReviewVerdictRecord } from "../tickets/consensus.js";

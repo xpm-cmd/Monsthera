@@ -326,27 +326,27 @@ async function indexSingleFile(
         .returning()
         .get();
 
-      // Insert imports
-      for (const imp of parseResult.imports) {
+      // Batch insert imports
+      if (parseResult.imports.length > 0) {
         db.insert(tables.imports)
-          .values({
+          .values(parseResult.imports.map((imp) => ({
             sourceFileId: fileRecord.id,
             targetPath: imp.source,
             kind: imp.kind,
-          })
+          })))
           .run();
       }
 
-      // Insert symbol references
-      for (const ref of parseResult.references) {
+      // Batch insert symbol references
+      if (parseResult.references.length > 0) {
         db.insert(tables.symbolReferences)
-          .values({
+          .values(parseResult.references.map((ref) => ({
             sourceFileId: fileRecord.id,
             sourceSymbolName: ref.sourceSymbol,
             targetName: ref.targetName,
             referenceKind: ref.kind,
             line: ref.line,
-          })
+          })))
           .run();
       }
 

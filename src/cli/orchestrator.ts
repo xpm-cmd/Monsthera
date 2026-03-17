@@ -5,7 +5,7 @@ import { runOrchestrator, type OrchestratorCallbacks, type OrchestratorConfig } 
 import { createAgoraContextLoader } from "../core/context-loader.js";
 import { createAgoraServer } from "../server.js";
 import { getToolRunner } from "../tools/tool-runner.js";
-import { recordDashboardEvent } from "../dashboard/events.js";
+import { recordDashboardEvent } from "../core/events.js";
 import { cleanupOrphanedWorktrees } from "../git/worktree.js";
 import * as queries from "../db/queries.js";
 import { spawn } from "node:child_process";

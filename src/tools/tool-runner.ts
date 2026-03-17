@@ -4,24 +4,11 @@ import { AgoraError } from "../core/errors.js";
 import type { InstrumentedToolRegistration } from "./runtime-instrumentation.js";
 import { classifyResultForLogging, getInstrumentedToolRegistry } from "./runtime-instrumentation.js";
 
-export type RegisteredToolHandler = InstrumentedToolRegistration["handler"];
-export type ToolRunnerErrorCode = "tool_not_found" | "denied" | "execution_failed" | "validation_failed";
+// Re-export types from canonical location for backward compat
+export type { ToolRunnerCallResult, ToolRunnerErrorCode } from "../core/tool-types.js";
+import type { ToolRunnerCallResult } from "../core/tool-types.js";
 
-export type ToolRunnerCallResult =
-  | {
-      ok: true;
-      tool: string;
-      result: unknown;
-    }
-  | {
-      ok: false;
-      tool: string;
-      errorCode: ToolRunnerErrorCode;
-      message: string;
-      result?: unknown;
-      causeCode?: string;
-      detail?: string;
-    };
+export type RegisteredToolHandler = InstrumentedToolRegistration["handler"];
 
 const DENIED_ERROR_CODES = new Set(["permission_denied", "denied", "rate_limited"]);
 

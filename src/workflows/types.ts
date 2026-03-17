@@ -1,6 +1,6 @@
-import type { CapabilityToolName } from "../tools/tool-manifest.js";
+import type { CapabilityToolName } from "../core/tool-manifest.js";
 import type { ReviewVerdictRecord } from "../tickets/consensus.js";
-import type { ToolRunnerCallResult } from "../tools/tool-runner.js";
+import type { ToolRunnerCallResult } from "../core/tool-types.js";
 
 export type WorkflowStepErrorMode = "stop" | "continue";
 export type WorkflowCheckpointFailureMode = "block" | "continue_with_warning";

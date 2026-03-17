@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, posix as pathPosix } from "node:path";
 import { z } from "zod/v4";
 import { DEFAULT_AGORA_DIR } from "../core/constants.js";
-import { CAPABILITY_TOOL_NAMES, type CapabilityToolName } from "../tools/tool-manifest.js";
+import { CAPABILITY_TOOL_NAMES, type CapabilityToolName } from "../core/tool-manifest.js";
 import {
   COUNCIL_SPECIALIZATIONS,
   CouncilSpecializationId,

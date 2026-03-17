@@ -4,7 +4,7 @@ import type { AgoraContext } from "../core/context.js";
 import { AgentIdSchema, SessionIdSchema } from "../core/input-hardening.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
-import { recordDashboardEvent } from "../dashboard/events.js";
+import { recordDashboardEvent } from "../core/events.js";
 import * as queries from "../db/queries.js";
 import { LOOP_TEMPLATES, JOB_SLOT_TRANSITIONS, type JobSlotStatus } from "../../schemas/job.js";
 import { randomUUID } from "node:crypto";

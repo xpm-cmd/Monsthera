@@ -434,8 +434,15 @@ function runMigrations(sqlite: Database.Database): void {
       SELECT id, ticket_id, agent_id, session_id, specialization, verdict, reasoning, created_at, NULL
       FROM review_verdicts
     `).run();
-    sqlite.prepare("DROP TABLE review_verdicts").run();
-    sqlite.prepare("ALTER TABLE review_verdicts_new RENAME TO review_verdicts").run();
+    sqlite.prepare("BEGIN IMMEDIATE").run();
+    try {
+      sqlite.prepare("DROP TABLE review_verdicts").run();
+      sqlite.prepare("ALTER TABLE review_verdicts_new RENAME TO review_verdicts").run();
+      sqlite.prepare("COMMIT").run();
+    } catch (err) {
+      sqlite.prepare("ROLLBACK").run();
+      throw err;
+    }
   }
   sqlite.prepare("DROP INDEX IF EXISTS idx_review_verdicts_ticket_specialization").run();
   sqlite.prepare(

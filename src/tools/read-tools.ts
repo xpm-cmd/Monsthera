@@ -14,7 +14,7 @@ import { buildEvidenceBundle, type EvidenceBundleResult } from "../retrieval/evi
 import { exportAuditTrail } from "../export/audit.js";
 import { getHead, getChangedFiles, getDiffStats, getPerFileDiffs, getRecentCommits, isValidCommit } from "../git/operations.js";
 import { getIndexedCommit, incrementalIndex, buildIndexOptions } from "../indexing/indexer.js";
-import { CAPABILITY_TOOL_NAMES } from "./tool-manifest.js";
+import { CAPABILITY_TOOL_NAMES } from "../core/tool-manifest.js";
 import { compileSecretPatterns } from "../trust/secret-patterns.js";
 import { analyzeFileComplexity } from "../analysis/complexity.js";
 import { analyzeTestCoverage } from "../analysis/test-coverage.js";

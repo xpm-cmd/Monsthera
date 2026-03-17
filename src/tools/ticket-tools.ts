@@ -15,7 +15,7 @@ import {
 } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
 import * as tables from "../db/schema.js";
-import { recordDashboardEvent } from "../dashboard/events.js";
+import { recordDashboardEvent } from "../core/events.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { okJson, errText, errJson, errService } from "./response-helpers.js";

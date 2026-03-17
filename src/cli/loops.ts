@@ -11,7 +11,8 @@ import { createAgentWorktree, removeAgentWorktree, mergeAgentWork, hasUnmergedCo
 import { createConvoyWorktree, mergeTicketToIntegration, rebaseOnBranch } from "../waves/integration-branch.js";
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import { createAgoraServer } from "../server.js";
-import { getToolRunner, type ToolRunner, type ToolRunnerCallResult } from "../tools/tool-runner.js";
+import { getToolRunner, type ToolRunner } from "../tools/tool-runner.js";
+import type { ToolRunnerCallResult } from "../core/tool-types.js";
 
 type LoopCommand = "plan" | "dev" | "council";
 type LoopRole = "facilitator" | "developer" | "reviewer" | "planner";

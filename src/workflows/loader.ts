@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import type { ZodError } from "zod/v4";
-import { CAPABILITY_TOOL_NAMES, type CapabilityToolName } from "../tools/tool-manifest.js";
+import { CAPABILITY_TOOL_NAMES, type CapabilityToolName } from "../core/tool-manifest.js";
 import { BUILTIN_WORKFLOW_NAMES } from "./builtins.js";
 import { type WorkflowYamlDocument, WorkflowYamlSchema } from "./schema.js";
 import type { WorkflowCatalogEntry, WorkflowSpec, WorkflowStepSpec, WorkflowStepToolName } from "./types.js";

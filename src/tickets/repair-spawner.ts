@@ -1,5 +1,5 @@
 import * as queries from "../db/queries.js";
-import { recordDashboardEvent } from "../dashboard/events.js";
+import { recordDashboardEvent } from "../core/events.js";
 import { parseStringArrayJson } from "../core/input-hardening.js";
 import {
   createTicketRecord,

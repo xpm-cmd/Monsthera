@@ -27,8 +27,8 @@ import {
 } from "../../schemas/ticket.js";
 import type { RoleId } from "../../schemas/agent.js";
 import type { TrustTier } from "../../schemas/evidence-bundle.js";
-import { recordDashboardEvent } from "../dashboard/events.js";
-import { autoCompleteWorkGroups } from "../tools/work-group-tools.js";
+import { recordDashboardEvent } from "../core/events.js";
+import { autoCompleteWorkGroups } from "../work-groups/completion.js";
 import type { CoordinationBus } from "../coordination/bus.js";
 import type { CouncilSpecializationId as CouncilSpecializationIdValue } from "../../schemas/council.js";
 import { CouncilSpecializationId } from "../../schemas/council.js";

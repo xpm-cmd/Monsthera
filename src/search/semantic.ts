@@ -162,10 +162,12 @@ export class SemanticReranker {
     queryEmbedding: Float32Array,
     limit = 10,
     statusFilter = "active",
-  ): Array<{ id: number; key: string; title: string; content: string; type: string; tagsJson: string | null; score: number }> {
+  ): Array<{ id: number; key: string; title: string; type: string; tagsJson: string | null; score: number }> {
+    // Exclude `content` from initial scan — callers batch-load full entries for top-N results only.
+    // This reduces memory pressure when scanning large knowledge bases.
     const rows = sqlite
-      .prepare("SELECT id, key, title, content, type, tags_json, embedding FROM knowledge WHERE embedding IS NOT NULL AND status = ?")
-      .all(statusFilter) as Array<{ id: number; key: string; title: string; content: string; type: string; tags_json: string | null; embedding: Buffer }>;
+      .prepare("SELECT id, key, title, type, tags_json, embedding FROM knowledge WHERE embedding IS NOT NULL AND status = ?")
+      .all(statusFilter) as Array<{ id: number; key: string; title: string; type: string; tags_json: string | null; embedding: Buffer }>;
 
     const scored = rows.map((row) => {
       const emb = new Float32Array(row.embedding.buffer, row.embedding.byteOffset, row.embedding.byteLength / 4);
@@ -173,7 +175,6 @@ export class SemanticReranker {
         id: row.id,
         key: row.key,
         title: row.title,
-        content: row.content,
         type: row.type,
         tagsJson: row.tags_json,
         score: normalizedCosineSimilarity(queryEmbedding, emb),

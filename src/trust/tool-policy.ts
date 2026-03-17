@@ -1,4 +1,4 @@
-import type { CapabilityToolName } from "../tools/tool-manifest.js";
+import type { CapabilityToolName } from "../core/tool-manifest.js";
 
 export type ToolAccessMode = "public" | "session" | "role";
 

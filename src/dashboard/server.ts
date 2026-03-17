@@ -33,7 +33,8 @@ import {
 import { reapStaleSessions } from "../agents/registry.js";
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
-import { classifyResultForLogging, recordRuntimeEventWithContext } from "../tools/runtime-instrumentation.js";
+import { classifyResultForLogging } from "../logging/instrumentation.js";
+import { recordRuntimeEventWithContext } from "../tools/runtime-instrumentation.js";
 import { z } from "zod/v4";
 import {
   AgentIdSchema,
