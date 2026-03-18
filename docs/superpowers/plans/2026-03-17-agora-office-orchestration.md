@@ -115,7 +115,7 @@ Edit `.agora/config.json`:
     },
     "backlogPlanningGate": {
       "enforce": true,
-      "minIterations": 3,
+      "minIterations": 3,  // Postmortem suggested 2, kept at 3: root cause was empty iterations, fixed by planner rules in AGENTS.md
       "requiredDistinctModels": 1
     },
     "nonVotingRoles": ["facilitator"],
@@ -162,12 +162,12 @@ Isometric pixel art web app that visualizes Agora multi-agent development as a v
 
 Monorepo with 3 pnpm workspace packages:
 - `packages/shared` — TypeScript types shared between server and client
-- `packages/server` — Node + Express + better-sqlite3 reading Agora DB in read-only mode
+- `packages/server` — Node + Express reading Agora DB in read-only mode (use `node:sqlite` on Node.js v25+, NOT `better-sqlite3` which fails to compile)
 - `packages/client` — React 18 + PixiJS 8 + Zustand + Vite
 
 ## Tech Stack
 
-TypeScript (strict), React 18, PixiJS 8 (not @pixi/react), Zustand, Vite 5, Express 4, better-sqlite3, Tailwind CSS 3, pnpm workspaces.
+TypeScript (strict), React 18, PixiJS 8 (not @pixi/react), Zustand, Vite 5, Express 4, node:sqlite (NOT better-sqlite3), Tailwind CSS 3, pnpm workspaces.
 
 ## Conventions
 
@@ -233,8 +233,9 @@ room layouts, and event schemas you must follow.
 
 - prefer approved tickets with explicit acceptance criteria
 - claim files early before making code changes
-- validate with `tsc --build` before handing off
+- validate with `tsc --build` AND start server/client to verify runtime — not just type correctness
 - move the ticket to `in_review` only when acceptance criteria are met
+- if build fails 3 times, block the ticket instead of submitting a broken patch (see AGENTS.md auto-correction loop)
 
 ## Avoid
 
@@ -293,7 +294,7 @@ agora tool store_knowledge --input '{
   "type": "decision",
   "scope": "repo",
   "title": "Read-only SQLite access to Agora DB",
-  "content": "Agora Office server opens Agora database in read-only mode via better-sqlite3. It NEVER writes to Agora DB. This is a visualization tool, not a control plane. The server only reads: agents, sessions, tickets, dashboard_events, council_assignments, patches, coordination_messages.",
+  "content": "Agora Office server opens Agora database in read-only mode via node:sqlite (DatabaseSync). It NEVER writes to Agora DB. This is a visualization tool, not a control plane. The server only reads: agents, sessions, tickets, dashboard_events, council_assignments, patches, coordination_messages.",
   "tags": ["agora-office", "sqlite", "backend", "security"]
 }'
 ```
@@ -356,6 +357,30 @@ agora tool link_tickets --input '{"fromTicketId": "TKT-xxx", "toTicketId": "TKT-
 
 ---
 
+## 7.5. Wave 0 — Planning and Analysis Phase
+
+> **Postmortem fix:** Problems 2 and 10 — planning gate was superficial, planners posted empty iterations.
+
+Before launching the convoy, run a dedicated planning phase to ensure every ticket is ready for implementation.
+
+**Process:**
+1. A planner agent reviews ALL tickets created in step 7
+2. For each ticket, the planner must verify:
+   - File paths to create/modify are explicit and correct
+   - DB column names are verified against the schema reference in `AGENTS.md`
+   - Acceptance criteria are testable (not vague)
+   - Dependencies are correctly linked
+3. Each `[Plan Iteration]` comment must include:
+   - Exact file paths to create or modify
+   - DB columns that will be used (verified against `AGENTS.md` schema)
+   - Verification steps the implementer must run
+   - At least 1 identified risk or dependency
+4. If the planner cannot answer these → `comment_ticket("[BLOCKED — need clarification]")` instead of posting an empty iteration
+
+**Gate:** Only proceed to the convoy (Section 9) after ALL tickets reach `approved` status. The `backlogPlanningGate` requires 3 non-empty iterations per ticket.
+
+---
+
 ## 8. Create Work Group and Compute Waves
 
 ```bash
@@ -395,6 +420,29 @@ Expected output — 9 waves matching the dependency graph:
 | 7 | T17 | 1 |
 | 8 | T18, T19 | 2 |
 | 9 | T20 | 1 |
+| **10** | **QA (end-to-end)** | **1** |
+
+### Wave 10 — QA End-to-End
+
+> **Postmortem fix:** Problem 5 — no agent verified the complete system before declaring victory.
+
+After Wave 9 completes, a single QA agent runs the full system validation:
+
+**QA Checklist (ALL must pass):**
+- [ ] `pnpm build` — 0 TypeScript errors from clean state
+- [ ] Server `/health` responds `{"status":"ok"}`
+- [ ] Server `/state` returns JSON with `agents[]` and `tickets[]`
+- [ ] Client loads at http://localhost:5173 (HTTP 200)
+- [ ] Isometric map visible with distinct room colors (6 rooms)
+- [ ] At least one character sprite visible ABOVE tiles (not hidden)
+- [ ] UI overlay (AGORA OFFICE badge) visible
+- [ ] No critical errors in browser console
+- [ ] SSE `GET /events` maintains connection and sends heartbeat
+
+**If any item fails:**
+1. Create a follow-up ticket describing the failure
+2. `send_coordination(type: "conflict_alert", payload: { message: "<failure>" })`
+3. Do NOT merge to main until all items pass
 
 ---
 
