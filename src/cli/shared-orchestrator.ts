@@ -36,7 +36,12 @@ export function createOrchestratorCallbacks(
   config: AgoraConfig,
   insight: InsightStream,
   shared: SharedOrchestratorContext,
-  options: { spawnCommand?: string; llmFallback?: boolean },
+  options: {
+    spawnCommand?: string;
+    llmFallback?: boolean;
+    /** Resolve extra template variables for spawn commands ({model}, {size}). */
+    resolveTicketVars?: (ticketId: string) => { model: string; size: string };
+  },
 ): OrchestratorCallbacks {
   let resolvedContext: AgoraContext | null = null;
 
@@ -50,9 +55,12 @@ export function createOrchestratorCallbacks(
     },
     spawnProcess: options.spawnCommand
       ? async (worktreePath, ticketId) => {
+          const vars = options.resolveTicketVars?.(ticketId) ?? { model: "sonnet", size: "M" };
           const expanded = options.spawnCommand!
             .replaceAll("{ticketId}", ticketId)
-            .replaceAll("{worktreePath}", worktreePath);
+            .replaceAll("{worktreePath}", worktreePath)
+            .replaceAll("{model}", vars.model)
+            .replaceAll("{size}", vars.size);
           const parts = expanded.split(/\s+/);
           const child = spawn(parts[0]!, parts.slice(1), {
             cwd: worktreePath,

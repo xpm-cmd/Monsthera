@@ -17,8 +17,15 @@ import {
   getArg,
   type SharedOrchestratorContext,
 } from "./shared-orchestrator.js";
-import { parseTicketsFile } from "../swarm/tickets-parser.js";
+import { parseTicketsFile, type ParsedTicket } from "../swarm/tickets-parser.js";
 import { ensureDefaultWorkflows } from "../swarm/default-workflows.js";
+import {
+  classifyTicketSize,
+  resolveModelForSize,
+  parseModelRoutingConfig,
+  type ModelRoutingConfig,
+  type TicketSize,
+} from "../swarm/model-routing.js";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return (value && typeof value === "object" && !Array.isArray(value))
@@ -65,6 +72,8 @@ export async function cmdSwarm(
   const llmFallback = args.includes("--llm-fallback");
   const maxRetries = parseInt(getArg(args, "--max-retries") ?? "1", 10);
   const dryRun = args.includes("--dry-run");
+  const modelRoutingSpec = getArg(args, "--model-routing");
+  const modelRoutingConfig = modelRoutingSpec ? parseModelRoutingConfig(modelRoutingSpec) : undefined;
 
   if (!goal && !groupId && !ticketsFile) {
     insight.error("Usage: agora swarm --goal TEXT [--spec PATH] [--tickets-file PATH] | --group WG-xxx");
@@ -75,6 +84,7 @@ export async function cmdSwarm(
     insight.error("  --skip-planning      Skip planning phase");
     insight.error("  --dry-run            Show decomposition without creating");
     insight.error("  --test-command CMD   Test command for merge validation");
+    insight.error("  --model-routing SPEC Route models by ticket size (auto | fast=X,standard=Y,premium=Z)");
     process.exit(1);
   }
 
@@ -91,11 +101,15 @@ export async function cmdSwarm(
   const sessionId = String(regResult.sessionId ?? "session-swarm");
   insight.info("Registered as " + agentId);
 
+  // Track ticket sizes for model routing
+  const ticketSizeMap = new Map<string, TicketSize>();
+
   // ─── PHASE 1: GENESIS ───
   if (ticketsFile || (goal && !groupId)) {
     insight.info("=== Phase 1: Genesis ===");
     groupId = await runGenesis(shared, insight, {
       goal, specPath, ticketsFile, maxTickets, dryRun, agentId, sessionId,
+      modelRoutingConfig, ticketSizeMap,
     });
     if (dryRun) return;
   }
@@ -119,7 +133,16 @@ export async function cmdSwarm(
 
   // ─── PHASE 3: CONVOY ───
   insight.info("=== Phase 3: Convoy ===");
-  const callbacks = createOrchestratorCallbacks(config, insight, shared, { spawnCommand, llmFallback });
+  const callbacks = createOrchestratorCallbacks(config, insight, shared, {
+    spawnCommand, llmFallback,
+    resolveTicketVars: modelRoutingConfig
+      ? (ticketId) => {
+          const size = ticketSizeMap.get(ticketId) ?? "M";
+          const model = resolveModelForSize(size, modelRoutingConfig);
+          return { model, size };
+        }
+      : undefined,
+  });
   const orchConfig: OrchestratorConfig = {
     groupId, maxConcurrentAgents: maxAgents, testCommand, testTimeoutMs,
     pollIntervalMs, llmFallback, maxRetries, repoPath: config.repoPath,
@@ -145,12 +168,14 @@ export async function cmdSwarm(
 interface GenesisOptions {
   goal?: string; specPath?: string; ticketsFile?: string;
   maxTickets: number; dryRun: boolean; agentId: string; sessionId: string;
+  modelRoutingConfig?: ModelRoutingConfig;
+  ticketSizeMap: Map<string, TicketSize>;
 }
 
 async function runGenesis(
   shared: SharedOrchestratorContext, insight: InsightStream, opts: GenesisOptions,
 ): Promise<string | undefined> {
-  const { goal, specPath, ticketsFile, maxTickets, dryRun, agentId, sessionId } = opts;
+  const { goal, specPath, ticketsFile, maxTickets, dryRun, agentId, sessionId, modelRoutingConfig, ticketSizeMap } = opts;
 
   const tickets = ticketsFile ? parseTicketsFile(ticketsFile) : [];
   if (tickets.length === 0) {
@@ -201,6 +226,29 @@ async function runGenesis(
     process.exit(1);
   }
   insight.info("Created " + ticketIds.length + " tickets");
+
+  // Classify ticket sizes for model routing
+  for (let i = 0; i < ticketIds.length && i < tickets.length; i++) {
+    const t = tickets[i]!;
+    const size = classifyTicketSize({
+      affectedPaths: t.affectedPaths,
+      description: t.description,
+      dependsOn: t.dependsOn,
+      tags: t.tags,
+    });
+    ticketSizeMap.set(ticketIds[i]!, size);
+  }
+
+  if (modelRoutingConfig) {
+    const sizeCounts: Record<string, number> = {};
+    for (const size of ticketSizeMap.values()) sizeCounts[size] = (sizeCounts[size] ?? 0) + 1;
+    const summary = Object.entries(sizeCounts).map(([s, c]) => s + ":" + c).join(" ");
+    insight.info("Ticket sizes: " + summary);
+    for (const [tid, size] of ticketSizeMap) {
+      const model = resolveModelForSize(size, modelRoutingConfig);
+      insight.info("  " + tid + " → " + size + " → " + model);
+    }
+  }
 
   const wgResult = await shared.runner.callTool("create_work_group", {
     title: goal ?? "Swarm Work Group",
