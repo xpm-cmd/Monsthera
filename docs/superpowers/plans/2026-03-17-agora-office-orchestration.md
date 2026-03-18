@@ -6,6 +6,17 @@
 **Plan:** `docs/superpowers/plans/2026-03-17-agora-office.md`
 **Tickets:** `docs/superpowers/plans/2026-03-17-agora-office-tickets.md`
 
+> **Quick start with `agora swarm`:** After completing sections 1–4 (prerequisites, repo, Agora init, governance), you can skip sections 5–9 and run:
+> ```bash
+> agora swarm \
+>   --tickets-file docs/superpowers/plans/2026-03-17-agora-office-tickets.md \
+>   --goal "Build Agora Office" \
+>   --spec docs/superpowers/specs/2026-03-17-agora-office-design.md \
+>   --agents 5 \
+>   --test-command "pnpm exec tsc --build"
+> ```
+> This single command handles ticket creation, planning gate, and convoy execution. Use `--dry-run` first to validate.
+
 ---
 
 ## Table of Contents

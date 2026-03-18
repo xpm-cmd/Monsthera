@@ -40,6 +40,7 @@ Everything runs locally. No cloud. No API keys. Configuration lives in `.agora/c
 - **Ticketing and backlog** &mdash; Structured tickets with 10 workflow states, comments, linked patches, dependency links (`blocks`/`relates_to`), council review with quorum-based governance, and dashboard actions for create, assign, and transition.
 - **Multi-agent coordination** &mdash; Agent registry, session management, file claims, coordination messages with lane-aware bus, patch proposals with stale-rejection, shared presence tracking, and agent spawning.
 - **Governance & council review** &mdash; Quorum-based ticket advancement with specialized council roles (security, architecture, testing, performance, documentation). Verdicts are append-only with supersession tracking.
+- **Swarm orchestration** &mdash; Single `agora swarm` command runs the full autonomous lifecycle: ticket creation from manifests, planning gate with planner + council agents, and convoy execution with parallel waves. Supports resume via `--group` and dry-run validation.
 - **Wave orchestration & convoys** &mdash; Parallel ticket execution through wave scheduling. Convoys group independent tickets into waves, spawn agents per ticket, and manage integration branches for coordinated merges.
 - **Job board** &mdash; Loop-based workforce management with job slots, claim/release lifecycle, heartbeat monitoring, and progress tracking for developer, reviewer, and planner loops.
 - **Goal decomposition** &mdash; Structured goal breakdown into tasks with DAG-validated dependency graphs. Dry-run validation before ticket creation.
@@ -271,6 +272,7 @@ Commands:
   loop               Run agent loops (plan, dev, council) with --watch mode
   facilitator        Run the facilitator loop (planner + dispatcher)
   orchestrate        Multi-agent orchestrator with spawn, failover, and convoy
+  swarm              End-to-end: tickets → planning → convoy → merge
 
 Options:
   --repo-path       Path to the git repository (default: cwd)

@@ -687,6 +687,7 @@ function printHelp() {
   console.error("  loop           Run a repo-local planner/developer/council workflow");
   console.error("  facilitator    Alias for `agora loop plan`");
   console.error("  orchestrate    Run convoy orchestrator for a work group");
+  console.error("  swarm          End-to-end: tickets → planning → convoy → merge");
   console.error("  tool           Invoke a local Agora MCP tool from CLI");
   console.error("");
   console.error("Options:");
