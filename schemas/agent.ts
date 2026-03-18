@@ -180,6 +180,8 @@ export const BUILT_IN_ROLES: Record<RoleId, Role> = {
         "create_loop", "list_jobs", "claim_job", "update_job_progress", "complete_job", "release_job",
         "spawn_agent",
         "compute_waves", "launch_convoy", "advance_wave", "get_wave_status",
+        "create_work_group", "update_work_group", "add_tickets_to_group", "remove_tickets_from_group", "list_work_groups",
+        "decompose_goal",
       ],
       trustTier: "A",
       canBroadcast: true,
