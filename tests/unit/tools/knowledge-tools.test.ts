@@ -1,67 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import * as schema from "../../../src/db/schema.js";
 import * as queries from "../../../src/db/queries.js";
 import { registerKnowledgeTools } from "../../../src/tools/knowledge-tools.js";
-
-class FakeServer {
-  handlers = new Map<string, (input: unknown) => Promise<any>>();
-
-  tool(name: string, _description: string, _schema: object, handler: (input: unknown) => Promise<any>) {
-    this.handlers.set(name, handler);
-  }
-}
-
-function createTestDb() {
-  const sqlite = new Database(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  sqlite.exec(`
-    CREATE TABLE agents (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL DEFAULT 'unknown',
-provider TEXT,
-model TEXT,
-model_family TEXT,
-model_version TEXT,
-identity_source TEXT,
-role_id TEXT NOT NULL DEFAULT 'observer',
-      trust_tier TEXT NOT NULL DEFAULT 'B',
-      registered_at TEXT NOT NULL
-    );
-    CREATE TABLE sessions (
-      id TEXT PRIMARY KEY,
-      agent_id TEXT NOT NULL REFERENCES agents(id),
-      state TEXT NOT NULL DEFAULT 'active',
-      connected_at TEXT NOT NULL,
-      last_activity TEXT NOT NULL,
-      claimed_files_json TEXT,
-      worktree_path TEXT,
-      worktree_branch TEXT
-    );
-    CREATE TABLE knowledge (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      key TEXT NOT NULL UNIQUE,
-      type TEXT NOT NULL,
-      scope TEXT NOT NULL,
-      title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      tags_json TEXT,
-      status TEXT NOT NULL DEFAULT 'active',
-      agent_id TEXT,
-      session_id TEXT,
-      embedding BLOB,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    CREATE TABLE repos (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL);
-    CREATE TABLE dashboard_events (id INTEGER PRIMARY KEY AUTOINCREMENT, repo_id INTEGER NOT NULL, event_type TEXT NOT NULL, data_json TEXT NOT NULL, timestamp TEXT NOT NULL);
-  `);
-  return { db: drizzle(sqlite, { schema }), sqlite };
-}
+import { FakeServer } from "../../fixtures/fake-server.js";
+import { createTestDb } from "../../fixtures/test-db.js";
 
 describe("knowledge tools", () => {
   let sqlite: InstanceType<typeof Database>;
