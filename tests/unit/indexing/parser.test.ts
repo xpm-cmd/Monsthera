@@ -314,6 +314,191 @@ static COUNTER: i32 = 0;
   });
 });
 
+// --- Reference extraction ---
+
+describe("parseFile - Python references", () => {
+  it("extracts direct function calls", async () => {
+    const content = `
+def main():
+    result = compute(42)
+    print(result)
+`;
+    const result = await parseFile(content, "python");
+    expect(result.references.some((r) => r.kind === "call" && r.targetName === "compute" && r.sourceSymbol === "main")).toBe(true);
+    expect(result.references.some((r) => r.kind === "call" && r.targetName === "print" && r.sourceSymbol === "main")).toBe(true);
+  });
+
+  it("extracts member calls (attribute access)", async () => {
+    const content = `
+def process():
+    items = []
+    items.append(1)
+    result = db.query("SELECT 1")
+`;
+    const result = await parseFile(content, "python");
+    expect(result.references.some((r) => r.kind === "member_call" && r.targetName === "append")).toBe(true);
+    expect(result.references.some((r) => r.kind === "member_call" && r.targetName === "query")).toBe(true);
+  });
+
+  it("extracts class inheritance as type_ref", async () => {
+    const content = `
+class Dog(Animal, Serializable):
+    pass
+`;
+    const result = await parseFile(content, "python");
+    expect(result.references.some((r) => r.kind === "type_ref" && r.targetName === "Animal")).toBe(true);
+    expect(result.references.some((r) => r.kind === "type_ref" && r.targetName === "Serializable")).toBe(true);
+  });
+
+  it("tracks enclosing symbol — null for module-level calls", async () => {
+    const content = `
+setup()
+
+def main():
+    run()
+`;
+    const result = await parseFile(content, "python");
+    expect(result.references.some((r) => r.targetName === "setup" && r.sourceSymbol === null)).toBe(true);
+    expect(result.references.some((r) => r.targetName === "run" && r.sourceSymbol === "main")).toBe(true);
+  });
+
+  it("extracts type annotations as type_ref", async () => {
+    const content = `
+def greet(name: str) -> str:
+    return name
+`;
+    const result = await parseFile(content, "python");
+    expect(result.references.some((r) => r.kind === "type_ref")).toBe(true);
+  });
+});
+
+describe("parseFile - Go references", () => {
+  it("extracts direct function calls", async () => {
+    const content = `package main
+
+func main() {
+	result := compute(42)
+}
+`;
+    const result = await parseFile(content, "go");
+    expect(result.references.some((r) => r.kind === "call" && r.targetName === "compute" && r.sourceSymbol === "main")).toBe(true);
+  });
+
+  it("extracts selector (method) calls", async () => {
+    const content = `package main
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("ok"))
+	r.ParseForm()
+}
+`;
+    const result = await parseFile(content, "go");
+    expect(result.references.some((r) => r.kind === "member_call" && r.targetName === "Write")).toBe(true);
+    expect(result.references.some((r) => r.kind === "member_call" && r.targetName === "ParseForm")).toBe(true);
+  });
+
+  it("extracts type_identifier references", async () => {
+    const content = `package main
+
+func newServer(cfg Config) *Server {
+	return &Server{}
+}
+`;
+    const result = await parseFile(content, "go");
+    expect(result.references.some((r) => r.kind === "type_ref" && r.targetName === "Config")).toBe(true);
+    expect(result.references.some((r) => r.kind === "type_ref" && r.targetName === "Server")).toBe(true);
+  });
+
+  it("skips type_identifier in type definitions", async () => {
+    const content = `package main
+
+type Server struct {
+	Host string
+}
+`;
+    const result = await parseFile(content, "go");
+    // "Server" is a definition, not a reference — should not appear as type_ref
+    const serverRefs = result.references.filter((r) => r.targetName === "Server" && r.kind === "type_ref");
+    expect(serverRefs).toHaveLength(0);
+  });
+
+  it("tracks enclosing symbol for method declarations", async () => {
+    const content = `package main
+
+func (s *Server) Start() error {
+	listen()
+	return nil
+}
+`;
+    const result = await parseFile(content, "go");
+    expect(result.references.some((r) => r.targetName === "listen" && r.sourceSymbol === "Start")).toBe(true);
+  });
+});
+
+describe("parseFile - Rust references", () => {
+  it("extracts direct function calls", async () => {
+    const content = `fn main() {
+    let x = compute(42);
+}
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.references.some((r) => r.kind === "call" && r.targetName === "compute" && r.sourceSymbol === "main")).toBe(true);
+  });
+
+  it("extracts scoped calls like Vec::new", async () => {
+    const content = `fn build() {
+    let v = Vec::new();
+    let m = HashMap::with_capacity(10);
+}
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.references.some((r) => r.kind === "call" && r.targetName === "new")).toBe(true);
+    expect(result.references.some((r) => r.kind === "call" && r.targetName === "with_capacity")).toBe(true);
+  });
+
+  it("extracts method calls", async () => {
+    const content = `fn process() {
+    let mut items = Vec::new();
+    items.push(1);
+    items.iter().map(|x| x + 1);
+}
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.references.some((r) => r.kind === "member_call" && r.targetName === "push")).toBe(true);
+  });
+
+  it("extracts type references from function signatures", async () => {
+    const content = `fn serve(config: Config) -> Result<Server, Error> {
+    todo!()
+}
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.references.some((r) => r.kind === "type_ref" && r.targetName === "Config")).toBe(true);
+    expect(result.references.some((r) => r.kind === "type_ref" && r.targetName === "Result")).toBe(true);
+  });
+
+  it("extracts impl type and trait references", async () => {
+    const content = `impl Handler for Server {
+    fn handle(&self) {}
+}
+`;
+    const result = await parseFile(content, "rust");
+    expect(result.references.some((r) => r.kind === "type_ref" && r.targetName === "Handler")).toBe(true);
+    expect(result.references.some((r) => r.kind === "type_ref" && r.targetName === "Server")).toBe(true);
+  });
+
+  it("skips type_identifier in definition nodes", async () => {
+    const content = `struct Config {
+    port: u16,
+}
+`;
+    const result = await parseFile(content, "rust");
+    // "Config" is a definition, not a reference
+    const configRefs = result.references.filter((r) => r.targetName === "Config" && r.kind === "type_ref");
+    expect(configRefs).toHaveLength(0);
+  });
+});
+
 // --- Leading comment extraction (Nivel 2) ---
 
 describe("parseFile — leadingComment extraction", () => {

@@ -93,15 +93,15 @@ export async function parseFile(content: string, language: SupportedLanguage): P
   } else if (language === "go") {
     symbols = extractGoSymbols(root);
     imports = extractGoImports(root);
-    references = []; // TODO: Go references in future version
+    references = extractGoReferences(root);
   } else if (language === "rust") {
     symbols = extractRustSymbols(root);
     imports = extractRustImports(root);
-    references = []; // TODO: Rust references in future version
+    references = extractRustReferences(root);
   } else {
     symbols = extractPythonSymbols(root);
     imports = extractPythonImports(root);
-    references = []; // TODO: Python references in future version
+    references = extractPythonReferences(root);
   }
 
   const leadingComment = extractLeadingComment(root, language);
@@ -424,6 +424,96 @@ function extractPythonImports(root: Parser.SyntaxNode): ExtractedImport[] {
   return imports;
 }
 
+// --- Python reference extraction ---
+
+/**
+ * Extract symbol-level references from a Python AST.
+ * Identifies function calls, method calls, type annotations, and class inheritance.
+ */
+function extractPythonReferences(root: Parser.SyntaxNode): ExtractedReference[] {
+  const refs: ExtractedReference[] = [];
+
+  function walk(node: Parser.SyntaxNode, enclosingSymbol: string | null): void {
+    // Update enclosing symbol context
+    if (node.type === "function_definition") {
+      const name = node.childForFieldName("name");
+      const newEnclosing = name?.text ?? enclosingSymbol;
+
+      // Check return type annotation: def foo() -> ReturnType
+      const returnType = node.childForFieldName("return_type");
+      if (returnType) {
+        const typeName = findPythonTypeIdentifier(returnType);
+        if (typeName) {
+          refs.push({ sourceSymbol: newEnclosing, targetName: typeName, kind: "type_ref", line: returnType.startPosition.row });
+        }
+      }
+
+      for (const child of node.children) walk(child, newEnclosing);
+      return;
+    }
+
+    if (node.type === "class_definition") {
+      const name = node.childForFieldName("name");
+      const newEnclosing = name?.text ?? enclosingSymbol;
+
+      // Extract superclasses as type_ref: class Foo(Base, Mixin)
+      const superclasses = node.childForFieldName("superclasses");
+      if (superclasses) {
+        for (const child of superclasses.children) {
+          if (child.type === "identifier") {
+            refs.push({ sourceSymbol: newEnclosing, targetName: child.text, kind: "type_ref", line: child.startPosition.row });
+          }
+        }
+      }
+
+      for (const child of node.children) walk(child, newEnclosing);
+      return;
+    }
+
+    // Extract function/method calls
+    if (node.type === "call") {
+      const fn = node.childForFieldName("function");
+      if (fn) {
+        if (fn.type === "identifier") {
+          refs.push({ sourceSymbol: enclosingSymbol, targetName: fn.text, kind: "call", line: node.startPosition.row });
+        } else if (fn.type === "attribute") {
+          const attr = fn.childForFieldName("attribute");
+          if (attr) {
+            refs.push({ sourceSymbol: enclosingSymbol, targetName: attr.text, kind: "member_call", line: node.startPosition.row });
+          }
+        }
+      }
+    }
+
+    // Extract type annotations: param: Type, var: Type
+    if (node.type === "type") {
+      const typeName = findPythonTypeIdentifier(node);
+      if (typeName) {
+        refs.push({ sourceSymbol: enclosingSymbol, targetName: typeName, kind: "type_ref", line: node.startPosition.row });
+      }
+    }
+
+    for (const child of node.children) {
+      walk(child, enclosingSymbol);
+    }
+  }
+
+  walk(root, null);
+  return refs;
+}
+
+/**
+ * Find the first identifier in a Python type annotation subtree.
+ */
+function findPythonTypeIdentifier(node: Parser.SyntaxNode): string | null {
+  if (node.type === "identifier") return node.text;
+  for (const child of node.children) {
+    const found = findPythonTypeIdentifier(child);
+    if (found) return found;
+  }
+  return null;
+}
+
 // --- Go extraction ---
 
 function extractGoSymbols(root: Parser.SyntaxNode): ExtractedSymbol[] {
@@ -492,6 +582,63 @@ function extractGoImports(root: Parser.SyntaxNode): ExtractedImport[] {
   }
 
   return imports;
+}
+
+// --- Go reference extraction ---
+
+/**
+ * Extract symbol-level references from a Go AST.
+ * Identifies function calls, selector (method) calls, and type identifier references.
+ */
+function extractGoReferences(root: Parser.SyntaxNode): ExtractedReference[] {
+  const refs: ExtractedReference[] = [];
+
+  function walk(node: Parser.SyntaxNode, enclosingSymbol: string | null): void {
+    // Update enclosing symbol context
+    if (node.type === "function_declaration") {
+      const name = node.childForFieldName("name");
+      const newEnclosing = name?.text ?? enclosingSymbol;
+      for (const child of node.children) walk(child, newEnclosing);
+      return;
+    }
+
+    if (node.type === "method_declaration") {
+      const name = node.childForFieldName("name");
+      const newEnclosing = name?.text ?? enclosingSymbol;
+      for (const child of node.children) walk(child, newEnclosing);
+      return;
+    }
+
+    // Extract function/method calls
+    if (node.type === "call_expression") {
+      const fn = node.childForFieldName("function");
+      if (fn) {
+        if (fn.type === "identifier") {
+          refs.push({ sourceSymbol: enclosingSymbol, targetName: fn.text, kind: "call", line: node.startPosition.row });
+        } else if (fn.type === "selector_expression") {
+          const field = fn.childForFieldName("field");
+          if (field) {
+            refs.push({ sourceSymbol: enclosingSymbol, targetName: field.text, kind: "member_call", line: node.startPosition.row });
+          }
+        }
+      }
+    }
+
+    // Extract type_identifier references (skip definitions in type_spec)
+    if (node.type === "type_identifier") {
+      const parentType = node.parent?.type;
+      if (parentType !== "type_spec") {
+        refs.push({ sourceSymbol: enclosingSymbol, targetName: node.text, kind: "type_ref", line: node.startPosition.row });
+      }
+    }
+
+    for (const child of node.children) {
+      walk(child, enclosingSymbol);
+    }
+  }
+
+  walk(root, null);
+  return refs;
 }
 
 // --- Rust extraction ---
@@ -582,6 +729,116 @@ function extractRustImports(root: Parser.SyntaxNode): ExtractedImport[] {
   }
 
   return imports;
+}
+
+// --- Rust reference extraction ---
+
+/**
+ * Extract symbol-level references from a Rust AST.
+ * Identifies function calls, method calls, scoped calls (Vec::new),
+ * and type identifier references including impl/trait targets.
+ */
+function extractRustReferences(root: Parser.SyntaxNode): ExtractedReference[] {
+  const refs: ExtractedReference[] = [];
+  const definitionNodeTypes = new Set(["struct_item", "enum_item", "trait_item", "type_item"]);
+
+  function walk(node: Parser.SyntaxNode, enclosingSymbol: string | null): void {
+    // Update enclosing symbol context
+    if (node.type === "function_item") {
+      const name = node.childForFieldName("name");
+      const newEnclosing = name?.text ?? enclosingSymbol;
+      for (const child of node.children) walk(child, newEnclosing);
+      return;
+    }
+
+    if (node.type === "impl_item") {
+      // Extract impl target type: impl Server { ... }
+      const typeNode = node.childForFieldName("type");
+      if (typeNode?.type === "type_identifier") {
+        refs.push({ sourceSymbol: enclosingSymbol, targetName: typeNode.text, kind: "type_ref", line: typeNode.startPosition.row });
+      }
+
+      // Extract trait in impl Trait for Type
+      const traitNode = node.childForFieldName("trait");
+      if (traitNode) {
+        const traitName = findRustTypeIdentifier(traitNode);
+        if (traitName) {
+          refs.push({ sourceSymbol: enclosingSymbol, targetName: traitName, kind: "type_ref", line: traitNode.startPosition.row });
+        }
+      }
+
+      // Walk body with same enclosing (functions inside will set their own)
+      for (const child of node.children) walk(child, enclosingSymbol);
+      return;
+    }
+
+    // Extract function calls: foo(), Vec::new(), obj.method()
+    if (node.type === "call_expression") {
+      const fn = node.childForFieldName("function");
+      if (fn) {
+        if (fn.type === "identifier") {
+          refs.push({ sourceSymbol: enclosingSymbol, targetName: fn.text, kind: "call", line: node.startPosition.row });
+        } else if (fn.type === "field_expression") {
+          const field = fn.childForFieldName("field");
+          if (field) {
+            refs.push({ sourceSymbol: enclosingSymbol, targetName: field.text, kind: "member_call", line: node.startPosition.row });
+          }
+        } else if (fn.type === "scoped_identifier") {
+          // Vec::new() — extract last identifier segment
+          const lastIdent = findLastIdentifier(fn);
+          if (lastIdent) {
+            refs.push({ sourceSymbol: enclosingSymbol, targetName: lastIdent, kind: "call", line: node.startPosition.row });
+          }
+        }
+      }
+    }
+
+    // Rust-specific method call syntax: receiver.method(args)
+    if (node.type === "method_call_expression") {
+      const method = node.childForFieldName("method");
+      if (method) {
+        refs.push({ sourceSymbol: enclosingSymbol, targetName: method.text, kind: "member_call", line: node.startPosition.row });
+      }
+    }
+
+    // Extract type_identifier references (skip definition sites)
+    if (node.type === "type_identifier") {
+      const parentType = node.parent?.type;
+      if (!definitionNodeTypes.has(parentType ?? "")) {
+        refs.push({ sourceSymbol: enclosingSymbol, targetName: node.text, kind: "type_ref", line: node.startPosition.row });
+      }
+    }
+
+    for (const child of node.children) {
+      walk(child, enclosingSymbol);
+    }
+  }
+
+  walk(root, null);
+  return refs;
+}
+
+/**
+ * Find the first type_identifier in a Rust subtree (for trait bounds, etc.).
+ */
+function findRustTypeIdentifier(node: Parser.SyntaxNode): string | null {
+  if (node.type === "type_identifier" || node.type === "identifier") return node.text;
+  for (const child of node.children) {
+    const found = findRustTypeIdentifier(child);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Find the last identifier child in a scoped_identifier (e.g., Vec::new → "new").
+ */
+function findLastIdentifier(node: Parser.SyntaxNode): string | null {
+  let last: string | null = null;
+  for (const child of node.children) {
+    if (child.type === "identifier") last = child.text;
+  }
+  return last;
 }
 
 // --- Leading comment extraction (Nivel 2 enrichment) ---
