@@ -20,6 +20,7 @@ import { registerWorkGroupTools } from "./tools/work-group-tools.js";
 import { registerDecomposeTools } from "./tools/decompose-tools.js";
 import { registerWaveTools } from "./tools/wave-tools.js";
 import { registerSpawnTools } from "./tools/spawn-tools.js";
+import { registerGovernanceTools } from "./tools/governance-tools.js";
 import { installToolRuntimeInstrumentation } from "./tools/runtime-instrumentation.js";
 
 export function createAgoraServer(
@@ -56,6 +57,7 @@ export function createAgoraServer(
   registerDecomposeTools(server, getContext);
   registerWaveTools(server, getContext);
   registerSpawnTools(server, getContext);
+  registerGovernanceTools(server, getContext);
 
   return server;
 }

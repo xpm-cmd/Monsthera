@@ -41,6 +41,9 @@ export const CAPABILITY_TOOL_NAMES = [
   "advance_wave",
   "get_wave_status",
   "spawn_agent",
+  "get_governance_settings",
+  "get_ticket_metrics",
+  "list_events",
 ] as const;
 
 export type CapabilityToolName = (typeof CAPABILITY_TOOL_NAMES)[number];

@@ -79,4 +79,7 @@ export const TOOL_ACCESS_POLICY: Record<CapabilityToolName, ToolAccessPolicyEntr
   advance_wave: { mode: "role" },
   get_wave_status: { mode: "session" },
   spawn_agent: { mode: "role" },
+  get_governance_settings: { mode: "session" },
+  get_ticket_metrics: { mode: "session" },
+  list_events: { mode: "role" },
 };
