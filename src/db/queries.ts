@@ -173,14 +173,34 @@ export function getImportGraph(
   repoId: number,
   opts?: { scope?: string; focusFilePath?: string },
 ) {
+  const scope = opts?.scope?.trim();
+  const focusPath = opts?.focusFilePath?.trim();
+
+  // When scope is provided and no focus path, filter at SQL level to avoid loading entire table
+  const fileConditions = [eq(tables.files.repoId, repoId)];
+  if (scope && !focusPath) {
+    fileConditions.push(sql`${tables.files.path} LIKE ${scope + "%"}`);
+  }
+
   const allFiles = db.select({
     id: tables.files.id,
     path: tables.files.path,
     language: tables.files.language,
-  }).from(tables.files).where(eq(tables.files.repoId, repoId)).all();
+  }).from(tables.files).where(and(...fileConditions)).all();
+
+  if (allFiles.length === 0) {
+    return { files: [] as ImportGraphNode[], edges: [] as ImportGraphEdge[] };
+  }
 
   const pathToNode = new Map(allFiles.map((file) => [file.path, file] as const));
   const allPaths = new Set(pathToNode.keys());
+
+  // For scoped queries without focus, only load imports where source is in scope
+  const importConditions = [eq(tables.files.repoId, repoId)];
+  if (scope && !focusPath) {
+    importConditions.push(sql`${tables.files.path} LIKE ${scope + "%"}`);
+  }
+
   const allImports = db.select({
     sourceFileId: tables.imports.sourceFileId,
     targetPath: tables.imports.targetPath,
@@ -188,14 +208,9 @@ export function getImportGraph(
     sourcePath: tables.files.path,
   }).from(tables.imports)
     .innerJoin(tables.files, eq(tables.imports.sourceFileId, tables.files.id))
-    .where(eq(tables.files.repoId, repoId))
+    .where(and(...importConditions))
     .all();
 
-  if (allFiles.length === 0) {
-    return { files: [] as ImportGraphNode[], edges: [] as ImportGraphEdge[] };
-  }
-
-  const focusPath = opts?.focusFilePath?.trim();
   if (focusPath && pathToNode.has(focusPath)) {
     const nodePaths = new Set<string>([focusPath]);
 
@@ -214,12 +229,7 @@ export function getImportGraph(
     return buildImportGraphSubset(allImports, pathToNode, allPaths, nodePaths);
   }
 
-  const scope = opts?.scope?.trim();
-  const scopedPaths = scope
-    ? new Set(allFiles.filter((file) => file.path.startsWith(scope)).map((file) => file.path))
-    : new Set(allPaths);
-
-  return buildImportGraphSubset(allImports, pathToNode, allPaths, scopedPaths);
+  return buildImportGraphSubset(allImports, pathToNode, allPaths, allPaths);
 }
 
 function buildImportGraphSubset(

@@ -64,34 +64,41 @@ export async function fullIndex(opts: IndexOptions): Promise<IndexResult> {
   let filesIndexed = 0;
   let filesSkipped = 0;
 
-  // Wrap all writes (deletes + inserts + index state) in a single transaction
-  // to prevent partial state on crash. The async calls inside (getFileContent)
-  // do I/O but all SQLite operations are synchronous via better-sqlite3.
+  // Phase 1: Clear existing records in a short transaction (fast, write lock held briefly)
   db.run(sql`BEGIN IMMEDIATE`);
   try {
-    // Clear existing records — code_chunks & imports first (FK → files.id)
     db.delete(tables.codeChunks).run();
     db.delete(tables.imports).run();
     db.delete(tables.symbolReferences).run();
     db.delete(tables.files).where(eq(tables.files.repoId, repoId)).run();
+    db.run(sql`COMMIT`);
+  } catch (err) {
+    db.run(sql`ROLLBACK`);
+    throw err;
+  }
 
-    for (const filePath of trackedFiles) {
-      try {
-        const result = await indexSingleFile(filePath, commit, opts);
-        if (result === "skipped") {
-          filesSkipped++;
-        } else {
-          filesIndexed++;
-        }
-      } catch (err) {
-        errors.push({ path: filePath, error: err instanceof Error ? err.message : String(err) });
+  // Phase 2: Index files — each indexSingleFile does its own synchronous DB writes.
+  // No long-held transaction: individual inserts use SQLite's implicit transactions,
+  // allowing other writers (tool handlers, coordination bus) to interleave.
+  for (const filePath of trackedFiles) {
+    try {
+      const result = await indexSingleFile(filePath, commit, opts);
+      if (result === "skipped") {
         filesSkipped++;
+      } else {
+        filesIndexed++;
       }
+    } catch (err) {
+      errors.push({ path: filePath, error: err instanceof Error ? err.message : String(err) });
+      filesSkipped++;
     }
+  }
 
-    await validateCustomWorkflows(repoPath, onProgress);
+  await validateCustomWorkflows(repoPath, onProgress);
 
-    // Update index state
+  // Phase 3: Update index state in a short transaction
+  db.run(sql`BEGIN IMMEDIATE`);
+  try {
     const now = new Date().toISOString();
     const lastError = errors.length > 0
       ? errors.map(e => `${e.path}: ${e.error}`).join('; ').slice(0, 1000)
@@ -166,49 +173,47 @@ export async function incrementalIndex(lastCommit: string, opts: IndexOptions): 
   let filesIndexed = 0;
   let filesSkipped = 0;
 
-  // Wrap all DB writes in a single transaction for atomicity and batched fsync.
-  // Async parsing (tree-sitter) happens in-memory; DB ops are sync (better-sqlite3).
-  db.run(sql`BEGIN IMMEDIATE`);
-  try {
-    for (const change of changedFiles) {
-      // Helper: delete a file, its imports and chunks (FK → files.id)
-      const deleteFileByPath = () => {
-        const existing = db.select({ id: tables.files.id }).from(tables.files)
-          .where(and(eq(tables.files.repoId, repoId), eq(tables.files.path, change.path)))
-          .get();
-        if (existing) {
-          db.delete(tables.codeChunks).where(eq(tables.codeChunks.fileId, existing.id)).run();
-          db.delete(tables.imports).where(eq(tables.imports.sourceFileId, existing.id)).run();
-          db.delete(tables.symbolReferences).where(eq(tables.symbolReferences.sourceFileId, existing.id)).run();
-          db.delete(tables.files).where(eq(tables.files.id, existing.id)).run();
-        }
-      };
+  // Helper: delete a file, its imports and chunks (FK → files.id)
+  const deleteFileByPath = (path: string) => {
+    const existing = db.select({ id: tables.files.id }).from(tables.files)
+      .where(and(eq(tables.files.repoId, repoId), eq(tables.files.path, path)))
+      .get();
+    if (existing) {
+      db.delete(tables.codeChunks).where(eq(tables.codeChunks.fileId, existing.id)).run();
+      db.delete(tables.imports).where(eq(tables.imports.sourceFileId, existing.id)).run();
+      db.delete(tables.symbolReferences).where(eq(tables.symbolReferences.sourceFileId, existing.id)).run();
+      db.delete(tables.files).where(eq(tables.files.id, existing.id)).run();
+    }
+  };
 
-      if (change.status === "D") {
-        deleteFileByPath();
-        filesIndexed++;
-        continue;
-      }
-
-      try {
-        // Delete old record and re-index
-        deleteFileByPath();
-
-        const result = await indexSingleFile(change.path, currentHead, opts);
-        if (result === "skipped") {
-          filesSkipped++;
-        } else {
-          filesIndexed++;
-        }
-      } catch (err) {
-        errors.push({ path: change.path, error: err instanceof Error ? err.message : String(err) });
-        filesSkipped++;
-      }
+  // Per-file delete+reindex without holding a long transaction.
+  // Each file's DB ops are sync (better-sqlite3) and use implicit transactions.
+  for (const change of changedFiles) {
+    if (change.status === "D") {
+      deleteFileByPath(change.path);
+      filesIndexed++;
+      continue;
     }
 
-    await validateCustomWorkflows(repoPath, onProgress);
+    try {
+      deleteFileByPath(change.path);
+      const result = await indexSingleFile(change.path, currentHead, opts);
+      if (result === "skipped") {
+        filesSkipped++;
+      } else {
+        filesIndexed++;
+      }
+    } catch (err) {
+      errors.push({ path: change.path, error: err instanceof Error ? err.message : String(err) });
+      filesSkipped++;
+    }
+  }
 
-    // Update index state
+  await validateCustomWorkflows(repoPath, onProgress);
+
+  // Update index state in a short transaction
+  db.run(sql`BEGIN IMMEDIATE`);
+  try {
     const now = new Date().toISOString();
     const lastError = errors.length > 0
       ? errors.map(e => `${e.path}: ${e.error}`).join('; ').slice(0, 1000)
