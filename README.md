@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  Local, commit-scoped shared context and multi-agent coordination for co-coding.
+  Give your AI coding agents a shared brain, a backlog, and the ability to work together.
 </p>
 
 <p align="center">
@@ -25,13 +25,11 @@
 
 ---
 
-Monsthera is an [MCP server](https://modelcontextprotocol.io/) for local-first shared context, ticketing,
-and multi-agent coordination during software work.
-It indexes your repository with Git-aware parsing, provides hybrid semantic search,
-coordinates multiple agents through trust-enforced tools, persists knowledge across sessions,
-and ships with a dashboard for presence, tickets, patches, notes, and search debugging.
+AI agents are powerful alone but blind to each other. Each one starts from scratch, re-reads the same files, and has no way to share what it learned. Monsthera fixes that.
 
-Everything runs locally. No cloud. No API keys. Configuration lives in `.monsthera/config.json`.
+Monsthera turns your repository into a workspace where multiple agents can search code semantically, coordinate through tickets, propose patches, and build on each other's knowledge. It connects to your tools via [MCP](https://modelcontextprotocol.io/) and CLI.
+
+One `npx monsthera-mcp serve` and your agents get hybrid search (keyword + semantic), a full ticketing system with governance, persistent cross-session knowledge, file-level coordination, and a dashboard to see it all happening.
 
 ## Features
 
