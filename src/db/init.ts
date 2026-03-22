@@ -7,7 +7,7 @@ import * as schema from "./schema.js";
 
 export interface DbInitOptions {
   repoPath: string;
-  agoraDir: string;
+  monstheraDir: string;
   dbName: string;
 }
 
@@ -17,7 +17,7 @@ export interface DbInitResult {
 }
 
 export function initDatabase(opts: DbInitOptions): DbInitResult {
-  const dirPath = join(opts.repoPath, opts.agoraDir);
+  const dirPath = join(opts.repoPath, opts.monstheraDir);
   mkdirSync(dirPath, { recursive: true });
 
   const dbPath = join(dirPath, opts.dbName);
@@ -309,7 +309,7 @@ export interface GlobalDbResult {
 }
 
 export function initGlobalDatabase(): GlobalDbResult {
-  const globalDir = join(homedir(), ".agora");
+  const globalDir = join(homedir(), ".monsthera");
   mkdirSync(globalDir, { recursive: true });
 
   const dbPath = join(globalDir, "knowledge.db");

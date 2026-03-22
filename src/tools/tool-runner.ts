@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import { AgoraError } from "../core/errors.js";
+import { MonstheraError } from "../core/errors.js";
 import type { InstrumentedToolRegistration } from "./runtime-instrumentation.js";
 import { classifyResultForLogging, getInstrumentedToolRegistry, normalizeErrorCode } from "./runtime-instrumentation.js";
 
@@ -65,7 +65,7 @@ export class ToolRunner {
       };
     } catch (error) {
       const normalizedCode = normalizeErrorCode(
-        error instanceof AgoraError
+        error instanceof MonstheraError
           ? error.code
           : typeof error === "object" && error && typeof Reflect.get(error, "code") === "string"
             ? String(Reflect.get(error, "code"))
@@ -86,7 +86,7 @@ export class ToolRunner {
   }
 }
 
-const TOOL_RUNNER = Symbol.for("agora.toolRunner");
+const TOOL_RUNNER = Symbol.for("monsthera.toolRunner");
 
 export function getToolRunner(server: McpServer): ToolRunner {
   const instrumentableServer = server as McpServer & {

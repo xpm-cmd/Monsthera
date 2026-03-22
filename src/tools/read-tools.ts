@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { okJson } from "./response-helpers.js";
 import { z } from "zod/v4";
 import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MAX_DIFF_LINES_PER_FILE, HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import {
   AgentIdSchema,
   FilePathSchema,
@@ -31,7 +31,7 @@ import {
 } from "../federation/search.js";
 import { resolveAgent } from "./resolve-agent.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 const ReadToolVerbositySchema = z.enum(["full", "compact", "minimal"]);
 export type ReadToolVerbosity = z.infer<typeof ReadToolVerbositySchema>;
@@ -261,7 +261,7 @@ export function shapeIssuePackResult(
 
 export function registerReadTools(server: McpServer, getContext: GetContext): void {
   // ─── status ───────────────────────────────────────────────
-  server.tool("status", "Get Agora index status and connected agents", {}, async () => {
+  server.tool("status", "Get Monsthera index status and connected agents", {}, async () => {
     const c = await getContext();
     const indexState = queries.getIndexState(c.db, c.repoId);
     const activeSessions = queries.getLiveSessions(
@@ -300,7 +300,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
   });
 
   // ─── capabilities ─────────────────────────────────────────
-  server.tool("capabilities", "List Agora capabilities and supported features", {}, async () => {
+  server.tool("capabilities", "List Monsthera capabilities and supported features", {}, async () => {
     const c = await getContext();
     const repoAgentCatalog = await loadRepoAgentCatalog(c.repoPath);
     const customWorkflowCatalog = await loadCustomWorkflows(c.repoPath);
@@ -352,7 +352,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
   // ─── schema ───────────────────────────────────────────────
   server.tool(
     "schema",
-    "Get the input schema for a specific Agora tool",
+    "Get the input schema for a specific Monsthera tool",
     { toolName: z.string().describe("Tool name") },
     async ({ toolName }) => {
       const c = await getContext();
@@ -904,7 +904,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
   // ─── search_remote_instances ─────────────────────────────
   server.tool(
     "search_remote_instances",
-    "Query configured remote Agora instances over authenticated HTTP and merge read-only search hits with explicit provenance.",
+    "Query configured remote Monsthera instances over authenticated HTTP and merge read-only search hits with explicit provenance.",
     {
       query: z.string().trim().min(1).max(1000).describe("Search query"),
       surface: CrossInstanceSearchSurfaceSchema.describe("Remote search surface"),
@@ -1032,7 +1032,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
   // ─── suggest_actions ────────────────────────────────────
   server.tool(
     "suggest_actions",
-    "Advisory-only rule engine for changed paths. Returns recommended Agora tools, required review roles, quorum, and rule-level reasoning.",
+    "Advisory-only rule engine for changed paths. Returns recommended Monsthera tools, required review roles, quorum, and rule-level reasoning.",
     {
       changedPaths: z.array(FilePathSchema).max(100).describe("Repo-relative changed file paths"),
     },

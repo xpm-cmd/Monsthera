@@ -48,9 +48,9 @@ const WORKTREE_OUTPUT_ORPHAN = `worktree /repo
 HEAD abc123
 branch refs/heads/main
 
-worktree /repo/.agora/worktrees/sess-orphan
+worktree /repo/.monsthera/worktrees/sess-orphan
 HEAD def456
-branch refs/heads/agora/agent/sess-orphan
+branch refs/heads/monsthera/agent/sess-orphan
 
 `;
 
@@ -58,13 +58,13 @@ const WORKTREE_OUTPUT_TWO = `worktree /repo
 HEAD abc123
 branch refs/heads/main
 
-worktree /repo/.agora/worktrees/sess-a
+worktree /repo/.monsthera/worktrees/sess-a
 HEAD def456
-branch refs/heads/agora/agent/sess-a
+branch refs/heads/monsthera/agent/sess-a
 
-worktree /repo/.agora/worktrees/sess-b
+worktree /repo/.monsthera/worktrees/sess-b
 HEAD ghi789
-branch refs/heads/agora/agent/sess-b
+branch refs/heads/monsthera/agent/sess-b
 
 `;
 

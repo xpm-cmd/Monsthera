@@ -32,7 +32,7 @@ function makeWorkGroup(overrides: Record<string, unknown> = {}) {
     createdAt: NOW,
     updatedAt: NOW,
     currentWave: 0,
-    integrationBranch: "agora/convoy/WG-test001",
+    integrationBranch: "monsthera/convoy/WG-test001",
     wavePlanJson: JSON.stringify({ waves: [["TKT-a", "TKT-b"], ["TKT-c"]] }),
     launchedAt: NOW,
     ...overrides,

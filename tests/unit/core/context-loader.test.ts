@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgoraConfig } from "../../../src/core/config.js";
-import { createAgoraContextLoader } from "../../../src/core/context-loader.js";
+import type { MonstheraConfig } from "../../../src/core/config.js";
+import { createMonstheraContextLoader } from "../../../src/core/context-loader.js";
 
 const { searchRouterInitialize, upsertRepo, lifecycleSweep, fakeTimer } = vi.hoisted(() => ({
   searchRouterInitialize: vi.fn(),
@@ -48,15 +48,15 @@ vi.mock("../../../src/tickets/lifecycle.js", () => ({
   }),
 }));
 
-describe("createAgoraContextLoader", () => {
+describe("createMonstheraContextLoader", () => {
   const insight = {
     info: vi.fn(),
     warn: vi.fn(),
   };
   const config = {
     repoPath: "/repo",
-    agoraDir: ".agora",
-    dbName: "agora.db",
+    monstheraDir: ".monsthera",
+    dbName: "monsthera.db",
     zoektEnabled: false,
     semanticEnabled: false,
     search: {},
@@ -71,7 +71,7 @@ describe("createAgoraContextLoader", () => {
       autoCascadeBlocked: true,
       sweepIntervalMs: 60_000,
     },
-  } as unknown as AgoraConfig;
+  } as unknown as MonstheraConfig;
 
   beforeEach(() => {
     searchRouterInitialize.mockReset();
@@ -88,7 +88,7 @@ describe("createAgoraContextLoader", () => {
   it("skips the background sweep in one-shot runtimes", async () => {
     const setIntervalSpy = vi.spyOn(global, "setInterval");
     const clearIntervalSpy = vi.spyOn(global, "clearInterval");
-    const getContext = createAgoraContextLoader(config, insight as any, { startLifecycleSweep: false });
+    const getContext = createMonstheraContextLoader(config, insight as any, { startLifecycleSweep: false });
 
     const context = await getContext();
     context.dispose?.();
@@ -101,7 +101,7 @@ describe("createAgoraContextLoader", () => {
   it("starts, unrefs, and clears the background sweep for long-lived runtimes", async () => {
     const setIntervalSpy = vi.spyOn(global, "setInterval").mockReturnValue(fakeTimer);
     const clearIntervalSpy = vi.spyOn(global, "clearInterval").mockImplementation(() => undefined);
-    const getContext = createAgoraContextLoader(config, insight as any);
+    const getContext = createMonstheraContextLoader(config, insight as any);
 
     const context = await getContext();
     context.dispose?.();

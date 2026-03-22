@@ -13,7 +13,7 @@ describe("cross-instance auth helpers", () => {
     query: { tool: "status", verbose: true },
     timestamp: "2026-03-11T12:00:00.000Z",
     nonce: "nonce-123",
-    instanceId: "agora-main",
+    instanceId: "monsthera-main",
     body: JSON.stringify({ hello: "world" }),
   };
 

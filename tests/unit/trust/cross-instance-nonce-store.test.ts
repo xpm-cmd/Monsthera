@@ -6,11 +6,11 @@ describe("CrossInstanceNonceStore", () => {
     const now = 1_000;
     const store = new CrossInstanceNonceStore(5_000, () => now);
 
-    expect(store.checkAndStore("agora-peer", "nonce-1")).toEqual({
+    expect(store.checkAndStore("monsthera-peer", "nonce-1")).toEqual({
       accepted: true,
       reason: "accepted",
     });
-    expect(store.checkAndStore("agora-peer", "nonce-1")).toEqual({
+    expect(store.checkAndStore("monsthera-peer", "nonce-1")).toEqual({
       accepted: false,
       reason: "replayed",
     });
@@ -20,10 +20,10 @@ describe("CrossInstanceNonceStore", () => {
     let now = 1_000;
     const store = new CrossInstanceNonceStore(5_000, () => now);
 
-    store.checkAndStore("agora-peer", "nonce-1");
+    store.checkAndStore("monsthera-peer", "nonce-1");
     now = 6_100;
 
-    expect(store.checkAndStore("agora-peer", "nonce-1")).toEqual({
+    expect(store.checkAndStore("monsthera-peer", "nonce-1")).toEqual({
       accepted: true,
       reason: "accepted",
     });

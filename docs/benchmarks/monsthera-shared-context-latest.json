@@ -9,7 +9,7 @@
     {
       "slug": "workflow-execution",
       "title": "Workflow execution backend",
-      "withoutAgora": {
+      "withoutMonsthera": {
         "totalWallMs": 28.283,
         "tasks": [
           {
@@ -62,7 +62,7 @@
           }
         ]
       },
-      "agoraNoHub": {
+      "monstheraNoHub": {
         "totalWallMs": 42.304,
         "totalBackendMs": 3.0,
         "tasks": [
@@ -71,7 +71,7 @@
             "title": "Node dispatch handlers",
             "query": "which file dispatches workflow nodes and handles solver script study nodes",
             "expectedPath": "backend/app/services/workflow_runner.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 17.35,
             "backendMs": 1.0,
             "topPaths": [
@@ -89,7 +89,7 @@
             "title": "Workflow run endpoints",
             "query": "where are workflow run pause resume stop endpoints",
             "expectedPath": "backend/app/routers/workflows.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 12.105,
             "backendMs": 1.0,
             "topPaths": [
@@ -107,7 +107,7 @@
             "title": "Workflow run persistence",
             "query": "where are workflow run statuses and node run records persisted",
             "expectedPath": "backend/app/services/workflow_run_service.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 12.849,
             "backendMs": 1.0,
             "topPaths": [
@@ -122,10 +122,10 @@
           }
         ]
       },
-      "agoraHub": {
+      "monstheraHub": {
         "seedQuery": "workflow runner dispatch node handlers pause resume",
         "seedScope": "backend/app/",
-        "source": "agora_scoped",
+        "source": "monsthera_scoped",
         "seedWallMs": 13.34,
         "seedBackendMs": 1.0,
         "sendWallMs": 1.082,
@@ -195,7 +195,7 @@
     {
       "slug": "project-portability",
       "title": "Project portability",
-      "withoutAgora": {
+      "withoutMonsthera": {
         "totalWallMs": 26.961,
         "tasks": [
           {
@@ -248,7 +248,7 @@
           }
         ]
       },
-      "agoraNoHub": {
+      "monstheraNoHub": {
         "totalWallMs": 37.505,
         "totalBackendMs": 3.0,
         "tasks": [
@@ -257,7 +257,7 @@
             "title": "OMK import service",
             "query": "where is omk import service implemented",
             "expectedPath": "backend/app/services/import_project_service.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 12.821,
             "backendMs": 1.0,
             "topPaths": [
@@ -275,7 +275,7 @@
             "title": "OMK archive helpers",
             "query": "where are save_omk and load_omk archive helpers",
             "expectedPath": "backend/app/services/project_file.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 12.157,
             "backendMs": 1.0,
             "topPaths": [
@@ -293,7 +293,7 @@
             "title": "Project import/export router",
             "query": "which router exposes project import export endpoints",
             "expectedPath": "backend/app/routers/projects.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 12.527,
             "backendMs": 1.0,
             "topPaths": [
@@ -308,10 +308,10 @@
           }
         ]
       },
-      "agoraHub": {
+      "monstheraHub": {
         "seedQuery": "project portability omk import export package migration",
         "seedScope": "backend/app/",
-        "source": "agora_scoped",
+        "source": "monsthera_scoped",
         "seedWallMs": 12.317,
         "seedBackendMs": 1.0,
         "sendWallMs": 0.502,
@@ -381,7 +381,7 @@
     {
       "slug": "campaign-lifecycle",
       "title": "Campaign lifecycle",
-      "withoutAgora": {
+      "withoutMonsthera": {
         "totalWallMs": 27.841,
         "tasks": [
           {
@@ -434,7 +434,7 @@
           }
         ]
       },
-      "agoraNoHub": {
+      "monstheraNoHub": {
         "totalWallMs": 37.838,
         "totalBackendMs": 3.0,
         "tasks": [
@@ -443,7 +443,7 @@
             "title": "Campaign router",
             "query": "which router exposes rerun failed scenarios and duplicate campaign config",
             "expectedPath": "backend/app/routers/campaigns.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 13.632,
             "backendMs": 1.0,
             "topPaths": [
@@ -461,7 +461,7 @@
             "title": "Campaign progress service",
             "query": "where are campaign progress counters and failed scenario inputs persisted",
             "expectedPath": "backend/app/services/campaign_service.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 11.815,
             "backendMs": 1.0,
             "topPaths": [
@@ -479,7 +479,7 @@
             "title": "Campaign websocket manager",
             "query": "where is websocket broadcast manager used for campaign updates",
             "expectedPath": "backend/app/workers/ws_manager.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 12.391,
             "backendMs": 1.0,
             "topPaths": [
@@ -494,10 +494,10 @@
           }
         ]
       },
-      "agoraHub": {
+      "monstheraHub": {
         "seedQuery": "campaign websocket duplicate rerun failed scenarios progress",
         "seedScope": "backend/app/",
-        "source": "agora_scoped",
+        "source": "monsthera_scoped",
         "seedWallMs": 11.734,
         "seedBackendMs": 1.0,
         "sendWallMs": 0.458,
@@ -567,7 +567,7 @@
     {
       "slug": "stress-reporting",
       "title": "Stress reporting",
-      "withoutAgora": {
+      "withoutMonsthera": {
         "totalWallMs": 25.648,
         "tasks": [
           {
@@ -620,7 +620,7 @@
           }
         ]
       },
-      "agoraNoHub": {
+      "monstheraNoHub": {
         "totalWallMs": 35.533,
         "totalBackendMs": 3.0,
         "tasks": [
@@ -629,7 +629,7 @@
             "title": "Stress report compiler",
             "query": "where is compile_stress_report implemented",
             "expectedPath": "backend/app/services/stress_report.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 12.424,
             "backendMs": 1.0,
             "topPaths": [
@@ -647,7 +647,7 @@
             "title": "Stress summary analysis",
             "query": "where are stress severity summaries and failure boundary points computed",
             "expectedPath": "backend/app/services/stress_analysis.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 11.948,
             "backendMs": 1.0,
             "topPaths": [
@@ -665,7 +665,7 @@
             "title": "Stress analytics router",
             "query": "which router exposes get_stress_report and get_failure_boundary endpoints",
             "expectedPath": "backend/app/routers/stress.py",
-            "source": "agora_scoped",
+            "source": "monsthera_scoped",
             "wallMs": 11.162,
             "backendMs": 1.0,
             "topPaths": [
@@ -680,10 +680,10 @@
           }
         ]
       },
-      "agoraHub": {
+      "monstheraHub": {
         "seedQuery": "stress report compile failure modes summary warnings",
         "seedScope": "backend/app/",
-        "source": "agora_scoped",
+        "source": "monsthera_scoped",
         "seedWallMs": 10.629,
         "seedBackendMs": 1.0,
         "sendWallMs": 0.408,
@@ -755,30 +755,30 @@
     "taskCount": 12,
     "themeCount": 4,
     "laneTotalsMs": {
-      "withoutAgora": 108.733,
-      "agoraNoHub": 153.18,
-      "agoraHub": 52.499,
-      "agoraHubCodeSearchOnly": 48.02
+      "withoutMonsthera": 108.733,
+      "monstheraNoHub": 153.18,
+      "monstheraHub": 52.499,
+      "monstheraHubCodeSearchOnly": 48.02
     },
     "laneSuccesses": {
-      "withoutAgora": 12,
-      "agoraNoHub": 12,
-      "agoraHub": 12
+      "withoutMonsthera": 12,
+      "monstheraNoHub": 12,
+      "monstheraHub": 12
     },
     "codeSearchCalls": {
-      "withoutAgora": 12,
-      "agoraNoHub": 12,
-      "agoraHub": 4
+      "withoutMonsthera": 12,
+      "monstheraNoHub": 12,
+      "monstheraHub": 4
     },
     "coordinationCalls": {
-      "withoutAgora": 0,
-      "agoraNoHub": 0,
-      "agoraHub": 16
+      "withoutMonsthera": 0,
+      "monstheraNoHub": 0,
+      "monstheraHub": 16
     },
     "derived": {
       "hubVsNoHubCodeSearchReduction": 66.7,
-      "hubVsWithoutAgoraTimeRatio": 0.483,
-      "hubVsAgoraNoHubTimeRatio": 0.343
+      "hubVsWithoutMonstheraTimeRatio": 0.483,
+      "hubVsMonstheraNoHubTimeRatio": 0.343
     }
   }
 }

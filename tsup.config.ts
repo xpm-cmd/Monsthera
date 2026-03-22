@@ -12,7 +12,7 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   define: {
-    __AGORA_VERSION__: JSON.stringify(pkg.version),
+    __MONSTHERA_VERSION__: JSON.stringify(pkg.version),
   },
   banner: {
     js: "#!/usr/bin/env node",

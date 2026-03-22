@@ -15,7 +15,7 @@ const RESPONSE_SIZE_WARNING_CHARS = 50_000;
  * logging to InsightStream).  Default is stderr.
  */
 let onResponseSizeWarning: (chars: number, estimatedTokens: number) => void = (chars, tokens) => {
-  process.stderr.write(`[agora] response size warning: ${chars} chars (~${tokens} tokens)\n`);
+  process.stderr.write(`[monsthera] response size warning: ${chars} chars (~${tokens} tokens)\n`);
 };
 
 export function setResponseSizeWarningHandler(handler: typeof onResponseSizeWarning): void {

@@ -29,7 +29,7 @@ describe("matchesProtectedPattern", () => {
   });
 
   it("matches root-level wildcard", () => {
-    expect(matchesProtectedPattern(".agora/config.json", ".agora/*")).toBe(true);
+    expect(matchesProtectedPattern(".monsthera/config.json", ".monsthera/*")).toBe(true);
   });
 
   it("rejects when no pattern matches", () => {

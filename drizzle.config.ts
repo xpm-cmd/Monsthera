@@ -5,6 +5,6 @@ export default defineConfig({
   out: "./src/db/migrations",
   dialect: "sqlite",
   dbCredentials: {
-    url: ".agora/agora.db",
+    url: ".monsthera/monsthera.db",
   },
 });

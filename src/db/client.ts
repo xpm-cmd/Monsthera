@@ -4,12 +4,12 @@ import * as schema from "./schema.js";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 
-export function createDatabase(agoraDir: string, dbName: string): {
+export function createDatabase(monstheraDir: string, dbName: string): {
   db: BetterSQLite3Database<typeof schema>;
   sqlite: DatabaseType;
 } {
-  mkdirSync(agoraDir, { recursive: true });
-  const dbPath = join(agoraDir, dbName);
+  mkdirSync(monstheraDir, { recursive: true });
+  const dbPath = join(monstheraDir, dbName);
   const sqlite = new Database(dbPath);
 
   // Performance and safety pragmas

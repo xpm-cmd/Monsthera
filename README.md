@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>&#9670; Agora</strong>
+  <strong>&#9670; Monsthera</strong>
 </p>
 
 <p align="center">
@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/agora-mcp"><img src="https://img.shields.io/npm/v/agora-mcp" alt="npm version"></a>
-  <a href="https://github.com/xpm-cmd/Agora/actions"><img src="https://github.com/xpm-cmd/Agora/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.npmjs.com/package/monsthera-mcp"><img src="https://img.shields.io/npm/v/monsthera-mcp" alt="npm version"></a>
+  <a href="https://github.com/xpm-cmd/Monsthera/actions"><img src="https://github.com/xpm-cmd/Monsthera/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BUSL--1.1-blue.svg" alt="BUSL-1.1 License"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen" alt="Node.js >= 22">
 </p>
@@ -25,13 +25,13 @@
 
 ---
 
-Agora is an [MCP server](https://modelcontextprotocol.io/) for local-first shared context, ticketing,
+Monsthera is an [MCP server](https://modelcontextprotocol.io/) for local-first shared context, ticketing,
 and multi-agent coordination during software work.
 It indexes your repository with Git-aware parsing, provides hybrid semantic search,
 coordinates multiple agents through trust-enforced tools, persists knowledge across sessions,
 and ships with a dashboard for presence, tickets, patches, notes, and search debugging.
 
-Everything runs locally. No cloud. No API keys. Configuration lives in `.agora/config.json`.
+Everything runs locally. No cloud. No API keys. Configuration lives in `.monsthera/config.json`.
 
 ## Features
 
@@ -53,21 +53,21 @@ Everything runs locally. No cloud. No API keys. Configuration lives in `.agora/c
 ## Install
 
 ```bash
-npm install -g agora-mcp
+npm install -g monsthera-mcp
 ```
 
 Or use directly with `npx`:
 
 ```bash
-npx agora-mcp serve
+npx monsthera-mcp serve
 ```
 
 <details>
 <summary><strong>Build from source</strong></summary>
 
 ```bash
-git clone https://github.com/xpm-cmd/Agora.git
-cd Agora
+git clone https://github.com/xpm-cmd/Monsthera.git
+cd Monsthera
 pnpm install
 pnpm build
 ```
@@ -79,15 +79,15 @@ pnpm build
 
 ```bash
 cd your-project
-agora init                    # Create .agora/config.json and local DB
-agora index                   # Full index of tracked files
-agora index --incremental     # Fast refresh from the last indexed commit
-agora serve                   # Start MCP server over stdio
-agora serve --transport http  # Start HTTP MCP + dashboard
-agora status                  # Check index status, backend, and live sessions
+monsthera init                    # Create .monsthera/config.json and local DB
+monsthera index                   # Full index of tracked files
+monsthera index --incremental     # Fast refresh from the last indexed commit
+monsthera serve                   # Start MCP server over stdio
+monsthera serve --transport http  # Start HTTP MCP + dashboard
+monsthera status                  # Check index status, backend, and live sessions
 ```
 
-Agora also runs `agora index --incremental` automatically in a local git `post-commit` hook so
+Monsthera also runs `monsthera index --incremental` automatically in a local git `post-commit` hook so
 committed code is reindexed before reviewers or subsequent agents query fresh context.
 
 In HTTP mode, MCP is exposed at `http://localhost:3000/mcp` and the dashboard runs at
@@ -98,9 +98,9 @@ Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 ```json
 {
   "mcpServers": {
-    "agora": {
+    "monsthera": {
       "command": "npx",
-      "args": ["-y", "agora-mcp", "serve"]
+      "args": ["-y", "monsthera-mcp", "serve"]
     }
   }
 }
@@ -132,36 +132,36 @@ Add to your MCP client config (e.g., Claude Code `.claude/settings.json`):
 
 ## Agent-First Operational Access
 
-When an agent or script needs repository state, prefer Agora-native access in this order:
+When an agent or script needs repository state, prefer Monsthera-native access in this order:
 
 1. Specialized CLI commands for common workflows
-2. `agora tool inspect <tool> --json` to discover tool inputs
-3. `agora tool <tool> --input '{...}' --json` for direct local MCP tool invocation
-4. Direct reads from `.agora/agora.db` only as a last resort
+2. `monsthera tool inspect <tool> --json` to discover tool inputs
+3. `monsthera tool <tool> --input '{...}' --json` for direct local MCP tool invocation
+4. Direct reads from `.monsthera/monsthera.db` only as a last resort
 
 Why this order:
 
-- specialized commands and `agora tool` keep repo scoping, validation, auth checks, telemetry, and workflow invariants
+- specialized commands and `monsthera tool` keep repo scoping, validation, auth checks, telemetry, and workflow invariants
 - direct SQLite access bypasses those guards and should not be the default path for agents
 
 Operational examples:
 
 ```bash
-agora ticket summary --json
-agora patch list --json
-agora patch show patch-123 --json
-agora knowledge search "ticket workflow" --scope all --json
-agora loop plan --json
-agora loop plan --watch
-agora facilitator --watch
-agora loop dev --limit 3 --json
-agora loop dev --watch
-agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json
-agora loop council --watch
-agora tool list
-agora tool inspect propose_patch --json
-agora tool status --json
-agora tool claim_files --input '{"agentId":"agent-dev","sessionId":"session-dev","paths":["src/index.ts"]}' --json
+monsthera ticket summary --json
+monsthera patch list --json
+monsthera patch show patch-123 --json
+monsthera knowledge search "ticket workflow" --scope all --json
+monsthera loop plan --json
+monsthera loop plan --watch
+monsthera facilitator --watch
+monsthera loop dev --limit 3 --json
+monsthera loop dev --watch
+monsthera loop council TKT-1234abcd --transition in_review->ready_for_commit --json
+monsthera loop council --watch
+monsthera tool list
+monsthera tool inspect propose_patch --json
+monsthera tool status --json
+monsthera tool claim_files --input '{"agentId":"agent-dev","sessionId":"session-dev","paths":["src/index.ts"]}' --json
 ```
 
 Loop command guide: [docs/agent-loops.md](docs/agent-loops.md)
@@ -169,13 +169,13 @@ Operational playbooks: [docs/playbooks.md](docs/playbooks.md)
 
 Patch review guidance:
 
-- use `agora patch list --json` to review current patch states plus live staleness against current `HEAD`
-- use `agora patch show <proposal-id> --json` to inspect feasibility, policy violations, secret warnings, touched path counts, and linked ticket metadata before opening raw diffs
+- use `monsthera patch list --json` to review current patch states plus live staleness against current `HEAD`
+- use `monsthera patch show <proposal-id> --json` to inspect feasibility, policy violations, secret warnings, touched path counts, and linked ticket metadata before opening raw diffs
 
 ## Architecture
 
 ```
-agora serve / agora orchestrate / agora loop
+monsthera serve / monsthera orchestrate / monsthera loop
     |
     +---> MCP Server (stdio | HTTP)
     |        |
@@ -184,13 +184,13 @@ agora serve / agora orchestrate / agora loop
     |        |       Search --------+---> FTS5 + Semantic Hybrid + Chunk Embeddings
     |        |       Evidence Bundles ---> Stage A (top 10) + Stage B (expand 5)
     |        |       Coordination Bus --> lane-aware DB-backed messaging
-    |        |       Knowledge Store --> repo (.agora/) + global (~/.agora/)
+    |        |       Knowledge Store --> repo (.monsthera/) + global (~/.monsthera/)
     |        |       Ticketing -------> lifecycle + council review + governance
     |        |       Waves -----------> convoy scheduling + integration branches
     |        |       Jobs ------------> loop workforce + slot management
     |        |
-    |        +---> Repo DB (.agora/agora.db)
-    |        +---> Global DB (~/.agora/knowledge.db)
+    |        +---> Repo DB (.monsthera/monsthera.db)
+    |        +---> Global DB (~/.monsthera/knowledge.db)
     |
     +---> Orchestrator (multi-agent loop coordination)
     |        +---> Agent Spawning + Failover + Problem Handling
@@ -249,18 +249,18 @@ Built-in command center (default port 3141, configurable via `--dashboard-port`)
 ## Obsidian Export
 
 ```bash
-agora export --obsidian                          # Export to repo root
-agora export --obsidian --vault ~/MyVault        # Export to specific vault
+monsthera export --obsidian                          # Export to repo root
+monsthera export --obsidian --vault ~/MyVault        # Export to specific vault
 ```
 
 ## CLI Reference
 
 ```
-agora v1.0.0
+monsthera v1.0.0
 
 Commands:
   serve              Start MCP server (stdio or HTTP) + dashboard
-  init               Create .agora/config.json and local DB
+  init               Create .monsthera/config.json and local DB
   index              Full or incremental index of tracked files
   status             Check index status, backend, and live sessions
   export             Export knowledge to Obsidian vault
@@ -309,7 +309,7 @@ For security vulnerabilities, see [SECURITY.md](SECURITY.md).
 
 ## Getting Help
 
-- [GitHub Issues](https://github.com/xpm-cmd/Agora/issues) &mdash; bug reports, feature requests
+- [GitHub Issues](https://github.com/xpm-cmd/Monsthera/issues) &mdash; bug reports, feature requests
 - [docs/architecture.md](docs/architecture.md) &mdash; runtime and storage architecture
 - [docs/search-pipeline.md](docs/search-pipeline.md) &mdash; indexing and retrieval details
 - [docs/agent-roles.md](docs/agent-roles.md) &mdash; roles, registration auth, and sessions

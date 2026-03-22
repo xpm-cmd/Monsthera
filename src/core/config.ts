@@ -5,7 +5,7 @@ import { CouncilSpecializationId, COUNCIL_SPECIALIZATIONS } from "../../schemas/
 import { ConvoyConfigSchema } from "../../schemas/convoy.js";
 import { DEFAULT_AUTO_ADVANCE_EXCLUDED_TAGS, GovernanceConfigSchema } from "../../schemas/governance.js";
 import { TicketSeverity } from "../../schemas/ticket.js";
-import { DEFAULT_AGORA_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_DB_NAME } from "./constants.js";
+import { DEFAULT_MONSTHERA_DIR, DEFAULT_DASHBOARD_PORT, DEFAULT_DB_NAME } from "./constants.js";
 import {
   DEFAULT_CONFIG_FILE_PENALTY_FACTOR,
   DEFAULT_FILE_BM25_WEIGHTS,
@@ -200,9 +200,9 @@ export const CrossInstanceConfigSchema = z
     }
   });
 
-export const AgoraConfigSchema = z.object({
+export const MonstheraConfigSchema = z.object({
   repoPath: z.string(),
-  agoraDir: z.string().default(DEFAULT_AGORA_DIR),
+  monstheraDir: z.string().default(DEFAULT_MONSTHERA_DIR),
   dbName: z.string().default(DEFAULT_DB_NAME),
   dashboardPort: z.number().int().min(1024).max(65535).default(DEFAULT_DASHBOARD_PORT),
   verbosity: z.enum(["quiet", "normal", "verbose"]).default("normal"),
@@ -270,7 +270,7 @@ export const AgoraConfigSchema = z.object({
   convoy: ConvoyConfigSchema.default({ maxTicketsPerWave: 5, autoRefresh: true }),
 });
 
-export type AgoraConfig = z.infer<typeof AgoraConfigSchema>;
+export type MonstheraConfig = z.infer<typeof MonstheraConfigSchema>;
 export type RegistrationAuth = z.infer<typeof RegistrationAuthSchema>;
 export type SecretPatternRule = z.infer<typeof SecretPatternRuleSchema>;
 export type ToolRateLimitConfig = z.infer<typeof ToolRateLimitConfigSchema>;
@@ -285,28 +285,35 @@ export type RepairSpawnerConfig = z.infer<typeof RepairSpawnerConfigSchema>;
 export type RetrospectiveConfig = z.infer<typeof RetrospectiveConfigSchema>;
 export type ConvoyConfig = z.infer<typeof ConvoyConfigSchema>;
 
-export function resolveConfig(partial: Partial<AgoraConfig> & { repoPath: string }): AgoraConfig {
-  return AgoraConfigSchema.parse(partial);
+export function resolveConfig(partial: Partial<MonstheraConfig> & { repoPath: string }): MonstheraConfig {
+  return MonstheraConfigSchema.parse(partial);
 }
 
-export function loadConfigFile(repoPath: string, agoraDir = DEFAULT_AGORA_DIR): Partial<AgoraConfig> {
-  const configPath = join(repoPath, agoraDir, "config.json");
+export function loadConfigFile(repoPath: string, monstheraDir = DEFAULT_MONSTHERA_DIR): Partial<MonstheraConfig> {
+  const configPath = join(repoPath, monstheraDir, "config.json");
   if (!existsSync(configPath)) {
     return {};
   }
 
   const parsed = JSON.parse(readFileSync(configPath, "utf-8")) as unknown;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`Invalid Agora config at ${configPath}: expected an object`);
+    throw new Error(`Invalid Monsthera config at ${configPath}: expected an object`);
   }
 
-  return parsed as Partial<AgoraConfig>;
+  // Migrate legacy "agoraDir" key if present
+  const obj = parsed as Record<string, unknown>;
+  if ("agoraDir" in obj && !("monstheraDir" in obj)) {
+    obj.monstheraDir = obj.agoraDir;
+    delete obj.agoraDir;
+  }
+
+  return parsed as Partial<MonstheraConfig>;
 }
 
 export function mergeConfigSources(
-  ...sources: Array<Partial<AgoraConfig> | undefined>
-): Partial<AgoraConfig> {
-  const merged: Partial<AgoraConfig> = {};
+  ...sources: Array<Partial<MonstheraConfig> | undefined>
+): Partial<MonstheraConfig> {
+  const merged: Partial<MonstheraConfig> = {};
 
   for (const source of sources) {
     if (!source) continue;

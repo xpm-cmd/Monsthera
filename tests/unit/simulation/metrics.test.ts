@@ -19,7 +19,7 @@ describe("metrics", () => {
   let telemetry: TelemetryTracker;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "agora-metrics-"));
+    tempDir = await mkdtemp(join(tmpdir(), "monsthera-metrics-"));
     sandbox = createSandbox({ repoPath: tempDir });
     telemetry = new TelemetryTracker();
   });

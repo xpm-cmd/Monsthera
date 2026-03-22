@@ -11,7 +11,7 @@ import * as schema from "../src/db/schema.js";
 import { resolve } from "node:path";
 
 const repoPath = process.cwd();
-const dbPath = resolve(repoPath, ".agora/agora.db");
+const dbPath = resolve(repoPath, ".monsthera/monsthera.db");
 const sqlite = new Database(dbPath);
 const db = drizzle(sqlite, { schema });
 
@@ -27,7 +27,7 @@ const result = await runSimulation({
   targetCorpusSize: 30,
   realWorkBatchSize: 5,
   skipRealWork: true,
-  outputPath: resolve(repoPath, ".agora/simulation-results.jsonl"),
+  outputPath: resolve(repoPath, ".monsthera/simulation-results.jsonl"),
   onProgress: (ev) => console.log(`[sim] Phase ${ev.phase}:`, ev.message),
 });
 

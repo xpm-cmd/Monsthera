@@ -1,6 +1,6 @@
 # Trust Tiers
 
-Agora currently uses two trust tiers:
+Monsthera currently uses two trust tiers:
 
 - Tier `A`
 - Tier `B`

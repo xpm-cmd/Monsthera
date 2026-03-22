@@ -1,4 +1,4 @@
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import * as queries from "../db/queries.js";
 import { touchSession } from "../agents/registry.js";
 import type { RoleId } from "../../schemas/agent.js";
@@ -16,7 +16,7 @@ export type ResolveAgentResult =
   | { ok: false; error: string };
 
 export function resolveAgent(
-  ctx: AgoraContext,
+  ctx: MonstheraContext,
   agentId?: string,
   sessionId?: string,
 ): ResolveAgentResult {

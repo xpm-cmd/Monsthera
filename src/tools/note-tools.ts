@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { createHash } from "node:crypto";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import {
   AgentIdSchema,
   FlatMetadataSchema,
@@ -14,7 +14,7 @@ import { getHead } from "../git/operations.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { recordDashboardEvent } from "../core/events.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 const NOTE_TYPES = [
   "issue", "decision", "change_note", "gotcha",

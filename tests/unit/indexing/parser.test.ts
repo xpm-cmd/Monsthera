@@ -145,7 +145,7 @@ class Animal:
   it("extracts top-level variable assignments", async () => {
     const content = `
 MAX_SIZE = 100
-name = "agora"
+name = "monsthera"
 `;
     const result = await parseFile(content, "python");
     expect(result.symbols.some((s) => s.kind === "variable" && s.name === "MAX_SIZE")).toBe(true);

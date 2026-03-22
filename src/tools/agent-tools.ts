@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import { AgentIdentitySource } from "../../schemas/agent.js";
 import {
   AgentIdSchema,
@@ -16,7 +16,7 @@ import { resolveAgent } from "./resolve-agent.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import { pathsOverlap, normalizeClaimPath } from "../core/path-overlap.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 export function registerAgentTools(server: McpServer, getContext: GetContext): void {
   // ─── register_agent ─────────────────────────────────────────

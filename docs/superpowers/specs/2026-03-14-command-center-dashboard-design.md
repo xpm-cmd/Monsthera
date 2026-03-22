@@ -68,7 +68,7 @@ Rewrite `src/dashboard/html.ts` from a 9-tab layout to a sidebar-navigated Comma
 | `agents` | AGENTS | `layout-grid` | agents, agent-timeline, presence |
 | `tickets` | TICKETS | `ticket` | tickets, tickets/{id}, tickets/metrics, ticket-templates, presence |
 | `knowledge` | KNOWLEDGE | `brain` | knowledge, knowledge-graph |
-| `workflows` | WORKFLOWS | `git-branch` | (new: reads .agora/workflows/*.yaml via new endpoint or static) |
+| `workflows` | WORKFLOWS | `git-branch` | (new: reads .monsthera/workflows/*.yaml via new endpoint or static) |
 | `settings` | SETTINGS | `settings` | settings/governance |
 
 ### Screen Mapping to API Calls
@@ -161,7 +161,7 @@ New: modal overlay (700px wide) triggered by "+ CREATE" button, with:
 ### New Feature: Workflows View
 
 No existing API endpoint. Options:
-1. Add `GET /api/workflows` endpoint to `server.ts` that reads `.agora/workflows/*.yaml`
+1. Add `GET /api/workflows` endpoint to `server.ts` that reads `.monsthera/workflows/*.yaml`
 2. Embed workflow config at render time in `renderDashboard()` function
 
 Recommend option 1 for consistency. This is the ONE backend addition.

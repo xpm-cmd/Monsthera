@@ -1,5 +1,5 @@
 /**
- * Core types for the Agora continuous improvement loop (autoresearch).
+ * Core types for the Monsthera continuous improvement loop (autoresearch).
  *
  * TicketDescriptor is the generation-time representation of a ticket —
  * it lives in the corpus JSON and is converted to a real DB ticket
@@ -182,7 +182,7 @@ export interface OrchestratorKPIs {
 }
 
 // ---------------------------------------------------------------------------
-// Corpus file (.agora/simulation-corpus.json)
+// Corpus file (.monsthera/simulation-corpus.json)
 // ---------------------------------------------------------------------------
 
 export interface SimulationCorpus {

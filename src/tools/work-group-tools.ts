@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { randomUUID } from "node:crypto";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import {
   AgentIdSchema,
   SessionIdSchema,
@@ -11,7 +11,7 @@ import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { errJson, errText } from "./response-helpers.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 2000;

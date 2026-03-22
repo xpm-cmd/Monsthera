@@ -1,20 +1,20 @@
-# Agora v1.0.0 — Architecture
+# Monsthera v1.0.0 — Architecture
 
 ## System Overview
 
 ```mermaid
 flowchart TB
     CLI["CLI: init · index · status · serve · export"]
-    SERVE["agora serve"]
+    SERVE["monsthera serve"]
     DASH["Dashboard server (:3141)"]
     MCP["MCP server (stdio or HTTP)"]
-    CTX["AgoraContext\nconfig + repo DB + search router + coordination bus"]
+    CTX["MonstheraContext\nconfig + repo DB + search router + coordination bus"]
     TOOLS["72 MCP tools\nread · agents · coordination · patches · notes · knowledge · tickets\ncouncil · jobs · work-groups · waves · simulation · analysis · index"]
     SEARCH["SearchRouter\nFTS5 / Zoekt + optional semantic reranking"]
     TICKETS["Ticket service\nlifecycle + comments + dependencies + patch links"]
     DASHRT["Dashboard runtime\nREST + SSE + ticket actions + timeline + search debug"]
-    REPO["Repo DB (.agora/agora.db)"]
-    GLOBAL["Global knowledge DB (~/.agora/knowledge.db)"]
+    REPO["Repo DB (.monsthera/monsthera.db)"]
+    GLOBAL["Global knowledge DB (~/.monsthera/knowledge.db)"]
 
     CLI --> SERVE
     SERVE --> MCP
@@ -33,14 +33,14 @@ flowchart TB
 
 ## Runtime Shape
 
-Agora runs as a local CLI with two main long-lived surfaces:
+Monsthera runs as a local CLI with two main long-lived surfaces:
 
 - MCP server for agent tools, over `stdio` or HTTP (`/mcp`)
 - dashboard server for human visibility and local ticket actions
 
-When `agora serve --transport http` starts, it creates:
+When `monsthera serve --transport http` starts, it creates:
 
-- a repo-local SQLite database in `.agora/agora.db`
+- a repo-local SQLite database in `.monsthera/monsthera.db`
 - a `SearchRouter` with FTS5 always available, Zoekt optional, semantic reranking optional
 - a DB-backed `CoordinationBus`
 - a dashboard server with REST routes and `/api/events` SSE
@@ -243,7 +243,7 @@ Ticket advancement through gated transitions (e.g., `in_review` → `ready_for_c
 - **Council assignments**: Each ticket gets specialized reviewers (security, architecture, testing, performance, documentation) via `assign_council`
 - **Verdicts**: Reviewers submit approve/reject/abstain verdicts via `submit_verdict`. Verdicts are append-only with supersession tracking (`superseded_by` column)
 - **Consensus**: `check_consensus` evaluates whether quorum requirements are met based on governance config (minimum votes, required specializations, model diversity)
-- **Governance config**: Configurable in `.agora/config.json` — quorum size, required specializations, strict model diversity, auto-advance rules
+- **Governance config**: Configurable in `.monsthera/config.json` — quorum size, required specializations, strict model diversity, auto-advance rules
 
 The council-loop workflow automates evidence gathering, reviewer dispatch, and verdict collection for gated transitions.
 
@@ -266,7 +266,7 @@ Loop-based workforce management for multi-agent orchestration:
 - **Slots**: Each loop has typed job slots (developer, reviewer, planner) with specialization labels
 - **Lifecycle**: `open` → `claimed` (agent takes slot) → `active` (work started) → `completed`/`released`
 - **Heartbeats**: Active slots track `lastHeartbeat` for stale detection
-- **Orchestrator**: `agora orchestrate` manages the full lifecycle — spawning agents, assigning tickets, handling failures with retry/failover chains
+- **Orchestrator**: `monsthera orchestrate` manages the full lifecycle — spawning agents, assigning tickets, handling failures with retry/failover chains
 
 ## Simulation Framework
 

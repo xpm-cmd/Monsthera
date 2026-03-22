@@ -16,7 +16,7 @@ type DB = BetterSQLite3Database<typeof schema>;
 
 export interface TicketCliConfig {
   repoPath: string;
-  agoraDir: string;
+  monstheraDir: string;
   dbName: string;
   ticketQuorum?: TicketQuorumConfig;
 }
@@ -111,7 +111,7 @@ export async function cmdTicket(
       case "show": {
         const ticketId = args[1];
         if (!ticketId) {
-          throw new Error("Usage: agora ticket show <ticket-id> [--json]");
+          throw new Error("Usage: monsthera ticket show <ticket-id> [--json]");
         }
         const payload = buildTicketDetailPayload(ctx.db, ctx.repoId, ticketId);
         if (!payload) {
@@ -124,7 +124,7 @@ export async function cmdTicket(
         const ticketId = args[1];
         const targetStatus = args[2];
         if (!ticketId || !targetStatus) {
-          throw new Error("Usage: agora ticket transition <ticket-id> <status> [--comment <text>] [--skip-knowledge-capture] [--actor-label <label>] [--json]");
+          throw new Error("Usage: monsthera ticket transition <ticket-id> <status> [--comment <text>] [--skip-knowledge-capture] [--actor-label <label>] [--json]");
         }
 
         const parsedStatus = TicketStatus.safeParse(targetStatus);
@@ -562,7 +562,7 @@ async function loadTicketCliContext(config: TicketCliConfig, _insight: InsightSt
   const repoRoot = await getRepoRoot({ cwd: config.repoPath });
   const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
   const repoName = basename(repoRoot);
-  const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, monstheraDir: config.monstheraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
   return { repoRoot, repoId, db, sqlite };
 }
@@ -621,11 +621,11 @@ function advanceTicketStatus(
 
 function printTicketHelp(): void {
   console.error("Ticket commands:");
-  console.error("  agora ticket summary [--json]");
-  console.error("  agora ticket list [--status <status>] [--severity <severity>] [--assignee <agent-id>] [--creator <agent-id>] [--tags a,b] [--limit <n>] [--json]");
-  console.error("  agora ticket show <ticket-id> [--json]");
-  console.error("  agora ticket transition <ticket-id> <status> [--comment <text>] [--skip-knowledge-capture] [--actor-label <label>] [--json]");
-  console.error("  agora ticket reconcile-commit [--commit <sha>] [--actor-label <label>] [--json]");
+  console.error("  monsthera ticket summary [--json]");
+  console.error("  monsthera ticket list [--status <status>] [--severity <severity>] [--assignee <agent-id>] [--creator <agent-id>] [--tags a,b] [--limit <n>] [--json]");
+  console.error("  monsthera ticket show <ticket-id> [--json]");
+  console.error("  monsthera ticket transition <ticket-id> <status> [--comment <text>] [--skip-knowledge-capture] [--actor-label <label>] [--json]");
+  console.error("  monsthera ticket reconcile-commit [--commit <sha>] [--actor-label <label>] [--json]");
 }
 
 function parseTagsArg(raw: string | undefined): string[] | undefined {

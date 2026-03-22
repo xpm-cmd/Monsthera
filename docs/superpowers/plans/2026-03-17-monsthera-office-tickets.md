@@ -1,9 +1,9 @@
-# Agora Office — Ticket Manifest
+# Monsthera Office — Ticket Manifest
 
-> **For an Agora agent:** This document contains all tickets needed to build Agora Office. Use `decompose_goal` with `dryRun: false` to create them, then `create_work_group`, `add_tickets_to_group`, `compute_waves`, and `launch_convoy`.
+> **For an Monsthera agent:** This document contains all tickets needed to build Monsthera Office. Use `decompose_goal` with `dryRun: false` to create them, then `create_work_group`, `add_tickets_to_group`, `compute_waves`, and `launch_convoy`.
 
-**Spec:** `docs/superpowers/specs/2026-03-17-agora-office-design.md`
-**Plan:** `docs/superpowers/plans/2026-03-17-agora-office.md`
+**Spec:** `docs/superpowers/specs/2026-03-17-monsthera-office-design.md`
+**Plan:** `docs/superpowers/plans/2026-03-17-monsthera-office.md`
 
 ---
 
@@ -13,7 +13,7 @@
 |---|---|---|---|
 | F1 | Infrastructure | T01 | Monorepo scaffold with pnpm workspaces |
 | F2 | Shared types | T02 | Shared TypeScript types between server and client |
-| F3 | Backend | T03, T04, T05, T06 | Express server reading Agora DB and emitting SSE |
+| F3 | Backend | T03, T04, T05, T06 | Express server reading Monsthera DB and emitting SSE |
 | F4 | Isometric engine | T07, T08, T09, T10, T11 | Core PixiJS rendering engine |
 | F5 | Rooms | T14 | 6 office rooms with behavior |
 | F6 | State and UI | T12, T16 | Zustand stores + React overlay |
@@ -33,9 +33,9 @@
 - **affectedPaths:** `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `packages/shared/`, `packages/server/`, `packages/client/`
 - **acceptanceCriteria:**
   - `pnpm install` runs without errors
-  - `pnpm --filter @agora-office/client dev` starts Vite and shows placeholder
+  - `pnpm --filter @monsthera-office/client dev` starts Vite and shows placeholder
   - `tsc --build` compiles all 3 packages without errors
-- **description:** Initialize the `agora-office` monorepo with pnpm workspaces. Create 3 packages: `shared` (shared types), `server` (Node+Express), `client` (React+PixiJS+Vite). Configure strict TypeScript, project references, and dev scripts. The `shared` package must have `constants.ts` with room name enums, ticket statuses, roles, and hex colors from the pastel palette (spec section 10).
+- **description:** Initialize the `monsthera-office` monorepo with pnpm workspaces. Create 3 packages: `shared` (shared types), `server` (Node+Express), `client` (React+PixiJS+Vite). Configure strict TypeScript, project references, and dev scripts. The `shared` package must have `constants.ts` with room name enums, ticket statuses, roles, and hex colors from the pastel palette (spec section 10).
 
 ---
 
@@ -63,11 +63,11 @@
 - **dependsOn:** [T01]
 - **affectedPaths:** `packages/server/src/config.ts`, `packages/server/src/db/reader.ts`, `packages/server/src/db/queries.ts`
 - **acceptanceCriteria:**
-  - Server exits with clear error if `AGORA_DB_PATH` doesn't exist or is invalid
+  - Server exits with clear error if `MONSTHERA_DB_PATH` doesn't exist or is invalid
   - SQLite opens in read-only mode
   - All query functions return typed results
   - `repoId` auto-detected from `repos` table
-- **description:** Implement env var loading and validation (spec section 11): `AGORA_DB_PATH` (required), `PORT` (default 3001), `POLL_INTERVAL_MS` (default 1500), `CORS_ORIGIN` (default localhost:5173), `AGORA_REPO_ID` (default auto-detect). Open SQLite with `better-sqlite3` in read-only mode. Validate expected tables exist. Implement typed query functions: `getActiveAgents()`, `getActiveSessions()`, `getTicketsByStatus()`, `getDashboardEventsAfter(lastId)`, `getCouncilAssignmentsAfter(lastId)`, `getPatchesAfter(lastId)`, `getCoordinationMessagesAfter(lastId)`, `getTicketById()`, `getAgentById()`. Reference: schema in spec section 16.
+- **description:** Implement env var loading and validation (spec section 11): `MONSTHERA_DB_PATH` (required), `PORT` (default 3001), `POLL_INTERVAL_MS` (default 1500), `CORS_ORIGIN` (default localhost:5173), `MONSTHERA_REPO_ID` (default auto-detect). Open SQLite with `better-sqlite3` in read-only mode. Validate expected tables exist. Implement typed query functions: `getActiveAgents()`, `getActiveSessions()`, `getTicketsByStatus()`, `getDashboardEventsAfter(lastId)`, `getCouncilAssignmentsAfter(lastId)`, `getPatchesAfter(lastId)`, `getCoordinationMessagesAfter(lastId)`, `getTicketById()`, `getAgentById()`. Reference: schema in spec section 16.
 
 ---
 
@@ -83,7 +83,7 @@
   - Client disconnection is handled without crash
   - Events are correctly serialized as `data: JSON\n\n`
   - Event builders produce payloads matching shared types
-- **description:** Implement `SSEManager` class: `addClient(res)` sets SSE headers (Content-Type: text/event-stream, Cache-Control: no-cache, Connection: keep-alive), sends initial ping, stores reference and cleans up on `req.close`. `broadcast(event)` sends to all connected clients. Implement event builder functions that construct typed `SSEEvent` objects from raw DB data, normalizing field names (e.g., Agora uses `previousStatus`, SSE uses `previousStatus`). Note: Agora events are now enriched with all needed fields (`ticket_created` includes `title`, `ticket_commented` includes `contentPreview`), so no JOINs are needed for most events.
+- **description:** Implement `SSEManager` class: `addClient(res)` sets SSE headers (Content-Type: text/event-stream, Cache-Control: no-cache, Connection: keep-alive), sends initial ping, stores reference and cleans up on `req.close`. `broadcast(event)` sends to all connected clients. Implement event builder functions that construct typed `SSEEvent` objects from raw DB data, normalizing field names (e.g., Monsthera uses `previousStatus`, SSE uses `previousStatus`). Note: Monsthera events are now enriched with all needed fields (`ticket_created` includes `title`, `ticket_commented` includes `contentPreview`), so no JOINs are needed for most events.
 
 ---
 
@@ -115,7 +115,7 @@
   - `GET /state` returns well-formed `InitialState`
   - `GET /events` opens SSE stream
   - `GET /rooms` returns metadata for 6 rooms
-  - Server starts cleanly with valid AGORA_DB_PATH
+  - Server starts cleanly with valid MONSTHERA_DB_PATH
 - **description:** Implement REST routes. `GET /health`: `{ status: "ok", uptime, clientCount }`. `GET /rooms`: static array with metadata for 6 rooms (id, name, capacity). `GET /state`: build `InitialState` (spec section 8) — query active agents with sessions, compute `currentRoom` using 5 priority rules (in_progress→desks, council_assignment→council, planner/facilitator→planning, active_no_ticket→cafeteria, inactive→null), assign deskIndex round-robin, query non-closed tickets, active council reviews, current wave, stats. `index.ts`: Express app with CORS, mount routes, create SSEManager, start poll loop, listen on PORT.
 
 ---
@@ -291,8 +291,8 @@
   - Room furniture reacts (monitors turn on, post-its move, rocket launches)
   - Particles fire on appropriate events
   - Clicking a character opens detail panel
-  - The office feels alive when Agora is active
-- **description:** Wire SSE events to character movements, room behaviors, and particle effects. Update eventMapper to trigger BOTH store actions AND visual actions: agent:entered → addCharacter at lobby + animate walk to correct room. agent:left → animate walk to lobby + removeCharacter. ticket:moved → character walks to new room based on status (in_progress→desks with assignDesk, in_review→council, ready_for_commit→deploy addPackage, resolved→rocket launch, blocked→storm-cloud particle). verdict:submitted → Council.showVerdict() + sparkles/storm. council:consensus → confetti. patch:proposed → paper-fly from desk. coordination:message → chat bubble. convoy:started → office opening. convoy:completed → sparkles everywhere. Game loop in App.tsx: PixiJS Ticker with CharacterManager.updateAll(), ParticleSystem.update(), depth-sort. Click handler on characters → uiStore.selectAgent(). End-to-end test with real Agora DB.
+  - The office feels alive when Monsthera is active
+- **description:** Wire SSE events to character movements, room behaviors, and particle effects. Update eventMapper to trigger BOTH store actions AND visual actions: agent:entered → addCharacter at lobby + animate walk to correct room. agent:left → animate walk to lobby + removeCharacter. ticket:moved → character walks to new room based on status (in_progress→desks with assignDesk, in_review→council, ready_for_commit→deploy addPackage, resolved→rocket launch, blocked→storm-cloud particle). verdict:submitted → Council.showVerdict() + sparkles/storm. council:consensus → confetti. patch:proposed → paper-fly from desk. coordination:message → chat bubble. convoy:started → office opening. convoy:completed → sparkles everywhere. Game loop in App.tsx: PixiJS Ticker with CharacterManager.updateAll(), ParticleSystem.update(), depth-sort. Click handler on characters → uiStore.selectAgent(). End-to-end test with real Monsthera DB.
 
 ---
 
@@ -341,7 +341,7 @@
   - SSE reconnection works seamlessly
   - Empty and active states both look correct
   - README allows setup in < 5 minutes
-- **description:** Final polish pass. Performance: ensure 60fps with 10+ characters, profile render loop, optimize depth sorting (only when characters move), sprite batching. Tune animation timings: walk speed, camera easing, particle lifetimes, transition durations. Test reconnection: kill server → "Reconnecting..." overlay → restart → re-hydrate. Test empty state: DB with no agents or tickets → office closed, dark, cat sleeping. Test active convoy: launch convoy on a real Agora project → watch office come alive. README.md: prerequisites, env vars, how to start server and client, link to Agora.
+- **description:** Final polish pass. Performance: ensure 60fps with 10+ characters, profile render loop, optimize depth sorting (only when characters move), sprite batching. Tune animation timings: walk speed, camera easing, particle lifetimes, transition durations. Test reconnection: kill server → "Reconnecting..." overlay → restart → re-hydrate. Test empty state: DB with no agents or tickets → office closed, dark, cat sleeping. Test active convoy: launch convoy on a real Monsthera project → watch office come alive. README.md: prerequisites, env vars, how to start server and client, link to Monsthera.
 
 ---
 
@@ -389,9 +389,9 @@ T01 ─┬─ T02 ── T12 ── T16 ─────────────�
 store_knowledge(
   type="plan",
   scope="repo",
-  title="Agora Office Implementation Plan",
-  content="Full-stack isometric pixel art office visualization for Agora. 20 tickets, 9 waves. See docs/superpowers/plans/2026-03-17-agora-office.md and docs/superpowers/plans/2026-03-17-agora-office-tickets.md",
-  tags=["agora-office", "plan", "implementation"]
+  title="Monsthera Office Implementation Plan",
+  content="Full-stack isometric pixel art office visualization for Monsthera. 20 tickets, 9 waves. See docs/superpowers/plans/2026-03-17-monsthera-office.md and docs/superpowers/plans/2026-03-17-monsthera-office-tickets.md",
+  tags=["monsthera-office", "plan", "implementation"]
 )
 ```
 
@@ -399,14 +399,14 @@ store_knowledge(
 
 Use this document as reference. The `goal` is:
 
-> "Build Agora Office: a full-stack web app that visualizes Agora multi-agent development activity as an isometric pixel art office with cute chibi characters, 6 themed rooms, real-time SSE connection, and animated interactions."
+> "Build Monsthera Office: a full-stack web app that visualizes Monsthera multi-agent development activity as an isometric pixel art office with cute chibi characters, 6 themed rooms, real-time SSE connection, and animated interactions."
 
 Pass the 20 tickets as `proposedTasks` with their dependencies as `dependsOn` (0-based indices).
 
 ### Step 3: Work group and convoy
 
 ```
-create_work_group(title="Agora Office v1")
+create_work_group(title="Monsthera Office v1")
 add_tickets_to_group(groupId, [all 20 ticket IDs])
 compute_waves(groupId)
 launch_convoy(groupId)

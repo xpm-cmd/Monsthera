@@ -18,7 +18,7 @@ describe("knowledge lifecycle integration", () => {
   let sqlite: InstanceType<typeof Database>;
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "agora-kl-"));
+    tmpDir = mkdtempSync(join(tmpdir(), "monsthera-kl-"));
     sqlite = new Database(join(tmpDir, "test.db"));
     sqlite.pragma("journal_mode = WAL");
 

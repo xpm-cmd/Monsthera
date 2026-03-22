@@ -27,7 +27,7 @@ describe("structural test coverage analysis", () => {
   let repoId: number;
 
   beforeEach(() => {
-    repoPath = mkdtempSync(join(tmpdir(), "agora-test-coverage-"));
+    repoPath = mkdtempSync(join(tmpdir(), "monsthera-test-coverage-"));
     mkdirSync(join(repoPath, "src", "auth"), { recursive: true });
     mkdirSync(join(repoPath, "src", "payments"), { recursive: true });
     mkdirSync(join(repoPath, "tests", "unit", "auth"), { recursive: true });

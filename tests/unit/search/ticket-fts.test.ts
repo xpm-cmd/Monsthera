@@ -137,7 +137,7 @@ describe("ticket FTS", () => {
       repoPath: "/repo",
       zoektEnabled: false,
       semanticEnabled: false,
-      indexDir: "/tmp/agora-test",
+      indexDir: "/tmp/monsthera-test",
     });
     await router.initialize();
 

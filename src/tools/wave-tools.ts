@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import { AgentIdSchema, SessionIdSchema } from "../core/input-hardening.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
@@ -12,7 +12,7 @@ import { createIntegrationBranch, mergeIntegrationToMain } from "../waves/integr
 import { processWaveMergeQueue, type MergeQueueEntry } from "../waves/merge-queue.js";
 import type { MessageType } from "../../schemas/coordination.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 export function registerWaveTools(server: McpServer, getContext: GetContext): void {
   // ─── compute_waves ──────────────────────────────────────────
@@ -595,7 +595,7 @@ interface AutoRefreshOutput {
 }
 
 async function scanAndAbsorbNewTickets(
-  c: AgoraContext,
+  c: MonstheraContext,
   group: NonNullable<ReturnType<typeof queries.getWorkGroupByGroupId>>,
   currentWave: number,
 ): Promise<AutoRefreshOutput | null> {

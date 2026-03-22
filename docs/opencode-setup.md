@@ -1,39 +1,39 @@
-# Using Agora with OpenCode
+# Using Monsthera with OpenCode
 
-This guide explains how to connect [OpenCode](https://opencode.ai) to Agora so that any LLM provider supported by OpenCode (including local models via Ollama) can use Agora's 23 MCP tools.
+This guide explains how to connect [OpenCode](https://opencode.ai) to Monsthera so that any LLM provider supported by OpenCode (including local models via Ollama) can use Monsthera's 23 MCP tools.
 
 ## Prerequisites
 
-- Agora initialized in your repository (`agora init && agora index`)
+- Monsthera initialized in your repository (`monsthera init && monsthera index`)
 - OpenCode installed (`brew install opencode` or see [opencode.ai](https://opencode.ai))
 - (Optional) Ollama installed if you want to use a local model
 
 ## Quick Start
 
-### 1. Add Agora as an MCP server
+### 1. Add Monsthera as an MCP server
 
 Add the following to your project's `opencode.json`:
 
 ```json
 {
   "mcp": {
-    "agora": {
+    "monsthera": {
       "type": "local",
-      "command": ["npx", "-y", "agora-mcp@latest", "serve", "--repo-path", "."],
+      "command": ["npx", "-y", "monsthera-mcp@latest", "serve", "--repo-path", "."],
       "enabled": true
     }
   }
 }
 ```
 
-That's it. OpenCode will start the Agora MCP server automatically and expose all tools to the LLM.
+That's it. OpenCode will start the Monsthera MCP server automatically and expose all tools to the LLM.
 
 ### 2. Verify the connection
 
 Open OpenCode and ask:
 
 ```
-What is the Agora index status?
+What is the Monsthera index status?
 ```
 
 The LLM should call the `status` tool and return the current index state, file count, and connected agents.
@@ -60,9 +60,9 @@ In your `opencode.json`:
   },
   "model": "ollama/llama3.1",
   "mcp": {
-    "agora": {
+    "monsthera": {
       "type": "local",
-      "command": ["npx", "-y", "agora-mcp@latest", "serve", "--repo-path", "."],
+      "command": ["npx", "-y", "monsthera-mcp@latest", "serve", "--repo-path", "."],
       "enabled": true
     }
   }
@@ -73,31 +73,31 @@ In your `opencode.json`:
 
 ## With Registration Auth
 
-If your Agora instance has `registrationAuth` enabled, pass the token via environment variables in the MCP config:
+If your Monsthera instance has `registrationAuth` enabled, pass the token via environment variables in the MCP config:
 
 ```json
 {
   "mcp": {
-    "agora": {
+    "monsthera": {
       "type": "local",
-      "command": ["npx", "-y", "agora-mcp@latest", "serve", "--repo-path", "."],
+      "command": ["npx", "-y", "monsthera-mcp@latest", "serve", "--repo-path", "."],
       "enabled": true,
       "environment": {
-        "AGORA_ROLE_TOKEN_DEVELOPER": "your-dev-token"
+        "MONSTHERA_ROLE_TOKEN_DEVELOPER": "your-dev-token"
       }
     }
   }
 }
 ```
 
-## Using Agora HTTP Transport (Remote)
+## Using Monsthera HTTP Transport (Remote)
 
-If Agora is already running as an HTTP server (e.g. `agora serve --transport http --http-port 3000`), you can connect OpenCode to it as a remote MCP server:
+If Monsthera is already running as an HTTP server (e.g. `monsthera serve --transport http --http-port 3000`), you can connect OpenCode to it as a remote MCP server:
 
 ```json
 {
   "mcp": {
-    "agora": {
+    "monsthera": {
       "type": "remote",
       "url": "http://localhost:3000/mcp",
       "enabled": true
@@ -106,13 +106,13 @@ If Agora is already running as an HTTP server (e.g. `agora serve --transport htt
 }
 ```
 
-This is useful when multiple agents need to share the same Agora instance.
+This is useful when multiple agents need to share the same Monsthera instance.
 
-Recommendation: prefer the local `type: "local"` stdio setup first. Use HTTP only when multiple local agents or tools need to share one Agora runtime. A separate thin proxy is not recommended at this stage; see `docs/local-llm-proxy-recommendation.md`.
+Recommendation: prefer the local `type: "local"` stdio setup first. Use HTTP only when multiple local agents or tools need to share one Monsthera runtime. A separate thin proxy is not recommended at this stage; see `docs/local-llm-proxy-recommendation.md`.
 
 ## Available Tools
 
-Once connected, OpenCode has access to all 23 Agora MCP tools:
+Once connected, OpenCode has access to all 23 Monsthera MCP tools:
 
 | Category | Tools |
 |----------|-------|
@@ -131,14 +131,14 @@ Knowledge scope notes:
 
 ## Context Window Considerations
 
-Agora exposes 23 tools. Each tool schema consumes prompt tokens. If your model has a small context window:
+Monsthera exposes 23 tools. Each tool schema consumes prompt tokens. If your model has a small context window:
 
 1. **Disable tools you don't need** in `opencode.json`:
 
 ```json
 {
   "tools": {
-    "agora": {
+    "monsthera": {
       "propose_patch": false,
       "propose_note": false,
       "claim_files": false,
@@ -154,10 +154,10 @@ Agora exposes 23 tools. Each tool schema consumes prompt tokens. If your model h
 ```json
 {
   "agent": {
-    "agora-reader": {
-      "description": "Read-only Agora agent for code search and tickets",
+    "monsthera-reader": {
+      "description": "Read-only Monsthera agent for code search and tickets",
       "tools": {
-        "agora": {
+        "monsthera": {
           "propose_patch": false,
           "propose_note": false,
           "claim_files": false,
@@ -175,6 +175,6 @@ Agora exposes 23 tools. Each tool schema consumes prompt tokens. If your model h
 |-------|----------|
 | Tools not appearing | Check that `enabled: true` is set and the command path is correct |
 | "Agent not registered" errors | Ensure the LLM calls `register_agent` before other tools |
-| Stale index results | Ask the LLM to call `request_reindex` or run `agora index --incremental` manually (commits also trigger a local post-commit refresh) |
+| Stale index results | Ask the LLM to call `request_reindex` or run `monsthera index --incremental` manually (commits also trigger a local post-commit refresh) |
 | Tool calls failing with local models | Try a larger model with better tool-calling support (Llama 3.1 70B, Qwen 2.5 32B) |
 | Permission denied | Check role tokens if `registrationAuth` is enabled |

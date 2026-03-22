@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod/v4";
-import { DEFAULT_AGORA_DIR } from "../core/constants.js";
+import { DEFAULT_MONSTHERA_DIR } from "../core/constants.js";
 import { MAX_TICKET_LONG_TEXT_LENGTH } from "../core/input-hardening.js";
 
 export const TicketTemplateSchema = z.object({
@@ -29,12 +29,12 @@ export interface TicketTemplatesResult {
   error?: string;
 }
 
-export function getTicketTemplatesPath(repoPath: string, agoraDir = DEFAULT_AGORA_DIR): string {
-  return join(repoPath, agoraDir, "ticket-templates.json");
+export function getTicketTemplatesPath(repoPath: string, monstheraDir = DEFAULT_MONSTHERA_DIR): string {
+  return join(repoPath, monstheraDir, "ticket-templates.json");
 }
 
-export function loadTicketTemplates(repoPath: string, agoraDir = DEFAULT_AGORA_DIR): TicketTemplatesResult {
-  const path = getTicketTemplatesPath(repoPath, agoraDir);
+export function loadTicketTemplates(repoPath: string, monstheraDir = DEFAULT_MONSTHERA_DIR): TicketTemplatesResult {
+  const path = getTicketTemplatesPath(repoPath, monstheraDir);
   if (!existsSync(path)) {
     return {
       path,

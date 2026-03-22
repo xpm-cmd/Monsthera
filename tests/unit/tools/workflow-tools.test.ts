@@ -313,10 +313,10 @@ describe("workflow tools", () => {
     });
   });
 
-  it("executes repo-local custom workflows discovered from .agora/workflows", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-workflow-tools-"));
+  it("executes repo-local custom workflows discovered from .monsthera/workflows", async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-workflow-tools-"));
     tempDirs.push(repoPath);
-    const workflowDir = join(repoPath, ".agora", "workflows");
+    const workflowDir = join(repoPath, ".monsthera", "workflows");
     await mkdir(workflowDir, { recursive: true });
     await writeFile(join(workflowDir, "review.yaml"), `name: repo-review
 description: Repo-local review workflow

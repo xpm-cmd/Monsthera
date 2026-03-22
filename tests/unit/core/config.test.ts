@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  AgoraConfigSchema,
+  MonstheraConfigSchema,
   resolveConfig,
   mergeConfigSources,
   loadConfigFile,
@@ -19,9 +19,9 @@ afterEach(() => {
   tempDirs.length = 0;
 });
 
-describe("AgoraConfigSchema", () => {
+describe("MonstheraConfigSchema", () => {
   it("parses valid config with only repoPath", () => {
-    const result = AgoraConfigSchema.parse({ repoPath: "/test/repo" });
+    const result = MonstheraConfigSchema.parse({ repoPath: "/test/repo" });
 
     expect(result.repoPath).toBe("/test/repo");
     expect(result.verbosity).toBe("normal");
@@ -34,10 +34,10 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("applies default values for all optional fields", () => {
-    const result = AgoraConfigSchema.parse({ repoPath: "/r" });
+    const result = MonstheraConfigSchema.parse({ repoPath: "/r" });
 
-    expect(result.agoraDir).toBe(".agora");
-    expect(result.dbName).toBe("agora.db");
+    expect(result.monstheraDir).toBe(".monsthera");
+    expect(result.dbName).toBe("monsthera.db");
     expect(result.dashboardPort).toBeGreaterThanOrEqual(1024);
     expect(result.httpPort).toBe(3000);
     expect(result.excludePatterns.length).toBeGreaterThan(0);
@@ -62,27 +62,27 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("rejects missing repoPath", () => {
-    expect(() => AgoraConfigSchema.parse({})).toThrow();
+    expect(() => MonstheraConfigSchema.parse({})).toThrow();
   });
 
   it("rejects invalid dashboardPort (below 1024)", () => {
-    expect(() => AgoraConfigSchema.parse({ repoPath: "/r", dashboardPort: 80 })).toThrow();
+    expect(() => MonstheraConfigSchema.parse({ repoPath: "/r", dashboardPort: 80 })).toThrow();
   });
 
   it("rejects invalid dashboardPort (above 65535)", () => {
-    expect(() => AgoraConfigSchema.parse({ repoPath: "/r", dashboardPort: 70000 })).toThrow();
+    expect(() => MonstheraConfigSchema.parse({ repoPath: "/r", dashboardPort: 70000 })).toThrow();
   });
 
   it("rejects invalid verbosity", () => {
-    expect(() => AgoraConfigSchema.parse({ repoPath: "/r", verbosity: "debug" })).toThrow();
+    expect(() => MonstheraConfigSchema.parse({ repoPath: "/r", verbosity: "debug" })).toThrow();
   });
 
   it("rejects invalid transport", () => {
-    expect(() => AgoraConfigSchema.parse({ repoPath: "/r", transport: "grpc" })).toThrow();
+    expect(() => MonstheraConfigSchema.parse({ repoPath: "/r", transport: "grpc" })).toThrow();
   });
 
   it("accepts valid registrationAuth", () => {
-    const result = AgoraConfigSchema.parse({
+    const result = MonstheraConfigSchema.parse({
       repoPath: "/r",
       registrationAuth: {
         enabled: true,
@@ -97,7 +97,7 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("accepts valid toolRateLimits", () => {
-    const result = AgoraConfigSchema.parse({
+    const result = MonstheraConfigSchema.parse({
       repoPath: "/r",
       toolRateLimits: {
         defaultPerMinute: 20,
@@ -111,7 +111,7 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("accepts valid search tuning config", () => {
-    const result = AgoraConfigSchema.parse({
+    const result = MonstheraConfigSchema.parse({
       repoPath: "/r",
       search: {
         semanticBlendAlpha: 0.65,
@@ -136,15 +136,15 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("accepts valid crossInstance config", () => {
-    const result = AgoraConfigSchema.parse({
+    const result = MonstheraConfigSchema.parse({
       repoPath: "/r",
       crossInstance: {
         enabled: true,
-        instanceId: "agora-main",
+        instanceId: "monsthera-main",
         peers: [
           {
-            instanceId: "agora-docs",
-            baseUrl: "https://agora.example.test",
+            instanceId: "monsthera-docs",
+            baseUrl: "https://monsthera.example.test",
             sharedSecret: "1234567890abcdef",
             allowedCapabilities: ["read_code", "read_knowledge"],
           },
@@ -153,13 +153,13 @@ describe("AgoraConfigSchema", () => {
     });
 
     expect(result.crossInstance.enabled).toBe(true);
-    expect(result.crossInstance.instanceId).toBe("agora-main");
+    expect(result.crossInstance.instanceId).toBe("monsthera-main");
     expect(result.crossInstance.peers).toHaveLength(1);
     expect(result.crossInstance.peers[0]?.allowedCapabilities).toEqual(["read_code", "read_knowledge"]);
   });
 
   it("accepts valid ticketQuorum config", () => {
-    const result = AgoraConfigSchema.parse({
+    const result = MonstheraConfigSchema.parse({
       repoPath: "/r",
       ticketQuorum: {
         requiredPasses: 5,
@@ -172,7 +172,7 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("accepts valid governance binding config", () => {
-    const result = AgoraConfigSchema.parse({
+    const result = MonstheraConfigSchema.parse({
       repoPath: "/r",
       governance: {
         requireBinding: true,
@@ -199,7 +199,7 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("accepts valid retrospective config", () => {
-    const result = AgoraConfigSchema.parse({
+    const result = MonstheraConfigSchema.parse({
       repoPath: "/r",
       retrospective: {
         enabled: true,
@@ -215,7 +215,7 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("rejects enabled retrospective without a ticket id", () => {
-    expect(() => AgoraConfigSchema.parse({
+    expect(() => MonstheraConfigSchema.parse({
       repoPath: "/r",
       retrospective: {
         enabled: true,
@@ -224,7 +224,7 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("rejects crossInstance enabled without instanceId", () => {
-    expect(() => AgoraConfigSchema.parse({
+    expect(() => MonstheraConfigSchema.parse({
       repoPath: "/r",
       crossInstance: {
         enabled: true,
@@ -233,19 +233,19 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("rejects duplicate crossInstance peer ids", () => {
-    expect(() => AgoraConfigSchema.parse({
+    expect(() => MonstheraConfigSchema.parse({
       repoPath: "/r",
       crossInstance: {
         enabled: true,
-        instanceId: "agora-main",
+        instanceId: "monsthera-main",
         peers: [
           {
-            instanceId: "agora-peer",
+            instanceId: "monsthera-peer",
             baseUrl: "https://one.example.test",
             sharedSecret: "1234567890abcdef",
           },
           {
-            instanceId: "agora-peer",
+            instanceId: "monsthera-peer",
             baseUrl: "https://two.example.test",
             sharedSecret: "abcdef1234567890",
           },
@@ -255,7 +255,7 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("rejects ticketQuorum requiredPasses above council size", () => {
-    expect(() => AgoraConfigSchema.parse({
+    expect(() => MonstheraConfigSchema.parse({
       repoPath: "/r",
       ticketQuorum: {
         requiredPasses: 7,
@@ -264,14 +264,14 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("rejects toolRateLimits with rate below 1", () => {
-    expect(() => AgoraConfigSchema.parse({
+    expect(() => MonstheraConfigSchema.parse({
       repoPath: "/r",
       toolRateLimits: { defaultPerMinute: 0 },
     })).toThrow();
   });
 
   it("accepts custom secretPatterns", () => {
-    const result = AgoraConfigSchema.parse({
+    const result = MonstheraConfigSchema.parse({
       repoPath: "/r",
       secretPatterns: [{ name: "AWS Key", pattern: "AKIA[A-Z0-9]{16}", flags: "g" }],
     });
@@ -281,14 +281,14 @@ describe("AgoraConfigSchema", () => {
   });
 
   it("rejects secretPatterns with invalid flags", () => {
-    expect(() => AgoraConfigSchema.parse({
+    expect(() => MonstheraConfigSchema.parse({
       repoPath: "/r",
       secretPatterns: [{ name: "Bad", pattern: ".*", flags: "xyz" }],
     })).toThrow();
   });
 
   it("rejects invalid search alpha", () => {
-    expect(() => AgoraConfigSchema.parse({
+    expect(() => MonstheraConfigSchema.parse({
       repoPath: "/r",
       search: { semanticBlendAlpha: 1.5 },
     })).toThrow();
@@ -389,9 +389,9 @@ describe("mergeConfigSources", () => {
       {
         crossInstance: {
           enabled: true,
-          instanceId: "agora-main",
+          instanceId: "monsthera-main",
           peers: [{
-            instanceId: "agora-peer",
+            instanceId: "monsthera-peer",
             baseUrl: "https://peer.example.test",
             sharedSecret: "1234567890abcdef",
           }],
@@ -406,10 +406,10 @@ describe("mergeConfigSources", () => {
 
     expect(result.crossInstance).toEqual({
       enabled: true,
-      instanceId: "agora-main",
+      instanceId: "monsthera-main",
       nonceTtlSeconds: 900,
       peers: [{
-        instanceId: "agora-peer",
+        instanceId: "monsthera-peer",
         baseUrl: "https://peer.example.test",
         sharedSecret: "1234567890abcdef",
       }],
@@ -481,19 +481,19 @@ describe("mergeConfigSources", () => {
 
 describe("loadConfigFile", () => {
   it("returns empty config when the file does not exist", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "agora-config-missing-"));
+    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-config-missing-"));
     tempDirs.push(repoPath);
 
     expect(loadConfigFile(repoPath)).toEqual({});
   });
 
   it("loads a valid config object from disk", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "agora-config-valid-"));
+    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-config-valid-"));
     tempDirs.push(repoPath);
-    mkdirSync(join(repoPath, ".agora"), { recursive: true });
+    mkdirSync(join(repoPath, ".monsthera"), { recursive: true });
 
     writeFileSync(
-      join(repoPath, ".agora", "config.json"),
+      join(repoPath, ".monsthera", "config.json"),
       JSON.stringify({
         verbosity: "verbose",
         registrationAuth: {
@@ -514,21 +514,21 @@ describe("loadConfigFile", () => {
   });
 
   it("throws when config contains invalid JSON", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "agora-config-json-"));
+    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-config-json-"));
     tempDirs.push(repoPath);
-    mkdirSync(join(repoPath, ".agora"), { recursive: true });
+    mkdirSync(join(repoPath, ".monsthera"), { recursive: true });
 
-    writeFileSync(join(repoPath, ".agora", "config.json"), "{bad json", { encoding: "utf-8" });
+    writeFileSync(join(repoPath, ".monsthera", "config.json"), "{bad json", { encoding: "utf-8" });
 
     expect(() => loadConfigFile(repoPath)).toThrow();
   });
 
   it("throws when config is not an object", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "agora-config-shape-"));
+    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-config-shape-"));
     tempDirs.push(repoPath);
-    mkdirSync(join(repoPath, ".agora"), { recursive: true });
+    mkdirSync(join(repoPath, ".monsthera"), { recursive: true });
 
-    writeFileSync(join(repoPath, ".agora", "config.json"), JSON.stringify(["not", "an", "object"]), {
+    writeFileSync(join(repoPath, ".monsthera", "config.json"), JSON.stringify(["not", "an", "object"]), {
       encoding: "utf-8",
     });
 

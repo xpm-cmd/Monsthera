@@ -11,7 +11,7 @@ describe("simulation harness", () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "agora-harness-"));
+    tempDir = await mkdtemp(join(tmpdir(), "monsthera-harness-"));
     sandbox = createSandbox({ repoPath: tempDir });
   });
 

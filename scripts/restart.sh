@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Build and restart the local Agora HTTP server with PID/log management.
+# Build and restart the local Monsthera HTTP server with PID/log management.
 set -euo pipefail
 set -m
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-RUN_DIR="$REPO_DIR/.agora/run"
+RUN_DIR="$REPO_DIR/.monsthera/run"
 PID_FILE="$RUN_DIR/server.pid"
 LOG_FILE="$RUN_DIR/server.log"
 
-HTTP_PORT="${AGORA_HTTP_PORT:-3015}"
-DASHBOARD_PORT="${AGORA_DASHBOARD_PORT:-3141}"
-TRANSPORT="${AGORA_TRANSPORT:-http}"
+HTTP_PORT="${MONSTHERA_HTTP_PORT:-${AGORA_HTTP_PORT:-3015}}"
+DASHBOARD_PORT="${MONSTHERA_DASHBOARD_PORT:-${AGORA_DASHBOARD_PORT:-3141}}"
+TRANSPORT="${MONSTHERA_TRANSPORT:-${AGORA_TRANSPORT:-http}}"
 FOREGROUND=1
 
 usage() {
   cat <<EOF
-Usage: scripts/restart.sh [options] [-- <extra agora serve args>]
+Usage: scripts/restart.sh [options] [-- <extra monsthera serve args>]
 
 Options:
   --http-port <port>        HTTP MCP port (default: ${HTTP_PORT})
@@ -127,7 +127,7 @@ if [ "$TRANSPORT" = "http" ]; then
   kill_port_if_listening "$DASHBOARD_PORT"
 fi
 
-echo "Building Agora..."
+echo "Building Monsthera..."
 pnpm build >/dev/null
 
 CMD=(node dist/index.js serve --repo-path "$REPO_DIR" --transport "$TRANSPORT")
@@ -167,7 +167,7 @@ if [ "$TRANSPORT" = "http" ]; then
   echo "MCP: http://localhost:$HTTP_PORT/mcp"
   echo "Dashboard: http://localhost:$DASHBOARD_PORT"
 else
-  echo "Agora running in stdio mode (PID $SERVER_PID). Log: $LOG_FILE"
+  echo "Monsthera running in stdio mode (PID $SERVER_PID). Log: $LOG_FILE"
 fi
 
 echo "PID: $SERVER_PID"

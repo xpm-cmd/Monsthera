@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "agora": {
+    "monsthera": {
       "command": "npx",
-      "args": ["-y", "agora-mcp@latest", "serve"],
+      "args": ["-y", "monsthera-mcp@latest", "serve"],
       "env": {}
     }
   }

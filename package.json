@@ -1,10 +1,10 @@
 {
-  "name": "agora-mcp",
+  "name": "monsthera-mcp",
   "version": "1.0.0",
   "description": "Local, commit-scoped shared context and multi-agent coordination platform for co-coding",
   "type": "module",
   "bin": {
-    "agora": "dist/index.js"
+    "monsthera": "dist/index.js"
   },
   "files": [
     "dist",
@@ -48,11 +48,11 @@
   "license": "BUSL-1.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xpm-cmd/Agora.git"
+    "url": "https://github.com/xpm-cmd/Monsthera.git"
   },
-  "homepage": "https://github.com/xpm-cmd/Agora#readme",
+  "homepage": "https://github.com/xpm-cmd/Monsthera#readme",
   "bugs": {
-    "url": "https://github.com/xpm-cmd/Agora/issues"
+    "url": "https://github.com/xpm-cmd/Monsthera/issues"
   },
   "packageManager": "pnpm@10.30.3",
   "pnpm": {

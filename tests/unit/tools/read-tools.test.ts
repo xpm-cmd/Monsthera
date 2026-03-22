@@ -232,9 +232,9 @@ describe("read tool discovery", () => {
   });
 
   it("surfaces repo agent manifests in capabilities output", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-read-tools-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-read-tools-"));
     tempDirs.push(repoPath);
-    const agentDir = join(repoPath, ".agora", "agents");
+    const agentDir = join(repoPath, ".monsthera", "agents");
     await mkdir(agentDir, { recursive: true });
     await writeFile(
       join(agentDir, "security.md"),
@@ -271,7 +271,7 @@ Inspect auth and trust surfaces.
       {
         name: "Security Reviewer",
         description: "Reviews trust boundaries and auth flows",
-        filePath: ".agora/agents/security.md",
+        filePath: ".monsthera/agents/security.md",
         role: "reviewer",
         reviewRole: "security",
         tags: ["auth"],
@@ -282,9 +282,9 @@ Inspect auth and trust surfaces.
   });
 
   it("includes custom repo-local workflows in capabilities and run_workflow schema discovery", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-read-tools-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-read-tools-"));
     tempDirs.push(repoPath);
-    const workflowDir = join(repoPath, ".agora", "workflows");
+    const workflowDir = join(repoPath, ".monsthera", "workflows");
     await mkdir(workflowDir, { recursive: true });
     await writeFile(
       join(workflowDir, "review.yaml"),
@@ -319,7 +319,7 @@ steps:
     expect(capabilitiesPayload.customWorkflows).toEqual([
       expect.objectContaining({
         name: "custom:repo-review",
-        filePath: ".agora/workflows/review.yaml",
+        filePath: ".monsthera/workflows/review.yaml",
         source: "custom",
       }),
     ]);
@@ -332,12 +332,12 @@ steps:
   });
 
   it("runs suggest_actions against repo-local dispatch rules", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-dispatch-rules-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-dispatch-rules-"));
     tempDirs.push(repoPath);
-    const agoraDir = join(repoPath, ".agora");
-    await mkdir(agoraDir, { recursive: true });
+    const monstheraDir = join(repoPath, ".monsthera");
+    await mkdir(monstheraDir, { recursive: true });
     await writeFile(
-      join(agoraDir, "dispatch-rules.yaml"),
+      join(monstheraDir, "dispatch-rules.yaml"),
       `rules:
   - pattern: "src/db/**"
     actions:

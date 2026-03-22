@@ -26,7 +26,7 @@ describe("git operations", () => {
   let repoDir: string;
 
   beforeEach(() => {
-    const tmpBase = mkdtempSync(join(tmpdir(), "agora-test-"));
+    const tmpBase = mkdtempSync(join(tmpdir(), "monsthera-test-"));
     git(["init", "-b", "main"], tmpBase);
     git(["config", "user.email", "test@test.com"], tmpBase);
     git(["config", "user.name", "Test"], tmpBase);
@@ -53,7 +53,7 @@ describe("git operations", () => {
   });
 
   it("isGitRepo returns false for non-git dirs", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "agora-no-git-"));
+    const tmpDir = mkdtempSync(join(tmpdir(), "monsthera-no-git-"));
     expect(await isGitRepo({ cwd: tmpDir })).toBe(false);
     rmSync(tmpDir, { recursive: true, force: true });
   });

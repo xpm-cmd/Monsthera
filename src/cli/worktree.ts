@@ -1,23 +1,23 @@
 import type { InsightStream } from "../core/insight-stream.js";
-import type { AgoraConfig } from "../core/config.js";
-import { createAgoraContextLoader } from "../core/context-loader.js";
+import type { MonstheraConfig } from "../core/config.js";
+import { createMonstheraContextLoader } from "../core/context-loader.js";
 import * as queries from "../db/queries.js";
 import { cleanupOrphanedWorktrees } from "../git/worktree.js";
 
 export async function cmdWorktree(
-  config: AgoraConfig,
+  config: MonstheraConfig,
   insight: InsightStream,
   args: string[],
 ): Promise<void> {
   const subcommand = args[0];
   if (subcommand !== "cleanup") {
-    insight.error("Usage: agora worktree cleanup [--dry-run]");
+    insight.error("Usage: monsthera worktree cleanup [--dry-run]");
     process.exit(1);
   }
 
   const dryRun = args.includes("--dry-run");
 
-  const getContext = createAgoraContextLoader(config, insight, { startLifecycleSweep: false });
+  const getContext = createMonstheraContextLoader(config, insight, { startLifecycleSweep: false });
   const context = await getContext();
   const activeSessions = queries.getActiveSessions(context.db).map((s) => s.id);
 

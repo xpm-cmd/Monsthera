@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 
-# Skip if .agora directory does not exist (user never ran `agora init`)
-[ -d .agora ] || exit 0
+# Skip if .monsthera directory does not exist (user never ran `monsthera init`)
+[ -d .monsthera ] || exit 0
 
 if ! command -v pnpm >/dev/null 2>&1; then
-  echo "Agora post-commit reindex skipped: pnpm not available."
+  echo "Monsthera post-commit reindex skipped: pnpm not available."
   exit 0
 fi
 
@@ -12,15 +12,15 @@ fi
 COMMIT_MSG=$(git log -1 --pretty=%B HEAD 2>/dev/null)
 TKT_COUNT=$(echo "$COMMIT_MSG" | grep -oE 'TKT-[a-f0-9]{8}' | sort -u | wc -l | tr -d ' ')
 if [ "$TKT_COUNT" -gt 2 ] 2>/dev/null; then
-  echo "Agora warning: commit references $TKT_COUNT tickets (>2). Consider atomic commits per ticket for safe rollback."
+  echo "Monsthera warning: commit references $TKT_COUNT tickets (>2). Consider atomic commits per ticket for safe rollback."
 fi
 
 # Run in background — post-commit is informational, git ignores exit code.
 # Redirect stdout only; stderr stays visible so warnings/errors reach the terminal.
 (
   pnpm tsx src/index.ts ticket reconcile-commit --actor-label post-commit --verbosity quiet >/dev/null || \
-    echo "Agora post-commit ticket resolution failed. Run 'agora ticket reconcile-commit --verbosity verbose' for diagnostics."
+    echo "Monsthera post-commit ticket resolution failed. Run 'monsthera ticket reconcile-commit --verbosity verbose' for diagnostics."
 
   pnpm tsx src/index.ts index --incremental --verbosity quiet >/dev/null || \
-    echo "Agora post-commit reindex failed. Run 'agora index --incremental --verbosity verbose' for diagnostics."
+    echo "Monsthera post-commit reindex failed. Run 'monsthera index --incremental --verbosity verbose' for diagnostics."
 ) &

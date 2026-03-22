@@ -1,7 +1,7 @@
 /**
  * Sandbox harness for simulation Phase B.
  *
- * Creates an in-memory SQLite database with the full Agora schema,
+ * Creates an in-memory SQLite database with the full Monsthera schema,
  * wires up FTS5, CoordinationBus, and SearchRouter so that ticket
  * tools and workflows run against an isolated sandbox.
  *

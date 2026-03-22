@@ -6,7 +6,7 @@ import { getTicketTemplatesPath, loadTicketTemplates } from "../../../src/ticket
 
 describe("ticket templates", () => {
   it("returns an empty result when the template file does not exist", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "agora-ticket-templates-"));
+    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-ticket-templates-"));
 
     const result = loadTicketTemplates(repoPath);
 
@@ -16,10 +16,10 @@ describe("ticket templates", () => {
   });
 
   it("loads repo-local ticket templates from JSON", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "agora-ticket-templates-"));
-    const agoraDir = join(repoPath, ".agora");
-    mkdirSync(agoraDir, { recursive: true });
-    writeFileSync(join(agoraDir, "ticket-templates.json"), JSON.stringify({
+    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-ticket-templates-"));
+    const monstheraDir = join(repoPath, ".monsthera");
+    mkdirSync(monstheraDir, { recursive: true });
+    writeFileSync(join(monstheraDir, "ticket-templates.json"), JSON.stringify({
       templates: [{
         id: "bug-report",
         name: "Bug report",
@@ -46,10 +46,10 @@ describe("ticket templates", () => {
   });
 
   it("surfaces parse errors without crashing the dashboard", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "agora-ticket-templates-"));
-    const agoraDir = join(repoPath, ".agora");
-    mkdirSync(agoraDir, { recursive: true });
-    writeFileSync(join(agoraDir, "ticket-templates.json"), "{\"templates\":[{\"id\":123}]}");
+    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-ticket-templates-"));
+    const monstheraDir = join(repoPath, ".monsthera");
+    mkdirSync(monstheraDir, { recursive: true });
+    writeFileSync(join(monstheraDir, "ticket-templates.json"), "{\"templates\":[{\"id\":123}]}");
 
     const result = loadTicketTemplates(repoPath);
 

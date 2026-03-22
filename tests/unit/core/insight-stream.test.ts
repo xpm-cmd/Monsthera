@@ -12,7 +12,7 @@ describe("InsightStream", () => {
   it("outputs info at normal verbosity", () => {
     const stream = new InsightStream("normal");
     stream.info("hello");
-    expect(errorSpy).toHaveBeenCalledWith("[AGORA] hello");
+    expect(errorSpy).toHaveBeenCalledWith("[MONSTHERA] hello");
   });
 
   it("suppresses info at quiet verbosity", () => {
@@ -28,7 +28,7 @@ describe("InsightStream", () => {
 
     const verbose = new InsightStream("verbose");
     verbose.debug("dbg");
-    expect(errorSpy).toHaveBeenCalledWith("[AGORA] [debug] dbg");
+    expect(errorSpy).toHaveBeenCalledWith("[MONSTHERA] [debug] dbg");
   });
 
   it("always outputs warn and error", () => {

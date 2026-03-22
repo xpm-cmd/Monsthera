@@ -1,6 +1,7 @@
 import { basename } from "node:path";
-import type { AgoraConfig } from "./config.js";
-import type { AgoraContext } from "./context.js";
+import type { MonstheraConfig } from "./config.js";
+import type { MonstheraContext } from "./context.js";
+import { migrateFromAgora, migrateGlobalFromAgora } from "./migration.js";
 import { initDatabase, initGlobalDatabase } from "../db/init.js";
 import * as queries from "../db/queries.js";
 import { prepareKnowledgeSearchTarget } from "../knowledge/search.js";
@@ -14,16 +15,20 @@ export interface ContextLoaderOptions {
   startLifecycleSweep?: boolean;
 }
 
-export function createAgoraContextLoader(
-  config: AgoraConfig,
+export function createMonstheraContextLoader(
+  config: MonstheraConfig,
   insight: InsightStream,
   options: ContextLoaderOptions = {},
-): () => Promise<AgoraContext> {
-  let ctx: AgoraContext | null = null;
+): () => Promise<MonstheraContext> {
+  let ctx: MonstheraContext | null = null;
   let lifecycleSweepTimer: ReturnType<typeof setInterval> | null = null;
 
-  return async function getContext(): Promise<AgoraContext> {
+  return async function getContext(): Promise<MonstheraContext> {
     if (ctx) return ctx;
+
+    // Migrate legacy .agora/ directory if present
+    migrateFromAgora(config.repoPath, (msg) => insight.info(msg));
+    migrateGlobalFromAgora((msg) => insight.info(msg));
 
     if (!(await isGitRepo({ cwd: config.repoPath }))) {
       throw new Error(`Not a git repository: ${config.repoPath}`);
@@ -35,7 +40,7 @@ export function createAgoraContextLoader(
 
     const { db, sqlite } = initDatabase({
       repoPath: mainRepoRoot,
-      agoraDir: config.agoraDir,
+      monstheraDir: config.monstheraDir,
       dbName: config.dbName,
     });
 
@@ -49,15 +54,15 @@ export function createAgoraContextLoader(
       zoektEnabled: config.zoektEnabled,
       semanticEnabled: config.semanticEnabled,
       searchConfig: config.search,
-      indexDir: `${mainRepoRoot}/${config.agoraDir}`,
+      indexDir: `${mainRepoRoot}/${config.monstheraDir}`,
       onFallback: (reason) => insight.warn(reason),
     });
     await searchRouter.initialize();
 
     const bus = new CoordinationBus(config.coordinationTopology ?? "hub-spoke", 200, db, repoId);
 
-    let globalDb: AgoraContext["globalDb"] = null;
-    let globalSqlite: AgoraContext["globalSqlite"] = null;
+    let globalDb: MonstheraContext["globalDb"] = null;
+    let globalSqlite: MonstheraContext["globalSqlite"] = null;
     try {
       const globalResult = initGlobalDatabase();
       globalDb = globalResult.globalDb;

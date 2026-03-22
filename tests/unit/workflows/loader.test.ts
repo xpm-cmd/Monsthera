@@ -13,9 +13,9 @@ describe("custom workflow loader", () => {
   });
 
   it("loads valid repo-local workflows and normalizes their runtime spec", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-workflows-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-workflows-"));
     tempDirs.push(repoPath);
-    const workflowDir = join(repoPath, ".agora", "workflows");
+    const workflowDir = join(repoPath, ".monsthera", "workflows");
     await mkdir(workflowDir, { recursive: true });
     await writeFile(join(workflowDir, "review.yaml"), `name: repo-review
 description: Review repo-local changes
@@ -39,7 +39,7 @@ steps:
     expect(result.workflows[0]).toMatchObject({
       name: "custom:repo-review",
       localName: "repo-review",
-      filePath: ".agora/workflows/review.yaml",
+      filePath: ".monsthera/workflows/review.yaml",
       tools: ["get_change_pack", "suggest_actions"],
       spec: {
         name: "custom:repo-review",
@@ -58,9 +58,9 @@ steps:
   });
 
   it("warns and skips invalid or unsupported workflow definitions", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-workflows-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-workflows-"));
     tempDirs.push(repoPath);
-    const workflowDir = join(repoPath, ".agora", "workflows");
+    const workflowDir = join(repoPath, ".monsthera", "workflows");
     await mkdir(workflowDir, { recursive: true });
     await writeFile(join(workflowDir, "invalid.yaml"), `name: broken
 steps: nope
@@ -77,19 +77,19 @@ steps:
     expect(result.workflows).toEqual([]);
     expect(result.warnings).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        filePath: ".agora/workflows/invalid.yaml",
+        filePath: ".monsthera/workflows/invalid.yaml",
       }),
       expect.objectContaining({
-        filePath: ".agora/workflows/unknown-tool.yaml",
+        filePath: ".monsthera/workflows/unknown-tool.yaml",
         message: "Unknown workflow tool `not_a_real_tool`",
       }),
     ]));
   });
 
   it("parses quorum checkpoint steps from repo-local YAML workflows", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-workflows-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-workflows-"));
     tempDirs.push(repoPath);
-    const workflowDir = join(repoPath, ".agora", "workflows");
+    const workflowDir = join(repoPath, ".monsthera", "workflows");
     await mkdir(workflowDir, { recursive: true });
     await writeFile(join(workflowDir, "gated.yaml"), `name: gated-review
 params: [ticketId]
@@ -120,11 +120,11 @@ steps:
   it("ships a deep council-loop workflow in the repo", async () => {
     const result = await loadCustomWorkflows(process.cwd());
 
-    expect(result.warnings.filter((warning) => warning.filePath === ".agora/workflows/council-loop.yaml")).toEqual([]);
+    expect(result.warnings.filter((warning) => warning.filePath === ".monsthera/workflows/council-loop.yaml")).toEqual([]);
 
     const workflow = result.workflows.find((entry) => entry.localName === "council-loop");
     expect(workflow).toBeDefined();
-    expect(workflow?.filePath).toBe(".agora/workflows/council-loop.yaml");
+    expect(workflow?.filePath).toBe(".monsthera/workflows/council-loop.yaml");
     expect(workflow?.tools).toEqual(expect.arrayContaining([
       "get_ticket",
       "get_change_pack",

@@ -1,9 +1,9 @@
 import type { InsightStream } from "../core/insight-stream.js";
-import type { AgoraConfig } from "../core/config.js";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraConfig } from "../core/config.js";
+import type { MonstheraContext } from "../core/context.js";
 import { runOrchestrator, type OrchestratorCallbacks, type OrchestratorConfig } from "../orchestrator/loop.js";
-import { createAgoraContextLoader } from "../core/context-loader.js";
-import { createAgoraServer } from "../server.js";
+import { createMonstheraContextLoader } from "../core/context-loader.js";
+import { createMonstheraServer } from "../server.js";
 import { getToolRunner } from "../tools/tool-runner.js";
 import { recordDashboardEvent } from "../core/events.js";
 import { cleanupOrphanedWorktrees } from "../git/worktree.js";
@@ -11,7 +11,7 @@ import * as queries from "../db/queries.js";
 import { spawn } from "node:child_process";
 
 export async function cmdOrchestrate(
-  config: AgoraConfig,
+  config: MonstheraConfig,
   insight: InsightStream,
   args: string[],
 ): Promise<void> {
@@ -29,14 +29,14 @@ export async function cmdOrchestrate(
   const maxRetries = parseInt(getArg(args, "--max-retries") ?? "1", 10);
   const spawnCommand = getArg(args, "--spawn-command");
 
-  let context: AgoraContext | null = null;
-  const baseGetContext = createAgoraContextLoader(config, insight, { startLifecycleSweep: false });
+  let context: MonstheraContext | null = null;
+  const baseGetContext = createMonstheraContextLoader(config, insight, { startLifecycleSweep: false });
   const getContext = async () => {
     context ??= await baseGetContext();
     return context;
   };
 
-  const server = createAgoraServer(config, { insight, getContext });
+  const server = createMonstheraServer(config, { insight, getContext });
   const runner = getToolRunner(server);
 
   const orchConfig: OrchestratorConfig = {
@@ -74,7 +74,7 @@ export async function cmdOrchestrate(
         }
       : async (worktreePath, ticketId) => {
           const child = spawn("node", [
-            process.argv[1] ?? "agora",
+            process.argv[1] ?? "monsthera",
             "loop", "dev",
             "--ticket", ticketId,
             "--limit", "1",

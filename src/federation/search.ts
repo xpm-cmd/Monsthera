@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod/v4";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import type { CrossInstancePeer } from "../core/config.js";
 import * as queries from "../db/queries.js";
 import { searchKnowledgeEntries } from "../knowledge/search.js";
@@ -88,7 +88,7 @@ export interface FederatedSearchResult {
 }
 
 export async function runLocalCrossInstanceSearch(
-  ctx: AgoraContext,
+  ctx: MonstheraContext,
   request: CrossInstanceSearchRequest,
 ): Promise<CrossInstanceSearchResponse> {
   const parsed = CrossInstanceSearchRequestSchema.parse(request);
@@ -166,7 +166,7 @@ export async function runLocalCrossInstanceSearch(
 }
 
 export async function searchAcrossRemoteInstances(
-  ctx: AgoraContext,
+  ctx: MonstheraContext,
   request: CrossInstanceSearchRequest,
   opts: {
     fetchImpl?: typeof fetch;
@@ -272,10 +272,10 @@ async function fetchCrossInstanceSearch(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-agora-instance-id": localInstanceId,
-        "x-agora-timestamp": timestamp,
-        "x-agora-nonce": nonce,
-        "x-agora-signature": signature.signature,
+        "x-monsthera-instance-id": localInstanceId,
+        "x-monsthera-timestamp": timestamp,
+        "x-monsthera-nonce": nonce,
+        "x-monsthera-signature": signature.signature,
       },
       body,
       signal: AbortSignal.timeout(DEFAULT_REMOTE_SEARCH_TIMEOUT_MS),

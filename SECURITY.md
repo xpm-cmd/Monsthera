@@ -2,15 +2,15 @@
 
 ## Reporting Vulnerabilities
 
-If you discover a security vulnerability in Agora, **do not open a public issue**. Instead, please report it privately:
+If you discover a security vulnerability in Monsthera, **do not open a public issue**. Instead, please report it privately:
 
-1. **Email:** Open a private security advisory on GitHub via the [Security Advisories](https://github.com/xpm-cmd/Agora/security/advisories/new) page
+1. **Email:** Open a private security advisory on GitHub via the [Security Advisories](https://github.com/xpm-cmd/Monsthera/security/advisories/new) page
 2. Include: description of the vulnerability, steps to reproduce, and potential impact
 3. You will receive a response within 72 hours
 
 ## Security Model
 
-Agora is designed to run **locally** on the developer's machine. It does not expose services to the public internet by default.
+Monsthera is designed to run **locally** on the developer's machine. It does not expose services to the public internet by default.
 
 ### Trust Tiers
 
@@ -21,7 +21,7 @@ Agora is designed to run **locally** on the developer's machine. It does not exp
 
 ### Secret Detection
 
-Agora scans indexed files for sensitive patterns and prevents exposure:
+Monsthera scans indexed files for sensitive patterns and prevents exposure:
 
 - API keys (`sk_`, `pk_`, AWS `AKIA` prefixes)
 - GitHub tokens (`ghp_`, `ghs_`)
@@ -60,4 +60,4 @@ All tool invocations are logged with:
 
 ## Scope
 
-This security policy covers the Agora MCP server, CLI, dashboard, and all published npm packages. It does not cover third-party MCP clients or integrations.
+This security policy covers the Monsthera MCP server, CLI, dashboard, and all published npm packages. It does not cover third-party MCP clients or integrations.

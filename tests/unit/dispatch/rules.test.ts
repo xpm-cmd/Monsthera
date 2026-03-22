@@ -19,7 +19,7 @@ describe("dispatch rules", () => {
   });
 
   it("falls back to built-in advisory rules when no repo file exists", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-dispatch-builtins-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-dispatch-builtins-"));
     tempDirs.push(repoPath);
 
     const result = suggestActionsForChanges(
@@ -55,10 +55,10 @@ describe("dispatch rules", () => {
   });
 
   it("loads repo-local rules and unions actions and required roles", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-dispatch-repo-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-dispatch-repo-"));
     tempDirs.push(repoPath);
-    const agoraDir = join(repoPath, ".agora");
-    await mkdir(agoraDir, { recursive: true });
+    const monstheraDir = join(repoPath, ".monsthera");
+    await mkdir(monstheraDir, { recursive: true });
     await writeFile(
       getDispatchRulesPath(repoPath),
       `rules:
@@ -115,10 +115,10 @@ describe("dispatch rules", () => {
   });
 
   it("falls back to built-ins with warnings when repo yaml is invalid", async () => {
-    const repoPath = await mkdtemp(join(tmpdir(), "agora-dispatch-invalid-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "monsthera-dispatch-invalid-"));
     tempDirs.push(repoPath);
-    const agoraDir = join(repoPath, ".agora");
-    await mkdir(agoraDir, { recursive: true });
+    const monstheraDir = join(repoPath, ".monsthera");
+    await mkdir(monstheraDir, { recursive: true });
     await writeFile(
       getDispatchRulesPath(repoPath),
       `not_rules:

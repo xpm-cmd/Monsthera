@@ -1,6 +1,6 @@
 # Agent Loop Commands
 
-`agora loop` is the easiest way to start the repo-local planner, developer, and council workflows without manually registering agents or passing `agentId` and `sessionId`.
+`monsthera loop` is the easiest way to start the repo-local planner, developer, and council workflows without manually registering agents or passing `agentId` and `sessionId`.
 
 The command:
 
@@ -9,20 +9,20 @@ The command:
 - in one-shot mode, ends the session automatically when the run finishes
 - in watch mode, keeps the session alive, polls coordination, and repeats the loop until you stop it
 
-Under the hood, it wraps the repo-local workflows in `.agora/workflows/` and the matching agent manifests in `.agora/agents/`.
+Under the hood, it wraps the repo-local workflows in `.monsthera/workflows/` and the matching agent manifests in `.monsthera/agents/`.
 
 ## Available Commands
 
 ### Planner loop
 
-Use this when you want Agora to inspect queues and tell the facilitator what needs orchestration next.
+Use this when you want Monsthera to inspect queues and tell the facilitator what needs orchestration next.
 In watch mode it can also route the top `technical_analysis` or `in_review` ticket into the built-in quorum workflows.
 
 ```bash
-agora loop plan
-agora loop plan --limit 5 --json
-agora facilitator
-agora facilitator --watch
+monsthera loop plan
+monsthera loop plan --limit 5 --json
+monsthera facilitator
+monsthera facilitator --watch
 ```
 
 What it runs:
@@ -33,7 +33,7 @@ What it runs:
 
 Alias:
 
-- `agora facilitator ...` maps to `agora loop plan ...`
+- `monsthera facilitator ...` maps to `monsthera loop plan ...`
 
 What it returns:
 
@@ -47,12 +47,12 @@ What it returns:
 
 ### Developer loop
 
-Use this when you want Agora to pick the next approved work item and preload implementation context.
+Use this when you want Monsthera to pick the next approved work item and preload implementation context.
 In watch mode it can also auto-assign the top recommended approved ticket, claim its paths, and move it to `in_progress`.
 
 ```bash
-agora loop dev
-agora loop dev --limit 3 --json
+monsthera loop dev
+monsthera loop dev --limit 3 --json
 ```
 
 What it runs:
@@ -73,9 +73,9 @@ What it returns:
 Use this when a reviewer should enter a ticket review gate with ticket context, deep evidence, and current consensus state already loaded.
 
 ```bash
-agora loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer"
-agora loop council TKT-1234abcd --transition technical_analysis->approved --specialization security --json
-agora loop council TKT-1234abcd --transition in_review->ready_for_commit --since-commit HEAD~1 --agent-name "Patterns Reviewer" --json
+monsthera loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer"
+monsthera loop council TKT-1234abcd --transition technical_analysis->approved --specialization security --json
+monsthera loop council TKT-1234abcd --transition in_review->ready_for_commit --since-commit HEAD~1 --agent-name "Patterns Reviewer" --json
 ```
 
 What it runs:
@@ -100,21 +100,21 @@ Notes:
 - Council reviewers are specialization-scoped. Use either a specialized `--agent-name` such as `Architect Reviewer` or an explicit `--specialization`.
 - `--since-commit` is optional and preloads recent change context when provided.
 - The council workflow now performs a deep ticket review before voting: `get_issue_pack` for historical context, `get_code_pack` across the ticket and per affected path, per-path complexity and coverage analysis over `affectedPaths`, advisory `suggest_actions`, and a `[Deep Council Review]` ticket comment with implications and recommendations.
-- `agora loop council --watch` can run without a fixed ticket and operate from the queue, but autonomous queue picking still requires a concrete specialization.
+- `monsthera loop council --watch` can run without a fixed ticket and operate from the queue, but autonomous queue picking still requires a concrete specialization.
 
 ## Output Modes
 
 Default mode prints a readable summary plus the workflow result payload.
 
 ```bash
-agora loop plan
+monsthera loop plan
 ```
 
 `--json` prints the loop wrapper plus the workflow result:
 
 ```bash
-agora loop plan --json
-agora facilitator --json
+monsthera loop plan --json
+monsthera facilitator --json
 ```
 
 The JSON output includes:
@@ -157,7 +157,7 @@ If privileged self-registration is enabled for the target role, pass:
 ### Quick planning pass
 
 ```bash
-agora loop plan --json
+monsthera loop plan --json
 ```
 
 Use this first when you want to know:
@@ -170,15 +170,15 @@ Use this first when you want to know:
 ### Start implementation
 
 ```bash
-agora loop dev --json
+monsthera loop dev --json
 ```
 
-Use this after planning when you want Agora to suggest the best approved work item to take next.
+Use this after planning when you want Monsthera to suggest the best approved work item to take next.
 
 ### Prepare a council review
 
 ```bash
-agora loop council TKT-e461224f --transition in_review->ready_for_commit --json
+monsthera loop council TKT-e461224f --transition in_review->ready_for_commit --json
 ```
 
 Use this before a reviewer starts writing findings or submitting a verdict.
@@ -186,10 +186,10 @@ Use this before a reviewer starts writing findings or submitting a verdict.
 ### Keep a persistent loop alive
 
 ```bash
-agora loop plan --watch
-agora facilitator --watch
-agora loop dev --watch
-agora loop council --watch
+monsthera loop plan --watch
+monsthera facilitator --watch
+monsthera loop dev --watch
+monsthera loop council --watch
 ```
 
 What watch mode does:
@@ -225,7 +225,7 @@ Council watch priority order:
 
 ## Related Files
 
-- workflows: `.agora/workflows/`
-- agent manifests: `.agora/agents/`
+- workflows: `.monsthera/workflows/`
+- agent manifests: `.monsthera/agents/`
 - CLI implementation: `src/cli/loops.ts`
 - playbooks: `docs/playbooks.md`

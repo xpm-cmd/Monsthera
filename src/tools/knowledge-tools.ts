@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { createHash } from "node:crypto";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import {
   AgentIdSchema,
   KnowledgeKeySchema,
@@ -15,7 +15,7 @@ import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { recordDashboardEvent } from "../core/events.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 const KNOWLEDGE_TYPES = [
   "decision", "gotcha", "pattern", "context", "plan", "solution", "preference",
@@ -25,7 +25,7 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
   // ─── store_knowledge ───────────────────────────────────────
   server.tool(
     "store_knowledge",
-    "Save knowledge with key-based upsert. Scope 'repo' saves to this project, 'global' saves cross-project to ~/.agora/.",
+    "Save knowledge with key-based upsert. Scope 'repo' saves to this project, 'global' saves cross-project to ~/.monsthera/.",
     {
       type: z.enum(KNOWLEDGE_TYPES).describe("Knowledge type"),
       scope: z.enum(["repo", "global"]).default("repo").describe("repo = this project, global = cross-project"),

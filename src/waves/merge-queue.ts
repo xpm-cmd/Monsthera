@@ -17,7 +17,7 @@ async function git(args: string[], opts: { cwd: string; timeout?: number }): Pro
 
 export interface MergeQueueEntry {
   ticketId: string;
-  agentBranch: string;      // agora/agent/{sessionId}
+  agentBranch: string;      // monsthera/agent/{sessionId}
   commitMessage: string;
 }
 
@@ -82,7 +82,7 @@ export async function processWaveMergeQueue(
   }
 
   const testTimeout = opts.testTimeoutMs ?? 120_000;
-  const worktreePath = `${repoRoot}/.agora/worktrees/merge-queue-test`;
+  const worktreePath = `${repoRoot}/.monsthera/worktrees/merge-queue-test`;
 
   try {
     // Create a temporary worktree for testing on the integration branch
@@ -180,7 +180,7 @@ async function bisect(
   }
 
   // Test the first half
-  const worktreePath = `${repoRoot}/.agora/worktrees/merge-queue-bisect`;
+  const worktreePath = `${repoRoot}/.monsthera/worktrees/merge-queue-bisect`;
   try {
     await git(["worktree", "add", worktreePath, integrationBranch], { cwd: repoRoot });
     const testResult = await runTestsInWorktree(worktreePath, testCommand, testTimeout);
@@ -195,7 +195,7 @@ async function bisect(
       return bisect(repoRoot, integrationBranch, checkpointSha, firstHalf, testCommand, testTimeout);
     }
   } catch (err) {
-    console.warn(`[agora] bisect: unexpected error during merge-queue bisection:`, err);
+    console.warn(`[monsthera] bisect: unexpected error during merge-queue bisection:`, err);
     await cleanupWorktree(repoRoot, worktreePath);
     return undefined;
   }

@@ -2,7 +2,7 @@
 
 ## Built-in Roles Only
 
-Agora currently supports only five runtime roles:
+Monsthera currently supports only five runtime roles:
 
 - `developer`
 - `reviewer`
@@ -34,7 +34,7 @@ register_agent(name, type?, desiredRole?, authToken?)
 
 By default, registration is open and the requested built-in role is granted.
 
-To harden registration, configure `.agora/config.json`:
+To harden registration, configure `.monsthera/config.json`:
 
 ```json
 {
@@ -59,12 +59,12 @@ Behavior when `registrationAuth.enabled` is `true`:
 
 Environment overrides:
 
-- `AGORA_REGISTRATION_AUTH=true|false`
-- `AGORA_OBSERVER_OPEN_REGISTRATION=true|false`
-- `AGORA_ROLE_TOKEN_DEVELOPER=...`
-- `AGORA_ROLE_TOKEN_REVIEWER=...`
-- `AGORA_ROLE_TOKEN_OBSERVER=...`
-- `AGORA_ROLE_TOKEN_ADMIN=...`
+- `MONSTHERA_REGISTRATION_AUTH=true|false`
+- `MONSTHERA_OBSERVER_OPEN_REGISTRATION=true|false`
+- `MONSTHERA_ROLE_TOKEN_DEVELOPER=...`
+- `MONSTHERA_ROLE_TOKEN_REVIEWER=...`
+- `MONSTHERA_ROLE_TOKEN_OBSERVER=...`
+- `MONSTHERA_ROLE_TOKEN_ADMIN=...`
 
 ## Trust Tiers
 
@@ -75,7 +75,7 @@ Roles also imply trust tiers:
 
 ## Repo Agent Manifests
 
-Repos may also declare read-only agent manifests under `.agora/agents/*.md`.
+Repos may also declare read-only agent manifests under `.monsthera/agents/*.md`.
 
 - these files are metadata and prompt artifacts, not live registrations
 - frontmatter may declare `name`, `description`, `role`, `reviewRole`, and `tags`

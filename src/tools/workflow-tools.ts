@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import { AgentIdSchema, SessionIdSchema } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
 import { resolveAgent } from "./resolve-agent.js";
@@ -12,7 +12,7 @@ import type { ReviewerResolution, WorkflowResult, WorkflowSpec } from "../workfl
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 const WorkflowParamsSchema = z.record(z.string(), z.unknown()).default({});
 

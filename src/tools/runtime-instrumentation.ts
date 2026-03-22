@@ -1,14 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { AgoraContext } from "../core/context.js";
-import type { AgoraConfig } from "../core/config.js";
-import { AgoraError } from "../core/errors.js";
+import type { MonstheraContext } from "../core/context.js";
+import type { MonstheraConfig } from "../core/config.js";
+import { MonstheraError } from "../core/errors.js";
 import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
 import { logEvent } from "../logging/event-logger.js";
 import { TOOL_ACCESS_POLICY } from "../trust/tool-policy.js";
 import { safeParseJsonObject } from "../core/input-hardening.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 export type ToolHandler = (input: unknown) => Promise<unknown>;
 export type InstrumentedToolRegistration = {
   handler: ToolHandler;
@@ -21,7 +21,7 @@ type ToolResult = {
 interface RuntimeInstrumentationOptions {
   onInstrumentedTool?: (name: string, registration: InstrumentedToolRegistration) => void;
 }
-const TOOL_REGISTRY = Symbol.for("agora.instrumentedToolRegistry");
+const TOOL_REGISTRY = Symbol.for("monsthera.instrumentedToolRegistry");
 
 interface RuntimeEventInput {
   tool: string;
@@ -42,10 +42,10 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const DEFAULT_TOOL_LIMIT_PER_MINUTE = 10;
 const toolRateWindows = new Map<string, number[]>();
 
-type LoggingContext = Pick<AgoraContext, "config" | "db" | "repoId" | "repoPath">;
+type LoggingContext = Pick<MonstheraContext, "config" | "db" | "repoId" | "repoPath">;
 type MinimalLoggingContext = {
-  config: Pick<AgoraConfig, "debugLogging" | "secretPatterns">;
-  db: AgoraContext["db"];
+  config: Pick<MonstheraConfig, "debugLogging" | "secretPatterns">;
+  db: MonstheraContext["db"];
   repoId: number;
   repoPath: string;
 };
@@ -56,12 +56,12 @@ export function installToolRuntimeInstrumentation(
   options: RuntimeInstrumentationOptions = {},
 ): void {
   const instrumentableServer = server as McpServer & {
-    __agoraToolInstrumentationInstalled?: boolean;
+    __monstheraToolInstrumentationInstalled?: boolean;
     [TOOL_REGISTRY]?: Map<string, InstrumentedToolRegistration>;
     tool: (...args: [string, string, object, ToolHandler]) => unknown;
   };
 
-  if (instrumentableServer.__agoraToolInstrumentationInstalled) return;
+  if (instrumentableServer.__monstheraToolInstrumentationInstalled) return;
 
   const registry = instrumentableServer[TOOL_REGISTRY] ?? new Map<string, InstrumentedToolRegistration>();
   instrumentableServer[TOOL_REGISTRY] = registry;
@@ -73,7 +73,7 @@ export function installToolRuntimeInstrumentation(
     options.onInstrumentedTool?.(name, registration);
     return originalTool(name, description, inputSchema, instrumentedHandler);
   }) as typeof instrumentableServer.tool;
-  instrumentableServer.__agoraToolInstrumentationInstalled = true;
+  instrumentableServer.__monstheraToolInstrumentationInstalled = true;
 }
 
 export function getInstrumentedToolRegistry(server: McpServer): Map<string, InstrumentedToolRegistration> {
@@ -151,7 +151,7 @@ export async function recordRuntimeEvent(
     const ctx = await getContext();
     await recordRuntimeEventWithContext(ctx, event);
   } catch (error) {
-    console.error("Agora: telemetry recording failed:", error instanceof Error ? error.message : String(error));
+    console.error("Monsthera: telemetry recording failed:", error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -212,9 +212,9 @@ function serializeResult(result: unknown): string {
   return safeStringify(result);
 }
 
-/** Normalized AgoraError codes that map to "stale" status */
+/** Normalized MonstheraError codes that map to "stale" status */
 const STALE_CODES = new Set(["stale_patch", "stale"]);
-/** Normalized AgoraError codes that map to "denied" status */
+/** Normalized MonstheraError codes that map to "denied" status */
 const DENIED_CODES = new Set(["permission_denied", "denied", "rate_limited"]);
 
 function mapCodeToStatus(rawCode: string): "stale" | "denied" | "error" {
@@ -281,8 +281,8 @@ export function classifyResultForLogging(result: unknown): Pick<RuntimeEventInpu
 function classifyThrownError(error: unknown): Pick<RuntimeEventInput, "status" | "denialReason" | "errorCode" | "errorDetail"> {
   const detail = error instanceof Error ? error.message : String(error);
 
-  // Phase 1: AgoraError — use structured .code directly
-  if (error instanceof AgoraError) {
+  // Phase 1: MonstheraError — use structured .code directly
+  if (error instanceof MonstheraError) {
     const status = mapCodeToStatus(error.code);
     return {
       status,
@@ -292,7 +292,7 @@ function classifyThrownError(error: unknown): Pick<RuntimeEventInput, "status" |
     };
   }
 
-  // Phase 2: Non-AgoraError with .code property (e.g., Node.js system errors)
+  // Phase 2: Non-MonstheraError with .code property (e.g., Node.js system errors)
   const rawCode = typeof error === "object" && error && typeof Reflect.get(error, "code") === "string"
     ? String(Reflect.get(error, "code"))
     : error instanceof Error && error.name
@@ -354,12 +354,12 @@ async function recordRuntimeEventFromSource(
     }
     await recordRuntimeEvent(getContext, event);
   } catch (error) {
-    console.error("Agora: telemetry recording failed:", error instanceof Error ? error.message : String(error));
+    console.error("Monsthera: telemetry recording failed:", error instanceof Error ? error.message : String(error));
   }
 }
 
 function consumeToolRateLimit(
-  config: Partial<AgoraConfig>,
+  config: Partial<MonstheraConfig>,
   tool: string,
   actor: { agentId?: string; sessionId?: string },
   now: number,
@@ -397,15 +397,15 @@ function shouldEnforceToolRateLimit(
   return policy?.mode !== "public";
 }
 
-function resolveToolRateLimit(config: Partial<AgoraConfig>, tool: string): number {
+function resolveToolRateLimit(config: Partial<MonstheraConfig>, tool: string): number {
   return config.toolRateLimits?.overrides?.[tool]
     ?? config.toolRateLimits?.defaultPerMinute
     ?? DEFAULT_TOOL_LIMIT_PER_MINUTE;
 }
 
 function sanitizeForRethrow(error: unknown): Error {
-  // AgoraError messages are intentionally crafted for clients — safe to expose
-  if (error instanceof AgoraError) return error;
+  // MonstheraError messages are intentionally crafted for clients — safe to expose
+  if (error instanceof MonstheraError) return error;
   // Generic errors may leak file paths, DB schema, or internal state
   const name = error instanceof Error ? error.name : "Error";
   const sanitized = new Error(`Tool execution failed (${name})`);

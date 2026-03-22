@@ -1,13 +1,17 @@
 # Changelog
 
-All notable changes to Agora are documented here.
+All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
+
+### Changed
+
+- **Rebrand: Agora → Monsthera** — Renamed all references in root-level markdown files (README, AGENT-MEMORY-CONTEXT, AGENTS, CONTRIBUTING, SECURITY, CHANGELOG). Updated product name, CLI commands, npm package (`monsthera-mcp`), directory paths (`.monsthera/`), database name (`monsthera.db`), HTTP headers (`x-monsthera-`), and GitHub URLs (`xpm-cmd/Monsthera`).
 
 ### Added
 
 - **Symbol references + code chunks** — Tree-sitter extracts function calls, member calls, and type references into `symbol_references`. Code chunks store per-symbol line ranges with embeddings for finer semantic search (`c00d628`)
-- **Chunk-level semantic embeddings** — `agora index --semantic` generates 384-dim MiniLM embeddings per function/class chunk, enabling sub-file precision in vector search (`23134f1`)
+- **Chunk-level semantic embeddings** — `monsthera index --semantic` generates 384-dim MiniLM embeddings per function/class chunk, enabling sub-file precision in vector search (`23134f1`)
 - **Work groups + convoy pattern** — Aggregate multi-ticket features in work groups with auto-completion. Convoy model groups independent tickets into waves for parallel execution (`6d1866c`)
 - **Goal decomposition** — `decompose_goal` tool breaks high-level goals into DAG-validated task graphs with dependency tracking and dry-run mode (`e45253a`)
 - **Coupling analysis + dependency cycles** — `analyze_coupling` scores file interconnectedness; `find_dependency_cycles` detects circular imports (`6be977e`)
@@ -52,7 +56,7 @@ The v1.0.0 release went through 12 QA iterations improving search quality, agent
 
 ### Added
 
-- **Semantic embeddings + CamelCase tokenization** — ONNX MiniLM-L6-v2 wired to `agora index`, CamelCase identifiers tokenized for FTS5 matching (`04313d7`)
+- **Semantic embeddings + CamelCase tokenization** — ONNX MiniLM-L6-v2 wired to `monsthera index`, CamelCase identifiers tokenized for FTS5 matching (`04313d7`)
 - **Independent vector search for knowledge** — `search_knowledge` runs a full vector scan over all embeddings (cosine ≥ 0.6) in parallel with FTS5, discovering entries with zero keyword overlap (`a132110`)
 - **Session lifecycle cleanup** — `end_session` tool for explicit session disconnect, `reapStaleSessions()` for automatic stale session expiry after `HEARTBEAT_TIMEOUT_MS` (initially 10 min in v1.0.0), claim release on disconnect (`3d789c4`)
 - **Agent timestamps + diff stats** — `agent_status` includes session timestamps; `get_change_pack` includes per-commit diff stats (`1a4b491`)

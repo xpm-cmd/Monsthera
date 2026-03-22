@@ -1,19 +1,19 @@
 import { readFile } from "node:fs/promises";
-import type { AgoraConfig } from "../core/config.js";
-import type { AgoraContext } from "../core/context.js";
-import { createAgoraContextLoader } from "../core/context-loader.js";
+import type { MonstheraConfig } from "../core/config.js";
+import type { MonstheraContext } from "../core/context.js";
+import { createMonstheraContextLoader } from "../core/context-loader.js";
 import type { InsightStream } from "../core/insight-stream.js";
-import { createAgoraServer } from "../server.js";
+import { createMonstheraServer } from "../server.js";
 import { getToolRunner, type ToolRunner } from "../tools/tool-runner.js";
 
 export interface ToolCliDeps {
-  createServer?: typeof createAgoraServer;
-  getRunner?: (server: ReturnType<typeof createAgoraServer>) => ToolRunner;
+  createServer?: typeof createMonstheraServer;
+  getRunner?: (server: ReturnType<typeof createMonstheraServer>) => ToolRunner;
   readFile?: typeof readFile;
 }
 
 export async function cmdTool(
-  config: AgoraConfig,
+  config: MonstheraConfig,
   insight: InsightStream,
   args: string[],
   deps: ToolCliDeps = {},
@@ -24,14 +24,14 @@ export async function cmdTool(
     return;
   }
 
-  let context: AgoraContext | null = null;
-  const baseGetContext = createAgoraContextLoader(config, insight, { startLifecycleSweep: false });
+  let context: MonstheraContext | null = null;
+  const baseGetContext = createMonstheraContextLoader(config, insight, { startLifecycleSweep: false });
   const getContext = async () => {
     context ??= await baseGetContext();
     return context;
   };
 
-  const serverFactory = deps.createServer ?? createAgoraServer;
+  const serverFactory = deps.createServer ?? createMonstheraServer;
   const server = serverFactory(config, { insight, getContext });
   const runner = (deps.getRunner ?? getToolRunner)(server);
   const asJson = args.includes("--json");
@@ -45,7 +45,7 @@ export async function cmdTool(
     if (subcommand === "inspect") {
       const toolName = args[1];
       if (!toolName) {
-        throw new Error("Usage: agora tool inspect <tool-name> [--json]");
+        throw new Error("Usage: monsthera tool inspect <tool-name> [--json]");
       }
       const result = await runner.callTool("schema", { toolName });
       renderToolCallResult(result, asJson, insight);
@@ -162,12 +162,12 @@ function tryParseJsonObject(raw: string, source: string): Record<string, unknown
 
 function printToolHelp(): void {
   console.error("Tool commands:");
-  console.error("  agora tool list [--json]");
-  console.error("  agora tool inspect <tool-name> [--json]");
-  console.error("  agora tool <tool-name> [--input <json>] [--input-file <path>] [--json]");
+  console.error("  monsthera tool list [--json]");
+  console.error("  monsthera tool inspect <tool-name> [--json]");
+  console.error("  monsthera tool <tool-name> [--input <json>] [--input-file <path>] [--json]");
 }
 
-function closeToolContext(context: AgoraContext | null): void {
+function closeToolContext(context: MonstheraContext | null): void {
   context?.dispose?.();
   context?.sqlite.close();
   context?.globalSqlite?.close();

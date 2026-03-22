@@ -24,8 +24,8 @@ describe("dashboard events", () => {
   });
 
   it("reads ticket events across separate SQLite connections", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "agora-dashboard-events-"));
-    const dbPath = join(tempDir, "agora.db");
+    tempDir = mkdtempSync(join(tmpdir(), "monsthera-dashboard-events-"));
+    const dbPath = join(tempDir, "monsthera.db");
 
     const sqliteA = new Database(dbPath);
     const sqliteB = new Database(dbPath);
@@ -57,8 +57,8 @@ describe("dashboard events", () => {
   });
 
   it("detects external ticket mutations even without dashboard events", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "agora-dashboard-ticket-sync-"));
-    const dbPath = join(tempDir, "agora.db");
+    tempDir = mkdtempSync(join(tmpdir(), "monsthera-dashboard-ticket-sync-"));
+    const dbPath = join(tempDir, "monsthera.db");
 
     const sqliteA = new Database(dbPath);
     const sqliteB = new Database(dbPath);

@@ -14,8 +14,8 @@ function createInsight(): InsightStream {
 describe("tool CLI", () => {
   const config = {
     repoPath: "/repo",
-    agoraDir: ".agora",
-    dbName: "agora.db",
+    monstheraDir: ".monsthera",
+    dbName: "monsthera.db",
     verbosity: "quiet",
   } as any;
 

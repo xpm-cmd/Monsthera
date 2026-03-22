@@ -1,5 +1,5 @@
 /**
- * Terminal Insight Stream — writes [AGORA] messages to stderr
+ * Terminal Insight Stream — writes [MONSTHERA] messages to stderr
  * (stdout is reserved for MCP stdio transport).
  */
 
@@ -11,31 +11,31 @@ export class InsightStream {
   /** Always shown (unless quiet) */
   info(msg: string): void {
     if (this.verbosity !== "quiet") {
-      console.error(`[AGORA] ${msg}`);
+      console.error(`[MONSTHERA] ${msg}`);
     }
   }
 
   /** Only shown at verbose */
   detail(msg: string): void {
     if (this.verbosity === "verbose") {
-      console.error(`[AGORA] ${msg}`);
+      console.error(`[MONSTHERA] ${msg}`);
     }
   }
 
   /** Only shown at verbose */
   debug(msg: string): void {
     if (this.verbosity === "verbose") {
-      console.error(`[AGORA] [debug] ${msg}`);
+      console.error(`[MONSTHERA] [debug] ${msg}`);
     }
   }
 
   /** Always shown */
   warn(msg: string): void {
-    console.error(`[AGORA] ⚠ ${msg}`);
+    console.error(`[MONSTHERA] ⚠ ${msg}`);
   }
 
   /** Always shown */
   error(msg: string): void {
-    console.error(`[AGORA] ✗ ${msg}`);
+    console.error(`[MONSTHERA] ✗ ${msg}`);
   }
 }

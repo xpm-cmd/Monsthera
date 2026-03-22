@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "agora": {
-      "command": "agora",
+    "monsthera": {
+      "command": "monsthera",
       "args": ["serve", "--repo-path", "."],
       "env": {}
     }

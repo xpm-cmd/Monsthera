@@ -5,7 +5,7 @@ import { validateCrossInstanceRequest } from "../../../src/trust/cross-instance-
 
 describe("validateCrossInstanceRequest", () => {
   const peer = {
-    instanceId: "agora-peer",
+    instanceId: "monsthera-peer",
     baseUrl: "https://peer.example.test",
     enabled: true,
     sharedSecret: "1234567890abcdef",
@@ -18,17 +18,17 @@ describe("validateCrossInstanceRequest", () => {
     query: { tool: "status" },
     timestamp: "2026-03-11T12:00:00.000Z",
     nonce: "nonce-123",
-    instanceId: "agora-peer",
+    instanceId: "monsthera-peer",
     body: JSON.stringify({ tool: "status" }),
   };
 
   function signedHeaders(secret = peer.sharedSecret) {
     const signed = signCrossInstanceRequest(baseInput, secret);
     return {
-      "x-agora-instance-id": baseInput.instanceId,
-      "x-agora-timestamp": baseInput.timestamp,
-      "x-agora-nonce": baseInput.nonce,
-      "x-agora-signature": signed.signature,
+      "x-monsthera-instance-id": baseInput.instanceId,
+      "x-monsthera-timestamp": baseInput.timestamp,
+      "x-monsthera-nonce": baseInput.nonce,
+      "x-monsthera-signature": signed.signature,
     };
   }
 
@@ -48,7 +48,7 @@ describe("validateCrossInstanceRequest", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.peer.instanceId).toBe("agora-peer");
+      expect(result.peer.instanceId).toBe("monsthera-peer");
       expect(result.matchedSecret).toBe("current");
     }
   });
@@ -72,7 +72,7 @@ describe("validateCrossInstanceRequest", () => {
   it("rejects unknown peers before signature verification", () => {
     const nonceStore = new CrossInstanceNonceStore(10_000, () => Date.parse("2026-03-11T12:00:30.000Z"));
     const headers = signedHeaders();
-    headers["x-agora-instance-id"] = "unknown-peer";
+    headers["x-monsthera-instance-id"] = "unknown-peer";
 
     expect(validateCrossInstanceRequest({
       crossInstance: { peers: [peer], timestampSkewSeconds: 120 },

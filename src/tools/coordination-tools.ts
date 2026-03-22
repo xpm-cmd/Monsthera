@@ -1,13 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import { AgentIdSchema, FlatMetadataSchema, SessionIdSchema } from "../core/input-hardening.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
 import type { MessageType } from "../../schemas/coordination.js";
 import { recordDashboardEvent } from "../core/events.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 export function registerCoordinationTools(server: McpServer, getContext: GetContext): void {
   // ─── send_coordination ──────────────────────────────────────

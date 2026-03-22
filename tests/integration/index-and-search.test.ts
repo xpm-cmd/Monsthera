@@ -20,10 +20,10 @@ describe("index-and-search integration", () => {
 
   beforeAll(async () => {
     // Create a temp git repo with sample files
-    tmpDir = mkdtempSync(join(tmpdir(), "agora-integ-"));
+    tmpDir = mkdtempSync(join(tmpdir(), "monsthera-integ-"));
 
     execFileSync("git", ["init"], { cwd: tmpDir });
-    execFileSync("git", ["config", "user.email", "test@agora.dev"], { cwd: tmpDir });
+    execFileSync("git", ["config", "user.email", "test@monsthera.dev"], { cwd: tmpDir });
     execFileSync("git", ["config", "user.name", "Test"], { cwd: tmpDir });
 
     // Create source files with distinct content
@@ -63,14 +63,14 @@ export function handleRequest(path: string): string {
 
     writeFileSync(
       join(tmpDir, "README.md"),
-      `# Test Project\n\nA sample project for testing Agora indexing.\n`,
+      `# Test Project\n\nA sample project for testing Monsthera indexing.\n`,
     );
 
     execFileSync("git", ["add", "-A"], { cwd: tmpDir });
     execFileSync("git", ["commit", "-m", "initial commit"], { cwd: tmpDir });
 
-    // Initialize Agora DB
-    const result = initDatabase({ repoPath: tmpDir, agoraDir: ".agora", dbName: "test.db" });
+    // Initialize Monsthera DB
+    const result = initDatabase({ repoPath: tmpDir, monstheraDir: ".monsthera", dbName: "test.db" });
     db = result.db;
     sqlite = result.sqlite;
 

@@ -1789,7 +1789,7 @@ function summarizeDashboardQuorumProgress(consensus: ReturnType<typeof buildTick
 // Simulation / Improvement endpoints
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SIMULATION_RESULTS_PATH = ".agora/simulation-results.jsonl";
+const DEFAULT_SIMULATION_RESULTS_PATH = ".monsthera/simulation-results.jsonl";
 
 function simulationResultsPath(deps: DashboardDeps): string {
   const repoRoot = deps.mainRepoPath ?? deps.repoPath;

@@ -24,7 +24,7 @@ type KnowledgeScope = "repo" | "global" | "all";
 
 export interface KnowledgeCliConfig {
   repoPath: string;
-  agoraDir: string;
+  monstheraDir: string;
   dbName: string;
   zoektEnabled?: boolean;
   semanticEnabled?: boolean;
@@ -47,7 +47,7 @@ export async function cmdKnowledge(config: KnowledgeCliConfig, insight: InsightS
   const repoRoot = await getRepoRoot({ cwd: config.repoPath });
   const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
   const repoName = basename(repoRoot);
-  const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, monstheraDir: config.monstheraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
   void repoId;
 
@@ -74,7 +74,7 @@ export async function cmdKnowledge(config: KnowledgeCliConfig, insight: InsightS
       case "search": {
         const query = args[1] ?? getArg(args, "--query");
         if (!query) {
-          throw new Error("Usage: agora knowledge search <query> [--scope repo|global|all] [--type <type>] [--limit <n>] [--json]");
+          throw new Error("Usage: monsthera knowledge search <query> [--scope repo|global|all] [--type <type>] [--limit <n>] [--json]");
         }
         const filters = parseKnowledgeFilters(args);
         const searchRouter = new SearchRouter({
@@ -85,7 +85,7 @@ export async function cmdKnowledge(config: KnowledgeCliConfig, insight: InsightS
           zoektEnabled: config.zoektEnabled ?? true,
           semanticEnabled: config.semanticEnabled ?? false,
           searchConfig: config.search,
-          indexDir: join(mainRepoRoot, config.agoraDir),
+          indexDir: join(mainRepoRoot, config.monstheraDir),
           onFallback: (message) => insight.warn(message),
         });
         await searchRouter.initialize();
@@ -109,7 +109,7 @@ export async function cmdKnowledge(config: KnowledgeCliConfig, insight: InsightS
       }
       case "show": {
         const key = args[1];
-        if (!key) throw new Error("Usage: agora knowledge show <key> [--scope repo|global|all] [--json]");
+        if (!key) throw new Error("Usage: monsthera knowledge show <key> [--scope repo|global|all] [--json]");
         const payload = buildKnowledgeDetailPayload(db, globalDb, key, parseScope(getArg(args, "--scope")));
         if (!payload) throw new Error(`Knowledge not found: ${key}`);
         printOutput(payload, args.includes("--json"), formatKnowledgeDetail);
@@ -201,10 +201,10 @@ function formatCountMap(counts: Record<string, number>): string[] {
 
 function printKnowledgeHelp(): void {
   console.error("Knowledge commands:");
-  console.error("  agora knowledge summary [--scope repo|global|all] [--status active|archived] [--json]");
-  console.error("  agora knowledge query [--scope repo|global|all] [--type <type>] [--tags a,b] [--status active|archived] [--limit <n>] [--json]");
-  console.error("  agora knowledge search <query> [--scope repo|global|all] [--type <type>] [--limit <n>] [--json]");
-  console.error("  agora knowledge show <key> [--scope repo|global|all] [--json]");
+  console.error("  monsthera knowledge summary [--scope repo|global|all] [--status active|archived] [--json]");
+  console.error("  monsthera knowledge query [--scope repo|global|all] [--type <type>] [--tags a,b] [--status active|archived] [--limit <n>] [--json]");
+  console.error("  monsthera knowledge search <query> [--scope repo|global|all] [--type <type>] [--limit <n>] [--json]");
+  console.error("  monsthera knowledge show <key> [--scope repo|global|all] [--json]");
 }
 
 function parseKnowledgeFilters(args: string[]) {

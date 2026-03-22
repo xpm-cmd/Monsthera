@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import { AgentIdSchema, SessionIdSchema } from "../core/input-hardening.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
@@ -9,7 +9,7 @@ import * as queries from "../db/queries.js";
 import { LOOP_TEMPLATES, JOB_SLOT_TRANSITIONS, type JobSlotStatus } from "../../schemas/job.js";
 import { randomUUID } from "node:crypto";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 function slotId(): string {
   return `JOB-${randomUUID().slice(0, 8)}`;

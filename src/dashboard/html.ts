@@ -7,7 +7,7 @@ export function renderDashboard(): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agora Command Center</title>
+<title>Monsthera Command Center</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -386,7 +386,7 @@ footer a{color:var(--accent);text-decoration:none}
   <!-- Sidebar -->
   <nav class="sidebar">
     <div class="sidebar-header">
-      <span class="sidebar-logo">&#9670; AGORA</span>
+      <span class="sidebar-logo">&#9670; MONSTHERA</span>
       <span class="sidebar-version">v${VERSION}</span>
       <div class="sidebar-pulse" id="pulse" title="SSE connected"></div>
     </div>
@@ -444,7 +444,7 @@ footer a{color:var(--accent);text-decoration:none}
     <div id="route-content">
       <!-- Populated by router -->
     </div>
-    <footer>Agora &mdash; Multi-agent shared context &amp; coordination server · <span id="last-updated"></span></footer>
+    <footer>Monsthera &mdash; Multi-agent shared context &amp; coordination server · <span id="last-updated"></span></footer>
   </div>
 </div>
 
@@ -676,7 +676,7 @@ function buildBoardColumnSummary(column,columnTickets){
 }
 
 function getTicketTemplatesData(){
-  return window.__agoraTicketTemplates||{templates:[],exists:false,path:'',error:''};
+  return window.__monstheraTicketTemplates||{templates:[],exists:false,path:'',error:''};
 }
 
 function getTicketTemplateById(templateId){
@@ -999,7 +999,7 @@ function renderKnowledgeScreen(host){
 function renderWorkflowsScreen(host){
   host.innerHTML=''
     +'<div class="main-header"><div><div class="main-title">Workflows</div><div class="main-subtitle">Pipeline visualization</div></div></div>'
-    +'<div id="workflows-content"><div class="empty">Workflows view coming soon — pipeline visualization from .agora/workflows/*.yaml</div></div>';
+    +'<div id="workflows-content"><div class="empty">Workflows view coming soon — pipeline visualization from .monsthera/workflows/*.yaml</div></div>';
 }
 
 /* ── Screen: Improvement (autoresearch) ─────── */
@@ -1568,7 +1568,7 @@ function attachTicketToolbarListeners(){
   document.querySelectorAll('[data-ticket-view]').forEach(function(button){
     button.addEventListener('click',function(){
       ticketViewMode=button.getAttribute('data-ticket-view')||'table';
-      renderTicketsSection(window.__agoraTickets||[]);
+      renderTicketsSection(window.__monstheraTickets||[]);
     });
   });
 
@@ -1576,7 +1576,7 @@ function attachTicketToolbarListeners(){
   if(actorSelect){
     actorSelect.addEventListener('change',function(e){
       selectedActorSessionId=e.target.value||null;
-      renderTicketsSection(window.__agoraTickets||[]);
+      renderTicketsSection(window.__monstheraTickets||[]);
     });
   }
 
@@ -1604,7 +1604,7 @@ function attachTicketToolbarListeners(){
   if(searchInput){
     searchInput.addEventListener('input',function(e){
       ticketFilters.search=e.target.value||'';
-      renderTicketsSection(window.__agoraTickets||[]);
+      renderTicketsSection(window.__monstheraTickets||[]);
     });
   }
 
@@ -1613,7 +1613,7 @@ function attachTicketToolbarListeners(){
     if(!el) return;
     el.addEventListener('change',function(e){
       ticketFilters[key]=e.target.value||'all';
-      renderTicketsSection(window.__agoraTickets||[]);
+      renderTicketsSection(window.__monstheraTickets||[]);
     });
   });
 
@@ -1621,7 +1621,7 @@ function attachTicketToolbarListeners(){
   if(hideDoneToggle){
     hideDoneToggle.addEventListener('change',function(e){
       ticketFilters.hideDone=!!e.target.checked;
-      renderTicketsSection(window.__agoraTickets||[]);
+      renderTicketsSection(window.__monstheraTickets||[]);
     });
   }
 
@@ -1838,10 +1838,10 @@ function renderTicketDetail(error){
 function renderTicketsSection(tickets,metrics){
   var section=document.getElementById('tickets');
   var filteredTickets=filterTicketList(tickets);
-  window.__agoraTickets=tickets;
-  window.__agoraTicketMetrics=metrics||window.__agoraTicketMetrics||null;
+  window.__monstheraTickets=tickets;
+  window.__monstheraTicketMetrics=metrics||window.__monstheraTicketMetrics||null;
   section.innerHTML='';
-  section.insertAdjacentHTML('beforeend',renderTicketMetrics(window.__agoraTicketMetrics));
+  section.insertAdjacentHTML('beforeend',renderTicketMetrics(window.__monstheraTicketMetrics));
   section.insertAdjacentHTML('beforeend',renderTicketToolbar(tickets,filteredTickets));
   if(!filteredTickets.some(function(ticket){return ticket.ticketId===selectedTicketId})){
     selectedTicketId=null;
@@ -2571,7 +2571,7 @@ function renderKnowledgeSection(){
             +'<button class="btn" id="knowledge-search-reset" type="button">Reset</button>'
           +'</div>'
         +'</form>'
-        +'<div class="template-hint" style="margin-top:.8rem">Use <code>repo</code> for this repository, <code>global</code> for shared <code>~/.agora</code> knowledge, or <code>all</code> for combined results. When a query is present, the dashboard calls the same backend search semantics as <code>search_knowledge</code>.</div>'
+        +'<div class="template-hint" style="margin-top:.8rem">Use <code>repo</code> for this repository, <code>global</code> for shared <code>~/.monsthera</code> knowledge, or <code>all</code> for combined results. When a query is present, the dashboard calls the same backend search semantics as <code>search_knowledge</code>.</div>'
       +'</div>'
     +'</div>';
 
@@ -3314,7 +3314,7 @@ async function refresh(){
     var o=results[0],agents=results[1],timeline=results[2],logs=results[3],patches=results[4],notes=results[5],knowledge=results[6],presence=results[7],tickets=results[8],ticketMetrics=results[9],files=results[10],ticketTemplates=results[11],settings=results[12];
     knowledgeCatalog=knowledge;
     dashboardAgents=agents;
-    window.__agoraTicketTemplates=ticketTemplates;
+    window.__monstheraTicketTemplates=ticketTemplates;
     governanceSettings.data=settings;
     governanceSettings.loading=false;
     governanceSettings.saving=false;

@@ -26,7 +26,7 @@ interface KnowledgeEntry {
 }
 
 export function exportToObsidian(opts: ObsidianExportOptions): { exported: number; path: string } {
-  const baseDir = join(opts.vaultPath, "Agora");
+  const baseDir = join(opts.vaultPath, "Monsthera");
 
   const entries: KnowledgeEntry[] = [];
 

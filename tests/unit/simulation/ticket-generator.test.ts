@@ -120,7 +120,7 @@ describe("ticket-generator", () => {
   let repoId: number;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "agora-sim-gen-"));
+    tempDir = await mkdtemp(join(tmpdir(), "monsthera-sim-gen-"));
     const testDb = createTestDb();
     db = testDb.db;
     sqlite = testDb.sqlite;

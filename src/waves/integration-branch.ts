@@ -15,29 +15,29 @@ async function git(args: string[], opts: { cwd: string; timeout?: number }): Pro
 }
 
 /**
- * Creates an integration branch `agora/convoy/{groupId}` from HEAD.
+ * Creates an integration branch `monsthera/convoy/{groupId}` from HEAD.
  * Does not check out the branch.
  */
 export async function createIntegrationBranch(
   repoRoot: string,
   groupId: string,
 ): Promise<{ branchName: string }> {
-  const branchName = `agora/convoy/${groupId}`;
+  const branchName = `monsthera/convoy/${groupId}`;
   await git(["branch", branchName], { cwd: repoRoot });
   return { branchName };
 }
 
 /**
- * Creates a worktree at `.agora/worktrees/{sessionId}` branching from the integration branch.
- * Branch name: `agora/agent/{sessionId}`.
+ * Creates a worktree at `.monsthera/worktrees/{sessionId}` branching from the integration branch.
+ * Branch name: `monsthera/agent/{sessionId}`.
  */
 export async function createConvoyWorktree(
   repoRoot: string,
   sessionId: string,
   integrationBranch: string,
 ): Promise<{ worktreePath: string; branchName: string }> {
-  const branchName = `agora/agent/${sessionId}`;
-  const worktreePath = `${repoRoot}/.agora/worktrees/${sessionId}`;
+  const branchName = `monsthera/agent/${sessionId}`;
+  const worktreePath = `${repoRoot}/.monsthera/worktrees/${sessionId}`;
   await git(["worktree", "add", "-b", branchName, worktreePath, integrationBranch], { cwd: repoRoot });
   return { worktreePath, branchName };
 }
@@ -67,7 +67,7 @@ export async function mergeTicketToIntegration(
       await git(["checkout", originalBranch], { cwd: repoRoot });
       return { merged: false, commitSha: null, conflicts };
     } catch (innerErr) {
-      console.warn(`[agora] mergeTicketToIntegration: failed to extract conflicts for ${agentBranch}:`, innerErr);
+      console.warn(`[monsthera] mergeTicketToIntegration: failed to extract conflicts for ${agentBranch}:`, innerErr);
       try { await git(["merge", "--abort"], { cwd: repoRoot }); } catch { /* already clean */ }
       try { await git(["checkout", originalBranch], { cwd: repoRoot }); } catch { /* best effort */ }
       return { merged: false, commitSha: null, conflicts: ["unknown conflict"] };
@@ -93,7 +93,7 @@ export async function rebaseOnBranch(
       await git(["rebase", "--abort"], { cwd: worktreePath });
       return { rebased: false, conflicts };
     } catch (innerErr) {
-      console.warn(`[agora] rebaseOnBranch: failed to extract conflicts on ${targetBranch}:`, innerErr);
+      console.warn(`[monsthera] rebaseOnBranch: failed to extract conflicts on ${targetBranch}:`, innerErr);
       try { await git(["rebase", "--abort"], { cwd: worktreePath }); } catch { /* already clean */ }
       return { rebased: false, conflicts: ["unknown conflict"] };
     }
@@ -120,7 +120,7 @@ export async function mergeIntegrationToMain(
       await git(["merge", "--abort"], { cwd: repoRoot });
       return { merged: false, commitSha: null, conflicts };
     } catch (innerErr) {
-      console.warn(`[agora] mergeIntegrationToMain: failed to extract conflicts for ${integrationBranch}:`, innerErr);
+      console.warn(`[monsthera] mergeIntegrationToMain: failed to extract conflicts for ${integrationBranch}:`, innerErr);
       try { await git(["merge", "--abort"], { cwd: repoRoot }); } catch { /* already clean */ }
       return { merged: false, commitSha: null, conflicts: ["unknown conflict"] };
     }

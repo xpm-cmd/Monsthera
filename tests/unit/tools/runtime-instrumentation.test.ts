@@ -207,7 +207,7 @@ describe("runtime instrumentation", () => {
       throw new StalePatchError("abc123", "def456");
     });
 
-    // AgoraError is re-thrown as-is (not sanitized)
+    // MonstheraError is re-thrown as-is (not sanitized)
     await expect(server.handlers.get("propose_patch")!({
       agentId: "agent-3",
       sessionId: "session-3",

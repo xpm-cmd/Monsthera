@@ -105,7 +105,7 @@ function createRouter(overrides: Partial<ConstructorParameters<typeof SearchRout
     repoPath: "/repo",
     zoektEnabled: false,
     semanticEnabled: false,
-    indexDir: "/repo/.agora/zoekt",
+    indexDir: "/repo/.monsthera/zoekt",
     ...overrides,
   });
 }

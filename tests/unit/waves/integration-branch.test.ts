@@ -33,11 +33,11 @@ beforeEach(() => {
 
 describe("integration-branch", () => {
   describe("createIntegrationBranch", () => {
-    it("creates a branch named agora/convoy/{groupId}", async () => {
+    it("creates a branch named monsthera/convoy/{groupId}", async () => {
       const result = await createIntegrationBranch("/repo", "WG-abc123");
-      expect(result.branchName).toBe("agora/convoy/WG-abc123");
+      expect(result.branchName).toBe("monsthera/convoy/WG-abc123");
       expect(mockGit).toHaveBeenCalledWith(
-        ["branch", "agora/convoy/WG-abc123"],
+        ["branch", "monsthera/convoy/WG-abc123"],
         expect.objectContaining({ cwd: "/repo" }),
       );
     });
@@ -45,9 +45,9 @@ describe("integration-branch", () => {
 
   describe("createConvoyWorktree", () => {
     it("creates worktree with correct path and branch", async () => {
-      const result = await createConvoyWorktree("/repo", "session-abc", "agora/convoy/WG-1");
-      expect(result.worktreePath).toBe("/repo/.agora/worktrees/session-abc");
-      expect(result.branchName).toBe("agora/agent/session-abc");
+      const result = await createConvoyWorktree("/repo", "session-abc", "monsthera/convoy/WG-1");
+      expect(result.worktreePath).toBe("/repo/.monsthera/worktrees/session-abc");
+      expect(result.branchName).toBe("monsthera/agent/session-abc");
     });
   });
 
@@ -140,12 +140,12 @@ describe("integration-branch", () => {
 
   describe("cleanupIntegrationBranch", () => {
     it("does not throw when branch exists", async () => {
-      await expect(cleanupIntegrationBranch("/repo", "agora/convoy/WG-1")).resolves.toBeUndefined();
+      await expect(cleanupIntegrationBranch("/repo", "monsthera/convoy/WG-1")).resolves.toBeUndefined();
     });
 
     it("does not throw when branch does not exist", async () => {
       mockGit.mockRejectedValueOnce(new Error("not found"));
-      await expect(cleanupIntegrationBranch("/repo", "agora/convoy/WG-1")).resolves.toBeUndefined();
+      await expect(cleanupIntegrationBranch("/repo", "monsthera/convoy/WG-1")).resolves.toBeUndefined();
     });
   });
 });

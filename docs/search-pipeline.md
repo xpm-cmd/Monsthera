@@ -1,6 +1,6 @@
 # Search Pipeline
 
-Agora has three search paths built on the local repo database:
+Monsthera has three search paths built on the local repo database:
 
 - code search for `get_code_pack`
 - knowledge search for `search_knowledge`
@@ -49,7 +49,7 @@ If semantic search is enabled and the MiniLM model loads successfully:
 
 If semantic initialization fails, code search remains available via lexical search only.
 
-Agora does not maintain an ANN structure yet. If repository size or query latency makes linear scans a problem, the next step should be an explicit ANN layer evaluation rather than hiding the limitation.
+Monsthera does not maintain an ANN structure yet. If repository size or query latency makes linear scans a problem, the next step should be an explicit ANN layer evaluation rather than hiding the limitation.
 
 ### Scope filtering
 

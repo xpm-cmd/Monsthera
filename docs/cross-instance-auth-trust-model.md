@@ -4,15 +4,15 @@ Status: proposed v1 design for `TKT-d10c324a`
 
 Related tickets:
 
-- `TKT-93d9c6d2` resolved the operator model as one Agora instance per repository
+- `TKT-93d9c6d2` resolved the operator model as one Monsthera instance per repository
 - `TKT-d10c324a` defines the auth/trust prerequisite for any cross-instance work
 - `TKT-f136ecb0` remains blocked on this design and its implementation
 
 ## Decision
 
-Agora v1 cross-instance communication should use:
+Monsthera v1 cross-instance communication should use:
 
-- one authenticated instance identity per repo-local Agora runtime
+- one authenticated instance identity per repo-local Monsthera runtime
 - explicit manual peer registration
 - per-peer HMAC shared secrets configured out of band
 - signed HTTP requests with timestamp and nonce
@@ -23,7 +23,7 @@ This keeps the current local-first model intact while making federation possible
 
 ## Goals
 
-- authenticate one Agora instance to another
+- authenticate one Monsthera instance to another
 - keep trust bootstrap simple and operator-controlled
 - preserve the existing local role and trust-tier model
 - make failures auditable and fail closed
@@ -35,11 +35,11 @@ This keeps the current local-first model intact while making federation possible
 - transitive trust between instances
 - propagating foreign agent sessions as local principals
 - exposing mutating tools by default
-- turning one Agora runtime into a multi-repo control plane
+- turning one Monsthera runtime into a multi-repo control plane
 
 ## Instance Identity
 
-Each Agora instance gets a stable operator-assigned `instanceId`.
+Each Monsthera instance gets a stable operator-assigned `instanceId`.
 
 Requirements:
 
@@ -50,7 +50,7 @@ Requirements:
 
 Recommended format:
 
-- short slug such as `agora-repo-main`
+- short slug such as `monsthera-repo-main`
 - not derived from ephemeral process state
 
 Each peer record must also store:
@@ -78,10 +78,10 @@ This means trust is bilateral only when both sides are configured. There is no d
 
 Every cross-instance HTTP request must include these headers:
 
-- `X-Agora-Instance-Id`
-- `X-Agora-Timestamp`
-- `X-Agora-Nonce`
-- `X-Agora-Signature`
+- `X-Monsthera-Instance-Id`
+- `X-Monsthera-Timestamp`
+- `X-Monsthera-Nonce`
+- `X-Monsthera-Signature`
 
 Signature input should be:
 

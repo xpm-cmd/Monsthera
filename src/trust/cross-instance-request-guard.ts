@@ -57,10 +57,10 @@ export type CrossInstanceRequestGuardResult =
 export function validateCrossInstanceRequest(
   options: ValidateCrossInstanceRequestOptions,
 ): CrossInstanceRequestGuardResult {
-  const instanceId = getHeader(options.headers, "x-agora-instance-id");
-  const timestamp = getHeader(options.headers, "x-agora-timestamp");
-  const nonce = getHeader(options.headers, "x-agora-nonce");
-  const signature = getHeader(options.headers, "x-agora-signature");
+  const instanceId = getHeader(options.headers, "x-monsthera-instance-id");
+  const timestamp = getHeader(options.headers, "x-monsthera-timestamp");
+  const nonce = getHeader(options.headers, "x-monsthera-nonce");
+  const signature = getHeader(options.headers, "x-monsthera-signature");
 
   if (!instanceId || !timestamp || !nonce || !signature) {
     return { ok: false, reason: "missing_headers" };

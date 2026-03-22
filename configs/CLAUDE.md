@@ -1,6 +1,6 @@
-# Agora Multi-Agent Coordination
+# Monsthera Multi-Agent Coordination
 
-This repo uses Agora for multi-agent coordination. When working with other agents:
+This repo uses Monsthera for multi-agent coordination. When working with other agents:
 
 ## Setup
 - Register with `register_agent` at the start of each session

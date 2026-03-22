@@ -1,6 +1,6 @@
-# Agora — Multi-Agent Coordination
+# Monsthera — Multi-Agent Coordination
 
-You have access to Agora, a shared context server for multi-agent coordination.
+You have access to Monsthera, a shared context server for multi-agent coordination.
 
 ## Getting Started
 

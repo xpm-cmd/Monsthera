@@ -1,15 +1,15 @@
-# Agora Benchmark Review
+# Monsthera Benchmark Review
 
-## Agora Is Not "Faster Than grep." It Is More Useful Than grep in the Places That Matter.
+## Monsthera Is Not "Faster Than grep." It Is More Useful Than grep in the Places That Matter.
 
-The latest benchmark run on March 9, 2026 evaluated Agora in two different roles on a mixed-language application repository representative of real product code:
+The latest benchmark run on March 9, 2026 evaluated Monsthera in two different roles on a mixed-language application repository representative of real product code:
 
 1. As a code retrieval engine against a scoped lexical baseline built with `rg`.
 2. As a shared-context layer for multi-agent work, where multiple agents need the same codebase understanding at the same time.
 
-That distinction matters. If the question is "can Agora beat a tight, scoped `rg` query on raw wall-clock time in a small repo?", the answer from this run is usually no. If the question is "can Agora find the right files for concept-level queries and reduce duplicated discovery across agents?", the answer is clearly yes.
+That distinction matters. If the question is "can Monsthera beat a tight, scoped `rg` query on raw wall-clock time in a small repo?", the answer from this run is usually no. If the question is "can Monsthera find the right files for concept-level queries and reduce duplicated discovery across agents?", the answer is clearly yes.
 
-This is the real story of the benchmark: Agora is not best understood as a drop-in replacement for lexical search. It is a codebase intelligence layer that becomes more valuable as queries become more semantic, more cross-cutting, and more collaborative.
+This is the real story of the benchmark: Monsthera is not best understood as a drop-in replacement for lexical search. It is a codebase intelligence layer that becomes more valuable as queries become more semantic, more cross-cutting, and more collaborative.
 
 ## The Benchmark Setup
 
@@ -21,10 +21,10 @@ The benchmark was executed against a repository with:
 
 Two complementary benchmark suites were used:
 
-- a retrieval benchmark, comparing Agora `get_code_pack()` against scoped lexical search across 12 scenarios
+- a retrieval benchmark, comparing Monsthera `get_code_pack()` against scoped lexical search across 12 scenarios
 - a shared-context benchmark, comparing repeated discovery against coordinated handoff across 12 tasks grouped into 4 themes
 
-## Benchmark 1: Agora vs Lexical Search
+## Benchmark 1: Monsthera vs Lexical Search
 
 This benchmark covered 12 scenarios:
 
@@ -41,35 +41,35 @@ Examples of semantic gap queries included:
 
 Across all 12 scenarios:
 
-| Metric | Agora Stdio | Agora HTTP | Lexical (`rg`) |
+| Metric | Monsthera Stdio | Monsthera HTTP | Lexical (`rg`) |
 | --- | ---: | ---: | ---: |
 | Mean wall time | 12.883 ms | 13.608 ms | 9.116 ms |
 | Mean backend time | 0.905 ms | 0.952 ms | n/a |
 | Top-1 hits | 10/12 | 10/12 | 7/12 |
 | Top-5 hits | 12/12 | 12/12 | 8/12 |
 
-The first important conclusion is that the lexical baseline is still faster in raw end-to-end time for this benchmark. That is not a failure of Agora. It is what should happen when:
+The first important conclusion is that the lexical baseline is still faster in raw end-to-end time for this benchmark. That is not a failure of Monsthera. It is what should happen when:
 
 - the repository is not enormous
 - the search is tightly scoped
 - the lexical queries are already very good
 - `rg` avoids MCP transport and response serialization overhead
 
-But the second conclusion is more important: Agora retrieved better results.
+But the second conclusion is more important: Monsthera retrieved better results.
 
-On the 7 lexical scenarios, Agora matched the baseline perfectly on accuracy:
+On the 7 lexical scenarios, Monsthera matched the baseline perfectly on accuracy:
 
-- Agora top-1: 7/7
+- Monsthera top-1: 7/7
 - Lexical top-1: 7/7
 
-On the 5 semantic scenarios, Agora pulled away:
+On the 5 semantic scenarios, Monsthera pulled away:
 
-- Agora top-1: 3/5
-- Agora top-5: 5/5
+- Monsthera top-1: 3/5
+- Monsthera top-5: 5/5
 - Lexical top-1: 0/5
 - Lexical top-5: 1/5
 
-This is exactly where semantic retrieval should earn its keep. When the user's terminology diverges from the implementation's terminology, lexical search loses the trail quickly. Agora does not always rank the correct file first, but it keeps the right file in play.
+This is exactly where semantic retrieval should earn its keep. When the user's terminology diverges from the implementation's terminology, lexical search loses the trail quickly. Monsthera does not always rank the correct file first, but it keeps the right file in play.
 
 That difference is decisive for AI-assisted development. A model can recover from a top-5 result set. It cannot recover from the right file never appearing at all.
 
@@ -77,7 +77,7 @@ That difference is decisive for AI-assisted development. A model can recover fro
 
 The benchmark also separates backend search time from total wall time:
 
-- Agora backend time was below 1 ms on average
+- Monsthera backend time was below 1 ms on average
 - End-to-end wall time was around 13 ms
 
 This suggests the search core itself is already very fast. Most of the remaining cost is outside retrieval proper:
@@ -86,9 +86,9 @@ This suggests the search core itself is already very fast. Most of the remaining
 - client/server marshaling
 - process or transport overhead
 
-In other words, Agora's search engine is not the bottleneck. The surrounding delivery path is.
+In other words, Monsthera's search engine is not the bottleneck. The surrounding delivery path is.
 
-## Benchmark 2: Agora as Shared Context for Multi-Agent Work
+## Benchmark 2: Monsthera as Shared Context for Multi-Agent Work
 
 The second benchmark is the more strategically interesting one.
 
@@ -98,37 +98,37 @@ What happens when several agents need overlapping context about the same part of
 
 The benchmark used 4 themes with 3 subtasks each, for 12 total tasks. It compared three lanes:
 
-- `Without Agora`: each task resolves its own context with lexical discovery
-- `Agora no hub`: each task calls Agora independently
-- `Agora hub`: one lead agent performs discovery once, then shares the results with workers through Agora coordination
+- `Without Monsthera`: each task resolves its own context with lexical discovery
+- `Monsthera no hub`: each task calls Monsthera independently
+- `Monsthera hub`: one lead agent performs discovery once, then shares the results with workers through Monsthera coordination
 
 ### What the numbers say
 
 | Lane | Total wall time | Successes | Code searches | Coordination calls |
 | --- | ---: | ---: | ---: | ---: |
-| Without Agora | 108.733 ms | 12/12 | 12 | 0 |
-| Agora no hub | 153.180 ms | 12/12 | 12 | 0 |
-| Agora hub | 52.499 ms | 12/12 | 4 | 16 |
+| Without Monsthera | 108.733 ms | 12/12 | 12 | 0 |
+| Monsthera no hub | 153.180 ms | 12/12 | 12 | 0 |
+| Monsthera hub | 52.499 ms | 12/12 | 4 | 16 |
 
-This result is the clearest argument for Agora as a system, not just a search endpoint.
+This result is the clearest argument for Monsthera as a system, not just a search endpoint.
 
 Hub mode:
 
 - cut code-index lookups from 12 to 4
 - reduced total time to 48.3% of the lexical lane
-- reduced total time to 34.3% of the independent-Agora lane
+- reduced total time to 34.3% of the independent-Monsthera lane
 
-The win here is not that Agora makes every individual agent instantly faster. It is that Agora lets a team avoid paying discovery cost over and over again.
+The win here is not that Monsthera makes every individual agent instantly faster. It is that Monsthera lets a team avoid paying discovery cost over and over again.
 
 That is a much more realistic optimization target for multi-agent workflows. In real development environments, the expensive part is often not one search. It is repeated context reconstruction by different models, different sessions, and different people.
 
-## What Agora Actually Solves
+## What Monsthera Actually Solves
 
 The benchmark points to three concrete strengths.
 
 ### 1. Semantic retrieval when the user does not know the code's vocabulary
 
-This is the obvious strength, and the benchmark confirms it. Agora performs best when queries are conceptual rather than literal.
+This is the obvious strength, and the benchmark confirms it. Monsthera performs best when queries are conceptual rather than literal.
 
 That matters because most real task prompts are conceptual:
 
@@ -136,11 +136,11 @@ That matters because most real task prompts are conceptual:
 - "what computes worst-case combinations?"
 - "where do we persist workflow progress?"
 
-Developers and agents often do not know the exact class name, file name, or function signature in advance. Agora narrows that gap better than lexical matching.
+Developers and agents often do not know the exact class name, file name, or function signature in advance. Monsthera narrows that gap better than lexical matching.
 
 ### 2. Shared context across agents
 
-The hub benchmark shows the more important systems-level value: Agora is a shared context substrate.
+The hub benchmark shows the more important systems-level value: Monsthera is a shared context substrate.
 
 Once a lead agent discovers the relevant files for a theme, that discovery can be handed to other agents without forcing them to repeat the search. This creates a cleaner workflow for:
 
@@ -149,13 +149,13 @@ Once a lead agent discovers the relevant files for a theme, that discovery can b
 - test writing
 - parallel feature work
 
-This is where Agora stops being "search" and starts behaving like infrastructure.
+This is where Monsthera stops being "search" and starts behaving like infrastructure.
 
 ### 3. Better retrieval quality even when it loses raw wall-clock time
 
 The benchmark is a good reminder that "fastest" and "best" are not the same metric.
 
-In narrow lexical cases, `rg` is faster and should remain part of the toolbox. But Agora produced:
+In narrow lexical cases, `rg` is faster and should remain part of the toolbox. But Monsthera produced:
 
 - higher top-1 accuracy overall
 - perfect top-5 recall in this run
@@ -163,13 +163,13 @@ In narrow lexical cases, `rg` is faster and should remain part of the toolbox. B
 
 For AI agents, that tradeoff is often worth it. The model benefits more from receiving five meaningfully ranked candidates than from receiving a slightly faster but brittle lexical result.
 
-## Where Agora Still Needs Work
+## Where Monsthera Still Needs Work
 
 The benchmark also makes the improvement areas fairly clear.
 
 ### 1. Top-1 ranking on harder semantic queries
 
-Agora found the correct file in the top 5 for every semantic scenario, but it missed top-1 on some of the hardest conceptual queries. In this run:
+Monsthera found the correct file in the top 5 for every semantic scenario, but it missed top-1 on some of the hardest conceptual queries. In this run:
 
 - the correct result for "reverse engineer worst case parameter combinations" landed at rank 5
 - the correct result for "randomized sample generation probability distributions" landed at rank 2
@@ -193,7 +193,7 @@ The interesting detail from this run is that HTTP was slightly slower than stdio
 
 Lexical search still has one structural advantage: brute-force recall. If a task is "find every mention," plain `rg` remains hard to beat.
 
-Agora would benefit from a mode optimized for refactors and audits, where the goal is exhaustive coverage rather than best-ranked candidates. A retrieval API that can switch between:
+Monsthera would benefit from a mode optimized for refactors and audits, where the goal is exhaustive coverage rather than best-ranked candidates. A retrieval API that can switch between:
 
 - `ranked discovery`
 - `exhaustive recall`
@@ -202,7 +202,7 @@ would make the system more complete.
 
 ### 4. Longitudinal benchmarking
 
-Agora is now mature enough that benchmark history matters as much as a single good run. The next step is not another one-off benchmark document. It is trend tracking across versions:
+Monsthera is now mature enough that benchmark history matters as much as a single good run. The next step is not another one-off benchmark document. It is trend tracking across versions:
 
 - latency over time
 - top-1 and top-5 accuracy over time
@@ -211,11 +211,11 @@ Agora is now mature enough that benchmark history matters as much as a single go
 
 That would turn benchmarking into a release gate rather than a marketing artifact.
 
-## The Right Positioning for Agora
+## The Right Positioning for Monsthera
 
-The benchmark supports a more credible positioning statement than "Agora beats grep."
+The benchmark supports a more credible positioning statement than "Monsthera beats grep."
 
-Agora is best described as:
+Monsthera is best described as:
 
 - a semantic retrieval layer for codebases
 - a coordination-friendly context hub for multi-agent development
@@ -226,20 +226,20 @@ It should not be sold as a universal replacement for lexical tools. It should be
 The strongest workflow is hybrid:
 
 - use lexical search for exact strings, exhaustive sweeps, and local refactors
-- use Agora for conceptual search, ranked discovery, cross-layer lookup, and agent handoffs
+- use Monsthera for conceptual search, ranked discovery, cross-layer lookup, and agent handoffs
 
 That is a stronger claim precisely because it is narrower and more honest.
 
 ## Final Take
 
-This benchmark does not show that Agora wins every search race. It shows something more useful:
+This benchmark does not show that Monsthera wins every search race. It shows something more useful:
 
-- Agora matches lexical search on clean lexical tasks
-- Agora clearly outperforms lexical search on semantic tasks
-- Agora becomes substantially more valuable when several agents share the same codebase context
+- Monsthera matches lexical search on clean lexical tasks
+- Monsthera clearly outperforms lexical search on semantic tasks
+- Monsthera becomes substantially more valuable when several agents share the same codebase context
 
 That last point is the differentiator. Search quality matters, but shared context compounds.
 
 If the future of AI-assisted software development is multi-agent, mixed-model, and iterative, then the winning tool is not the one that answers one query fastest in isolation. It is the one that lets the whole system stop rediscovering the same reality.
 
-On that metric, Agora already looks like the right abstraction.
+On that metric, Monsthera already looks like the right abstraction.

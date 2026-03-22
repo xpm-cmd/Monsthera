@@ -3,7 +3,7 @@ import { z } from "zod/v4";
 import { and, eq, or, sql } from "drizzle-orm";
 import { BUILT_IN_ROLES } from "../../schemas/agent.js";
 import { CouncilSpecializationId, CouncilVerdict } from "../../schemas/council.js";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import {
   AgentIdSchema,
   AffectedPathsSchema,
@@ -47,7 +47,7 @@ import {
 } from "../tickets/consensus.js";
 import { spawnRepairTicket } from "../tickets/repair-spawner.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 const ConsensusTransitionSchema = z.enum(GATED_TICKET_TRANSITIONS);
 const MIN_VERDICT_REASONING_LENGTH = 50;
 const GENERIC_VERDICT_PATTERNS = [
@@ -55,7 +55,7 @@ const GENERIC_VERDICT_PATTERNS = [
   /^(?:pass|approved|lgtm|looks good)\.?$/i,
 ];
 const CONCRETE_EVIDENCE_PATTERNS = [
-  /\b(?:src|tests|docs|schemas|\.agora)\/[\w./-]+/,
+  /\b(?:src|tests|docs|schemas|\.monsthera)\/[\w./-]+/,
   /`[^`]+`/,
   /\b[A-Za-z_][A-Za-z0-9_]*\(\)/,
   /\b[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\b/,
@@ -101,7 +101,7 @@ function resolveVerdictAuthorization(
   agentId: string,
   specialization: string,
   ticketInternalId: number,
-  context: { db: AgoraContext["db"]; config: any; role: string },
+  context: { db: MonstheraContext["db"]; config: any; role: string },
 ): { authorized: boolean; authorizedBy: string | null; reason?: string } {
   // 1. Admin always authorized
   if (context.role === "admin") return { authorized: true, authorizedBy: "admin_override" };
@@ -120,7 +120,7 @@ function resolveVerdictAuthorization(
 function validateReviewerModelVoterCap(input: {
   ticketInternalId: number;
   agentId: string;
-  db: AgoraContext["db"];
+  db: MonstheraContext["db"];
   maxVotersPerModel?: number;
 }): VerdictReasoningValidationResult | VerdictReasoningValidationError {
   if (!Number.isFinite(input.maxVotersPerModel) || (input.maxVotersPerModel ?? 0) < 1) {
@@ -167,7 +167,7 @@ function validateVerdictReasoning(input: {
   specialization: string;
   ticketInternalId: number;
   agentId: string;
-  db: AgoraContext["db"];
+  db: MonstheraContext["db"];
 }): VerdictReasoningValidationResult | VerdictReasoningValidationError {
   const normalizedReasoning = normalizeVerdictReasoning(input.reasoning);
   if (input.verdict === "abstain") {

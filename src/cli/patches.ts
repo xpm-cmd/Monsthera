@@ -14,7 +14,7 @@ import {
 
 export interface PatchCliConfig {
   repoPath: string;
-  agoraDir: string;
+  monstheraDir: string;
   dbName: string;
 }
 
@@ -35,7 +35,7 @@ export async function cmdPatch(config: PatchCliConfig, insight: InsightStream, a
   const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
   const currentHead = await getHead({ cwd: repoRoot });
   const repoName = basename(repoRoot);
-  const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, monstheraDir: config.monstheraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
 
   try {
@@ -60,7 +60,7 @@ export async function cmdPatch(config: PatchCliConfig, insight: InsightStream, a
         return;
       case "show": {
         const proposalId = args[1];
-        if (!proposalId) throw new Error("Usage: agora patch show <proposal-id> [--json]");
+        if (!proposalId) throw new Error("Usage: monsthera patch show <proposal-id> [--json]");
         const payload = buildPatchDetailPayload(db, repoId, proposalId);
         if (!payload) throw new Error(`Patch not found: ${proposalId}`);
         printOutput(buildLivePatchDetailPayload(payload, currentHead), args.includes("--json"), formatPatchDetail);
@@ -193,9 +193,9 @@ function formatValidationCountMap(counts: LivePatchSummaryPayload["validationCou
 
 function printPatchHelp(): void {
   console.error("Patch commands:");
-  console.error("  agora patch summary [--json]");
-  console.error("  agora patch list [--state <state>] [--json]");
-  console.error("  agora patch show <proposal-id> [--json]");
+  console.error("  monsthera patch summary [--json]");
+  console.error("  monsthera patch list [--state <state>] [--json]");
+  console.error("  monsthera patch show <proposal-id> [--json]");
 }
 
 function getArg(args: string[], flag: string): string | undefined {

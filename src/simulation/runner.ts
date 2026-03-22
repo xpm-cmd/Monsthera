@@ -152,7 +152,7 @@ export async function runSimulation(config: RunnerConfig): Promise<RunnerResult>
     corpus = genResult.corpus;
 
     // Cache corpus to disk
-    const corpusPath = resolve(config.repoPath, ".agora/simulation-corpus.json");
+    const corpusPath = resolve(config.repoPath, ".monsthera/simulation-corpus.json");
     await writeFile(corpusPath, JSON.stringify(corpus, null, 2), "utf8");
 
     emit({
@@ -1695,7 +1695,7 @@ async function runPhaseE(
     callTool: async (name, params) => {
       if (name === "register_agent") return { agentId: "sim-orch", sessionId: "sim-session" };
       if (name === "compute_waves") return { waveCount: wave1Tickets.length > 0 ? 2 : 1 };
-      if (name === "launch_convoy") return { integrationBranch: `agora/convoy/${groupId}` };
+      if (name === "launch_convoy") return { integrationBranch: `monsthera/convoy/${groupId}` };
       if (name === "get_wave_status") {
         const tickets = waveCallCount === 0 ? wave0Tickets : wave1Tickets;
         waveCallCount++;

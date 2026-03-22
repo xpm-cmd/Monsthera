@@ -1,4 +1,4 @@
-# Agora vs Lexical Search Benchmark
+# Monsthera vs Lexical Search Benchmark
 
 - Generated at: `2026-03-09T23:24:50.860315+00:00`
 - Repository: `.` (local)
@@ -6,11 +6,11 @@
 - Dirty worktree: `True`
 - Iterations: `7`
 - Top-K: `5`
-- Transports: `agora_stdio, agora_http`
+- Transports: `monsthera_stdio, monsthera_http`
 
 ## Overall Aggregate
 
-| Metric | Agora Stdio | Agora Http | Lexical (rg) |
+| Metric | Monsthera Stdio | Monsthera Http | Lexical (rg) |
 | --- | ---: | ---: | ---: |
 | Mean wall time | 12.883 ms | 13.608 ms | 9.116 ms |
 | Mean backend time | 0.905 ms | 0.952 ms | n/a |
@@ -19,7 +19,7 @@
 
 ## Profile: Lexical (7 scenarios)
 
-| Metric | Agora Stdio | Agora Http | Lexical (rg) |
+| Metric | Monsthera Stdio | Monsthera Http | Lexical (rg) |
 | --- | ---: | ---: | ---: |
 | Mean wall time | 12.977 ms | 14.190 ms | 9.738 ms |
 | Mean backend time | 0.959 ms | 1.020 ms | n/a |
@@ -38,7 +38,7 @@
 
 ## Profile: Semantic (5 scenarios)
 
-| Metric | Agora Stdio | Agora Http | Lexical (rg) |
+| Metric | Monsthera Stdio | Monsthera Http | Lexical (rg) |
 | --- | ---: | ---: | ---: |
 | Mean wall time | 12.753 ms | 12.794 ms | 8.246 ms |
 | Mean backend time | 0.829 ms | 0.857 ms | n/a |
@@ -61,8 +61,8 @@
 - Scope: `backend/app/`
 - Notes: Backend execution engine lookup with multiple handler methods.
 - Expected: `backend/app/services/workflow_runner.py`
-- agora_stdio paths: `backend/app/services/workflow_runner.py, backend/app/routers/workflows.py, backend/app/workers/orchestrator.py, backend/app/services/workflow_run_service.py, backend/app/routers/campaigns.py`
-- agora_http paths: `backend/app/services/workflow_runner.py, backend/app/routers/workflows.py, backend/app/workers/orchestrator.py, backend/app/services/workflow_run_service.py, backend/app/routers/campaigns.py`
+- monsthera_stdio paths: `backend/app/services/workflow_runner.py, backend/app/routers/workflows.py, backend/app/workers/orchestrator.py, backend/app/services/workflow_run_service.py, backend/app/routers/campaigns.py`
+- monsthera_http paths: `backend/app/services/workflow_runner.py, backend/app/routers/workflows.py, backend/app/workers/orchestrator.py, backend/app/services/workflow_run_service.py, backend/app/routers/campaigns.py`
 - Lexical paths: `backend/app/services/workflow_runner.py, backend/app/routers/workflows.py, backend/app/services/workflow_data_context.py, backend/app/services/workflow_run_service.py, backend/app/services/workflow_service.py`
 
 ### Project portability and OMK import/export (lexical)
@@ -71,8 +71,8 @@
 - Scope: `backend/app/`
 - Notes: Import/export and packaging flow for portable project files.
 - Expected: `backend/app/services/import_project_service.py, backend/app/services/project_file.py`
-- agora_stdio paths: `backend/app/services/import_project_service.py, backend/app/routers/projects.py, backend/app/services/project_file.py, backend/app/services/project_service.py, backend/app/services/demo_project_service.py`
-- agora_http paths: `backend/app/services/import_project_service.py, backend/app/routers/projects.py, backend/app/services/project_file.py, backend/app/services/project_service.py, backend/app/services/demo_project_service.py`
+- monsthera_stdio paths: `backend/app/services/import_project_service.py, backend/app/routers/projects.py, backend/app/services/project_file.py, backend/app/services/project_service.py, backend/app/services/demo_project_service.py`
+- monsthera_http paths: `backend/app/services/import_project_service.py, backend/app/routers/projects.py, backend/app/services/project_file.py, backend/app/services/project_service.py, backend/app/services/demo_project_service.py`
 - Lexical paths: `backend/app/services/import_project_service.py, backend/app/services/project_file.py, backend/app/routers/projects.py, backend/app/services/demo_project_service.py, backend/app/services/project_service.py`
 
 ### Ranking and feasibility (lexical)
@@ -81,8 +81,8 @@
 - Scope: `backend/app/`
 - Notes: Multi-criteria decision logic for TOPSIS/VIKOR ranking.
 - Expected: `backend/app/services/ranking.py`
-- agora_stdio paths: `backend/app/services/ranking.py, backend/app/services/filter_service.py, backend/app/services/real_options.py, backend/app/services/scenario_sampler.py, backend/app/services/voi.py`
-- agora_http paths: `backend/app/services/ranking.py, backend/app/services/filter_service.py, backend/app/services/real_options.py, backend/app/services/scenario_sampler.py, backend/app/services/voi.py`
+- monsthera_stdio paths: `backend/app/services/ranking.py, backend/app/services/filter_service.py, backend/app/services/real_options.py, backend/app/services/scenario_sampler.py, backend/app/services/voi.py`
+- monsthera_http paths: `backend/app/services/ranking.py, backend/app/services/filter_service.py, backend/app/services/real_options.py, backend/app/services/scenario_sampler.py, backend/app/services/voi.py`
 - Lexical paths: `backend/app/services/ranking.py, backend/app/routers/analytics.py, backend/app/models/schemas.py, backend/app/routers/macro_scenarios.py, backend/app/services/analytics_data.py`
 
 ### Campaign lifecycle websocket and reruns (lexical)
@@ -91,8 +91,8 @@
 - Scope: `backend/app/`
 - Notes: Router layer for campaign status, reruns, duplication, and websocket updates.
 - Expected: `backend/app/routers/campaigns.py`
-- agora_stdio paths: `backend/app/routers/campaigns.py, backend/app/services/campaign_service.py, backend/app/workers/work_dir_manager.py, backend/app/services/analytics_data.py, backend/app/workers/ws_manager.py`
-- agora_http paths: `backend/app/routers/campaigns.py, backend/app/services/campaign_service.py, backend/app/workers/work_dir_manager.py, backend/app/services/analytics_data.py, backend/app/workers/ws_manager.py`
+- monsthera_stdio paths: `backend/app/routers/campaigns.py, backend/app/services/campaign_service.py, backend/app/workers/work_dir_manager.py, backend/app/services/analytics_data.py, backend/app/workers/ws_manager.py`
+- monsthera_http paths: `backend/app/routers/campaigns.py, backend/app/services/campaign_service.py, backend/app/workers/work_dir_manager.py, backend/app/services/analytics_data.py, backend/app/workers/ws_manager.py`
 - Lexical paths: `backend/app/routers/campaigns.py, backend/app/services/campaign_service.py, backend/app/routers/macro_scenarios.py, backend/app/workers/orchestrator.py, backend/app/models/schemas.py`
 
 ### Stress report compilation (lexical)
@@ -101,8 +101,8 @@
 - Scope: `backend/app/`
 - Notes: Stress reporting logic rather than generic stress analytics.
 - Expected: `backend/app/services/stress_report.py`
-- agora_stdio paths: `backend/app/services/stress_report.py, backend/app/services/stress_analysis.py, backend/app/routers/stress.py, backend/app/services/inverse_stress.py, backend/app/services/report_generator.py`
-- agora_http paths: `backend/app/services/stress_report.py, backend/app/services/stress_analysis.py, backend/app/routers/stress.py, backend/app/services/inverse_stress.py, backend/app/services/report_generator.py`
+- monsthera_stdio paths: `backend/app/services/stress_report.py, backend/app/services/stress_analysis.py, backend/app/routers/stress.py, backend/app/services/inverse_stress.py, backend/app/services/report_generator.py`
+- monsthera_http paths: `backend/app/services/stress_report.py, backend/app/services/stress_analysis.py, backend/app/routers/stress.py, backend/app/services/inverse_stress.py, backend/app/services/report_generator.py`
 - Lexical paths: `backend/app/services/stress_report.py, backend/app/routers/stress.py, backend/app/services/stress_analysis.py, backend/app/services/inverse_stress.py, backend/app/models/schemas.py`
 
 ### Workflow canvas UI (lexical)
@@ -111,8 +111,8 @@
 - Scope: `frontend/src/renderer/src/`
 - Notes: Renderer-side graph editor and interaction surface.
 - Expected: `frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx`
-- agora_stdio paths: `frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx, frontend/src/renderer/src/components/workflow/nodeConstants.ts, frontend/src/renderer/src/components/workflow/NodePalette.tsx, frontend/src/renderer/src/components/workflow/CanvasContextMenu.tsx, frontend/src/renderer/src/components/workflow/nodes/StudyFrameNode.tsx`
-- agora_http paths: `frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx, frontend/src/renderer/src/components/workflow/nodeConstants.ts, frontend/src/renderer/src/components/workflow/NodePalette.tsx, frontend/src/renderer/src/components/workflow/CanvasContextMenu.tsx, frontend/src/renderer/src/components/workflow/nodes/StudyFrameNode.tsx`
+- monsthera_stdio paths: `frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx, frontend/src/renderer/src/components/workflow/nodeConstants.ts, frontend/src/renderer/src/components/workflow/NodePalette.tsx, frontend/src/renderer/src/components/workflow/CanvasContextMenu.tsx, frontend/src/renderer/src/components/workflow/nodes/StudyFrameNode.tsx`
+- monsthera_http paths: `frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx, frontend/src/renderer/src/components/workflow/nodeConstants.ts, frontend/src/renderer/src/components/workflow/NodePalette.tsx, frontend/src/renderer/src/components/workflow/CanvasContextMenu.tsx, frontend/src/renderer/src/components/workflow/nodes/StudyFrameNode.tsx`
 - Lexical paths: `frontend/src/renderer/src/components/workflow/WorkflowCanvas.tsx, frontend/src/renderer/src/components/workflow/NodePalette.tsx, frontend/src/renderer/src/components/workflow/WorkflowPanel.tsx, frontend/src/renderer/src/components/workflow/CanvasContextMenu.tsx, frontend/src/renderer/src/components/analytics/WorkflowCanvas.tsx`
 
 ### Campaign manager UI (lexical)
@@ -121,8 +121,8 @@
 - Scope: `frontend/src/renderer/src/`
 - Notes: Analytics-side campaign control surface in the renderer.
 - Expected: `frontend/src/renderer/src/components/analytics/CampaignManager.tsx`
-- agora_stdio paths: `frontend/src/renderer/src/components/analytics/CampaignManager.tsx, frontend/src/renderer/src/components/analytics/CampaignComparison.tsx, frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx, frontend/src/renderer/src/components/analytics/inverse-stress/InverseStressSection.tsx, frontend/src/renderer/src/lib/campaignQueries.ts`
-- agora_http paths: `frontend/src/renderer/src/components/analytics/CampaignManager.tsx, frontend/src/renderer/src/components/analytics/CampaignComparison.tsx, frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx, frontend/src/renderer/src/components/analytics/inverse-stress/InverseStressSection.tsx, frontend/src/renderer/src/lib/campaignQueries.ts`
+- monsthera_stdio paths: `frontend/src/renderer/src/components/analytics/CampaignManager.tsx, frontend/src/renderer/src/components/analytics/CampaignComparison.tsx, frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx, frontend/src/renderer/src/components/analytics/inverse-stress/InverseStressSection.tsx, frontend/src/renderer/src/lib/campaignQueries.ts`
+- monsthera_http paths: `frontend/src/renderer/src/components/analytics/CampaignManager.tsx, frontend/src/renderer/src/components/analytics/CampaignComparison.tsx, frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx, frontend/src/renderer/src/components/analytics/inverse-stress/InverseStressSection.tsx, frontend/src/renderer/src/lib/campaignQueries.ts`
 - Lexical paths: `frontend/src/renderer/src/components/analytics/CampaignManager.tsx, frontend/src/renderer/src/components/analytics/CampaignComparison.tsx, frontend/src/renderer/src/components/analytics/CampaignSelector.tsx, frontend/src/renderer/src/lib/analyticsQueries.ts, frontend/src/renderer/src/components/analytics/AnalyticsPanel.tsx`
 
 ### Snapshot for resumption (semantic)
@@ -131,8 +131,8 @@
 - Scope: `backend/app/`
 - Notes: Semantic: 'snapshot'~'checkpoint', 'resumption'~'resume'. No term overlap.
 - Expected: `backend/app/services/checkpoint_service.py`
-- agora_stdio paths: `backend/app/services/checkpoint_service.py, backend/app/services/pareto.py, backend/app/services/workflow_runner.py, backend/app/services/voi.py, backend/app/services/srdi.py`
-- agora_http paths: `backend/app/services/checkpoint_service.py, backend/app/services/pareto.py, backend/app/services/workflow_runner.py, backend/app/services/voi.py, backend/app/services/srdi.py`
+- monsthera_stdio paths: `backend/app/services/checkpoint_service.py, backend/app/services/pareto.py, backend/app/services/workflow_runner.py, backend/app/services/voi.py, backend/app/services/srdi.py`
+- monsthera_http paths: `backend/app/services/checkpoint_service.py, backend/app/services/pareto.py, backend/app/services/workflow_runner.py, backend/app/services/voi.py, backend/app/services/srdi.py`
 - Lexical paths: `backend/app/routers/campaigns.py, backend/app/services/workflow_runner.py, backend/app/services/demo_project_service.py, backend/app/services/voi.py, backend/app/main.py`
 
 ### Skyline compromise outcomes (semantic)
@@ -141,8 +141,8 @@
 - Scope: `backend/app/`
 - Notes: Semantic: 'skyline'~'pareto front', 'compromise'~'trade-off'. Zero rg match.
 - Expected: `backend/app/services/pareto.py`
-- agora_stdio paths: `backend/app/services/pareto.py, backend/app/services/compare_service.py, backend/app/services/filter_service.py`
-- agora_http paths: `backend/app/services/pareto.py, backend/app/services/compare_service.py, backend/app/services/filter_service.py`
+- monsthera_stdio paths: `backend/app/services/pareto.py, backend/app/services/compare_service.py, backend/app/services/filter_service.py`
+- monsthera_http paths: `backend/app/services/pareto.py, backend/app/services/compare_service.py, backend/app/services/filter_service.py`
 - Lexical paths: `backend/app/services/ranking.py, backend/app/routers/campaigns.py, backend/app/services/optimization_engine.py, backend/app/services/stress_report.py, backend/app/services/db_helper.py`
 
 ### Variable relationship matrix (semantic)
@@ -151,8 +151,8 @@
 - Scope: `frontend/src/renderer/src/`
 - Notes: Semantic: 'matrix'~'heatmap', 'relationships'~'correlation'. rg rank ~8.
 - Expected: `frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx`
-- agora_stdio paths: `frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx, frontend/src/renderer/src/components/analytics/voi/InvestmentMatrix.tsx, frontend/src/renderer/src/components/analytics/srdi/ScenarioOverlay.tsx, frontend/src/renderer/src/components/analytics/srdi/TailRiskPanel.tsx, frontend/src/renderer/src/components/analytics/srdi/ScenarioWaterfall.tsx`
-- agora_http paths: `frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx, frontend/src/renderer/src/components/analytics/voi/InvestmentMatrix.tsx, frontend/src/renderer/src/components/analytics/srdi/ScenarioOverlay.tsx, frontend/src/renderer/src/components/analytics/srdi/TailRiskPanel.tsx, frontend/src/renderer/src/components/analytics/srdi/ScenarioWaterfall.tsx`
+- monsthera_stdio paths: `frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx, frontend/src/renderer/src/components/analytics/voi/InvestmentMatrix.tsx, frontend/src/renderer/src/components/analytics/srdi/ScenarioOverlay.tsx, frontend/src/renderer/src/components/analytics/srdi/TailRiskPanel.tsx, frontend/src/renderer/src/components/analytics/srdi/ScenarioWaterfall.tsx`
+- monsthera_http paths: `frontend/src/renderer/src/components/analytics/CorrelationHeatmap.tsx, frontend/src/renderer/src/components/analytics/voi/InvestmentMatrix.tsx, frontend/src/renderer/src/components/analytics/srdi/ScenarioOverlay.tsx, frontend/src/renderer/src/components/analytics/srdi/TailRiskPanel.tsx, frontend/src/renderer/src/components/analytics/srdi/ScenarioWaterfall.tsx`
 - Lexical paths: `frontend/src/renderer/src/__tests__/scatterMatrix.test.tsx, frontend/src/renderer/src/lib/guidanceContent.ts, frontend/src/renderer/src/components/analytics/ScatterMatrix.tsx, frontend/src/renderer/src/components/analytics/voi/InvestmentMatrix.tsx, frontend/src/renderer/src/components/analytics/som/SOMSection.tsx`
 
 ### Reverse-engineer worst case (semantic)
@@ -161,8 +161,8 @@
 - Scope: `backend/app/`
 - Notes: Semantic: 'reverse engineer'~'inverse', 'worst case'~'stress'. rg rank ~23.
 - Expected: `backend/app/services/inverse_stress.py`
-- agora_stdio paths: `backend/app/services/parameter_service.py, backend/app/services/voi.py, backend/app/services/scenario_sampler.py, backend/app/routers/parameters.py, backend/app/services/inverse_stress.py`
-- agora_http paths: `backend/app/services/parameter_service.py, backend/app/services/voi.py, backend/app/services/scenario_sampler.py, backend/app/routers/parameters.py, backend/app/services/inverse_stress.py`
+- monsthera_stdio paths: `backend/app/services/parameter_service.py, backend/app/services/voi.py, backend/app/services/scenario_sampler.py, backend/app/routers/parameters.py, backend/app/services/inverse_stress.py`
+- monsthera_http paths: `backend/app/services/parameter_service.py, backend/app/services/voi.py, backend/app/services/scenario_sampler.py, backend/app/routers/parameters.py, backend/app/services/inverse_stress.py`
 - Lexical paths: `backend/app/routers/parameters.py, backend/app/services/parameter_service.py, backend/app/services/stress_analysis.py, backend/app/models/schemas.py, backend/app/services/voi.py`
 
 ### Stochastic sampling generation (semantic)
@@ -171,7 +171,7 @@
 - Scope: `backend/app/`
 - Notes: Semantic: 'randomized'~'montecarlo', 'sample generation' is concept.
 - Expected: `backend/app/services/montecarlo_generator.py`
-- agora_stdio paths: `backend/app/services/scenario_analysis.py, backend/app/services/montecarlo_generator.py, backend/app/services/doe_generator.py, backend/app/services/scenario_sampler.py, backend/app/services/stress_generator.py`
-- agora_http paths: `backend/app/services/scenario_analysis.py, backend/app/services/montecarlo_generator.py, backend/app/services/doe_generator.py, backend/app/services/scenario_sampler.py, backend/app/services/stress_generator.py`
+- monsthera_stdio paths: `backend/app/services/scenario_analysis.py, backend/app/services/montecarlo_generator.py, backend/app/services/doe_generator.py, backend/app/services/scenario_sampler.py, backend/app/services/stress_generator.py`
+- monsthera_http paths: `backend/app/services/scenario_analysis.py, backend/app/services/montecarlo_generator.py, backend/app/services/doe_generator.py, backend/app/services/scenario_sampler.py, backend/app/services/stress_generator.py`
 - Lexical paths: `backend/app/services/scenario_sampler.py, backend/app/models/schemas.py, backend/app/routers/campaigns.py, backend/app/services/stress_generator.py, backend/app/services/montecarlo_generator.py`
 

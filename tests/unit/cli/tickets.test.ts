@@ -15,8 +15,8 @@ function createInsight(): InsightStream {
 describe("ticket CLI commit reconciliation", () => {
   const config = {
     repoPath: "/repo",
-    agoraDir: ".agora",
-    dbName: "agora.db",
+    monstheraDir: ".monsthera",
+    dbName: "monsthera.db",
   } as const;
 
   const ctx = {

@@ -76,8 +76,8 @@ describe("CoordinationBus", () => {
   });
 
   it("shares coordination messages across bus instances via SQLite", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "agora-bus-"));
-    const dbPath = join(tempDir, "agora.db");
+    tempDir = mkdtempSync(join(tmpdir(), "monsthera-bus-"));
+    const dbPath = join(tempDir, "monsthera.db");
 
     const sqliteA = new Database(dbPath);
     const sqliteB = new Database(dbPath);
@@ -107,8 +107,8 @@ describe("CoordinationBus", () => {
   });
 
   it("falls back to an empty payload when persisted coordination JSON is malformed", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "agora-bus-"));
-    const dbPath = join(tempDir, "agora.db");
+    tempDir = mkdtempSync(join(tmpdir(), "monsthera-bus-"));
+    const dbPath = join(tempDir, "monsthera.db");
 
     const sqliteA = new Database(dbPath);
     sqliteA.pragma("journal_mode = WAL");

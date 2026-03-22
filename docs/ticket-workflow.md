@@ -1,6 +1,6 @@
 # Ticket Workflow
 
-This document captures the working conventions around Agora tickets.
+This document captures the working conventions around Monsthera tickets.
 
 The state machine exists in code, but the human workflow matters just as much:
 
@@ -106,7 +106,7 @@ Operational flow:
 2. anyone with access can inspect readiness via `check_consensus`
 3. gated transitions fail with structured consensus details until quorum is satisfied
 
-Repository-specific overrides live in `.agora/config.json` under `ticketQuorum`.
+Repository-specific overrides live in `.monsthera/config.json` under `ticketQuorum`.
 
 ## QA Review Rules
 
@@ -160,7 +160,7 @@ Backlog exit gate:
 
 - a ticket must not leave `backlog` until the plan has at least `3` structured planning iterations
 - those planning iterations must be authored by at least `2` distinct `provider/model` combinations
-- Agora counts comments beginning with `[Technical Analysis]`, `[Plan Iteration]`, or `[Plan Review]` toward this gate
+- Monsthera counts comments beginning with `[Technical Analysis]`, `[Plan Iteration]`, or `[Plan Review]` toward this gate
 
 Only propose a ticket for implementation after analysis and review converge.
 
@@ -178,7 +178,7 @@ That is the point where `technical_analysis` should become `approved`.
 
 ## Dependencies
 
-Agora supports ticket-to-ticket relationships:
+Monsthera supports ticket-to-ticket relationships:
 
 - `blocks`
 - `relates_to`

@@ -7,7 +7,7 @@ import { BUILTIN_WORKFLOW_NAMES } from "./builtins.js";
 import { type WorkflowYamlDocument, WorkflowYamlSchema } from "./schema.js";
 import type { WorkflowCatalogEntry, WorkflowSpec, WorkflowStepSpec, WorkflowStepToolName } from "./types.js";
 
-export const CUSTOM_WORKFLOW_DIR = ".agora/workflows";
+export const CUSTOM_WORKFLOW_DIR = ".monsthera/workflows";
 const CUSTOM_WORKFLOW_PREFIX = `${CUSTOM_WORKFLOW_DIR}/`;
 const CUSTOM_WORKFLOW_NAME_PREFIX = "custom:";
 const KNOWN_TOOL_NAMES = new Set<string>(CAPABILITY_TOOL_NAMES);

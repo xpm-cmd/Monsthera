@@ -1,6 +1,6 @@
 # Knowledge Graph Edge Taxonomy
 
-This document defines the edge model for a future Agora knowledge graph view.
+This document defines the edge model for a future Monsthera knowledge graph view.
 
 The goal is not to visualize every possible association. The goal is to surface useful, defensible relationships between files, tickets, patches, notes, and knowledge entries without turning the graph into noise.
 
@@ -8,7 +8,7 @@ The goal is not to visualize every possible association. The goal is to surface 
 
 The first graph iteration should only use edges that are:
 
-- explicit in Agora data
+- explicit in Monsthera data
 - derivable from exact path overlap
 - explainable to an operator in one sentence
 

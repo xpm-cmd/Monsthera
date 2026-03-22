@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import { AgentIdSchema, SessionIdSchema, TicketIdSchema } from "../core/input-hardening.js";
 import { validatePatch } from "../patches/validator.js";
 import { checkToolAccess } from "../trust/tiers.js";
@@ -10,7 +10,7 @@ import { compileSecretPatterns } from "../trust/secret-patterns.js";
 import { buildPatchListPayload } from "../patches/read-model.js";
 import { recordDashboardEvent } from "../core/events.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 export function registerPatchTools(server: McpServer, getContext: GetContext): void {
   // ─── propose_patch ──────────────────────────────────────────

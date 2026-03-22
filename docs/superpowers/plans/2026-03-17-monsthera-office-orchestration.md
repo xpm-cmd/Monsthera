@@ -1,10 +1,10 @@
-# Agora Office — Orchestration Guide
+# Monsthera Office — Orchestration Guide
 
-> **Purpose:** Step-by-step instructions to set up the `agora-office` repo, configure Agora, create tickets, launch agents, and run a full convoy to build the project autonomously.
+> **Purpose:** Step-by-step instructions to set up the `monsthera-office` repo, configure Monsthera, create tickets, launch agents, and run a full convoy to build the project autonomously.
 
-**Spec:** `docs/superpowers/specs/2026-03-17-agora-office-design.md`
-**Plan:** `docs/superpowers/plans/2026-03-17-agora-office.md`
-**Tickets:** `docs/superpowers/plans/2026-03-17-agora-office-tickets.md`
+**Spec:** `docs/superpowers/specs/2026-03-17-monsthera-office-design.md`
+**Plan:** `docs/superpowers/plans/2026-03-17-monsthera-office.md`
+**Tickets:** `docs/superpowers/plans/2026-03-17-monsthera-office-tickets.md`
 
 ---
 
@@ -12,7 +12,7 @@
 
 1. [Prerequisites](#1-prerequisites)
 2. [Create the Repository](#2-create-the-repository)
-3. [Initialize Agora](#3-initialize-agora)
+3. [Initialize Monsthera](#3-initialize-monsthera)
 4. [Configure Governance](#4-configure-governance)
 5. [Write Agent Instructions](#5-write-agent-instructions)
 6. [Populate Knowledge Store](#6-populate-knowledge-store)
@@ -33,14 +33,14 @@
 # Required tools
 node --version    # >= 20.x
 pnpm --version    # >= 9.x
-agora --version   # Agora CLI installed globally or via npx
+monsthera --version   # Monsthera CLI installed globally or via npx
 ```
 
 ### Agent runtime (choose one)
 
 ```bash
-# Option A: Agora built-in loops (default)
-# No extra install — agora loop dev/plan/council run natively
+# Option A: Monsthera built-in loops (default)
+# No extra install — monsthera loop dev/plan/council run natively
 
 # Option B: Claude Code
 claude --version
@@ -49,36 +49,36 @@ claude --version
 opencode --version  # https://github.com/opencode-ai/opencode
 ```
 
-The orchestrator spawns agents via `agora loop dev --ticket <id>`, which internally runs the developer-loop workflow. Each agent gets its own git worktree for isolated parallel development. See [Section 11](#11-using-opencode-as-agent-runtime) for using OpenCode instead.
+The orchestrator spawns agents via `monsthera loop dev --ticket <id>`, which internally runs the developer-loop workflow. Each agent gets its own git worktree for isolated parallel development. See [Section 11](#11-using-opencode-as-agent-runtime) for using OpenCode instead.
 
 ---
 
 ## 2. Create the Repository
 
 ```bash
-mkdir agora-office && cd agora-office
+mkdir monsthera-office && cd monsthera-office
 git init
 echo "node_modules" > .gitignore
-echo ".agora/" >> .gitignore
+echo ".monsthera/" >> .gitignore
 
-# Minimal initial commit (needed before Agora init)
+# Minimal initial commit (needed before Monsthera init)
 git add .gitignore
 git commit -m "chore: initial commit"
 ```
 
-> **Why an initial commit?** Agora uses git branches and worktrees. Without at least one commit on `main`, branch creation and worktree checkout will fail.
+> **Why an initial commit?** Monsthera uses git branches and worktrees. Without at least one commit on `main`, branch creation and worktree checkout will fail.
 
 ---
 
-## 3. Initialize Agora
+## 3. Initialize Monsthera
 
 ```bash
-agora init
-agora index --full
+monsthera init
+monsthera index --full
 ```
 
-This creates the `.agora/` directory with:
-- `agora.db` — SQLite database (WAL mode) for all coordination state
+This creates the `.monsthera/` directory with:
+- `monsthera.db` — SQLite database (WAL mode) for all coordination state
 - `config.json` — Governance and runtime configuration
 - `agents/` — Agent instruction manifests
 - `workflows/` — YAML workflow definitions (developer-loop, planner-loop, council-loop)
@@ -88,7 +88,7 @@ This creates the `.agora/` directory with:
 
 ## 4. Configure Governance
 
-Edit `.agora/config.json`:
+Edit `.monsthera/config.json`:
 
 ```json
 {
@@ -154,15 +154,15 @@ Edit `.agora/config.json`:
 Create `CLAUDE.md` at the repo root:
 
 ```markdown
-# Agora Office
+# Monsthera Office
 
-Isometric pixel art web app that visualizes Agora multi-agent development as a virtual office.
+Isometric pixel art web app that visualizes Monsthera multi-agent development as a virtual office.
 
 ## Architecture
 
 Monorepo with 3 pnpm workspace packages:
 - `packages/shared` — TypeScript types shared between server and client
-- `packages/server` — Node + Express + better-sqlite3 reading Agora DB in read-only mode
+- `packages/server` — Node + Express + better-sqlite3 reading Monsthera DB in read-only mode
 - `packages/client` — React 18 + PixiJS 8 + Zustand + Vite
 
 ## Tech Stack
@@ -172,8 +172,8 @@ TypeScript (strict), React 18, PixiJS 8 (not @pixi/react), Zustand, Vite 5, Expr
 ## Conventions
 
 - All packages use TypeScript strict mode with `noEmit` checks
-- Shared types are imported from `@agora-office/shared`
-- Server opens Agora's SQLite DB read-only — never writes
+- Shared types are imported from `@monsthera-office/shared`
+- Server opens Monsthera's SQLite DB read-only — never writes
 - Client uses Zustand stores, not React context
 - PixiJS manages the canvas imperatively — React renders the UI overlay only
 - Isometric tiles are 64x32 (2:1 standard), depth-sorted by `(col + row)`
@@ -183,14 +183,14 @@ TypeScript (strict), React 18, PixiJS 8 (not @pixi/react), Zustand, Vite 5, Expr
 ## Commands
 
 - `pnpm install` — install all dependencies
-- `pnpm --filter @agora-office/client dev` — start Vite dev server
-- `pnpm --filter @agora-office/server dev` — start Express server
+- `pnpm --filter @monsthera-office/client dev` — start Vite dev server
+- `pnpm --filter @monsthera-office/server dev` — start Express server
 - `pnpm build` — build all packages
 - `tsc --build` — typecheck all packages (used for validation)
 
 ## Design Spec
 
-Full spec at `docs/superpowers/specs/2026-03-17-agora-office-design.md`.
+Full spec at `docs/superpowers/specs/2026-03-17-monsthera-office-design.md`.
 Read the relevant sections before implementing any ticket.
 
 ## Testing
@@ -201,14 +201,14 @@ each have their own test setups. Run `pnpm test` from root.
 
 ### 5.2 Agent Manifests
 
-Create `.agora/agents/` manifests for this project. The defaults from Agora work well, but you can customize the developer prompt:
+Create `.monsthera/agents/` manifests for this project. The defaults from Monsthera work well, but you can customize the developer prompt:
 
-**`.agora/agents/developer-loop.md`:**
+**`.monsthera/agents/developer-loop.md`:**
 
 ```markdown
 ---
 name: Developer Loop
-description: Implements tickets for Agora Office — isometric pixel art visualization app.
+description: Implements tickets for Monsthera Office — isometric pixel art visualization app.
 role: developer
 tags:
   - workflow
@@ -218,14 +218,14 @@ tags:
 ---
 # Developer Loop
 
-You are the implementation agent for Agora Office.
+You are the implementation agent for Monsthera Office.
 
 Start by running the `developer-loop` workflow to inspect suggested work.
 
 ## Project Context
 
 This is a monorepo with 3 packages: shared, server, client.
-Read the spec at `docs/superpowers/specs/2026-03-17-agora-office-design.md`
+Read the spec at `docs/superpowers/specs/2026-03-17-monsthera-office-design.md`
 before implementing any ticket — it has exact field names, color values,
 room layouts, and event schemas you must follow.
 
@@ -245,7 +245,7 @@ room layouts, and event schemas you must follow.
 
 ### 5.3 Council Reviewers
 
-The default Agora reviewer manifests (architect, security, simplifier, performance, patterns) work out of the box. No customization needed unless you want to add project-specific review criteria.
+The default Monsthera reviewer manifests (architect, security, simplifier, performance, patterns) work out of the box. No customization needed unless you want to add project-specific review criteria.
 
 ---
 
@@ -255,46 +255,46 @@ Before creating tickets, load the spec and plan into the knowledge store so all 
 
 ```bash
 # Store the spec as "context" knowledge
-agora tool store_knowledge --input '{
+monsthera tool store_knowledge --input '{
   "type": "context",
   "scope": "repo",
-  "title": "Agora Office Design Spec",
-  "content": "Full-stack isometric pixel art office visualization for Agora. Monorepo with 3 packages (shared, server, client). Server polls Agora SQLite DB read-only, emits SSE events. Client renders PixiJS isometric world with 6 rooms (lobby, desks, planning, council, deploy, cafeteria). Characters represent agents, move between rooms based on ticket lifecycle. Pastel color palette, cute chibi sprites 48x48, 64x32 isometric tiles. See docs/superpowers/specs/2026-03-17-agora-office-design.md for full details.",
-  "tags": ["agora-office", "spec", "architecture"]
+  "title": "Monsthera Office Design Spec",
+  "content": "Full-stack isometric pixel art office visualization for Monsthera. Monorepo with 3 packages (shared, server, client). Server polls Monsthera SQLite DB read-only, emits SSE events. Client renders PixiJS isometric world with 6 rooms (lobby, desks, planning, council, deploy, cafeteria). Characters represent agents, move between rooms based on ticket lifecycle. Pastel color palette, cute chibi sprites 48x48, 64x32 isometric tiles. See docs/superpowers/specs/2026-03-17-monsthera-office-design.md for full details.",
+  "tags": ["monsthera-office", "spec", "architecture"]
 }'
 
 # Store the implementation plan
-agora tool store_knowledge --input '{
+monsthera tool store_knowledge --input '{
   "type": "plan",
   "scope": "repo",
-  "title": "Agora Office Implementation Plan",
-  "content": "20 tickets across 9 waves. T01: scaffold monorepo. T02: shared types. T03-T06: backend (config, SSE, poller, routes). T07-T11: isometric engine (world, tilemap, sprites, pathfinding, particles). T12: Zustand stores. T13: SSE client. T14: rooms. T15: lifecycle. T16: React UI. T17: full integration. T18-T20: polish. See docs/superpowers/plans/2026-03-17-agora-office.md for file map and detailed steps.",
-  "tags": ["agora-office", "plan", "implementation"]
+  "title": "Monsthera Office Implementation Plan",
+  "content": "20 tickets across 9 waves. T01: scaffold monorepo. T02: shared types. T03-T06: backend (config, SSE, poller, routes). T07-T11: isometric engine (world, tilemap, sprites, pathfinding, particles). T12: Zustand stores. T13: SSE client. T14: rooms. T15: lifecycle. T16: React UI. T17: full integration. T18-T20: polish. See docs/superpowers/plans/2026-03-17-monsthera-office.md for file map and detailed steps.",
+  "tags": ["monsthera-office", "plan", "implementation"]
 }'
 
 # Store key architectural decisions
-agora tool store_knowledge --input '{
+monsthera tool store_knowledge --input '{
   "type": "decision",
   "scope": "repo",
   "title": "PixiJS 8 for isometric rendering",
   "content": "Use PixiJS 8 (not @pixi/react) for the isometric canvas. React handles only the UI overlay (sidebar, event log, camera controls). PixiJS manages the canvas imperatively via a world container with depth sorting by (col+row). This separation keeps rendering performant and React-free in the hot path.",
-  "tags": ["agora-office", "pixi", "rendering", "architecture"]
+  "tags": ["monsthera-office", "pixi", "rendering", "architecture"]
 }'
 
-agora tool store_knowledge --input '{
+monsthera tool store_knowledge --input '{
   "type": "decision",
   "scope": "repo",
   "title": "SSE over WebSocket for real-time events",
-  "content": "Server emits SSE (Server-Sent Events) instead of WebSocket. One-directional push is sufficient — client never sends data to server. SSE auto-reconnects natively in EventSource. Backend polls Agora SQLite via dashboard_events cursor + 5 complementary table diffs.",
-  "tags": ["agora-office", "sse", "backend", "architecture"]
+  "content": "Server emits SSE (Server-Sent Events) instead of WebSocket. One-directional push is sufficient — client never sends data to server. SSE auto-reconnects natively in EventSource. Backend polls Monsthera SQLite via dashboard_events cursor + 5 complementary table diffs.",
+  "tags": ["monsthera-office", "sse", "backend", "architecture"]
 }'
 
-agora tool store_knowledge --input '{
+monsthera tool store_knowledge --input '{
   "type": "decision",
   "scope": "repo",
-  "title": "Read-only SQLite access to Agora DB",
-  "content": "Agora Office server opens Agora database in read-only mode via better-sqlite3. It NEVER writes to Agora DB. This is a visualization tool, not a control plane. The server only reads: agents, sessions, tickets, dashboard_events, council_assignments, patches, coordination_messages.",
-  "tags": ["agora-office", "sqlite", "backend", "security"]
+  "title": "Read-only SQLite access to Monsthera DB",
+  "content": "Monsthera Office server opens Monsthera database in read-only mode via better-sqlite3. It NEVER writes to Monsthera DB. This is a visualization tool, not a control plane. The server only reads: agents, sessions, tickets, dashboard_events, council_assignments, patches, coordination_messages.",
+  "tags": ["monsthera-office", "sqlite", "backend", "security"]
 }'
 ```
 
@@ -302,17 +302,17 @@ agora tool store_knowledge --input '{
 
 ## 7. Create Tickets
 
-Use `decompose_goal` with `dryRun: false` to create all 20 tickets. The full ticket definitions are in the [ticket manifest](2026-03-17-agora-office-tickets.md).
+Use `decompose_goal` with `dryRun: false` to create all 20 tickets. The full ticket definitions are in the [ticket manifest](2026-03-17-monsthera-office-tickets.md).
 
-### Option A: Via Agora CLI (recommended)
+### Option A: Via Monsthera CLI (recommended)
 
 ```bash
-agora tool decompose_goal --input '{
-  "goal": "Build Agora Office: a full-stack web app that visualizes Agora multi-agent development activity as an isometric pixel art office with cute chibi characters, 6 themed rooms, real-time SSE connection, and animated interactions.",
+monsthera tool decompose_goal --input '{
+  "goal": "Build Monsthera Office: a full-stack web app that visualizes Monsthera multi-agent development activity as an isometric pixel art office with cute chibi characters, 6 themed rooms, real-time SSE connection, and animated interactions.",
   "proposedTasks": [
     {
       "title": "Scaffold monorepo with pnpm workspaces",
-      "description": "Initialize the agora-office monorepo with pnpm workspaces. Create 3 packages: shared (shared types), server (Node+Express), client (React+PixiJS+Vite). Configure strict TypeScript, project references, and dev scripts.",
+      "description": "Initialize the monsthera-office monorepo with pnpm workspaces. Create 3 packages: shared (shared types), server (Node+Express), client (React+PixiJS+Vite). Configure strict TypeScript, project references, and dev scripts.",
       "rationale": "Foundation for all other work. Everything depends on this.",
       "affectedPaths": ["package.json", "pnpm-workspace.yaml", "tsconfig.base.json", "packages/shared/", "packages/server/", "packages/client/"],
       "tags": ["setup", "infra"],
@@ -334,7 +334,7 @@ agora tool decompose_goal --input '{
 Have an agent read the ticket manifest and call `decompose_goal`:
 
 ```
-1. Read docs/superpowers/plans/2026-03-17-agora-office-tickets.md
+1. Read docs/superpowers/plans/2026-03-17-monsthera-office-tickets.md
 2. Parse the 20 tickets with their dependencies
 3. Map dependsOn references (T01→index 0, T02→index 1, etc.)
 4. Call decompose_goal with dryRun: true first to validate
@@ -346,12 +346,12 @@ Have an agent read the ticket manifest and call `decompose_goal`:
 
 ```bash
 # Create each ticket individually
-agora ticket create --title "Scaffold monorepo with pnpm workspaces" \
+monsthera ticket create --title "Scaffold monorepo with pnpm workspaces" \
   --description "..." --severity high --priority 10 \
   --tags setup,infra --affected-paths "package.json,pnpm-workspace.yaml"
 
 # Then link dependencies
-agora tool link_tickets --input '{"fromTicketId": "TKT-xxx", "toTicketId": "TKT-yyy", "edgeType": "blocks"}'
+monsthera tool link_tickets --input '{"fromTicketId": "TKT-xxx", "toTicketId": "TKT-yyy", "edgeType": "blocks"}'
 ```
 
 ---
@@ -363,21 +363,21 @@ agora tool link_tickets --input '{"fromTicketId": "TKT-xxx", "toTicketId": "TKT-
 TICKET_IDS="TKT-xxx,TKT-yyy,..."  # all 20 IDs
 
 # Create work group
-agora tool create_work_group --input '{
-  "title": "Agora Office v1",
-  "description": "Full-stack isometric pixel art office visualization for Agora multi-agent development",
-  "tags": ["agora-office", "v1"]
+monsthera tool create_work_group --input '{
+  "title": "Monsthera Office v1",
+  "description": "Full-stack isometric pixel art office visualization for Monsthera multi-agent development",
+  "tags": ["monsthera-office", "v1"]
 }'
 # Returns: groupId = "WG-xxxxxxxx"
 
 # Add all tickets to the group
-agora tool add_tickets_to_group --input '{
+monsthera tool add_tickets_to_group --input '{
   "groupId": "WG-xxxxxxxx",
   "ticketIds": ["TKT-1", "TKT-2", ..., "TKT-20"]
 }'
 
 # Compute waves based on dependency DAG
-agora tool compute_waves --input '{
+monsthera tool compute_waves --input '{
   "groupId": "WG-xxxxxxxx"
 }'
 ```
@@ -405,7 +405,7 @@ Expected output — 9 waves matching the dependency graph:
 The orchestrator manages the entire lifecycle: spawn agents, monitor progress, advance waves, merge to main.
 
 ```bash
-agora orchestrate \
+monsthera orchestrate \
   --group WG-xxxxxxxx \
   --agents 4 \
   --test-command "pnpm exec tsc --build" \
@@ -420,7 +420,7 @@ agora orchestrate \
 ┌─────────────────────────────────────────────────────────────┐
 │                    ORCHESTRATOR LOOP                        │
 │                                                             │
-│  1. Creates integration branch: agora/convoy/WG-xxxxxxxx    │
+│  1. Creates integration branch: monsthera/convoy/WG-xxxxxxxx    │
 │  2. Sets currentWave = 1                                    │
 │                                                             │
 │  For each wave:                                             │
@@ -432,7 +432,7 @@ agora orchestrate \
 │  │    │ ii.  worktree branches from integration     │   │    │
 │  │    │ iii. claim affected files (advisory)        │   │    │
 │  │    │ iv.  assign ticket to agent                 │   │    │
-│  │    │ v.   spawn process: agora loop dev          │   │    │
+│  │    │ v.   spawn process: monsthera loop dev          │   │    │
 │  │    │      --ticket TKT-xxx --limit 1             │   │    │
 │  │    │ vi.  agent implements + proposes patch       │   │    │
 │  │    │ vii. council reviews (council-loop)         │   │    │
@@ -454,12 +454,12 @@ agora orchestrate \
 ### Each spawned agent's lifecycle:
 
 ```
-agora loop dev --ticket TKT-xxx --limit 1
+monsthera loop dev --ticket TKT-xxx --limit 1
 │
 ├─ register_agent (name: "spawn-developer-TKT-xxx", role: developer)
 ├─ run developer-loop workflow:
 │   ├─ Read ticket details + acceptance criteria
-│   ├─ search_knowledge("agora office") → load project context
+│   ├─ search_knowledge("monsthera office") → load project context
 │   ├─ get_code_pack → understand current codebase state
 │   ├─ claim_files for affected paths
 │   ├─ Implement the feature/fix
@@ -488,13 +488,13 @@ agora loop dev --ticket TKT-xxx --limit 1
 
 ## 10. Sessions and Concurrency Planning
 
-Each agent that registers with Agora gets a unique `agentId` (persistent across reconnects) and a `sessionId` (ephemeral, one per connection). The orchestrator creates these automatically when spawning agents. Understanding the session count is important for planning resources and API costs.
+Each agent that registers with Monsthera gets a unique `agentId` (persistent across reconnects) and a `sessionId` (ephemeral, one per connection). The orchestrator creates these automatically when spawning agents. Understanding the session count is important for planning resources and API costs.
 
 ### 10.1 Session Anatomy
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ One Agora Session                                               │
+│ One Monsthera Session                                               │
 │                                                                 │
 │  register_agent()                                               │
 │   → agentId:  agent-a1b2c3   (reused if same name reconnects)  │
@@ -511,7 +511,7 @@ Each agent that registers with Agora gets a unique `agentId` (persistent across 
 
 ### 10.2 Agent Roles and How Many You Need
 
-A full Agora team has 4 role types. Not all need to be active simultaneously — the orchestrator manages lifecycle automatically in convoy mode.
+A full Monsthera team has 4 role types. Not all need to be active simultaneously — the orchestrator manages lifecycle automatically in convoy mode.
 
 | Role | Purpose | Min | Recommended | Max useful |
 |------|---------|-----|-------------|------------|
@@ -522,7 +522,7 @@ A full Agora team has 4 role types. Not all need to be active simultaneously —
 
 > \* Planner is optional when tickets are pre-approved (as in this project where tickets come from `decompose_goal` and go through the planning gate).
 
-### 10.3 Sessions Per Wave (Agora Office)
+### 10.3 Sessions Per Wave (Monsthera Office)
 
 The number of simultaneous sessions depends on the current wave. Each developer gets 1 session. Reviewers and facilitator run persistently across waves.
 
@@ -550,7 +550,7 @@ Choose based on your API budget and hardware:
 #### Minimal (budget-conscious)
 
 ```bash
-agora orchestrate --group WG-xxx --agents 2 --test-command "pnpm exec tsc --build"
+monsthera orchestrate --group WG-xxx --agents 2 --test-command "pnpm exec tsc --build"
 ```
 
 - **2 developers** max in parallel
@@ -563,7 +563,7 @@ agora orchestrate --group WG-xxx --agents 2 --test-command "pnpm exec tsc --buil
 #### Recommended (balanced)
 
 ```bash
-agora orchestrate --group WG-xxx --agents 4 --test-command "pnpm exec tsc --build"
+monsthera orchestrate --group WG-xxx --agents 4 --test-command "pnpm exec tsc --build"
 ```
 
 - **4 developers** max in parallel
@@ -576,7 +576,7 @@ agora orchestrate --group WG-xxx --agents 4 --test-command "pnpm exec tsc --buil
 #### Maximum throughput
 
 ```bash
-agora orchestrate --group WG-xxx --agents 5 --test-command "pnpm exec tsc --build"
+monsthera orchestrate --group WG-xxx --agents 5 --test-command "pnpm exec tsc --build"
 ```
 
 - **5 developers** max in parallel (matches wave 3, the largest)
@@ -594,8 +594,8 @@ Wave N starts
 ├─ Orchestrator calls spawn_agent(ticketId) for each ticket (up to --agents)
 │   ├─ Creates agent: agent-spawn-developer-TKT-xxx
 │   ├─ Creates session: session-abc123
-│   ├─ Creates worktree: .agora/worktrees/session-abc123/
-│   └─ Spawns process: agora loop dev --ticket TKT-xxx --limit 1
+│   ├─ Creates worktree: .monsthera/worktrees/session-abc123/
+│   └─ Spawns process: monsthera loop dev --ticket TKT-xxx --limit 1
 │
 ├─ Developer works...
 │   ├─ (all tool calls refresh session heartbeat)
@@ -626,29 +626,29 @@ If running agents manually (no convoy), here's the terminal layout for the peak 
 ┌─────────────────────────┬─────────────────────────┐
 │ Terminal 1              │ Terminal 2              │
 │ Facilitator             │ Developer 1 (T04)       │
-│ agora loop plan --watch │ agora loop dev          │
+│ monsthera loop plan --watch │ monsthera loop dev          │
 │                         │   --ticket TKT-xxx      │
 ├─────────────────────────┼─────────────────────────┤
 │ Terminal 3              │ Terminal 4              │
 │ Developer 2 (T08)       │ Developer 3 (T09)       │
-│ agora loop dev          │ agora loop dev          │
+│ monsthera loop dev          │ monsthera loop dev          │
 │   --ticket TKT-yyy      │   --ticket TKT-zzz      │
 ├─────────────────────────┼─────────────────────────┤
 │ Terminal 5              │ Terminal 6              │
 │ Developer 4 (T11)       │ Developer 5 (T12)       │
-│ agora loop dev          │ agora loop dev          │
+│ monsthera loop dev          │ monsthera loop dev          │
 │   --ticket TKT-aaa      │   --ticket TKT-bbb      │
 ├─────────────────────────┼─────────────────────────┤
 │ Terminal 7              │ Terminal 8              │
 │ Reviewer: architect     │ Reviewer: security      │
-│ agora loop council      │ agora loop council      │
+│ monsthera loop council      │ monsthera loop council      │
 │   --watch               │   --watch               │
 │   --specialization      │   --specialization      │
 │   architect             │   security              │
 ├─────────────────────────┼─────────────────────────┤
 │ Terminal 9                                        │
 │ Reviewer: simplifier                              │
-│ agora loop council --watch --specialization       │
+│ monsthera loop council --watch --specialization       │
 │   simplifier                                      │
 └───────────────────────────────────────────────────┘
 ```
@@ -657,15 +657,15 @@ For smaller waves (1-2 tickets), close the extra developer terminals — the rev
 
 ### 10.7 OpenCode Session Count
 
-When using OpenCode agents, each `opencode` process = 1 Agora session. The same concurrency profiles apply:
+When using OpenCode agents, each `opencode` process = 1 Monsthera session. The same concurrency profiles apply:
 
-| Profile | OpenCode terminals | Agora loop terminals | Total |
+| Profile | OpenCode terminals | Monsthera loop terminals | Total |
 |---------|-------------------|---------------------|-------|
 | Minimal | 2 (developers) | 4 (3 reviewers + 1 facilitator) | 6 |
 | Recommended | 4 (developers) | 4 (3 reviewers + 1 facilitator) | 8 |
 | Maximum | 5 (developers) | 6 (5 reviewers + 1 facilitator) | 11 |
 
-> **Tip:** You can mix runtimes. Use OpenCode for developers and Agora built-in loops for reviewers/facilitator, since the review workflows are deeply integrated with Agora's evidence-gathering pipeline.
+> **Tip:** You can mix runtimes. Use OpenCode for developers and Monsthera built-in loops for reviewers/facilitator, since the review workflows are deeply integrated with Monsthera's evidence-gathering pipeline.
 
 ---
 
@@ -677,7 +677,7 @@ If you prefer to run agents manually without the convoy orchestrator:
 
 ```bash
 # Reviews backlog tickets and refines them
-agora loop plan --watch --interval-ms 30000
+monsthera loop plan --watch --interval-ms 30000
 ```
 
 The planner picks up `backlog` tickets, analyzes dependencies, challenges assumptions, and transitions them to `approved` when ready.
@@ -686,10 +686,10 @@ The planner picks up `backlog` tickets, analyzes dependencies, challenges assump
 
 ```bash
 # Terminal 1 — developer agent
-agora loop dev --watch --interval-ms 15000 --agent-name "dev-alpha"
+monsthera loop dev --watch --interval-ms 15000 --agent-name "dev-alpha"
 
 # Terminal 2 — second developer (parallel)
-agora loop dev --watch --interval-ms 15000 --agent-name "dev-beta"
+monsthera loop dev --watch --interval-ms 15000 --agent-name "dev-beta"
 ```
 
 Each developer agent:
@@ -702,15 +702,15 @@ Each developer agent:
 
 ```bash
 # One per specialization, watching the review queue
-agora loop council --watch --specialization architect --agent-name "reviewer-arch"
-agora loop council --watch --specialization security --agent-name "reviewer-sec"
-agora loop council --watch --specialization simplifier --agent-name "reviewer-simple"
+monsthera loop council --watch --specialization architect --agent-name "reviewer-arch"
+monsthera loop council --watch --specialization security --agent-name "reviewer-sec"
+monsthera loop council --watch --specialization simplifier --agent-name "reviewer-simple"
 ```
 
 ### Step 4: Run facilitator
 
 ```bash
-agora loop plan --watch --agent-name "facilitator"
+monsthera loop plan --watch --agent-name "facilitator"
 ```
 
 The facilitator handles:
@@ -722,13 +722,13 @@ The facilitator handles:
 
 ## 12. Using OpenCode as Agent Runtime
 
-[OpenCode](https://github.com/opencode-ai/opencode) is an open-source terminal AI coding tool that supports MCP servers. It can connect to Agora via MCP and act as a developer agent, just like Claude Code.
+[OpenCode](https://github.com/opencode-ai/opencode) is an open-source terminal AI coding tool that supports MCP servers. It can connect to Monsthera via MCP and act as a developer agent, just like Claude Code.
 
 ### 12.1 How It Works
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ Agora MCP Server (agora serve)                   │
+│ Monsthera MCP Server (monsthera serve)                   │
 │  ├─ SQLite DB (tickets, agents, patches, etc.)   │
 │  ├─ 72 MCP tools (register_agent, claim_files..) │
 │  └─ Listening on stdio or HTTP                   │
@@ -736,14 +736,14 @@ The facilitator handles:
 │       ▲            ▲            ▲                │
 │       │ MCP        │ MCP        │ MCP            │
 │  ┌────┴───┐  ┌─────┴────┐  ┌───┴────────┐       │
-│  │OpenCode│  │OpenCode  │  │agora loop  │       │
+│  │OpenCode│  │OpenCode  │  │monsthera loop  │       │
 │  │ agent 1│  │ agent 2  │  │  dev       │       │
 │  │(dev)   │  │(dev)     │  │(built-in)  │       │
 │  └────────┘  └──────────┘  └────────────┘       │
 └──────────────────────────────────────────────────┘
 ```
 
-OpenCode agents and Agora's built-in loops can coexist — they all talk to the same MCP server and see the same tickets, coordination messages, and knowledge store.
+OpenCode agents and Monsthera's built-in loops can coexist — they all talk to the same MCP server and see the same tickets, coordination messages, and knowledge store.
 
 ### 12.2 Configure MCP Connection
 
@@ -752,20 +752,20 @@ Create `.mcp.json` in the repo root (or the worktree root):
 ```json
 {
   "mcpServers": {
-    "agora": {
+    "monsthera": {
       "command": "npx",
-      "args": ["-y", "agora-mcp@latest", "serve", "--repo-path", "/absolute/path/to/agora-office"]
+      "args": ["-y", "monsthera-mcp@latest", "serve", "--repo-path", "/absolute/path/to/monsthera-office"]
     }
   }
 }
 ```
 
-Or if Agora is running in HTTP mode:
+Or if Monsthera is running in HTTP mode:
 
 ```json
 {
   "mcpServers": {
-    "agora": {
+    "monsthera": {
       "type": "http",
       "url": "http://localhost:3141/mcp"
     }
@@ -778,13 +778,13 @@ Or if Agora is running in HTTP mode:
 Create `AGENTS.md` in the repo root. OpenCode reads this file for agent-level instructions:
 
 ```markdown
-# Agora Office — Agent Instructions
+# Monsthera Office — Agent Instructions
 
 ## Setup (run at session start)
 
 1. Call `register_agent` with your name and `desiredRole: "developer"`
 2. Save the returned `agentId` and `sessionId` — use them on all subsequent calls
-3. Call `search_knowledge(query="agora office spec")` to load project context
+3. Call `search_knowledge(query="monsthera office spec")` to load project context
 
 ## Development Loop
 
@@ -800,7 +800,7 @@ Create `AGENTS.md` in the repo root. OpenCode reads this file for agent-level in
 3. Understand the ticket:
    - `get_ticket(ticketId)` → read title, description, acceptance criteria
    - `search_knowledge(query="<ticket topic>")` → find relevant context
-   - Read the spec: `docs/superpowers/specs/2026-03-17-agora-office-design.md`
+   - Read the spec: `docs/superpowers/specs/2026-03-17-monsthera-office-design.md`
 
 4. Implement:
    - Work in your worktree branch
@@ -817,7 +817,7 @@ Create `AGENTS.md` in the repo root. OpenCode reads this file for agent-level in
 
 ## Rules
 
-- NEVER write to the Agora database — only use MCP tools
+- NEVER write to the Monsthera database — only use MCP tools
 - Claim files BEFORE editing them
 - One ticket at a time
 - `tsc --build` must pass before submitting
@@ -829,15 +829,15 @@ Create `AGENTS.md` in the repo root. OpenCode reads this file for agent-level in
 Run OpenCode agents in separate terminals, each working on a different ticket:
 
 ```bash
-# Terminal 1: Start Agora MCP server (if using HTTP mode)
-agora serve --transport http --port 3141
+# Terminal 1: Start Monsthera MCP server (if using HTTP mode)
+monsthera serve --transport http --port 3141
 
 # Terminal 2: OpenCode agent working on T03
-cd /path/to/agora-office
+cd /path/to/monsthera-office
 opencode --prompt "Register as developer. Take ticket TKT-xxx (Backend: config and SQLite reader). Read the spec section 16 for schema reference. Implement, validate with tsc --build, and propose patch."
 
 # Terminal 3: OpenCode agent working on T07
-cd /path/to/agora-office
+cd /path/to/monsthera-office
 opencode --prompt "Register as developer. Take ticket TKT-yyy (Isometric engine: coordinate system). Read spec section 5 for room layout. Implement, validate, and propose patch."
 
 # Terminal 4: OpenCode agent as reviewer
@@ -850,21 +850,21 @@ For proper isolation (like the convoy does), create worktrees manually:
 
 ```bash
 # Create worktrees for parallel development
-git worktree add ../agora-office-t03 -b ticket/TKT-xxx
-git worktree add ../agora-office-t07 -b ticket/TKT-yyy
+git worktree add ../monsthera-office-t03 -b ticket/TKT-xxx
+git worktree add ../monsthera-office-t07 -b ticket/TKT-yyy
 
 # Copy MCP config to each worktree
-cp .mcp.json ../agora-office-t03/
-cp .mcp.json ../agora-office-t07/
+cp .mcp.json ../monsthera-office-t03/
+cp .mcp.json ../monsthera-office-t07/
 
 # Run OpenCode in each worktree
-cd ../agora-office-t03 && opencode --prompt "..."
-cd ../agora-office-t07 && opencode --prompt "..."
+cd ../monsthera-office-t03 && opencode --prompt "..."
+cd ../monsthera-office-t07 && opencode --prompt "..."
 ```
 
 ### 12.6 Convoy Mode with OpenCode (Custom Spawn Script)
 
-The Agora orchestrator's `spawnProcess` callback is currently hard-coded to spawn `agora loop dev`. To use OpenCode in convoy mode, you need a wrapper script that the orchestrator can invoke.
+The Monsthera orchestrator's `spawnProcess` callback is currently hard-coded to spawn `monsthera loop dev`. To use OpenCode in convoy mode, you need a wrapper script that the orchestrator can invoke.
 
 **Create `scripts/spawn-opencode.sh`:**
 
@@ -881,9 +881,9 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 cat > "$WORKTREE_PATH/.mcp.json" << EOF
 {
   "mcpServers": {
-    "agora": {
+    "monsthera": {
       "command": "npx",
-      "args": ["-y", "agora-mcp@latest", "serve", "--repo-path", "$REPO_ROOT"]
+      "args": ["-y", "monsthera-mcp@latest", "serve", "--repo-path", "$REPO_ROOT"]
     }
   }
 }
@@ -895,7 +895,7 @@ cp "$REPO_ROOT/AGENTS.md" "$WORKTREE_PATH/"
 # Launch OpenCode with ticket-specific prompt
 cd "$WORKTREE_PATH"
 opencode --prompt "$(cat <<PROMPT
-You are a developer agent in the Agora Office project.
+You are a developer agent in the Monsthera Office project.
 
 1. Call register_agent(name="opencode-dev-$TICKET_ID", desiredRole="developer")
 2. Call assign_ticket(ticketId="$TICKET_ID")
@@ -911,7 +911,7 @@ PROMPT
 echo $!  # Print PID for orchestrator tracking
 ```
 
-**To use this with the orchestrator**, you would need to modify Agora's `src/cli/orchestrator.ts` to call your script instead of `agora loop dev`. This is a planned extension point — currently requires a code change:
+**To use this with the orchestrator**, you would need to modify Monsthera's `src/cli/orchestrator.ts` to call your script instead of `monsthera loop dev`. This is a planned extension point — currently requires a code change:
 
 ```typescript
 // In src/cli/orchestrator.ts, replace the spawnProcess callback:
@@ -935,7 +935,7 @@ spawnProcess: async (worktreePath, ticketId) => {
 }
 ```
 
-> **Future improvement:** A `--spawn-command` flag on `agora orchestrate` would make this configurable without code changes. This could be contributed to Agora as a feature.
+> **Future improvement:** A `--spawn-command` flag on `monsthera orchestrate` would make this configurable without code changes. This could be contributed to Monsthera as a feature.
 
 ### 12.7 Mixed Agent Teams
 
@@ -945,21 +945,21 @@ You can run different agent runtimes for different roles:
 |------|---------|-----|
 | Developer | OpenCode | Open-source, customizable |
 | Developer | Claude Code | Strong at complex implementations |
-| Reviewer | Agora built-in (`agora loop council`) | Purpose-built for evidence-gathering review |
-| Facilitator | Agora built-in (`agora loop plan`) | Commit serialization requires deep Agora integration |
+| Reviewer | Monsthera built-in (`monsthera loop council`) | Purpose-built for evidence-gathering review |
+| Facilitator | Monsthera built-in (`monsthera loop plan`) | Commit serialization requires deep Monsthera integration |
 | Planner | Either | Both work for backlog refinement |
 
-All runtimes coexist — they register as agents with different names and connect to the same Agora MCP server. The governance system (quorum, verdicts, auto-advance) works identically regardless of which runtime submitted the work.
+All runtimes coexist — they register as agents with different names and connect to the same Monsthera MCP server. The governance system (quorum, verdicts, auto-advance) works identically regardless of which runtime submitted the work.
 
 ```
-agora orchestrate --group WG-xxx --agents 4
+monsthera orchestrate --group WG-xxx --agents 4
   │
   ├─ Wave 2: T02 → OpenCode agent (via custom spawn script)
-  ├─ Wave 2: T03 → agora loop dev (built-in)
+  ├─ Wave 2: T03 → monsthera loop dev (built-in)
   ├─ Wave 2: T07 → OpenCode agent
   │
-  ├─ Council: agora loop council --watch (built-in, all specializations)
-  └─ Facilitator: agora loop plan --watch (built-in)
+  ├─ Council: monsthera loop council --watch (built-in, all specializations)
+  └─ Facilitator: monsthera loop plan --watch (built-in)
 ```
 
 ---
@@ -969,8 +969,8 @@ agora orchestrate --group WG-xxx --agents 4
 ### Dashboard
 
 ```bash
-# Agora admin dashboard (built-in)
-# Starts automatically with agora serve
+# Monsthera admin dashboard (built-in)
+# Starts automatically with monsthera serve
 open http://localhost:3141
 ```
 
@@ -978,19 +978,19 @@ open http://localhost:3141
 
 ```bash
 # Overall status
-agora status
+monsthera status
 
 # Ticket progress
-agora ticket list --status approved,in_progress,in_review,ready_for_commit
+monsthera ticket list --status approved,in_progress,in_review,ready_for_commit
 
 # Wave status for the convoy
-agora tool get_wave_status --input '{"groupId": "WG-xxxxxxxx"}'
+monsthera tool get_wave_status --input '{"groupId": "WG-xxxxxxxx"}'
 
 # Active agents and sessions
-agora tool agent_status --input '{"agentId": "agent-xxx"}'
+monsthera tool agent_status --input '{"agentId": "agent-xxx"}'
 
 # Recent events
-agora tool list_tickets --input '{"status": "in_progress"}'
+monsthera tool list_tickets --input '{"status": "in_progress"}'
 ```
 
 ### Intervention scenarios
@@ -998,10 +998,10 @@ agora tool list_tickets --input '{"status": "in_progress"}'
 **Ticket stuck in `in_review`:**
 ```bash
 # Check verdicts
-agora tool list_verdicts --input '{"ticketId": "TKT-xxx"}'
+monsthera tool list_verdicts --input '{"ticketId": "TKT-xxx"}'
 
 # If reviewers are missing, manually trigger council
-agora loop council TKT-xxx \
+monsthera loop council TKT-xxx \
   --transition "in_review->ready_for_commit" \
   --specialization architect
 ```
@@ -1009,36 +1009,36 @@ agora loop council TKT-xxx \
 **Agent crashed mid-work:**
 ```bash
 # Check if session is stale (3h auto-reap)
-agora tool agent_status --input '{"agentId": "agent-xxx"}'
+monsthera tool agent_status --input '{"agentId": "agent-xxx"}'
 
 # Force end session to release claims
-agora tool end_session --input '{"sessionId": "session-xxx"}'
+monsthera tool end_session --input '{"sessionId": "session-xxx"}'
 
 # Re-run the ticket
-agora loop dev --ticket TKT-xxx --limit 1
+monsthera loop dev --ticket TKT-xxx --limit 1
 ```
 
 **Wave stuck — one ticket blocking advancement:**
 ```bash
 # Check wave status
-agora tool get_wave_status --input '{"groupId": "WG-xxxxxxxx"}'
+monsthera tool get_wave_status --input '{"groupId": "WG-xxxxxxxx"}'
 
 # If a ticket is truly stuck, skip it
-agora tool update_ticket_status --input '{
+monsthera tool update_ticket_status --input '{
   "ticketId": "TKT-xxx",
   "newStatus": "blocked",
   "comment": "Skipping for wave advancement — will fix in follow-up"
 }'
 
 # Advance wave manually
-agora tool advance_wave --input '{"groupId": "WG-xxxxxxxx"}'
+monsthera tool advance_wave --input '{"groupId": "WG-xxxxxxxx"}'
 ```
 
 **Test failure on wave merge:**
 ```bash
 # The orchestrator runs bisect automatically
 # But if you need to manually fix:
-git checkout agora/convoy/WG-xxxxxxxx
+git checkout monsthera/convoy/WG-xxxxxxxx
 pnpm exec tsc --build
 # Fix the issue, commit, then re-run advance_wave
 ```
@@ -1052,10 +1052,10 @@ pnpm exec tsc --build
 | `decompose_goal` rejects dependencies | Cycle in dependsOn indices | Check that T01=index 0, T02=index 1, etc. No circular refs. |
 | Agent can't find project context | Knowledge store empty | Re-run step 6 to populate knowledge |
 | `tsc --build` fails in worktree | Missing `pnpm install` in worktree | Ensure T01 scaffold includes proper `postinstall` or worktree setup |
-| SSE client can't connect | Server not running or wrong port | Check `AGORA_DB_PATH` env var and `PORT` config |
+| SSE client can't connect | Server not running or wrong port | Check `MONSTHERA_DB_PATH` env var and `PORT` config |
 | Convoy stalls at wave N | Ticket in that wave is blocked/failed | Use `get_wave_status` to identify, then skip or fix |
 | File claim conflicts | Two tickets in same wave touch same files | `compute_waves` should split these into different waves. If not, set `claimEnforceMode: "advisory"` |
-| "No approved tickets" in dev loop | Planner hasn't approved them yet | Run `agora loop plan` first, or manually approve with `update_ticket_status` |
+| "No approved tickets" in dev loop | Planner hasn't approved them yet | Run `monsthera loop plan` first, or manually approve with `update_ticket_status` |
 | Agent registers as observer | `registrationAuth.enabled` but no token | Disable auth or provide `authToken` in registration |
 
 ---
@@ -1070,45 +1070,45 @@ REPO_DIR="$(pwd)"
 SPEC_DIR="docs/superpowers/specs"
 PLAN_DIR="docs/superpowers/plans"
 
-echo "=== Agora Office Convoy Setup ==="
+echo "=== Monsthera Office Convoy Setup ==="
 
-# 1. Init Agora
-agora init
-agora index --full
+# 1. Init Monsthera
+monsthera init
+monsthera index --full
 
 # 2. Populate knowledge (abbreviated — see step 6 for full commands)
 echo "Populating knowledge store..."
-agora tool store_knowledge --input '{
+monsthera tool store_knowledge --input '{
   "type": "plan",
   "scope": "repo",
-  "title": "Agora Office Implementation Plan",
-  "content": "20 tickets, 9 waves. See docs/superpowers/plans/2026-03-17-agora-office.md",
-  "tags": ["agora-office", "plan"]
+  "title": "Monsthera Office Implementation Plan",
+  "content": "20 tickets, 9 waves. See docs/superpowers/plans/2026-03-17-monsthera-office.md",
+  "tags": ["monsthera-office", "plan"]
 }'
 
 # 3. Create tickets via decompose_goal
 # (Agent reads ticket manifest and calls decompose_goal)
 echo "Creating tickets..."
-# agora tool decompose_goal --input '{ ... }'  # see step 7
+# monsthera tool decompose_goal --input '{ ... }'  # see step 7
 
 # 4. Create work group
 echo "Creating work group..."
-GROUP_ID=$(agora tool create_work_group --input '{
-  "title": "Agora Office v1",
+GROUP_ID=$(monsthera tool create_work_group --input '{
+  "title": "Monsthera Office v1",
   "description": "Isometric pixel art office visualization"
 }' | jq -r '.groupId')
 
 # 5. Add tickets and compute waves
 echo "Computing waves..."
-agora tool add_tickets_to_group --input "{
+monsthera tool add_tickets_to_group --input "{
   \"groupId\": \"$GROUP_ID\",
-  \"ticketIds\": [$(agora ticket list --status backlog --format ids)]
+  \"ticketIds\": [$(monsthera ticket list --status backlog --format ids)]
 }"
-agora tool compute_waves --input "{\"groupId\": \"$GROUP_ID\"}"
+monsthera tool compute_waves --input "{\"groupId\": \"$GROUP_ID\"}"
 
 # 6. Launch convoy
 echo "Launching convoy..."
-agora orchestrate \
+monsthera orchestrate \
   --group "$GROUP_ID" \
   --agents 4 \
   --test-command "pnpm exec tsc --build" \
@@ -1123,14 +1123,14 @@ echo "=== Done ==="
 
 | Role | Count | Loop Command | Responsibility |
 |------|-------|-------------|----------------|
-| Developer | 1-4 (per wave) | `agora loop dev --ticket TKT-xxx` | Implement ticket, propose patch |
-| Architect Reviewer | 1 | `agora loop council --specialization architect` | Review boundaries, layering |
-| Security Reviewer | 1 | `agora loop council --specialization security` | Review auth, input validation (VETO power) |
-| Simplifier Reviewer | 1 | `agora loop council --specialization simplifier` | Review code clarity, remove complexity |
-| Performance Reviewer | 1 | `agora loop council --specialization performance` | Review rendering perf, memory |
-| Patterns Reviewer | 1 | `agora loop council --specialization patterns` | Review consistency with codebase patterns |
-| Facilitator | 1 | `agora loop plan --watch` | Process commit queue, drive convergence |
-| Planner | 1-2 | `agora loop plan --watch` | Refine backlog, approve tickets |
+| Developer | 1-4 (per wave) | `monsthera loop dev --ticket TKT-xxx` | Implement ticket, propose patch |
+| Architect Reviewer | 1 | `monsthera loop council --specialization architect` | Review boundaries, layering |
+| Security Reviewer | 1 | `monsthera loop council --specialization security` | Review auth, input validation (VETO power) |
+| Simplifier Reviewer | 1 | `monsthera loop council --specialization simplifier` | Review code clarity, remove complexity |
+| Performance Reviewer | 1 | `monsthera loop council --specialization performance` | Review rendering perf, memory |
+| Patterns Reviewer | 1 | `monsthera loop council --specialization patterns` | Review consistency with codebase patterns |
+| Facilitator | 1 | `monsthera loop plan --watch` | Process commit queue, drive convergence |
+| Planner | 1-2 | `monsthera loop plan --watch` | Refine backlog, approve tickets |
 
 **In convoy mode**, the orchestrator handles agent lifecycle automatically. These roles are described here for manual operation or debugging.
 
@@ -1140,8 +1140,8 @@ echo "=== Done ==="
 
 | Scenario | Approach |
 |----------|----------|
-| First-time demo, want full automation | Convoy (`agora orchestrate`) |
-| Debugging a specific ticket | Manual (`agora loop dev --ticket TKT-xxx`) |
+| First-time demo, want full automation | Convoy (`monsthera orchestrate`) |
+| Debugging a specific ticket | Manual (`monsthera loop dev --ticket TKT-xxx`) |
 | Wave 1 (scaffold only) | Manual — do T01 by hand, then convoy for the rest |
 | Need to customize agent behavior | Manual with custom `--agent-name` |
 | Production run, hands-off | Convoy with `--max-retries 2` |

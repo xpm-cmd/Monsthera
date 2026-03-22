@@ -4,7 +4,7 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as tables from "../db/schema.js";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
-import type { AgoraConfig } from "../core/config.js";
+import type { MonstheraConfig } from "../core/config.js";
 import { parseStringArrayJson } from "../core/input-hardening.js";
 import type { InsightStream } from "../core/insight-stream.js";
 import type { SearchRouter } from "../search/router.js";
@@ -40,7 +40,7 @@ export interface LifecycleHook {
 }
 
 export interface LifecycleContext {
-  config: AgoraConfig;
+  config: MonstheraConfig;
   db: DB;
   sqlite: DatabaseType;
   repoId: number;

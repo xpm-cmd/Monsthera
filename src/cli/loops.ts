@@ -1,8 +1,8 @@
 import { setTimeout as sleepTimeout } from "node:timers/promises";
 import { CouncilSpecializationId, type CouncilSpecializationId as CouncilSpecialization } from "../../schemas/council.js";
-import type { AgoraConfig, RetrospectiveConfig } from "../core/config.js";
-import type { AgoraContext } from "../core/context.js";
-import { createAgoraContextLoader } from "../core/context-loader.js";
+import type { MonstheraConfig, RetrospectiveConfig } from "../core/config.js";
+import type { MonstheraContext } from "../core/context.js";
+import { createMonstheraContextLoader } from "../core/context-loader.js";
 import type { InsightStream } from "../core/insight-stream.js";
 import { acquireCommitLock, releaseCommitLock, updateSessionWorktree } from "../db/queries.js";
 import * as queries from "../db/queries.js";
@@ -10,7 +10,7 @@ import { getMainRepoRoot } from "../git/operations.js";
 import { createAgentWorktree, removeAgentWorktree, mergeAgentWork, hasUnmergedCommits, rebaseOnMain, runTestsInWorktree } from "../git/worktree.js";
 import { createConvoyWorktree, mergeTicketToIntegration, rebaseOnBranch } from "../waves/integration-branch.js";
 import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
-import { createAgoraServer } from "../server.js";
+import { createMonstheraServer } from "../server.js";
 import { getToolRunner, type ToolRunner } from "../tools/tool-runner.js";
 import type { ToolRunnerCallResult } from "../core/tool-types.js";
 
@@ -124,9 +124,9 @@ export interface LoopExecutionPayload {
 }
 
 export interface LoopCliDeps {
-  createServer?: typeof createAgoraServer;
-  getRunner?: (server: ReturnType<typeof createAgoraServer>) => ToolRunner;
-  createContextLoader?: typeof createAgoraContextLoader;
+  createServer?: typeof createMonstheraServer;
+  getRunner?: (server: ReturnType<typeof createMonstheraServer>) => ToolRunner;
+  createContextLoader?: typeof createMonstheraContextLoader;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -164,7 +164,7 @@ const AUTONOMOUS_QUEUE_TIMEOUT_SECONDS = 5;
 const VOLATILE_RESULT_KEYS = new Set(["durationMs", "elapsedMs"]);
 
 export async function cmdLoop(
-  config: AgoraConfig,
+  config: MonstheraConfig,
   insight: InsightStream,
   args: string[],
   deps: LoopCliDeps = {},
@@ -198,8 +198,8 @@ export async function cmdLoop(
     return;
   }
 
-  let context: AgoraContext | null = null;
-  const baseGetContext = (deps.createContextLoader ?? createAgoraContextLoader)(
+  let context: MonstheraContext | null = null;
+  const baseGetContext = (deps.createContextLoader ?? createMonstheraContextLoader)(
     config,
     insight,
     { startLifecycleSweep: false },
@@ -209,7 +209,7 @@ export async function cmdLoop(
     return context;
   };
 
-  const serverFactory = deps.createServer ?? createAgoraServer;
+  const serverFactory = deps.createServer ?? createMonstheraServer;
   const server = serverFactory(config, { insight, getContext });
   const runner = (deps.getRunner ?? getToolRunner)(server);
   const agentName = getArg(args, "--agent-name") ?? spec.defaultAgentName;
@@ -954,10 +954,10 @@ function buildCouncilInvocation(args: string[], watchEnabled: boolean): LoopInvo
 
   if (!watchEnabled) {
     if (!ticketId || !/^TKT-[A-Za-z0-9]+$/i.test(ticketId)) {
-      throw new Error("Usage: agora loop council <ticket-id> --transition <technical_analysis->approved|in_review->ready_for_commit> [--since-commit <sha>] [--json]");
+      throw new Error("Usage: monsthera loop council <ticket-id> --transition <technical_analysis->approved|in_review->ready_for_commit> [--since-commit <sha>] [--json]");
     }
     if (!rawTransition) {
-      throw new Error("Usage: agora loop council <ticket-id> --transition <technical_analysis->approved|in_review->ready_for_commit> [--since-commit <sha>] [--json]");
+      throw new Error("Usage: monsthera loop council <ticket-id> --transition <technical_analysis->approved|in_review->ready_for_commit> [--since-commit <sha>] [--json]");
     }
     const transition = normalizeCouncilTransition(rawTransition);
     if (!COUNCIL_TRANSITIONS.has(transition)) {
@@ -1189,7 +1189,7 @@ function selectCouncilRequestSpecialization(
 async function resolveCouncilLoopSpecialization(input: {
   explicit?: CouncilSpecialization;
   agentName: string;
-  getContext: () => Promise<AgoraContext>;
+  getContext: () => Promise<MonstheraContext>;
 }): Promise<CouncilSpecialization | undefined> {
   if (input.explicit) return input.explicit;
   const context = await input.getContext();
@@ -1904,7 +1904,7 @@ function extractTextContent(result: unknown): string | null {
   return text || null;
 }
 
-function closeLoopContext(context: AgoraContext | null): void {
+function closeLoopContext(context: MonstheraContext | null): void {
   context?.dispose?.();
   context?.sqlite.close();
   context?.globalSqlite?.close();
@@ -2030,10 +2030,10 @@ function createStopController(): {
 
 function printLoopHelp(): void {
   console.error("Loop commands:");
-  console.error("  agora loop plan [--limit <n>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
-  console.error("  agora loop dev [--limit <n>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
-  console.error("  agora loop council <ticket-id> --transition <technical_analysis->approved|in_review->ready_for_commit> [--since-commit <sha>] [--specialization <role>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
-  console.error("  agora loop council --watch [--limit <n>] [--specialization <role>] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
+  console.error("  monsthera loop plan [--limit <n>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
+  console.error("  monsthera loop dev [--limit <n>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
+  console.error("  monsthera loop council <ticket-id> --transition <technical_analysis->approved|in_review->ready_for_commit> [--since-commit <sha>] [--specialization <role>] [--watch] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
+  console.error("  monsthera loop council --watch [--limit <n>] [--specialization <role>] [--interval-ms <ms>] [--max-runs <n>] [--agent-name <name>] [--json]");
   console.error("");
   console.error("Watch mode:");
   console.error("  --watch keeps a single session alive, polls coordination, and reruns the loop.");

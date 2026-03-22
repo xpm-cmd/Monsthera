@@ -1,8 +1,8 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createAgoraServer } from "./server.js";
-import { loadConfigFile, mergeConfigSources, resolveConfig, type AgoraConfig } from "./core/config.js";
+import { createMonstheraServer } from "./server.js";
+import { loadConfigFile, mergeConfigSources, resolveConfig, type MonstheraConfig } from "./core/config.js";
 import { VERSION } from "./core/constants.js";
-import { createAgoraContextLoader } from "./core/context-loader.js";
+import { createMonstheraContextLoader } from "./core/context-loader.js";
 import { recordRuntimeEventWithContext } from "./tools/runtime-instrumentation.js";
 import { initDatabase, initGlobalDatabase } from "./db/init.js";
 import { InsightStream } from "./core/insight-stream.js";
@@ -34,13 +34,13 @@ async function main() {
   const command = args[0];
 
   // Precedence: CLI flags > env vars > config file > Zod defaults
-  const repoPath = getArg(args, "--repo-path") ?? process.env.AGORA_REPO_PATH ?? process.cwd();
+  const repoPath = getArg(args, "--repo-path") ?? process.env.MONSTHERA_REPO_PATH ?? process.env.AGORA_REPO_PATH ?? process.cwd();
   const fileConfig = loadConfigFile(repoPath);
   const envConfig = buildEnvConfig();
   const cliConfig = buildCliConfig(args);
 
   if (args.includes("--version") || args.includes("-v")) {
-    console.error(`agora v${VERSION}`);
+    console.error(`monsthera v${VERSION}`);
     process.exit(0);
   }
 
@@ -119,7 +119,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
       const repoRoot = await getRepoRoot({ cwd: config.repoPath });
       const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
       const repoName = basename(repoRoot);
-      const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+      const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, monstheraDir: config.monstheraDir, dbName: config.dbName });
       const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
       const { CoordinationBus } = await import("./coordination/bus.js");
       const { SearchRouter } = await import("./search/router.js");
@@ -135,7 +135,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
         zoektEnabled: config.zoektEnabled,
         semanticEnabled: config.semanticEnabled,
         searchConfig: config.search,
-        indexDir: `${mainRepoRoot}/${config.agoraDir}`,
+        indexDir: `${mainRepoRoot}/${config.monstheraDir}`,
         onFallback: (reason) => insight.warn(reason),
       });
       await searchRouter.initialize();
@@ -199,7 +199,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
   if (config.transport === "http") {
     await cmdServeHttp(config, insight);
   } else {
-    const server = createAgoraServer(config);
+    const server = createMonstheraServer(config);
     const stdioTransport = new StdioServerTransport();
     await server.connect(stdioTransport);
   }
@@ -211,16 +211,16 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
     "@modelcontextprotocol/sdk/server/streamableHttp.js"
   );
   const { randomUUID } = await import("node:crypto");
-  const getContext = createAgoraContextLoader(config, insight);
+  const getContext = createMonstheraContextLoader(config, insight);
   const nonceStore = new CrossInstanceNonceStore(config.crossInstance.nonceTtlSeconds * 1000);
 
   // Map of sessionId → { server, transport }
-  const sessions = new Map<string, { server: ReturnType<typeof createAgoraServer>; transport: InstanceType<typeof StreamableHTTPServerTransport> }>();
+  const sessions = new Map<string, { server: ReturnType<typeof createMonstheraServer>; transport: InstanceType<typeof StreamableHTTPServerTransport> }>();
 
   const MCP_CORS_HEADERS: Record<string, string> = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, mcp-session-id, X-Agora-Instance-Id, X-Agora-Timestamp, X-Agora-Nonce, X-Agora-Signature",
+    "Access-Control-Allow-Headers": "Content-Type, mcp-session-id, X-Monsthera-Instance-Id, X-Monsthera-Timestamp, X-Monsthera-Nonce, X-Monsthera-Signature",
     "Access-Control-Expose-Headers": "mcp-session-id",
     "X-Content-Type-Options": "nosniff",
   };
@@ -245,8 +245,8 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
       const startedAt = Date.now();
       const body = await readRequestBody(req);
       const bodyText = body.toString("utf-8");
-      const headerInstanceId = typeof req.headers["x-agora-instance-id"] === "string"
-        ? req.headers["x-agora-instance-id"].trim()
+      const headerInstanceId = typeof req.headers["x-monsthera-instance-id"] === "string"
+        ? req.headers["x-monsthera-instance-id"].trim()
         : "unknown";
 
       if (!config.crossInstance.enabled) {
@@ -393,7 +393,7 @@ async function cmdServeHttp(config: ReturnType<typeof resolveConfig>, insight: I
       }
     };
 
-    const server = createAgoraServer(config, { insight, getContext });
+    const server = createMonstheraServer(config, { insight, getContext });
     await server.connect(transport);
     await transport.handleRequest(req, res);
   });
@@ -449,11 +449,11 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
   }
 
   const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
-  const agoraDir = join(mainRepoRoot, config.agoraDir);
+  const monstheraDir = join(mainRepoRoot, config.monstheraDir);
 
-  mkdirSync(agoraDir, { recursive: true });
+  mkdirSync(monstheraDir, { recursive: true });
 
-  const configPath = join(agoraDir, "config.json");
+  const configPath = join(monstheraDir, "config.json");
   if (!existsSync(configPath)) {
     writeFileSync(configPath, JSON.stringify({
       zoektEnabled: true,
@@ -475,30 +475,30 @@ async function cmdInit(config: ReturnType<typeof resolveConfig>, insight: Insigh
   }
 
   // Initialize database
-  initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
-  insight.info(`Initialized Agora in ${agoraDir}`);
+  initDatabase({ repoPath: mainRepoRoot, monstheraDir: config.monstheraDir, dbName: config.dbName });
+  insight.info(`Initialized Monsthera in ${monstheraDir}`);
 
-  // Add .agora to .gitignore if not already there
+  // Add .monsthera to .gitignore if not already there
   const gitignorePath = join(mainRepoRoot, ".gitignore");
   if (existsSync(gitignorePath)) {
     const content = await import("node:fs").then((fs) => fs.readFileSync(gitignorePath, "utf-8"));
-    if (!content.includes(".agora")) {
-      writeFileSync(gitignorePath, content.trimEnd() + "\n.agora/\n");
-      insight.info("Added .agora/ to .gitignore");
+    if (!content.includes(".monsthera")) {
+      writeFileSync(gitignorePath, content.trimEnd() + "\n.monsthera/\n");
+      insight.info("Added .monsthera/ to .gitignore");
     }
   }
 
   // Generate MCP client configs
   const mcpConfig = JSON.stringify({
     mcpServers: {
-      agora: {
+      monsthera: {
         command: "npx",
-        args: ["-y", "agora-mcp@latest", "serve", "--repo-path", mainRepoRoot],
+        args: ["-y", "monsthera-mcp@latest", "serve", "--repo-path", mainRepoRoot],
       },
     },
   }, null, 2) + "\n";
 
-  const mcpConfigPath = join(agoraDir, "mcp-config.json");
+  const mcpConfigPath = join(monstheraDir, "mcp-config.json");
   if (!existsSync(mcpConfigPath)) {
     writeFileSync(mcpConfigPath, mcpConfig);
     insight.info(`Created ${mcpConfigPath} — copy into your MCP client config`);
@@ -525,7 +525,7 @@ async function cmdIndex(
   const repoRoot = await getRepoRoot({ cwd: config.repoPath });
   const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
   const repoName = basename(repoRoot);
-  const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  const { db, sqlite } = initDatabase({ repoPath: mainRepoRoot, monstheraDir: config.monstheraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
   const indexedCommit = getIndexedCommit(db, repoId);
 
@@ -614,7 +614,7 @@ async function cmdStatus(config: ReturnType<typeof resolveConfig>, insight: Insi
   const repoRoot = await getRepoRoot({ cwd: config.repoPath });
   const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
   const repoName = basename(repoRoot);
-  const { db } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  const { db } = initDatabase({ repoPath: mainRepoRoot, monstheraDir: config.monstheraDir, dbName: config.dbName });
   const { id: repoId } = queries.upsertRepo(db, repoRoot, repoName);
 
   const indexedCommit = getIndexedCommit(db, repoId);
@@ -626,7 +626,7 @@ async function cmdStatus(config: ReturnType<typeof resolveConfig>, insight: Insi
     console.log(JSON.stringify({
       version: VERSION,
       repoPath: repoRoot,
-      dbPath: join(mainRepoRoot, config.agoraDir, config.dbName),
+      dbPath: join(mainRepoRoot, config.monstheraDir, config.dbName),
       indexedCommit: indexedCommit ?? null,
       fileCount,
       agentCount: agents.length,
@@ -635,7 +635,7 @@ async function cmdStatus(config: ReturnType<typeof resolveConfig>, insight: Insi
     return;
   }
 
-  console.error(`Agora v${VERSION}`);
+  console.error(`Monsthera v${VERSION}`);
   console.error(`  Repo: ${repoRoot}`);
   console.error(`  Indexed commit: ${indexedCommit ?? "(not indexed)"}`);
   console.error(`  Files: ${fileCount}`);
@@ -656,7 +656,7 @@ async function cmdExport(config: ReturnType<typeof resolveConfig>, insight: Insi
 
   const repoRoot = await getRepoRoot({ cwd: config.repoPath });
   const mainRepoRoot = await getMainRepoRoot({ cwd: config.repoPath });
-  const { db } = initDatabase({ repoPath: mainRepoRoot, agoraDir: config.agoraDir, dbName: config.dbName });
+  const { db } = initDatabase({ repoPath: mainRepoRoot, monstheraDir: config.monstheraDir, dbName: config.dbName });
 
   let globalDb = null;
   try { globalDb = initGlobalDatabase().globalDb; } catch { /* non-fatal */ }
@@ -669,11 +669,11 @@ async function cmdExport(config: ReturnType<typeof resolveConfig>, insight: Insi
 }
 
 function printHelp() {
-  console.error(`agora v${VERSION} — Multi-agent shared context server`);
+  console.error(`monsthera v${VERSION} — Multi-agent shared context server`);
   console.error("");
   console.error("Commands:");
   console.error("  serve          Start MCP server (default)");
-  console.error("  init           Initialize .agora directory");
+  console.error("  init           Initialize .monsthera directory");
   console.error("  index          Run code index (--incremental or --full)");
   console.error("  status         Show index status");
   console.error("  export         Export knowledge to external tools");
@@ -681,9 +681,9 @@ function printHelp() {
   console.error("  patch          Repo-scoped patch inspection");
   console.error("  knowledge      Repo/global knowledge inspection");
   console.error("  loop           Run a repo-local planner/developer/council workflow");
-  console.error("  facilitator    Alias for `agora loop plan`");
+  console.error("  facilitator    Alias for `monsthera loop plan`");
   console.error("  orchestrate    Run convoy orchestrator for a work group");
-  console.error("  tool           Invoke a local Agora MCP tool from CLI");
+  console.error("  tool           Invoke a local Monsthera MCP tool from CLI");
   console.error("");
   console.error("Options:");
   console.error("  --repo-path      Repository path (default: cwd)");
@@ -701,49 +701,49 @@ function printHelp() {
   console.error("  --help, -h       Show help");
   console.error("");
   console.error("Ticket examples:");
-  console.error("  agora ticket summary --json");
-  console.error("  agora index --incremental");
-  console.error("  agora ticket list --status in_progress");
-  console.error("  agora ticket show TKT-1234abcd --json");
-  console.error("  agora ticket transition TKT-1234abcd in_review --comment \"Implementation complete\"");
-  console.error("  agora ticket reconcile-commit --json");
-  console.error("  agora patch summary --json");
-  console.error("  agora patch show patch_abcd1234 --json");
-  console.error("  agora knowledge query --scope all --type decision --json");
-  console.error("  agora knowledge search \"shared auth\" --scope all --json");
-  console.error("  agora knowledge show decision:abc123 --scope all --json");
-  console.error("  agora tool list");
-  console.error("  agora tool inspect propose_patch --json");
-  console.error("  agora tool status --json");
-  console.error("  agora tool claim_files --input '{\"agentId\":\"agent-dev\",\"sessionId\":\"session-dev\",\"paths\":[\"src/index.ts\"]}' --json");
-  console.error("  agora loop plan --json");
-  console.error("  agora loop dev --limit 3 --json");
-  console.error("  agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json");
-  console.error("  agora facilitator --watch");
+  console.error("  monsthera ticket summary --json");
+  console.error("  monsthera index --incremental");
+  console.error("  monsthera ticket list --status in_progress");
+  console.error("  monsthera ticket show TKT-1234abcd --json");
+  console.error("  monsthera ticket transition TKT-1234abcd in_review --comment \"Implementation complete\"");
+  console.error("  monsthera ticket reconcile-commit --json");
+  console.error("  monsthera patch summary --json");
+  console.error("  monsthera patch show patch_abcd1234 --json");
+  console.error("  monsthera knowledge query --scope all --type decision --json");
+  console.error("  monsthera knowledge search \"shared auth\" --scope all --json");
+  console.error("  monsthera knowledge show decision:abc123 --scope all --json");
+  console.error("  monsthera tool list");
+  console.error("  monsthera tool inspect propose_patch --json");
+  console.error("  monsthera tool status --json");
+  console.error("  monsthera tool claim_files --input '{\"agentId\":\"agent-dev\",\"sessionId\":\"session-dev\",\"paths\":[\"src/index.ts\"]}' --json");
+  console.error("  monsthera loop plan --json");
+  console.error("  monsthera loop dev --limit 3 --json");
+  console.error("  monsthera loop council TKT-1234abcd --transition in_review->ready_for_commit --json");
+  console.error("  monsthera facilitator --watch");
   console.error("");
   console.error("Git hooks:");
   console.error("  post-commit    Auto-runs 'ticket reconcile-commit' and 'index --incremental'");
-  console.error("                 in background. Requires .agora/ dir (skipped otherwise).");
+  console.error("                 in background. Requires .monsthera/ dir (skipped otherwise).");
   console.error("");
   console.error("Agent access preference:");
-  console.error("  Prefer `agora ticket|patch|knowledge ... --json` or `agora tool ... --json`");
-  console.error("  before reading `.agora/agora.db` directly.");
+  console.error("  Prefer `monsthera ticket|patch|knowledge ... --json` or `monsthera tool ... --json`");
+  console.error("  before reading `.monsthera/monsthera.db` directly.");
   console.error("");
   console.error("Environment Variables (overridden by CLI flags):");
-  console.error("  AGORA_REPO_PATH       Repository path");
-  console.error("  AGORA_VERBOSITY       quiet | normal | verbose");
-  console.error("  AGORA_TRANSPORT       stdio | http");
-  console.error("  AGORA_HTTP_PORT       HTTP transport port");
-  console.error("  AGORA_DASHBOARD_PORT  Dashboard UI port");
-  console.error("  AGORA_SEMANTIC        true | false");
-  console.error("  AGORA_DEBUG_LOGGING   true | false");
-  console.error("  AGORA_NO_DASHBOARD    true | false");
-  console.error("  AGORA_REGISTRATION_AUTH        true | false");
-  console.error("  AGORA_OBSERVER_OPEN_REGISTRATION true | false");
-  console.error("  AGORA_ROLE_TOKEN_DEVELOPER     Registration token for developer");
-  console.error("  AGORA_ROLE_TOKEN_REVIEWER      Registration token for reviewer");
-  console.error("  AGORA_ROLE_TOKEN_OBSERVER      Registration token for observer");
-  console.error("  AGORA_ROLE_TOKEN_ADMIN         Registration token for admin");
+  console.error("  MONSTHERA_REPO_PATH       Repository path");
+  console.error("  MONSTHERA_VERBOSITY       quiet | normal | verbose");
+  console.error("  MONSTHERA_TRANSPORT       stdio | http");
+  console.error("  MONSTHERA_HTTP_PORT       HTTP transport port");
+  console.error("  MONSTHERA_DASHBOARD_PORT  Dashboard UI port");
+  console.error("  MONSTHERA_SEMANTIC        true | false");
+  console.error("  MONSTHERA_DEBUG_LOGGING   true | false");
+  console.error("  MONSTHERA_NO_DASHBOARD    true | false");
+  console.error("  MONSTHERA_REGISTRATION_AUTH        true | false");
+  console.error("  MONSTHERA_OBSERVER_OPEN_REGISTRATION true | false");
+  console.error("  MONSTHERA_ROLE_TOKEN_DEVELOPER     Registration token for developer");
+  console.error("  MONSTHERA_ROLE_TOKEN_REVIEWER      Registration token for reviewer");
+  console.error("  MONSTHERA_ROLE_TOKEN_OBSERVER      Registration token for observer");
+  console.error("  MONSTHERA_ROLE_TOKEN_ADMIN         Registration token for admin");
 }
 
 function getArg(args: string[], flag: string): string | undefined {
@@ -752,51 +752,55 @@ function getArg(args: string[], flag: string): string | undefined {
   return args[idx + 1];
 }
 
-function buildEnvConfig(): Partial<AgoraConfig> {
-  const envConfig: Partial<AgoraConfig> = {};
+function buildEnvConfig(): Partial<MonstheraConfig> {
+  const envConfig: Partial<MonstheraConfig> = {};
 
-  if (process.env.AGORA_VERBOSITY) {
-    envConfig.verbosity = process.env.AGORA_VERBOSITY as AgoraConfig["verbosity"];
+  const verbosity = process.env.MONSTHERA_VERBOSITY ?? process.env.AGORA_VERBOSITY;
+  if (verbosity) {
+    envConfig.verbosity = verbosity as MonstheraConfig["verbosity"];
   }
-  if (process.env.AGORA_TRANSPORT) {
-    envConfig.transport = process.env.AGORA_TRANSPORT as AgoraConfig["transport"];
+  const transport = process.env.MONSTHERA_TRANSPORT ?? process.env.AGORA_TRANSPORT;
+  if (transport) {
+    envConfig.transport = transport as MonstheraConfig["transport"];
   }
-  if (process.env.AGORA_HTTP_PORT) {
-    envConfig.httpPort = parseInt(process.env.AGORA_HTTP_PORT, 10);
+  const httpPort = process.env.MONSTHERA_HTTP_PORT ?? process.env.AGORA_HTTP_PORT;
+  if (httpPort) {
+    envConfig.httpPort = parseInt(httpPort, 10);
   }
-  if (process.env.AGORA_DASHBOARD_PORT) {
-    envConfig.dashboardPort = parseInt(process.env.AGORA_DASHBOARD_PORT, 10);
+  const dashboardPort = process.env.MONSTHERA_DASHBOARD_PORT ?? process.env.AGORA_DASHBOARD_PORT;
+  if (dashboardPort) {
+    envConfig.dashboardPort = parseInt(dashboardPort, 10);
   }
 
-  const debugLogging = parseBooleanEnv("AGORA_DEBUG_LOGGING");
+  const debugLogging = parseBooleanEnv("MONSTHERA_DEBUG_LOGGING") ?? parseBooleanEnv("AGORA_DEBUG_LOGGING");
   if (debugLogging !== undefined) {
     envConfig.debugLogging = debugLogging;
   }
 
-  const noDashboard = parseBooleanEnv("AGORA_NO_DASHBOARD");
+  const noDashboard = parseBooleanEnv("MONSTHERA_NO_DASHBOARD") ?? parseBooleanEnv("AGORA_NO_DASHBOARD");
   if (noDashboard !== undefined) {
     envConfig.noDashboard = noDashboard;
   }
 
-  const semanticEnabled = parseBooleanEnv("AGORA_SEMANTIC");
+  const semanticEnabled = parseBooleanEnv("MONSTHERA_SEMANTIC") ?? parseBooleanEnv("AGORA_SEMANTIC");
   if (semanticEnabled !== undefined) {
     envConfig.semanticEnabled = semanticEnabled;
   }
 
-  const registrationAuthEnabled = parseBooleanEnv("AGORA_REGISTRATION_AUTH");
-  const observerOpenRegistration = parseBooleanEnv("AGORA_OBSERVER_OPEN_REGISTRATION");
+  const registrationAuthEnabled = parseBooleanEnv("MONSTHERA_REGISTRATION_AUTH") ?? parseBooleanEnv("AGORA_REGISTRATION_AUTH");
+  const observerOpenRegistration = parseBooleanEnv("MONSTHERA_OBSERVER_OPEN_REGISTRATION") ?? parseBooleanEnv("AGORA_OBSERVER_OPEN_REGISTRATION");
   const roleTokens = {
-    ...(process.env.AGORA_ROLE_TOKEN_DEVELOPER ? { developer: process.env.AGORA_ROLE_TOKEN_DEVELOPER } : {}),
-    ...(process.env.AGORA_ROLE_TOKEN_REVIEWER ? { reviewer: process.env.AGORA_ROLE_TOKEN_REVIEWER } : {}),
-    ...(process.env.AGORA_ROLE_TOKEN_OBSERVER ? { observer: process.env.AGORA_ROLE_TOKEN_OBSERVER } : {}),
-    ...(process.env.AGORA_ROLE_TOKEN_ADMIN ? { admin: process.env.AGORA_ROLE_TOKEN_ADMIN } : {}),
+    ...(process.env.MONSTHERA_ROLE_TOKEN_DEVELOPER ?? process.env.AGORA_ROLE_TOKEN_DEVELOPER ? { developer: (process.env.MONSTHERA_ROLE_TOKEN_DEVELOPER ?? process.env.AGORA_ROLE_TOKEN_DEVELOPER)! } : {}),
+    ...(process.env.MONSTHERA_ROLE_TOKEN_REVIEWER ?? process.env.AGORA_ROLE_TOKEN_REVIEWER ? { reviewer: (process.env.MONSTHERA_ROLE_TOKEN_REVIEWER ?? process.env.AGORA_ROLE_TOKEN_REVIEWER)! } : {}),
+    ...(process.env.MONSTHERA_ROLE_TOKEN_OBSERVER ?? process.env.AGORA_ROLE_TOKEN_OBSERVER ? { observer: (process.env.MONSTHERA_ROLE_TOKEN_OBSERVER ?? process.env.AGORA_ROLE_TOKEN_OBSERVER)! } : {}),
+    ...(process.env.MONSTHERA_ROLE_TOKEN_ADMIN ?? process.env.AGORA_ROLE_TOKEN_ADMIN ? { admin: (process.env.MONSTHERA_ROLE_TOKEN_ADMIN ?? process.env.AGORA_ROLE_TOKEN_ADMIN)! } : {}),
   };
   if (
     registrationAuthEnabled !== undefined
     || observerOpenRegistration !== undefined
     || Object.keys(roleTokens).length > 0
   ) {
-    const registrationAuth: Partial<AgoraConfig["registrationAuth"]> = {};
+    const registrationAuth: Partial<MonstheraConfig["registrationAuth"]> = {};
     if (registrationAuthEnabled !== undefined) {
       registrationAuth.enabled = registrationAuthEnabled;
     }
@@ -806,23 +810,23 @@ function buildEnvConfig(): Partial<AgoraConfig> {
     if (Object.keys(roleTokens).length > 0) {
       registrationAuth.roleTokens = roleTokens;
     }
-    envConfig.registrationAuth = registrationAuth as AgoraConfig["registrationAuth"];
+    envConfig.registrationAuth = registrationAuth as MonstheraConfig["registrationAuth"];
   }
 
   return envConfig;
 }
 
-function buildCliConfig(args: string[]): Partial<AgoraConfig> {
-  const cliConfig: Partial<AgoraConfig> = {};
+function buildCliConfig(args: string[]): Partial<MonstheraConfig> {
+  const cliConfig: Partial<MonstheraConfig> = {};
 
   const verbosity = getArg(args, "--verbosity");
   if (verbosity) {
-    cliConfig.verbosity = verbosity as AgoraConfig["verbosity"];
+    cliConfig.verbosity = verbosity as MonstheraConfig["verbosity"];
   }
 
   const transport = getArg(args, "--transport");
   if (transport) {
-    cliConfig.transport = transport as AgoraConfig["transport"];
+    cliConfig.transport = transport as MonstheraConfig["transport"];
   }
 
   const httpPort = getArg(args, "--http-port");
@@ -859,6 +863,6 @@ function parseBooleanEnv(name: string): boolean | undefined {
 }
 
 main().catch((err) => {
-  console.error("[AGORA] Fatal error:", err);
+  console.error("[MONSTHERA] Fatal error:", err);
   process.exit(1);
 });

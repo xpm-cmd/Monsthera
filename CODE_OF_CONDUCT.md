@@ -43,7 +43,7 @@ an individual is officially representing the community in public spaces.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement via
-[GitHub Issues](https://github.com/xpm-cmd/Agora/issues).
+[GitHub Issues](https://github.com/xpm-cmd/Monsthera/issues).
 
 All complaints will be reviewed and investigated promptly and fairly.
 

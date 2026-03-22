@@ -4,7 +4,7 @@
 
 import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import {
   runSimulation,
   runOptimizationLoop,
@@ -21,12 +21,12 @@ import { loadRepoAgentCatalog } from "../repo-agents/catalog.js";
 import { HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import { resolveReviewerAssignments } from "./workflow-tools.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 export function registerSimulationTools(server: McpServer, getContext: GetContext): void {
   server.tool(
     "run_simulation",
-    "Run the Agora self-improvement simulation loop. Generates atomic tickets from the codebase, measures infrastructure quality in a sandbox, optionally executes real work, and persists KPI results as JSONL.",
+    "Run the Monsthera self-improvement simulation loop. Generates atomic tickets from the codebase, measures infrastructure quality in a sandbox, optionally executes real work, and persists KPI results as JSONL.",
     {
       targetCorpusSize: z.number().int().min(1).max(1000).default(200)
         .describe("Max tickets to generate (default 200)"),
@@ -36,7 +36,7 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
         .describe("Skip Phase C real work execution (default true)"),
       phase: z.enum(["all", "A", "B", "C", "D", "E"]).default("all")
         .describe("Which phase to run: all, A (generate), B (sandbox), C (real work), D (persist), E (orchestrator)"),
-      outputPath: z.string().default(".agora/simulation-results.jsonl")
+      outputPath: z.string().default(".monsthera/simulation-results.jsonl")
         .describe("JSONL output path relative to repo root"),
       ticketTimeoutMs: z.number().int().min(10_000).max(600_000).default(120_000)
         .describe("Per-ticket workflow timeout in ms (default 120000)"),
@@ -119,7 +119,7 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
         .describe("Test command to validate changes (default 'pnpm test')"),
       testTimeoutMs: z.number().int().min(10_000).max(600_000).default(120_000)
         .describe("Test timeout in ms (default 120000)"),
-      outputPath: z.string().default(".agora/simulation-results.jsonl")
+      outputPath: z.string().default(".monsthera/simulation-results.jsonl")
         .describe("JSONL output path relative to repo root"),
       ticketTimeoutMs: z.number().int().min(10_000).max(600_000).default(120_000)
         .describe("Per-ticket workflow timeout in ms (default 120000)"),
@@ -208,7 +208,7 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
 
 async function buildWorkflowConfig(
   server: McpServer,
-  c: AgoraContext,
+  c: MonstheraContext,
   stepTimeoutMs: number,
 ): Promise<RunnerConfig["workflow"] | null> {
   const runner = getToolRunner(server);

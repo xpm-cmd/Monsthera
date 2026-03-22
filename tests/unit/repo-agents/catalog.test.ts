@@ -46,13 +46,13 @@ Focus on layering, abstractions, and long-term maintainability.
     expect(catalog.repoAgents).toMatchObject([
       {
         name: "Architecture Reviewer",
-        filePath: ".agora/agents/architect.md",
+        filePath: ".monsthera/agents/architect.md",
         role: "facilitator",
         reviewRole: "architect",
       },
       {
         name: "Security Reviewer",
-        filePath: ".agora/agents/security.md",
+        filePath: ".monsthera/agents/security.md",
         role: "reviewer",
         reviewRole: "security",
         tags: ["auth", "security"],
@@ -71,7 +71,7 @@ Focus on layering, abstractions, and long-term maintainability.
 
   it("warns and drops invalid reviewRole values without dropping the manifest", () => {
     const parsed = parseRepoAgentManifest(
-      ".agora/agents/simplify.md",
+      ".monsthera/agents/simplify.md",
       `---
 name: Simplifier
 description: Removes accidental complexity
@@ -89,7 +89,7 @@ Prefer smaller and clearer designs.
     });
     expect(parsed.warnings).toEqual([
       {
-        filePath: ".agora/agents/simplify.md",
+        filePath: ".monsthera/agents/simplify.md",
         message: "Invalid `reviewRole`; expected one of architect, simplifier, security, performance, patterns, design",
       },
     ]);
@@ -97,7 +97,7 @@ Prefer smaller and clearer designs.
 
   it("falls back to the file name and prompt excerpt when frontmatter is partial", () => {
     const parsed = parseRepoAgentManifest(
-      ".agora/agents/patterns.md",
+      ".monsthera/agents/patterns.md",
       `---
 role: reviewer
 reviewRole: patterns
@@ -122,14 +122,14 @@ Detect duplication, inconsistent naming, and local anti-patterns.
 
   it("warns when manifests are missing YAML frontmatter", () => {
     const parsed = parseRepoAgentManifest(
-      ".agora/agents/security.md",
+      ".monsthera/agents/security.md",
       "# Security Reviewer\n\nReview auth and trust boundaries.\n",
     );
 
     expect(parsed.agent).toBeNull();
     expect(parsed.warnings).toEqual([
       {
-        filePath: ".agora/agents/security.md",
+        filePath: ".monsthera/agents/security.md",
         message: "Missing or invalid YAML frontmatter",
       },
     ]);
@@ -140,9 +140,9 @@ async function createRepoWithAgents(
   files: Record<string, string>,
   tempDirs: string[],
 ): Promise<string> {
-  const repoPath = await mkdtemp(join(tmpdir(), "agora-repo-agents-"));
+  const repoPath = await mkdtemp(join(tmpdir(), "monsthera-repo-agents-"));
   tempDirs.push(repoPath);
-  const agentDir = join(repoPath, ".agora", "agents");
+  const agentDir = join(repoPath, ".monsthera", "agents");
   await mkdir(agentDir, { recursive: true });
   for (const [fileName, content] of Object.entries(files)) {
     await writeFile(join(agentDir, fileName), content, "utf-8");

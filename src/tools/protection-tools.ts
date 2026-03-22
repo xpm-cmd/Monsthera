@@ -1,12 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
-import type { AgoraContext } from "../core/context.js";
+import type { MonstheraContext } from "../core/context.js";
 import { AgentIdSchema, SessionIdSchema } from "../core/input-hardening.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import * as queries from "../db/queries.js";
 import { resolveAgent } from "./resolve-agent.js";
 
-type GetContext = () => Promise<AgoraContext>;
+type GetContext = () => Promise<MonstheraContext>;
 
 export function registerProtectionTools(server: McpServer, getContext: GetContext): void {
   // ─── add_protected_artifact ──────────────────────────────────
@@ -14,7 +14,7 @@ export function registerProtectionTools(server: McpServer, getContext: GetContex
     "add_protected_artifact",
     "Add a path or glob pattern to the protected artifacts list. Patches touching protected paths are rejected.",
     {
-      pathPattern: z.string().min(1).max(500).describe("File path or glob pattern to protect (e.g. '.agora/config.json' or 'src/db/schema.ts')"),
+      pathPattern: z.string().min(1).max(500).describe("File path or glob pattern to protect (e.g. '.monsthera/config.json' or 'src/db/schema.ts')"),
       reason: z.string().min(1).max(500).describe("Why this path is protected"),
       agentId: AgentIdSchema.describe("Agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),

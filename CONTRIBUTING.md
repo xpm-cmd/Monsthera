@@ -1,6 +1,6 @@
-# Contributing to Agora
+# Contributing to Monsthera
 
-Thank you for your interest in contributing to Agora! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Monsthera! This document provides guidelines and instructions for contributing.
 
 ## Development Setup
 
@@ -14,8 +14,8 @@ Thank you for your interest in contributing to Agora! This document provides gui
 ### Getting Started
 
 ```bash
-git clone https://github.com/xpm-cmd/Agora.git
-cd Agora
+git clone https://github.com/xpm-cmd/Monsthera.git
+cd Monsthera
 pnpm install
 pnpm build
 pnpm test
@@ -108,8 +108,8 @@ src/
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/xpm-cmd/Agora/issues)
-- Include: Agora version, Node.js version, OS, and steps to reproduce
+- Use [GitHub Issues](https://github.com/xpm-cmd/Monsthera/issues)
+- Include: Monsthera version, Node.js version, OS, and steps to reproduce
 - For security vulnerabilities, see [SECURITY.md](SECURITY.md)
 
 ## License

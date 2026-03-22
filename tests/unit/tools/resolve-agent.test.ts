@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../../../src/db/schema.js";
 import { resolveAgent } from "../../../src/tools/resolve-agent.js";
-import type { AgoraContext } from "../../../src/core/context.js";
+import type { MonstheraContext } from "../../../src/core/context.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");
@@ -30,11 +30,11 @@ function seedSession(sqlite: InstanceType<typeof Database>, sessionId: string, a
 describe("resolveAgent", () => {
   let db: ReturnType<typeof createTestDb>["db"];
   let sqlite: InstanceType<typeof Database>;
-  let ctx: AgoraContext;
+  let ctx: MonstheraContext;
 
   beforeEach(() => {
     ({ db, sqlite } = createTestDb());
-    ctx = { db } as unknown as AgoraContext;
+    ctx = { db } as unknown as MonstheraContext;
     seedAgent(sqlite, "agent-1", "developer", "A");
     seedSession(sqlite, "session-1", "agent-1");
   });

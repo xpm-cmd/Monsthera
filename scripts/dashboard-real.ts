@@ -1,6 +1,6 @@
 /**
- * Dashboard preview using the REAL Agora database.
- * Connects to .agora/agora.db and shows live data on :3141.
+ * Dashboard preview using the REAL Monsthera database.
+ * Connects to .monsthera/monsthera.db and shows live data on :3141.
  */
 import { basename } from "node:path";
 import { initDatabase } from "../src/db/init.js";
@@ -13,7 +13,7 @@ const repoPath = process.argv[2] || process.cwd();
 const repoName = basename(repoPath);
 const insight = new InsightStream("normal");
 
-const { db } = initDatabase({ repoPath, agoraDir: ".agora", dbName: "agora.db" });
+const { db } = initDatabase({ repoPath, monstheraDir: ".monsthera", dbName: "monsthera.db" });
 const { id: repoId } = queries.upsertRepo(db, repoPath, repoName);
 const bus = new CoordinationBus("hub-spoke");
 

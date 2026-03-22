@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgoraContext } from "../../../src/core/context.js";
+import type { MonstheraContext } from "../../../src/core/context.js";
 import {
   getCrossInstanceCapabilityTool,
   runLocalCrossInstanceSearch,
@@ -27,7 +27,7 @@ describe("federation search", () => {
       config: {
         crossInstance: {
           enabled: true,
-          instanceId: "agora-main",
+          instanceId: "monsthera-main",
           peers: [],
         },
       },
@@ -35,7 +35,7 @@ describe("federation search", () => {
       searchRouter: {
         search,
       },
-    } as unknown as AgoraContext;
+    } as unknown as MonstheraContext;
 
     const result = await runLocalCrossInstanceSearch(ctx, {
       query: "remote",
@@ -45,7 +45,7 @@ describe("federation search", () => {
 
     expect(search).toHaveBeenCalledWith("remote", 1, 5, undefined);
     expect(result).toEqual({
-      instanceId: "agora-main",
+      instanceId: "monsthera-main",
       surface: "code",
       query: "remote",
       count: 1,
@@ -63,12 +63,12 @@ describe("federation search", () => {
       expect(init?.method).toBe("POST");
       expect(init?.headers).toEqual(expect.objectContaining({
         "content-type": "application/json",
-        "x-agora-instance-id": "agora-main",
+        "x-monsthera-instance-id": "monsthera-main",
       }));
-      expect(String(init?.headers && Reflect.get(init.headers, "x-agora-signature"))).toMatch(/^v1=/);
+      expect(String(init?.headers && Reflect.get(init.headers, "x-monsthera-signature"))).toMatch(/^v1=/);
 
       return new Response(JSON.stringify({
-        instanceId: "agora-docs",
+        instanceId: "monsthera-docs",
         surface: "knowledge",
         query: "auth",
         count: 1,
@@ -90,17 +90,17 @@ describe("federation search", () => {
       config: {
         crossInstance: {
           enabled: true,
-          instanceId: "agora-main",
+          instanceId: "monsthera-main",
           peers: [
             {
-              instanceId: "agora-docs",
+              instanceId: "monsthera-docs",
               baseUrl: "https://docs.example.test",
               enabled: true,
               sharedSecret: "1234567890abcdef",
               allowedCapabilities: ["read_knowledge"],
             },
             {
-              instanceId: "agora-code",
+              instanceId: "monsthera-code",
               baseUrl: "https://code.example.test",
               enabled: true,
               sharedSecret: "abcdef1234567890",
@@ -109,7 +109,7 @@ describe("federation search", () => {
           ],
         },
       },
-    } as unknown as AgoraContext;
+    } as unknown as MonstheraContext;
 
     const result = await searchAcrossRemoteInstances(ctx, {
       query: "auth",
@@ -124,7 +124,7 @@ describe("federation search", () => {
     expect(result.results).toEqual([expect.objectContaining({
       key: "decision:remote-auth",
       provenance: {
-        instanceId: "agora-docs",
+        instanceId: "monsthera-docs",
         baseUrl: "https://docs.example.test",
       },
     })]);
@@ -135,7 +135,7 @@ describe("federation search", () => {
       const url = String(input);
       if (url.includes("docs.example.test")) {
         return new Response(JSON.stringify({
-          instanceId: "agora-docs",
+          instanceId: "monsthera-docs",
           surface: "code",
           query: "graph",
           count: 1,
@@ -158,17 +158,17 @@ describe("federation search", () => {
       config: {
         crossInstance: {
           enabled: true,
-          instanceId: "agora-main",
+          instanceId: "monsthera-main",
           peers: [
             {
-              instanceId: "agora-docs",
+              instanceId: "monsthera-docs",
               baseUrl: "https://docs.example.test",
               enabled: true,
               sharedSecret: "1234567890abcdef",
               allowedCapabilities: ["read_code"],
             },
             {
-              instanceId: "agora-broken",
+              instanceId: "monsthera-broken",
               baseUrl: "https://broken.example.test",
               enabled: true,
               sharedSecret: "abcdef1234567890",
@@ -177,7 +177,7 @@ describe("federation search", () => {
           ],
         },
       },
-    } as unknown as AgoraContext;
+    } as unknown as MonstheraContext;
 
     const result = await searchAcrossRemoteInstances(ctx, {
       query: "graph",
@@ -189,7 +189,7 @@ describe("federation search", () => {
 
     expect(result.results).toHaveLength(1);
     expect(result.failures).toEqual([{
-      instanceId: "agora-broken",
+      instanceId: "monsthera-broken",
       baseUrl: "https://broken.example.test",
       reason: "connect ECONNREFUSED",
     }]);

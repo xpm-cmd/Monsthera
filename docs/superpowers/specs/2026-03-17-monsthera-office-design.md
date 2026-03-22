@@ -1,17 +1,17 @@
-# Agora Office — Design Spec
+# Monsthera Office — Design Spec
 
-*Real-time isometric pixel art visualization of Agora agents working in a virtual office with Habbo/chibi cute aesthetics*
+*Real-time isometric pixel art visualization of Monsthera agents working in a virtual office with Habbo/chibi cute aesthetics*
 
 ---
 
 ## 1. Goal
 
-Create a companion web app for Agora that visualizes multi-agent development activity as an animated isometric office with cute pixel art aesthetics. The app reads Agora's SQLite database in read-only mode and translates events (tickets, agents, reviews, coordination) into animated characters interacting in a virtual office.
+Create a companion web app for Monsthera that visualizes multi-agent development activity as an animated isometric office with cute pixel art aesthetics. The app reads Monsthera's SQLite database in read-only mode and translates events (tickets, agents, reviews, coordination) into animated characters interacting in a virtual office.
 
-The project serves as the **perfect demo of Agora**: built from scratch using Agora's full workflow (`decompose_goal` → tickets with dependencies → `compute_waves` → `launch_convoy`), demonstrating that Agora accelerates multi-agent development.
+The project serves as the **perfect demo of Monsthera**: built from scratch using Monsthera's full workflow (`decompose_goal` → tickets with dependencies → `compute_waves` → `launch_convoy`), demonstrating that Monsthera accelerates multi-agent development.
 
-**Project name:** `agora-office`
-**Repository:** Separate from Agora (independent companion project)
+**Project name:** `monsthera-office`
+**Repository:** Separate from Monsthera (independent companion project)
 
 ---
 
@@ -19,13 +19,13 @@ The project serves as the **perfect demo of Agora**: built from scratch using Ag
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Repo | Separate from Agora | Independent companion project |
+| Repo | Separate from Monsthera | Independent companion project |
 | Frontend | React + PixiJS | PixiJS is the standard for 2D isometric graphics; React for UI overlay |
-| Backend | Node + Express + better-sqlite3 | Same ecosystem as Agora, direct SQLite reading |
+| Backend | Node + Express + better-sqlite3 | Same ecosystem as Monsthera, direct SQLite reading |
 | Communication | SSE (Server-Sent Events) | Real-time push without WebSocket complexity |
 | Visual style | Isometric chibi pixel art, cute pastel palette | Maximum visual impact and memorability |
-| Data | Live visualization (not replay) | Impressive for demos with Agora running |
-| Development order | Visual first, data second | Solid visual foundation before connecting Agora |
+| Data | Live visualization (not replay) | Impressive for demos with Monsthera running |
+| Development order | Visual first, data second | Solid visual foundation before connecting Monsthera |
 | State management | Zustand | Lightweight, ideal for isometric world state + UI |
 | Monorepo | pnpm workspaces | `packages/client` + `packages/server` |
 
@@ -68,11 +68,11 @@ The project serves as the **perfect demo of Agora**: built from scratch using Ag
 └───────────────────────────────────────────┼─────────┘
                                             │
                                   ┌─────────┴─────────┐
-                                  │  Agora SQLite DB   │
+                                  │  Monsthera SQLite DB   │
                                   │  (external, r/o)   │
                                   │                    │
                                   │  Path configured   │
-                                  │  via AGORA_DB_PATH │
+                                  │  via MONSTHERA_DB_PATH │
                                   └───────────────────┘
 ```
 
@@ -88,7 +88,7 @@ The project serves as the **perfect demo of Agora**: built from scratch using Ag
 - The client connects on app mount and reconnects with exponential backoff if the connection is lost
 
 **DB Poller (diff engine)**
-- Loop every 1-2 seconds reading Agora tables
+- Loop every 1-2 seconds reading Monsthera tables
 - Compares against previous in-memory state
 - Emits SSE events only when there are changes
 - Change detection strategy detailed in section 6
@@ -134,7 +134,7 @@ React layer mounted over the PixiJS canvas:
 
 ## 4. Office Lifecycle
 
-The office reacts to Agora's global activity level. State is computed based on active sessions and non-finished tickets.
+The office reacts to Monsthera's global activity level. State is computed based on active sessions and non-finished tickets.
 
 | State | Condition | Visual |
 |---|---|---|
@@ -200,7 +200,7 @@ The exact tile layout is defined during implementation. This diagram establishes
 - The character pauses briefly at the desk (1-2s) then walks to their destination room based on role/activity
 - When `session.state` changes to `ended`: the character walks from their current room → lobby → exits through the door and disappears
 
-**Agora data:**
+**Monsthera data:**
 - `agents` — Character identity (name, role, model)
 - `sessions` — Lifecycle (active/ended determines entry/exit)
 
@@ -226,7 +226,7 @@ The exact tile layout is defined during implementation. This diagram establishes
 - If all 6 desks are occupied: new agents stand beside the area (never rejected, just look "crowded")
 - When an agent leaves, their desk becomes available for the next one
 
-**Agora data:**
+**Monsthera data:**
 - `tickets` where `status = 'in_progress'` and `assignee_agent_id` matches
 - `job_slots` where `status = 'active'` and `role = 'developer'`
 - `patches` for delivery animation
@@ -247,7 +247,7 @@ The exact tile layout is defined during implementation. This diagram establishes
 - When a ticket moves to `in_progress`, the post-it "flies away" from the whiteboard toward the desks area
 - The planner occasionally "moves" post-its (arm pointing animation)
 
-**Agora data:**
+**Monsthera data:**
 - `tickets` with `status IN ('backlog', 'technical_analysis', 'approved')`
 - `ticket_dependencies` — dotted lines between related post-its (v1: optional, can be omitted if complex)
 
@@ -277,7 +277,7 @@ The exact tile layout is defined during implementation. This diagram establishes
 - When consensus is reached (`check_consensus` returns `advisoryReady`): confetti explodes over the table, everyone celebrates (`celebrate` animation)
 - After the celebration, reviewers stand up and return to their previous position
 
-**Agora data:**
+**Monsthera data:**
 - `tickets` where `status = 'in_review'`
 - `council_assignments` — who is assigned and with which specialization
 - `review_verdicts` — individual verdicts
@@ -299,7 +299,7 @@ The exact tile layout is defined during implementation. This diagram establishes
 - "Completed" counter increments with pulse effect
 - On transition to `closed`: the package simply disappears with fade out at the end of the belt
 
-**Agora data:**
+**Monsthera data:**
 - `tickets` where `status IN ('ready_for_commit', 'resolved', 'closed')`
 - `patches` where `state = 'committed'`
 
@@ -318,7 +318,7 @@ The exact tile layout is defined during implementation. This diagram establishes
 - Coordination messages (`coordination_messages`) appear as speech bubbles between present characters
 - If an agent receives a ticket while in the cafeteria, they stand up with "alert" animation (!) and walk to their destination
 
-**Agora data:**
+**Monsthera data:**
 - `coordination_messages` — chat bubbles
 - Agents with active session and no ticket assigned in `in_progress`
 
@@ -328,17 +328,17 @@ The exact tile layout is defined during implementation. This diagram establishes
 
 ### Primary source: `dashboard_events`
 
-Agora **already records events** in the `dashboard_events` table for every relevant action. Instead of polling+diffing 13 tables, the Agora Office backend primarily uses this table with an incremental cursor:
+Monsthera **already records events** in the `dashboard_events` table for every relevant action. Instead of polling+diffing 13 tables, the Monsthera Office backend primarily uses this table with an incremental cursor:
 
 ```sql
 SELECT * FROM dashboard_events WHERE id > :lastSeenId ORDER BY id LIMIT 100
 ```
 
-**Event types that Agora already emits:**
+**Event types that Monsthera already emits:**
 
-**Events Agora currently emits (confirmed in code):**
+**Events Monsthera currently emits (confirmed in code):**
 
-| Agora Event | Current fields in `data_json` | Visual mapping |
+| Monsthera Event | Current fields in `data_json` | Visual mapping |
 |---|---|---|
 | `ticket_created` | `ticketId`, `status`, `severity`, `creatorAgentId` | New post-it on whiteboard |
 | `ticket_status_changed` | `ticketId`, `previousStatus`, `status` | Character moves between rooms |
@@ -355,7 +355,7 @@ SELECT * FROM dashboard_events WHERE id > :lastSeenId ORDER BY id LIMIT 100
 | `convoy_agent_finished` | raw event object | Character exits |
 | `convoy_completed` | raw event object | General celebration |
 
-**All events listed above are actively emitted by Agora** (implemented in commits `3ee4973` and `6c993e9`). This includes `agent_registered`, `session_changed`, `patch_proposed`, `council_consensus_reached`, and `coordination_message_sent`. Event payloads are enriched with the fields Office needs (`title` in `ticket_created`, `contentPreview` in `ticket_commented`, structured convoy fields).
+**All events listed above are actively emitted by Monsthera** (implemented in commits `3ee4973` and `6c993e9`). This includes `agent_registered`, `session_changed`, `patch_proposed`, `council_consensus_reached`, and `coordination_message_sent`. Event payloads are enriched with the fields Office needs (`title` in `ticket_created`, `contentPreview` in `ticket_commented`, structured convoy fields).
 
 ### Complementary polling
 
@@ -390,7 +390,7 @@ WHERE repo_id = :repoId AND id > :lastSeenId
 ORDER BY id LIMIT 100
 ```
 
-The `repoId` is obtained by querying the `repos` table at startup (there is usually only 1 repo). If there are multiple repos, it is configured via `AGORA_REPO_ID` env var (see section 11).
+The `repoId` is obtained by querying the `repos` table at startup (there is usually only 1 repo). If there are multiple repos, it is configured via `MONSTHERA_REPO_ID` env var (see section 11).
 
 ---
 
@@ -408,7 +408,7 @@ interface SSEEvent {
 
 ### Event Catalog
 
-The backend translates raw Agora data into these normalized SSE events. The "Source" column indicates whether it comes from `dashboard_events` (DE) or direct polling (Poll).
+The backend translates raw Monsthera data into these normalized SSE events. The "Source" column indicates whether it comes from `dashboard_events` (DE) or direct polling (Poll).
 
 | SSE Event | Source | Payload | Visual Action |
 |---|---|---|---|
@@ -597,16 +597,16 @@ Each character has a spritesheet with:
 
 | Variable | Required | Description | Example |
 |---|---|---|---|
-| `AGORA_DB_PATH` | Yes | Absolute path to Agora's SQLite | `/Users/xpm/Projects/Github/Agora/.agora/agora.db` |
+| `MONSTHERA_DB_PATH` | Yes | Absolute path to Monsthera's SQLite | `/Users/xpm/Projects/Github/Monsthera/.monsthera/monsthera.db` |
 | `PORT` | No | Server port (default: 3001) | `3001` |
 | `POLL_INTERVAL_MS` | No | Polling interval in ms (default: 1500) | `1500` |
 | `CORS_ORIGIN` | No | Allowed CORS origin (default: `http://localhost:5173`) | `http://localhost:5173` |
-| `AGORA_REPO_ID` | No | Numeric repo ID in Agora's DB (default: auto-detect first repo) | `1` |
+| `MONSTHERA_REPO_ID` | No | Numeric repo ID in Monsthera's DB (default: auto-detect first repo) | `1` |
 
 ### Startup Validation
 
 The backend must verify on startup:
-1. `AGORA_DB_PATH` is defined and the file exists
+1. `MONSTHERA_DB_PATH` is defined and the file exists
 2. The file is a valid SQLite and can be opened in read-only mode
 3. Expected tables exist (at least: `agents`, `sessions`, `tickets`, `ticket_history`)
 4. If any verification fails: clear log with instructions on how to configure, exit with code 1
@@ -644,7 +644,7 @@ The backend must verify on startup:
 ### Monorepo Structure
 
 ```
-agora-office/
+monsthera-office/
 ├── package.json              # workspace root
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json        # shared TS config
@@ -727,19 +727,19 @@ agora-office/
 
 ---
 
-## 14. Development Flow with Agora
+## 14. Development Flow with Monsthera
 
-This project is built using Agora to demonstrate its own value. The flow is:
+This project is built using Monsthera to demonstrate its own value. The flow is:
 
-### Step 1: Initialize repo and Agora
+### Step 1: Initialize repo and Monsthera
 ```bash
-mkdir agora-office && cd agora-office
+mkdir monsthera-office && cd monsthera-office
 git init
-agora init && agora index --semantic
+monsthera init && monsthera index --semantic
 ```
 
 ### Step 2: Create tickets with `decompose_goal`
-Use Agora's `decompose_goal` tool passing this spec as context. The goal decomposes into atomic tickets with dependencies. Expected structure example:
+Use Monsthera's `decompose_goal` tool passing this spec as context. The goal decomposes into atomic tickets with dependencies. Expected structure example:
 
 ```
 Ticket 1: "Scaffold monorepo with pnpm workspaces"
@@ -777,7 +777,7 @@ launch_convoy → executes wave by wave, spawning agents
 Each wave executes parallelizable tickets. Agents pick tickets, implement, propose patches, go through council review.
 
 ### Step 5: Observe
-While the convoy runs, Agora Office itself (once functional) would show the agents working on it. Until then, progress can be observed with `list_tickets`, `get_wave_status`, etc.
+While the convoy runs, Monsthera Office itself (once functional) would show the agents working on it. Until then, progress can be observed with `list_tickets`, `get_wave_status`, etc.
 
 ---
 
@@ -787,7 +787,7 @@ While the convoy runs, Agora Office itself (once functional) would show the agen
 - Sound/music
 - Room editor or layout customization
 - Authentication
-- Multiple simultaneous Agora instances
+- Multiple simultaneous Monsthera instances
 - Mobile responsive
 - Ticket dependency visualization (lines on whiteboard)
 - Alternative themes or skins
@@ -795,7 +795,7 @@ While the convoy runs, Agora Office itself (once functional) would show the agen
 
 ---
 
-## 16. Agora Schema — Reference
+## 16. Monsthera Schema — Reference
 
 Tables the app consumes (all read-only):
 
@@ -843,7 +843,7 @@ patches (id, repo_id, proposal_id, base_commit, bundle_id, state, diff,
          message, touched_paths_json, agent_id, session_id, committed_sha,
          ticket_id, created_at, updated_at)
 
--- Dashboard events (already emitted by Agora)
+-- Dashboard events (already emitted by Monsthera)
 dashboard_events (id, repo_id, event_type, data_json, timestamp)
 
 -- Job slots (convoy/loops)
@@ -861,9 +861,9 @@ work_group_tickets (id, work_group_id, ticket_id, added_at)
 
 ---
 
-## 17. Agora Changes — Status
+## 17. Monsthera Changes — Status
 
-All required changes from the original gap analysis have been implemented in the Agora repository (commits `3ee4973` and `6c993e9`).
+All required changes from the original gap analysis have been implemented in the Monsthera repository (commits `3ee4973` and `6c993e9`).
 
 ### 17.1 DONE — Emit missing events and enrich `data_json`
 
@@ -898,13 +898,13 @@ New event type added to `DashboardEvent` union and emitted from `send_coordinati
 
 **Payload:** `{ messageId, messageType, from, to }`
 
-### 17.4 DONE — `agora status --json`
+### 17.4 DONE — `monsthera status --json`
 
-`agora status --json` outputs JSON to stdout with: `version`, `repoPath`, `dbPath`, `indexedCommit`, `fileCount`, `agentCount`, `activeSessionCount`.
+`monsthera status --json` outputs JSON to stdout with: `version`, `repoPath`, `dbPath`, `indexedCommit`, `fileCount`, `agentCount`, `activeSessionCount`.
 
 ### 17.5 DONE — `--spawn-command` for orchestrator
 
-`agora orchestrate --spawn-command "cmd {ticketId} {worktreePath}"` allows custom agent runners (e.g., OpenCode).
+`monsthera orchestrate --spawn-command "cmd {ticketId} {worktreePath}"` allows custom agent runners (e.g., OpenCode).
 
 ### 17.6 NOT A GAP — SSE endpoint
 
@@ -912,9 +912,9 @@ New event type added to `DashboardEvent` union and emitted from `send_coordinati
 
 ### 17.7 FUTURE — Remote SSE decoupling
 
-If Agora Office needs to visualize remote Agora instances without filesystem access, Agora's existing SSE endpoint (`/api/events` on `agora serve`) can be used directly, eliminating:
-- The dependency on `better-sqlite3` in Agora Office
-- The need for filesystem access where Agora runs
+If Monsthera Office needs to visualize remote Monsthera instances without filesystem access, Monsthera's existing SSE endpoint (`/api/events` on `monsthera serve`) can be used directly, eliminating:
+- The dependency on `better-sqlite3` in Monsthera Office
+- The need for filesystem access where Monsthera runs
 - The complexity of the polling + diff engine
 
 For v1, direct SQLite reading is maintained as the primary approach.

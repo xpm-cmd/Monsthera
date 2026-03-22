@@ -46,7 +46,7 @@ import {
 } from "../core/input-hardening.js";
 import { TicketSeverity, TicketStatus } from "../../schemas/ticket.js";
 import { COUNCIL_SPECIALIZATIONS } from "../../schemas/council.js";
-import { loadConfigFile, resolveConfig, type AgoraConfig } from "../core/config.js";
+import { loadConfigFile, resolveConfig, type MonstheraConfig } from "../core/config.js";
 
 const MAX_SSE_CONNECTIONS = 50;
 
@@ -666,7 +666,7 @@ export function summarizeDashboardReadOutput(data: unknown): Record<string, unkn
 
 function dashboardConfigPath(deps: DashboardDeps): string {
   const repoRoot = deps.mainRepoPath ?? deps.repoPath;
-  return join(repoRoot, ".agora", "config.json");
+  return join(repoRoot, ".monsthera", "config.json");
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -679,7 +679,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 export function applyStrictModelDiversityToggleToConfig(
   config: Record<string, unknown>,
   enabled: boolean,
-): Partial<AgoraConfig> {
+): Partial<MonstheraConfig> {
   const next = { ...config } as Record<string, unknown>;
   const governance = asRecord(next.governance);
   const modelDiversity = asRecord(governance.modelDiversity);
@@ -703,7 +703,7 @@ export function applyStrictModelDiversityToggleToConfig(
     },
   };
 
-  return next as Partial<AgoraConfig>;
+  return next as Partial<MonstheraConfig>;
 }
 
 function persistDashboardGovernanceSettings(

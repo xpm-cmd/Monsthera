@@ -1,14 +1,14 @@
-# Agora Office — Implementation Plan
+# Monsthera Office — Implementation Plan
 
-> **For agentic workers:** This plan is designed to be consumed by an Agora agent. Use it to populate the knowledge store, generate a roadmap via `decompose_goal`, create tickets, compute waves, and launch a convoy. Each task maps to one or more Agora tickets.
+> **For agentic workers:** This plan is designed to be consumed by an Monsthera agent. Use it to populate the knowledge store, generate a roadmap via `decompose_goal`, create tickets, compute waves, and launch a convoy. Each task maps to one or more Monsthera tickets.
 
-**Goal:** Build a full-stack web app that visualizes Agora multi-agent activity as an isometric pixel art office in real time.
+**Goal:** Build a full-stack web app that visualizes Monsthera multi-agent activity as an isometric pixel art office in real time.
 
-**Architecture:** Monorepo (pnpm workspaces) with 3 packages: `shared` (types), `server` (Node+Express reading Agora SQLite), `client` (React+PixiJS rendering isometric world). Server polls Agora DB and emits SSE events; client renders characters in rooms based on events.
+**Architecture:** Monorepo (pnpm workspaces) with 3 packages: `shared` (types), `server` (Node+Express reading Monsthera SQLite), `client` (React+PixiJS rendering isometric world). Server polls Monsthera DB and emits SSE events; client renders characters in rooms based on events.
 
 **Tech Stack:** TypeScript, React 18, PixiJS 8, Zustand, Vite, Express, better-sqlite3, Tailwind CSS, pnpm workspaces.
 
-**Spec:** `docs/superpowers/specs/2026-03-17-agora-office-design.md`
+**Spec:** `docs/superpowers/specs/2026-03-17-monsthera-office-design.md`
 
 ---
 
@@ -21,21 +21,21 @@ node --version    # >= 20.x (LTS recommended)
 pnpm --version    # >= 9.x
 ```
 
-An **Agora instance with an existing database** is required. The server reads the `.agora/agora.db` file from the project being observed. You need the absolute path to this file.
+An **Monsthera instance with an existing database** is required. The server reads the `.monsthera/monsthera.db` file from the project being observed. You need the absolute path to this file.
 
 ### Environment Variables
 
 Create a `.env` file in `packages/server/` (or export in your shell):
 
 ```bash
-# Required — absolute path to the Agora SQLite DB you want to visualize
-AGORA_DB_PATH=/Users/you/Projects/your-project/.agora/agora.db
+# Required — absolute path to the Monsthera SQLite DB you want to visualize
+MONSTHERA_DB_PATH=/Users/you/Projects/your-project/.monsthera/monsthera.db
 
 # Optional — all have sensible defaults
 PORT=3001                          # Express server port
-POLL_INTERVAL_MS=1500              # How often to poll Agora DB (ms)
+POLL_INTERVAL_MS=1500              # How often to poll Monsthera DB (ms)
 CORS_ORIGIN=http://localhost:5173  # Vite dev server origin
-AGORA_REPO_ID=                     # Auto-detected from repos table if omitted
+MONSTHERA_REPO_ID=                     # Auto-detected from repos table if omitted
 ```
 
 ### Install & Build
@@ -53,18 +53,18 @@ You need **2 terminals** running simultaneously:
 
 ```bash
 # Terminal 1 — Backend (Express + SSE + DB Poller)
-AGORA_DB_PATH=/path/to/.agora/agora.db pnpm --filter @agora-office/server dev
+MONSTHERA_DB_PATH=/path/to/.monsthera/monsthera.db pnpm --filter @monsthera-office/server dev
 
 # Output:
-#   Agora Office server listening on http://localhost:3001
-#   Connected to Agora DB: /path/to/.agora/agora.db (repo: 1)
+#   Monsthera Office server listening on http://localhost:3001
+#   Connected to Monsthera DB: /path/to/.monsthera/monsthera.db (repo: 1)
 #   Poll loop started (interval: 1500ms)
 #   SSE endpoint: http://localhost:3001/events
 ```
 
 ```bash
 # Terminal 2 — Frontend (Vite + React + PixiJS)
-pnpm --filter @agora-office/client dev
+pnpm --filter @monsthera-office/client dev
 
 # Output:
 #   VITE v5.x.x  ready in 500ms
@@ -82,10 +82,10 @@ Both services support hot reload:
 pnpm build
 
 # Start server (reads from compiled JS)
-AGORA_DB_PATH=/path/to/.agora/agora.db node packages/server/dist/index.js
+MONSTHERA_DB_PATH=/path/to/.monsthera/monsthera.db node packages/server/dist/index.js
 
 # Serve client static files (or use Vite preview)
-pnpm --filter @agora-office/client preview  # Serves on http://localhost:4173
+pnpm --filter @monsthera-office/client preview  # Serves on http://localhost:4173
 ```
 
 For production deployment, the server serves the client's static build output. The server `index.ts` includes a static file middleware that serves `packages/client/dist/` at the root path, so a single process handles both the API and the frontend.
@@ -122,7 +122,7 @@ For production deployment, the server serves the client's static build output. T
 │  └─ Differ        → compares snapshots, emits events     │
 │                                                          │
 │  Reads from:                                             │
-│  └─ Agora SQLite DB (read-only, path from AGORA_DB_PATH) │
+│  └─ Monsthera SQLite DB (read-only, path from MONSTHERA_DB_PATH) │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -134,46 +134,46 @@ For production deployment, the server serves the client's static build output. T
 | root | `pnpm build` | — | Build all packages in dependency order |
 | root | `pnpm test` | — | Run all tests |
 | root | `tsc --build` | — | Typecheck all packages |
-| `@agora-office/server` | `dev` | `tsx watch src/index.ts` | Start server with hot reload |
-| `@agora-office/server` | `build` | `tsc -p tsconfig.json` | Compile to JS |
-| `@agora-office/server` | `start` | `node dist/index.js` | Run compiled server |
-| `@agora-office/client` | `dev` | `vite` | Start Vite dev server (port 5173) |
-| `@agora-office/client` | `build` | `vite build` | Build for production |
-| `@agora-office/client` | `preview` | `vite preview` | Preview production build (port 4173) |
-| `@agora-office/shared` | `build` | `tsc -p tsconfig.json` | Compile shared types |
+| `@monsthera-office/server` | `dev` | `tsx watch src/index.ts` | Start server with hot reload |
+| `@monsthera-office/server` | `build` | `tsc -p tsconfig.json` | Compile to JS |
+| `@monsthera-office/server` | `start` | `node dist/index.js` | Run compiled server |
+| `@monsthera-office/client` | `dev` | `vite` | Start Vite dev server (port 5173) |
+| `@monsthera-office/client` | `build` | `vite build` | Build for production |
+| `@monsthera-office/client` | `preview` | `vite preview` | Preview production build (port 4173) |
+| `@monsthera-office/shared` | `build` | `tsc -p tsconfig.json` | Compile shared types |
 
-### Testing Against a Live Agora Instance
+### Testing Against a Live Monsthera Instance
 
-The best development experience is to point at an **active Agora project** where agents are working:
+The best development experience is to point at an **active Monsthera project** where agents are working:
 
 ```bash
-# 1. Find the Agora DB path for your project
-ls /path/to/your-project/.agora/agora.db
+# 1. Find the Monsthera DB path for your project
+ls /path/to/your-project/.monsthera/monsthera.db
 
-# 2. Start the Agora Office server pointed at it
-AGORA_DB_PATH=/path/to/your-project/.agora/agora.db \
-  pnpm --filter @agora-office/server dev
+# 2. Start the Monsthera Office server pointed at it
+MONSTHERA_DB_PATH=/path/to/your-project/.monsthera/monsthera.db \
+  pnpm --filter @monsthera-office/server dev
 
 # 3. Start the client
-pnpm --filter @agora-office/client dev
+pnpm --filter @monsthera-office/client dev
 
 # 4. Open http://localhost:5173 in your browser
-#    → If Agora has active sessions/tickets, the office will be "active"
+#    → If Monsthera has active sessions/tickets, the office will be "active"
 #    → If no activity, the office will be "closed" (dark, cat sleeping)
 ```
 
 ### Testing with an Empty/Inactive DB
 
-If no active Agora project is available, the app still works — it just shows an empty "closed" office:
+If no active Monsthera project is available, the app still works — it just shows an empty "closed" office:
 
 ```bash
-# Create a minimal Agora DB for testing
-mkdir /tmp/test-agora && cd /tmp/test-agora
-git init && agora init
+# Create a minimal Monsthera DB for testing
+mkdir /tmp/test-monsthera && cd /tmp/test-monsthera
+git init && monsthera init
 
 # Point the server at it
-AGORA_DB_PATH=/tmp/test-agora/.agora/agora.db \
-  pnpm --filter @agora-office/server dev
+MONSTHERA_DB_PATH=/tmp/test-monsthera/.monsthera/monsthera.db \
+  pnpm --filter @monsthera-office/server dev
 ```
 
 The office will show:
@@ -188,13 +188,13 @@ The office will show:
 
 | Scenario | What to do |
 |----------|------------|
-| Server won't start | Check `AGORA_DB_PATH` exists and is a valid SQLite file |
+| Server won't start | Check `MONSTHERA_DB_PATH` exists and is a valid SQLite file |
 | Client can't connect to SSE | Verify server is running on port 3001, check CORS_ORIGIN |
-| No events appearing | Check if the observed Agora project has active agents/tickets |
+| No events appearing | Check if the observed Monsthera project has active agents/tickets |
 | "Reconnecting..." overlay | Server crashed or was restarted — client auto-reconnects |
-| Types out of sync | Run `pnpm --filter @agora-office/shared build` then restart server/client |
+| Types out of sync | Run `pnpm --filter @monsthera-office/shared build` then restart server/client |
 | PixiJS changes not reflecting | PixiJS engine changes require manual page refresh (not HMR-compatible) |
-| Want to see office "opening" | Register an agent or create a ticket in the observed Agora project |
+| Want to see office "opening" | Register an agent or create a ticket in the observed Monsthera project |
 
 ---
 
@@ -214,9 +214,9 @@ The office will show:
 | File | Responsibility |
 |---|---|
 | `index.ts` | Express app bootstrap, CORS, routes, start poller |
-| `config.ts` | Env var loading + validation (AGORA_DB_PATH, PORT, etc.) |
+| `config.ts` | Env var loading + validation (MONSTHERA_DB_PATH, PORT, etc.) |
 | `db/reader.ts` | Open SQLite read-only, expose typed query helpers |
-| `db/queries.ts` | All SELECT queries against Agora tables (agents, sessions, tickets, etc.) |
+| `db/queries.ts` | All SELECT queries against Monsthera tables (agents, sessions, tickets, etc.) |
 | `poller/state.ts` | `PollState` interface + initial snapshot factory |
 | `poller/differ.ts` | Compare new DB state vs snapshot, emit SSE events for changes |
 | `poller/pollLoop.ts` | setInterval loop: read DB → diff → emit → update snapshot |
@@ -284,31 +284,31 @@ Tasks are ordered by dependencies. Tasks with the same dependency depth can be e
 **Affected paths:** root `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `packages/*/package.json`, `packages/*/tsconfig.json`
 
 **Description:**
-Initialize the `agora-office` monorepo with pnpm workspaces. Create 3 packages: `shared`, `server`, `client`.
+Initialize the `monsthera-office` monorepo with pnpm workspaces. Create 3 packages: `shared`, `server`, `client`.
 
 - [ ] **Step 1:** Initialize git repo and root package.json with `"private": true` and `workspaces` field
 - [ ] **Step 2:** Create `pnpm-workspace.yaml` with `packages: ["packages/*"]`
 - [ ] **Step 3:** Create `tsconfig.base.json` with strict TypeScript config, `"target": "ES2022"`, `"module": "ESNext"`, `"moduleResolution": "bundler"`
-- [ ] **Step 4:** Create `packages/shared/package.json` with name `@agora-office/shared`, `"type": "module"`, TypeScript dep
+- [ ] **Step 4:** Create `packages/shared/package.json` with name `@monsthera-office/shared`, `"type": "module"`, TypeScript dep
 - [ ] **Step 5:** Create `packages/shared/tsconfig.json` extending base, `"composite": true`
 - [ ] **Step 6:** Create `packages/shared/src/constants.ts` with room names enum, ticket statuses, agent roles, hex colors from spec section 10
-- [ ] **Step 7:** Create `packages/server/package.json` with name `@agora-office/server`, deps: `express`, `better-sqlite3`, `cors`, `@agora-office/shared`. Dev deps: `tsx`, `@types/express`, `@types/better-sqlite3`, `@types/cors`. Scripts: `"dev": "tsx watch src/index.ts"`, `"build": "tsc -p tsconfig.json"`, `"start": "node dist/index.js"`
+- [ ] **Step 7:** Create `packages/server/package.json` with name `@monsthera-office/server`, deps: `express`, `better-sqlite3`, `cors`, `@monsthera-office/shared`. Dev deps: `tsx`, `@types/express`, `@types/better-sqlite3`, `@types/cors`. Scripts: `"dev": "tsx watch src/index.ts"`, `"build": "tsc -p tsconfig.json"`, `"start": "node dist/index.js"`
 - [ ] **Step 8:** Create `packages/server/tsconfig.json` extending base, referencing shared
-- [ ] **Step 9:** Create `packages/client/package.json` with name `@agora-office/client`, deps: `react`, `react-dom`, `pixi.js`, `zustand`, `@agora-office/shared`. Dev deps: `vite`, `@vitejs/plugin-react`, `tailwindcss`, `autoprefixer`, `postcss`, `@types/react`, `@types/react-dom`. Scripts: `"dev": "vite"` (port 5173), `"build": "vite build"`, `"preview": "vite preview"` (port 4173)
+- [ ] **Step 9:** Create `packages/client/package.json` with name `@monsthera-office/client`, deps: `react`, `react-dom`, `pixi.js`, `zustand`, `@monsthera-office/shared`. Dev deps: `vite`, `@vitejs/plugin-react`, `tailwindcss`, `autoprefixer`, `postcss`, `@types/react`, `@types/react-dom`. Scripts: `"dev": "vite"` (port 5173), `"build": "vite build"`, `"preview": "vite preview"` (port 4173)
 - [ ] **Step 10:** Create `packages/client/tsconfig.json` extending base, referencing shared
 - [ ] **Step 11:** Create `packages/client/vite.config.ts` with React plugin
 - [ ] **Step 12:** Create `packages/client/index.html` minimal template
 - [ ] **Step 13:** Create `packages/client/src/main.tsx` — renders `<App />` into root
-- [ ] **Step 14:** Create `packages/client/src/App.tsx` — placeholder "Agora Office" text
-- [ ] **Step 15:** Add root `package.json` scripts: `"build": "pnpm --filter @agora-office/shared build && pnpm --filter @agora-office/server build && pnpm --filter @agora-office/client build"`, `"test": "pnpm -r test"`, `"typecheck": "tsc --build"`
+- [ ] **Step 14:** Create `packages/client/src/App.tsx` — placeholder "Monsthera Office" text
+- [ ] **Step 15:** Add root `package.json` scripts: `"build": "pnpm --filter @monsthera-office/shared build && pnpm --filter @monsthera-office/server build && pnpm --filter @monsthera-office/client build"`, `"test": "pnpm -r test"`, `"typecheck": "tsc --build"`
 - [ ] **Step 16:** Create root `.env.example` documenting all env vars (see Development Setup section above)
 - [ ] **Step 17:** Run `pnpm install` and verify all packages resolve
-- [ ] **Step 18:** Verify `pnpm --filter @agora-office/client dev` starts Vite on http://localhost:5173 and shows placeholder
+- [ ] **Step 18:** Verify `pnpm --filter @monsthera-office/client dev` starts Vite on http://localhost:5173 and shows placeholder
 - [ ] **Step 19:** Commit: `"feat: scaffold monorepo with shared, server, and client packages"`
 
 **Acceptance criteria:**
 - `pnpm install` succeeds
-- `pnpm --filter @agora-office/client dev` starts Vite dev server
+- `pnpm --filter @monsthera-office/client dev` starts Vite dev server
 - All 3 packages compile with `tsc --build`
 
 ---
@@ -346,9 +346,9 @@ Define all shared TypeScript types used by both server and client. See spec sect
 **Affected paths:** `packages/server/src/config.ts`, `packages/server/src/db/`
 
 **Description:**
-Implement env var loading with validation and the read-only SQLite connection to Agora's DB. See spec sections 11 (config) and 12 (error handling).
+Implement env var loading with validation and the read-only SQLite connection to Monsthera's DB. See spec sections 11 (config) and 12 (error handling).
 
-- [ ] **Step 1:** Create `packages/server/src/config.ts` — Load and validate env vars: `AGORA_DB_PATH` (required), `PORT` (default 3001), `POLL_INTERVAL_MS` (default 1500), `CORS_ORIGIN` (default `http://localhost:5173`), `AGORA_REPO_ID` (default auto-detect). Throw descriptive error if AGORA_DB_PATH missing or file doesn't exist.
+- [ ] **Step 1:** Create `packages/server/src/config.ts` — Load and validate env vars: `MONSTHERA_DB_PATH` (required), `PORT` (default 3001), `POLL_INTERVAL_MS` (default 1500), `CORS_ORIGIN` (default `http://localhost:5173`), `MONSTHERA_REPO_ID` (default auto-detect). Throw descriptive error if MONSTHERA_DB_PATH missing or file doesn't exist.
 - [ ] **Step 2:** Create `packages/server/src/db/reader.ts` — Open SQLite with `better-sqlite3` in read-only mode (`{ readonly: true, fileMustExist: true }`). Validate expected tables exist (agents, sessions, tickets, ticket_history, dashboard_events). Auto-detect `repoId` from `repos` table if not configured. Export `getDb()` accessor and `getRepoId()`.
 - [ ] **Step 3:** Create `packages/server/src/db/queries.ts` — Typed query functions:
   - `getActiveAgents()` — agents with at least 1 active session
@@ -361,10 +361,10 @@ Implement env var loading with validation and the read-only SQLite connection to
   - `getTicketById(ticketId)` — single ticket lookup for enriching events
   - `getAgentById(agentId)` — single agent lookup
 - [ ] **Step 4:** Write tests: config validation (missing path, valid path, defaults), reader opening (mock SQLite file), query return shapes.
-- [ ] **Step 5:** Commit: `"feat(server): add config validation and Agora SQLite reader"`
+- [ ] **Step 5:** Commit: `"feat(server): add config validation and Monsthera SQLite reader"`
 
 **Acceptance criteria:**
-- Server exits with clear error message if AGORA_DB_PATH is missing or invalid
+- Server exits with clear error message if MONSTHERA_DB_PATH is missing or invalid
 - SQLite opens in read-only mode
 - All query functions return typed results
 - repoId auto-detected from repos table
@@ -385,7 +385,7 @@ Implement SSE connection management and event broadcasting. See spec section 7.
   - `addClient(res: Response)` — Set SSE headers (`Content-Type: text/event-stream`, `Cache-Control: no-cache`, `Connection: keep-alive`), send initial `:ping`, store client reference. Remove on `req.close`.
   - `broadcast(event: SSEEvent)` — Send to all connected clients as `data: ${JSON.stringify(event)}\n\n`
   - `clientCount` getter
-- [ ] **Step 2:** Create `packages/server/src/sse/events.ts` — Builder functions that construct typed `SSEEvent` objects from raw DB data. One function per event type. Each normalizes field names (e.g., Agora's `previousStatus` → SSE's `previousStatus`; enriches with JOINed data where needed).
+- [ ] **Step 2:** Create `packages/server/src/sse/events.ts` — Builder functions that construct typed `SSEEvent` objects from raw DB data. One function per event type. Each normalizes field names (e.g., Monsthera's `previousStatus` → SSE's `previousStatus`; enriches with JOINed data where needed).
 - [ ] **Step 3:** Write tests: SSE headers, client add/remove, broadcast to multiple clients, event builder output shapes.
 - [ ] **Step 4:** Commit: `"feat(server): add SSE stream manager and event builders"`
 
@@ -404,7 +404,7 @@ Implement SSE connection management and event broadcasting. See spec section 7.
 **Affected paths:** `packages/server/src/poller/`
 
 **Description:**
-Implement the core polling loop that reads Agora DB changes and emits SSE events. See spec section 6 (change detection strategy).
+Implement the core polling loop that reads Monsthera DB changes and emits SSE events. See spec section 6 (change detection strategy).
 
 - [ ] **Step 1:** Create `packages/server/src/poller/state.ts` — `PollState` interface and `createInitialState(db)` factory that reads current cursors (MAX(id) for append-only tables, active session set for mutable tables).
 - [ ] **Step 2:** Create `packages/server/src/poller/differ.ts` — `diffAndEmit(db, prevState, sseManager)` function:
@@ -446,8 +446,8 @@ Implement REST endpoints and wire everything together. See spec sections 8 (GET 
   - Compute stats (total, byStatus, resolved count)
   - Assign deskIndex via round-robin for agents in desks
 - [ ] **Step 4:** Create `packages/server/src/index.ts` — Express app:
-  - Load config via `loadConfig()` — validates AGORA_DB_PATH exists, sets defaults for PORT/POLL_INTERVAL_MS/CORS_ORIGIN
-  - Open DB via `createDbReader(config.agoraDbPath)` — read-only SQLite connection
+  - Load config via `loadConfig()` — validates MONSTHERA_DB_PATH exists, sets defaults for PORT/POLL_INTERVAL_MS/CORS_ORIGIN
+  - Open DB via `createDbReader(config.monstheraDbPath)` — read-only SQLite connection
   - CORS middleware: `cors({ origin: config.corsOrigin })` — default allows `http://localhost:5173` (Vite dev server)
   - Mount routes: `app.get("/health", healthRoute)`, `app.get("/rooms", roomsRoute)`, `app.get("/state", stateRoute)`, `app.get("/events", sseRoute)`
   - Create SSEManager instance, pass to SSE route and poll loop
@@ -455,16 +455,16 @@ Implement REST endpoints and wire everything together. See spec sections 8 (GET 
   - Listen: `app.listen(config.port, () => console.log(...))`
   - Log on startup:
     ```
-    Agora Office server listening on http://localhost:3001
-    Connected to Agora DB: /path/to/.agora/agora.db (repoId: 1)
+    Monsthera Office server listening on http://localhost:3001
+    Connected to Monsthera DB: /path/to/.monsthera/monsthera.db (repoId: 1)
     Poll loop started (interval: 1500ms)
     SSE endpoint: http://localhost:3001/events
     REST endpoints: /health, /rooms, /state
     ```
   - Graceful shutdown: `process.on("SIGINT", ...)` closes DB and exits
-- [ ] **Step 5:** Test locally with a real Agora DB:
+- [ ] **Step 5:** Test locally with a real Monsthera DB:
   ```bash
-  AGORA_DB_PATH=/path/to/.agora/agora.db pnpm --filter @agora-office/server dev
+  MONSTHERA_DB_PATH=/path/to/.monsthera/monsthera.db pnpm --filter @monsthera-office/server dev
   ```
   Verify:
   - Server starts and logs connection info
@@ -475,23 +475,23 @@ Implement REST endpoints and wire everything together. See spec sections 8 (GET 
 - [ ] **Step 6:** Test CORS by opening the Vite client:
   ```bash
   # In another terminal:
-  pnpm --filter @agora-office/client dev
+  pnpm --filter @monsthera-office/client dev
   # Open http://localhost:5173 — browser console should NOT show CORS errors
   ```
 - [ ] **Step 7:** Test error cases:
-  - Missing AGORA_DB_PATH → clear error message and exit code 1
+  - Missing MONSTHERA_DB_PATH → clear error message and exit code 1
   - Invalid SQLite file → clear error message and exit code 1
   - DB locked (another process writing) → retries with backoff, logs warning
 - [ ] **Step 8:** Commit: `"feat(server): add REST routes, SSE endpoint, and server bootstrap"`
 
 **Acceptance criteria:**
 - `GET /health` returns 200 with `{ status: "ok", uptime, clientCount }`
-- `GET /state` returns well-formed `InitialState` matching `@agora-office/shared` types
+- `GET /state` returns well-formed `InitialState` matching `@monsthera-office/shared` types
 - `GET /events` opens SSE stream (Content-Type: text/event-stream)
 - `GET /rooms` returns metadata for 6 rooms
-- Server starts cleanly on configured port (default 3001) with valid AGORA_DB_PATH
+- Server starts cleanly on configured port (default 3001) with valid MONSTHERA_DB_PATH
 - CORS allows requests from `http://localhost:5173` (Vite dev server)
-- Server exits with clear error if AGORA_DB_PATH is missing or invalid
+- Server exits with clear error if MONSTHERA_DB_PATH is missing or invalid
 - Startup logs show: port, DB path, repoId, poll interval, available endpoints
 
 ---
@@ -746,7 +746,7 @@ Connect frontend to backend SSE stream and map events to Zustand store actions. 
   - Set council reviews
   - Set wave info
 - [ ] **Step 4:** Wire into App.tsx: on mount, fetch `/state` → hydrate → connect SSE
-- [ ] **Step 5:** Test end-to-end: start server with real Agora DB, start client, verify events appear in console and stores update.
+- [ ] **Step 5:** Test end-to-end: start server with real Monsthera DB, start client, verify events appear in console and stores update.
 - [ ] **Step 6:** Commit: `"feat(client): add SSE client with reconnection and event-to-store mapping"`
 
 **Acceptance criteria:**
@@ -809,7 +809,7 @@ Implement the office open/close lifecycle with light animations. See spec sectio
   - `transitionToClosed()` — all rooms dark, night background
   - `transitionToActive()` — all rooms lit, warm background
 - [ ] **Step 3:** Subscribe worldStore to trigger transitions on status change.
-- [ ] **Step 4:** Test: start with empty Agora → office closed. Create a session → office opens. End session → office closes.
+- [ ] **Step 4:** Test: start with empty Monsthera → office closed. Create a session → office opens. End session → office closes.
 - [ ] **Step 5:** Commit: `"feat(client): add office lifecycle with light-on/off transitions"`
 
 **Acceptance criteria:**
@@ -877,10 +877,10 @@ Connect SSE events to character movements, room behaviors, and particle effects.
 - [ ] **Step 2:** Add game loop in App.tsx: `PixiJS.Ticker` calling `CharacterManager.updateAll()`, `ParticleSystem.update()`, depth-sort world children each frame.
 - [ ] **Step 3:** Add click handler on characters: click character sprite → uiStore.selectAgent() → DetailPanel shows.
 - [ ] **Step 4:** Full end-to-end test:
-  - Start server pointing at Agora DB with active agents
+  - Start server pointing at Monsthera DB with active agents
   - Start client
   - Verify: office opens, characters appear, walk to rooms, events trigger animations
-  - Create a ticket in Agora → post-it appears on planning board
+  - Create a ticket in Monsthera → post-it appears on planning board
   - Assign ticket → character walks to desk
 - [ ] **Step 5:** Commit: `"feat: wire SSE events to character movements, room behaviors, and particles"`
 
@@ -889,7 +889,7 @@ Connect SSE events to character movements, room behaviors, and particle effects.
 - Room furniture reacts (monitors turn on, post-its move, rocket launches)
 - Particles fire on appropriate events
 - Clicking a character opens detail panel
-- The office feels alive when Agora is active
+- The office feels alive when Monsthera is active
 
 ---
 
@@ -962,9 +962,9 @@ Final polish pass: fix visual bugs, tune animations, optimize performance.
 - [ ] **Step 1:** Performance audit: ensure 60fps with 10+ characters. Profile PixiJS render loop, optimize depth sorting (don't sort every frame — only when characters move). Sprite batching.
 - [ ] **Step 2:** Tune animation timings: walk speed, camera easing, particle lifetimes, room transition durations. Make everything feel "bouncy and cute".
 - [ ] **Step 3:** Test reconnection: kill server while client is running → "Reconnecting..." overlay appears → restart server → client re-hydrates and resumes.
-- [ ] **Step 4:** Test with empty Agora DB (no agents, no tickets) → office should show in closed state, dark, cat sleeping.
-- [ ] **Step 5:** Test with active convoy: launch a convoy on a real Agora project → watch office come alive, characters move through rooms, tickets flow through pipeline.
-- [ ] **Step 6:** Add README.md with setup instructions: prerequisites, env vars, how to start both server and client, link to Agora.
+- [ ] **Step 4:** Test with empty Monsthera DB (no agents, no tickets) → office should show in closed state, dark, cat sleeping.
+- [ ] **Step 5:** Test with active convoy: launch a convoy on a real Monsthera project → watch office come alive, characters move through rooms, tickets flow through pipeline.
+- [ ] **Step 6:** Add README.md with setup instructions: prerequisites, env vars, how to start both server and client, link to Monsthera.
 - [ ] **Step 7:** Commit: `"chore: polish animations, optimize performance, add README"`
 
 **Acceptance criteria:**
@@ -1006,7 +1006,7 @@ Task 1 (scaffold)
 
 ## Expected Waves (computed by `compute_waves`)
 
-The actual waves will be determined by Agora's `compute_waves` based on the dependency DAG above. Expected grouping:
+The actual waves will be determined by Monsthera's `compute_waves` based on the dependency DAG above. Expected grouping:
 
 | Wave | Tasks | Rationale |
 |---|---|---|
@@ -1022,7 +1022,7 @@ The actual waves will be determined by Agora's `compute_waves` based on the depe
 
 ---
 
-## Agora Ticket Generation Guide
+## Monsthera Ticket Generation Guide
 
 When an agent uses this plan to create tickets via `decompose_goal`, map each task as follows:
 
@@ -1040,7 +1040,7 @@ For each Task N:
 The `decompose_goal` tool validates the DAG and creates tickets with `blocks`/`blocked_by` links automatically.
 
 After tickets are created:
-1. `create_work_group(title: "Agora Office v1", description: "Full-stack isometric office visualization for Agora")`
+1. `create_work_group(title: "Monsthera Office v1", description: "Full-stack isometric office visualization for Monsthera")`
 2. `add_tickets_to_group(groupId, ticketIds)` — add all 20 tickets
-3. `compute_waves(groupId)` — Agora computes optimal parallelization
+3. `compute_waves(groupId)` — Monsthera computes optimal parallelization
 4. `launch_convoy(groupId)` — execute wave by wave with agents

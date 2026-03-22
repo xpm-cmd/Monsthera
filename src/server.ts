@@ -1,9 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { VERSION } from "./core/constants.js";
-import type { AgoraConfig } from "./core/config.js";
-import type { AgoraContext } from "./core/context.js";
+import type { MonstheraConfig } from "./core/config.js";
+import type { MonstheraContext } from "./core/context.js";
 import { InsightStream } from "./core/insight-stream.js";
-import { createAgoraContextLoader } from "./core/context-loader.js";
+import { createMonstheraContextLoader } from "./core/context-loader.js";
 import { registerReadTools } from "./tools/read-tools.js";
 import { registerIndexTools } from "./tools/index-tools.js";
 import { registerAgentTools } from "./tools/agent-tools.js";
@@ -23,20 +23,20 @@ import { registerSpawnTools } from "./tools/spawn-tools.js";
 import { registerGovernanceTools } from "./tools/governance-tools.js";
 import { installToolRuntimeInstrumentation } from "./tools/runtime-instrumentation.js";
 
-export function createAgoraServer(
-  config: AgoraConfig,
+export function createMonstheraServer(
+  config: MonstheraConfig,
   opts: {
     insight?: InsightStream;
-    getContext?: () => Promise<AgoraContext>;
+    getContext?: () => Promise<MonstheraContext>;
   } = {},
 ) {
   const server = new McpServer({
-    name: "agora",
+    name: "monsthera",
     version: VERSION,
   });
 
   const insight = opts.insight ?? new InsightStream(config.verbosity);
-  const getContext = opts.getContext ?? createAgoraContextLoader(config, insight);
+  const getContext = opts.getContext ?? createMonstheraContextLoader(config, insight);
 
   installToolRuntimeInstrumentation(server, getContext);
 

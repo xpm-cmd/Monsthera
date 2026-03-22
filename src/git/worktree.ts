@@ -27,15 +27,15 @@ export interface MergeResult {
 }
 
 /**
- * Creates a worktree at .agora/worktrees/<sessionId> on branch agora/agent/<sessionId>.
+ * Creates a worktree at .monsthera/worktrees/<sessionId> on branch monsthera/agent/<sessionId>.
  * The branch starts from current HEAD of main.
  */
 export async function createAgentWorktree(
   mainRepoRoot: string,
   sessionId: string,
 ): Promise<{ worktreePath: string; branchName: string }> {
-  const branchName = `agora/agent/${sessionId}`;
-  const worktreePath = `${mainRepoRoot}/.agora/worktrees/${sessionId}`;
+  const branchName = `monsthera/agent/${sessionId}`;
+  const worktreePath = `${mainRepoRoot}/.monsthera/worktrees/${sessionId}`;
   await git(["worktree", "add", "-b", branchName, worktreePath], { cwd: mainRepoRoot });
   return { worktreePath, branchName };
 }
@@ -48,8 +48,8 @@ export async function removeAgentWorktree(
   mainRepoRoot: string,
   sessionId: string,
 ): Promise<void> {
-  const worktreePath = `${mainRepoRoot}/.agora/worktrees/${sessionId}`;
-  const branchName = `agora/agent/${sessionId}`;
+  const worktreePath = `${mainRepoRoot}/.monsthera/worktrees/${sessionId}`;
+  const branchName = `monsthera/agent/${sessionId}`;
   try {
     await git(["worktree", "remove", "--force", worktreePath], { cwd: mainRepoRoot });
   } catch { /* worktree may not exist */ }
@@ -91,7 +91,7 @@ export async function rebaseOnMain(
       await git(["rebase", "--abort"], { cwd: worktreePath });
       return { rebased: false, conflicts };
     } catch (innerErr) {
-      console.warn(`[agora] rebaseOnMain: failed to extract conflicts:`, innerErr);
+      console.warn(`[monsthera] rebaseOnMain: failed to extract conflicts:`, innerErr);
       try { await git(["rebase", "--abort"], { cwd: worktreePath }); } catch { /* already clean */ }
       return { rebased: false, conflicts: ["unknown conflict"] };
     }
@@ -121,7 +121,7 @@ export async function mergeAgentWork(
       await git(["merge", "--abort"], { cwd: mainRepoRoot });
       return { merged: false, commitSha: null, conflicts };
     } catch (innerErr) {
-      console.warn(`[agora] mergeAgentWork: failed to extract conflicts for ${branchName}:`, innerErr);
+      console.warn(`[monsthera] mergeAgentWork: failed to extract conflicts for ${branchName}:`, innerErr);
       return { merged: false, commitSha: null, conflicts: ["unknown conflict"] };
     }
   }
@@ -144,8 +144,8 @@ export async function listAgentWorktrees(mainRepoRoot: string): Promise<Worktree
     }
   }
   if (current.path) entries.push(current as WorktreeInfo);
-  // Filter to only agora agent worktrees
-  return entries.filter((e) => e.branch?.startsWith("agora/agent/"));
+  // Filter to only monsthera agent worktrees
+  return entries.filter((e) => e.branch?.startsWith("monsthera/agent/"));
 }
 
 /**
@@ -162,7 +162,7 @@ export async function cleanupOrphanedWorktrees(
   const errors: Array<{ sessionId: string; error: string }> = [];
 
   for (const wt of worktrees) {
-    const sessionId = wt.branch.replace("agora/agent/", "");
+    const sessionId = wt.branch.replace("monsthera/agent/", "");
     if (activeSessions.has(sessionId)) continue;
 
     if (opts?.dryRun) {

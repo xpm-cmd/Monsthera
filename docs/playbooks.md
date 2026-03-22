@@ -9,13 +9,13 @@ Use it when you want a short operational recipe for a concrete situation:
 - prepare a council review gate
 - unblock work by turning a review blocker into a fix slice
 
-## 1. I Want Agora To Tell Me What Needs Attention
+## 1. I Want Monsthera To Tell Me What Needs Attention
 
 Run:
 
 ```bash
-agora loop plan --json
-agora facilitator --json
+monsthera loop plan --json
+monsthera facilitator --json
 ```
 
 Use this when you want a quick answer to:
@@ -36,7 +36,7 @@ What to do next:
 Prompt for a facilitator agent:
 
 ```text
-Act as facilitator. Start by running `agora loop plan --json`.
+Act as facilitator. Start by running `monsthera loop plan --json`.
 Use the result to identify the single highest-value next orchestration move.
 Prefer: approved work that needs a developer, in_review work that needs council, or blocked work that needs a fix slice.
 Do not patch code. Keep the output action-oriented.
@@ -47,16 +47,16 @@ Do not patch code. Keep the output action-oriented.
 Run:
 
 ```bash
-agora loop dev --json
+monsthera loop dev --json
 ```
 
-Use this when you want Agora to:
+Use this when you want Monsthera to:
 
 - rank approved work
 - surface the most likely next ticket
 - preload compact code context
 
-If you keep `agora loop dev --watch` running, it can also auto-take the top recommended approved ticket by assigning it, claiming paths, and moving it to `in_progress`.
+If you keep `monsthera loop dev --watch` running, it can also auto-take the top recommended approved ticket by assigning it, claiming paths, and moving it to `in_progress`.
 
 What to do next:
 
@@ -68,7 +68,7 @@ What to do next:
 Prompt for a developer agent:
 
 ```text
-Act as developer. Start by running `agora loop dev --json`.
+Act as developer. Start by running `monsthera loop dev --json`.
 Take the top suggested approved ticket unless there is a strong reason not to.
 Implement only that slice, validate the result, and hand it off in `in_review`.
 If the work is blocked by a concrete defect or missing prerequisite, say so explicitly and propose or create the smallest repair slice.
@@ -79,13 +79,13 @@ If the work is blocked by a concrete defect or missing prerequisite, say so expl
 Run:
 
 ```bash
-agora loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer" --json
+monsthera loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer" --json
 ```
 
 Or for technical analysis:
 
 ```bash
-agora loop council TKT-1234abcd --transition technical_analysis->approved --specialization security --json
+monsthera loop council TKT-1234abcd --transition technical_analysis->approved --specialization security --json
 ```
 
 Use this when a reviewer needs the current ticket context, deep evidence, and consensus state before writing findings or submitting a verdict.
@@ -100,7 +100,7 @@ What to do next:
 Prompt for a reviewer agent:
 
 ```text
-Act as reviewer. Start by running `agora loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer" --json`.
+Act as reviewer. Start by running `monsthera loop council TKT-1234abcd --transition in_review->ready_for_commit --agent-name "Architect Reviewer" --json`.
 Review only the current gate. Focus on defects, regressions, risks, missing tests, and scope mismatches.
 Be maximally detailed and analytically deep by default.
 Do not propose patches.
@@ -136,9 +136,9 @@ Link it to the parent, leave a short implementation plan in the comments, and ke
 If you want the simplest manual routine, use this order:
 
 ```bash
-agora loop plan --json
-agora loop dev --json
-agora loop council TKT-1234abcd --transition in_review->ready_for_commit --json
+monsthera loop plan --json
+monsthera loop dev --json
+monsthera loop council TKT-1234abcd --transition in_review->ready_for_commit --json
 ```
 
 Meaning:
@@ -152,11 +152,11 @@ Meaning:
 Use watch mode:
 
 ```bash
-agora loop plan --watch
-agora facilitator --watch
-agora loop dev --watch
-agora loop council --watch --agent-name "Architect Reviewer"
-agora loop council --watch --agent-name "Security Reviewer"
+monsthera loop plan --watch
+monsthera facilitator --watch
+monsthera loop dev --watch
+monsthera loop council --watch --agent-name "Architect Reviewer"
+monsthera loop council --watch --agent-name "Security Reviewer"
 ```
 
 Recommended use:
@@ -197,9 +197,9 @@ If you want separate agents working in parallel, use:
 
 Map them to these commands:
 
-- facilitator -> `agora loop plan --json`
-- developer -> `agora loop dev --json`
-- reviewer -> `agora loop council ... --json`
+- facilitator -> `monsthera loop plan --json`
+- developer -> `monsthera loop dev --json`
+- reviewer -> `monsthera loop council ... --json`
 
 ## 8. What These Commands Do Not Yet Do
 
@@ -224,13 +224,13 @@ Use these when the code and the ticket state may have drifted apart, or when a f
 - move it to `in_progress`, then `in_review`, so the state matches reality
 - if review already passed and the code is landed, make sure the ticket reaches `resolved`
 - prefer an exact commit-based transition path over a manual `resolved` that would attach the wrong `HEAD`
-- verify with `agora ticket show TKT-1234abcd --json`
+- verify with `monsthera ticket show TKT-1234abcd --json`
 
 ### Resolution Traceability Checklist
 
 - confirm `commitSha` points to the actual landing commit, not the ticket creation `HEAD`
 - for umbrella or multi-slice work, confirm `resolutionCommitShas` is populated
-- if a post-commit reconcile is needed, prefer `agora ticket reconcile-commit --commit <sha> --json`
+- if a post-commit reconcile is needed, prefer `monsthera ticket reconcile-commit --commit <sha> --json`
 - if you are fixing historical metadata, leave an explicit `retro-sync` or `retro-audit` comment
 - do not auto-resolve unrelated tickets just because they share nearby files; check overlap carefully first
 
@@ -245,6 +245,6 @@ Use these when the code and the ticket state may have drifted apart, or when a f
 
 - if parser output changes, verify the extracted symbols are semantic identifiers, not raw AST text
 - re-run focused parser and FTS tests
-- run `agora index --incremental --verbosity quiet`
+- run `monsthera index --incremental --verbosity quiet`
 - treat new warnings during post-commit or reindex as regressions until explained
 - if legacy indexed data can trigger warnings, sanitize it during rebuild instead of dropping the whole record

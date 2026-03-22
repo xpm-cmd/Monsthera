@@ -31,7 +31,7 @@ function buildSimCallbacks(opts: {
     callTool: async (name, params) => {
       if (name === "register_agent") return { agentId: "sim-orch", sessionId: "sim-session" };
       if (name === "compute_waves") return { waveCount: totalWaves };
-      if (name === "launch_convoy") return { integrationBranch: "agora/convoy/WG-sim" };
+      if (name === "launch_convoy") return { integrationBranch: "monsthera/convoy/WG-sim" };
       if (name === "get_wave_status") {
         const tickets = waveCallCount === 0 ? opts.wave0 : (opts.wave1 ?? []);
         waveCallCount++;

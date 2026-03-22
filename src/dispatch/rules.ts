@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, posix as pathPosix } from "node:path";
 import { z } from "zod/v4";
-import { DEFAULT_AGORA_DIR } from "../core/constants.js";
+import { DEFAULT_MONSTHERA_DIR } from "../core/constants.js";
 import { CAPABILITY_TOOL_NAMES, type CapabilityToolName } from "../core/tool-manifest.js";
 import {
   COUNCIL_SPECIALIZATIONS,
@@ -11,7 +11,7 @@ import {
 
 const DispatchActionSchema = z.string().trim().min(1).refine(
   (value): value is CapabilityToolName => CAPABILITY_TOOL_NAMES.includes(value as CapabilityToolName),
-  "Invalid Agora tool name in dispatch rule",
+  "Invalid Monsthera tool name in dispatch rule",
 );
 
 const DispatchRuleInputSchema = z.object({
@@ -134,11 +134,11 @@ const BUILT_IN_RULES: DispatchRule[] = normalizeDispatchRules([
     reason: "TypeScript config changes can shift build and analysis behavior.",
   },
   {
-    pattern: ".agora/config.json",
+    pattern: ".monsthera/config.json",
     always: false,
     actions: ["search_knowledge", "get_issue_pack"],
     required_roles: ["security", "patterns"],
-    reason: "Agora config changes alter trust or workflow defaults.",
+    reason: "Monsthera config changes alter trust or workflow defaults.",
   },
   {
     pattern: "src/dashboard/**",
@@ -156,12 +156,12 @@ const BUILT_IN_RULES: DispatchRule[] = normalizeDispatchRules([
   },
 ], "builtin");
 
-export function getDispatchRulesPath(repoPath: string, agoraDir = DEFAULT_AGORA_DIR): string {
-  return join(repoPath, agoraDir, "dispatch-rules.yaml");
+export function getDispatchRulesPath(repoPath: string, monstheraDir = DEFAULT_MONSTHERA_DIR): string {
+  return join(repoPath, monstheraDir, "dispatch-rules.yaml");
 }
 
-export function loadDispatchRules(repoPath: string, agoraDir = DEFAULT_AGORA_DIR): DispatchRuleLoadResult {
-  const path = getDispatchRulesPath(repoPath, agoraDir);
+export function loadDispatchRules(repoPath: string, monstheraDir = DEFAULT_MONSTHERA_DIR): DispatchRuleLoadResult {
+  const path = getDispatchRulesPath(repoPath, monstheraDir);
   if (!existsSync(path)) {
     return {
       path,
@@ -198,7 +198,7 @@ export function loadDispatchRules(repoPath: string, agoraDir = DEFAULT_AGORA_DIR
 export function suggestActionsForChanges(
   changedPaths: string[],
   repoPath: string,
-  agoraDir = DEFAULT_AGORA_DIR,
+  monstheraDir = DEFAULT_MONSTHERA_DIR,
 ): DispatchSuggestionResult {
   const normalizedPaths = [...new Set(
     changedPaths
@@ -206,7 +206,7 @@ export function suggestActionsForChanges(
       .filter(Boolean),
   )];
 
-  const loaded = loadDispatchRules(repoPath, agoraDir);
+  const loaded = loadDispatchRules(repoPath, monstheraDir);
   const recommendedTools = new Set<CapabilityToolName>();
   const requiredRoleSet = new Set<CouncilSpecialization>();
   const matchedRules: DispatchRuleMatch[] = [];

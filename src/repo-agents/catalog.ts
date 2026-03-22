@@ -10,7 +10,7 @@ import {
 } from "../../schemas/council.js";
 import { RoleId, type RoleId as RuntimeRoleId } from "../../schemas/agent.js";
 
-export const REPO_AGENT_MANIFEST_DIR = ".agora/agents";
+export const REPO_AGENT_MANIFEST_DIR = ".monsthera/agents";
 const REPO_AGENT_MANIFEST_PREFIX = `${REPO_AGENT_MANIFEST_DIR}/`;
 const REPO_AGENT_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 const RepoAgentNameSchema = z.string().trim().min(1).max(100);

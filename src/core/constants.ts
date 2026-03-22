@@ -1,12 +1,12 @@
 // Version injected by tsup define at build time; fallback for dev (tsx)
-export const VERSION: string = typeof __AGORA_VERSION__ !== "undefined"
-  ? __AGORA_VERSION__
+export const VERSION: string = typeof __MONSTHERA_VERSION__ !== "undefined"
+  ? __MONSTHERA_VERSION__
   : "1.0.0-dev";
 
-declare const __AGORA_VERSION__: string;
+declare const __MONSTHERA_VERSION__: string;
 export const DEFAULT_DASHBOARD_PORT = 3141;
-export const DEFAULT_AGORA_DIR = ".agora";
-export const DEFAULT_DB_NAME = "agora.db";
+export const DEFAULT_MONSTHERA_DIR = ".monsthera";
+export const DEFAULT_DB_NAME = "monsthera.db";
 
 // Evidence Bundle limits
 export const STAGE_A_MAX_CANDIDATES = 10;
@@ -35,4 +35,4 @@ export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 // Embedding dimension — matches the embedding model's native output dimension.
 // Xenova/all-MiniLM-L6-v2 produces 384-dim. Override via env for other models.
-export const EMBEDDING_DIMENSION = parseInt(process.env.AGORA_EMBEDDING_DIM ?? "384", 10);
+export const EMBEDDING_DIMENSION = parseInt(process.env.MONSTHERA_EMBEDDING_DIM ?? "384", 10);

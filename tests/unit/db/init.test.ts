@@ -14,12 +14,12 @@ describe("initDatabase", () => {
   });
 
   it("creates database and tables", () => {
-    const dir = mkdtempSync(join(tmpdir(), "agora-db-"));
+    const dir = mkdtempSync(join(tmpdir(), "monsthera-db-"));
     dirs.push(dir);
 
     const { db, sqlite } = initDatabase({
       repoPath: dir,
-      agoraDir: ".agora",
+      monstheraDir: ".monsthera",
       dbName: "test.db",
     });
 
@@ -64,23 +64,23 @@ describe("initDatabase", () => {
   });
 
   it("is idempotent (can be called twice)", () => {
-    const dir = mkdtempSync(join(tmpdir(), "agora-db2-"));
+    const dir = mkdtempSync(join(tmpdir(), "monsthera-db2-"));
     dirs.push(dir);
 
-    const r1 = initDatabase({ repoPath: dir, agoraDir: ".agora", dbName: "test.db" });
+    const r1 = initDatabase({ repoPath: dir, monstheraDir: ".monsthera", dbName: "test.db" });
     r1.sqlite.close();
 
-    const r2 = initDatabase({ repoPath: dir, agoraDir: ".agora", dbName: "test.db" });
+    const r2 = initDatabase({ repoPath: dir, monstheraDir: ".monsthera", dbName: "test.db" });
     r2.sqlite.close();
   });
 
   it("migrates legacy agents tables with identity columns", () => {
-    const dir = mkdtempSync(join(tmpdir(), "agora-db3-"));
+    const dir = mkdtempSync(join(tmpdir(), "monsthera-db3-"));
     dirs.push(dir);
-    const agoraDir = join(dir, ".agora");
-    const sqlitePath = join(agoraDir, "test.db");
-    rmSync(agoraDir, { recursive: true, force: true });
-    mkdirSync(agoraDir, { recursive: true });
+    const monstheraDir = join(dir, ".monsthera");
+    const sqlitePath = join(monstheraDir, "test.db");
+    rmSync(monstheraDir, { recursive: true, force: true });
+    mkdirSync(monstheraDir, { recursive: true });
 
     const sqlite = new Database(sqlitePath);
     sqlite.pragma("journal_mode = WAL");
@@ -97,7 +97,7 @@ describe("initDatabase", () => {
     `).run();
     sqlite.close();
 
-    const result = initDatabase({ repoPath: dir, agoraDir: ".agora", dbName: "test.db" });
+    const result = initDatabase({ repoPath: dir, monstheraDir: ".monsthera", dbName: "test.db" });
     const columns = result.sqlite.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
     const names = columns.map((column) => column.name);
 

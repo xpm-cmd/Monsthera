@@ -18,7 +18,7 @@ describe("analyze_complexity tool", () => {
   let repoPath: string;
 
   beforeEach(() => {
-    repoPath = mkdtempSync(join(tmpdir(), "agora-complexity-"));
+    repoPath = mkdtempSync(join(tmpdir(), "monsthera-complexity-"));
     mkdirSync(join(repoPath, "src"), { recursive: true });
     server = new FakeServer();
 
@@ -67,7 +67,7 @@ describe("analyze_complexity tool", () => {
   });
 
   it("returns a stable unsupported-language payload without throwing", async () => {
-    writeFileSync(join(repoPath, "README.md"), "# Agora\n");
+    writeFileSync(join(repoPath, "README.md"), "# Monsthera\n");
 
     const result = await handler()({ filePath: "README.md" });
     const payload = JSON.parse(result.content[0].text);
