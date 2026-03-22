@@ -87,7 +87,7 @@ const TICKET_SYNC_EVENT_TYPES = new Set<DashboardEvent["type"]>([
 ]);
 
 const SECURITY_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'",
+  "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Access-Control-Allow-Origin": "http://localhost",
@@ -197,6 +197,10 @@ export function startDashboard(
     try {
       reapStaleSessions(deps.db);
       cleanupExpiredPayloads(deps.db);
+      // Retain event logs and coordination messages for 30 days
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      queries.cleanOldEventLogs(deps.db, thirtyDaysAgo);
+      queries.cleanOldCoordinationMessages(deps.db, thirtyDaysAgo);
     } catch (error) {
       insight.warn(`Dashboard lifecycle maintenance failed: ${error}`);
     }
@@ -240,10 +244,10 @@ export function startDashboard(
         try {
           const vaultParam = url.searchParams.get("vault") ?? deps.repoPath;
           const resolved = pathResolve(vaultParam);
-          const home = homedir();
-          if (!resolved.startsWith(deps.repoPath) && !resolved.startsWith(home)) {
+          if (!resolved.startsWith(deps.repoPath)) {
+            // Only allow export within repo path to prevent path traversal
             res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "vault path must be within repo or home directory" }));
+            res.end(JSON.stringify({ error: "vault path must be within the repository directory" }));
             return;
           }
           const result = exportToObsidian({

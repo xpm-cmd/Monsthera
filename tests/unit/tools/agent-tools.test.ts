@@ -192,7 +192,7 @@ describe("agent tools", () => {
     expect(payload.trustTier).toBe("A");
   });
 
-  it("allows facilitator registration when the role is requested explicitly", async () => {
+  it("downgrades facilitator to observer without auth when registrationAuth is disabled", async () => {
     const registerAgent = setupServer();
 
     const result = await registerAgent({
@@ -203,8 +203,8 @@ describe("agent tools", () => {
 
     expect(result.isError).toBeUndefined();
     const payload = JSON.parse(result.content[0].text);
-    expect(payload.role).toBe("facilitator");
-    expect(payload.trustTier).toBe("A");
+    expect(payload.role).toBe("observer");
+    expect(payload.trustTier).toBe("B");
   });
 
   it("requires a facilitator token when privileged registration is gated", async () => {

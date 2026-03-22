@@ -731,6 +731,16 @@ export function cleanExpiredPayloads(db: DB) {
   return db.delete(tables.debugPayloads).where(sql`${tables.debugPayloads.expiresAt} < ${now}`).run();
 }
 
+/** Delete event_logs older than the given cutoff ISO timestamp. */
+export function cleanOldEventLogs(db: DB, olderThan: string) {
+  return db.delete(tables.eventLogs).where(sql`${tables.eventLogs.timestamp} < ${olderThan}`).run();
+}
+
+/** Delete coordination_messages older than the given cutoff ISO timestamp. */
+export function cleanOldCoordinationMessages(db: DB, olderThan: string) {
+  return db.delete(tables.coordinationMessages).where(sql`${tables.coordinationMessages.timestamp} < ${olderThan}`).run();
+}
+
 // --- Knowledge ---
 
 export function upsertKnowledge(
@@ -910,11 +920,14 @@ export function getTicketsByRepo(
     .where(and(...conditions))
     .orderBy(desc(tables.tickets.priority), desc(tables.tickets.updatedAt));
 
-  const rows = (opts?.tags && opts.tags.length > 0) || opts?.limit === undefined
-    ? query.all()
-    : query.limit(opts.limit).all();
+  // When filtering by tags in JS, fetch a bounded superset then post-filter
+  const hasTags = opts?.tags && opts.tags.length > 0;
+  const effectiveLimit = opts?.limit;
+  const fetchLimit = hasTags && effectiveLimit ? effectiveLimit * 3 : effectiveLimit;
 
-  const filtered = opts?.tags && opts.tags.length > 0
+  const rows = fetchLimit ? query.limit(fetchLimit).all() : query.all();
+
+  const filtered = hasTags
     ? rows.filter((ticket) => {
       const ticketTags = parseStringArrayJson(ticket.tagsJson, {
         maxItems: 25,
@@ -924,7 +937,7 @@ export function getTicketsByRepo(
     })
     : rows;
 
-  return opts?.limit !== undefined ? filtered.slice(0, opts.limit) : filtered;
+  return effectiveLimit !== undefined ? filtered.slice(0, effectiveLimit) : filtered;
 }
 
 export function getTicketCountsByStatus(db: DB, repoId: number) {
