@@ -87,11 +87,12 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
   // ─── agent_status ───────────────────────────────────────────
   server.tool(
     "agent_status",
-    "Get status of a specific agent or list all agents",
+    "Get status of a specific agent or list all agents. Use detailed=true to include claimedFiles and full session info.",
     {
       agentId: AgentIdSchema.optional().describe("Agent ID (omit for all agents)"),
+      detailed: z.boolean().default(false).describe("Include claimedFiles, provider/model fields, and full session data"),
     },
-    async ({ agentId }) => {
+    async ({ agentId, detailed }) => {
       const c = await getContext();
 
       if (agentId) {
@@ -135,30 +136,37 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
             agents: agents.map((a) => {
               const sessions = allSessions.filter((s) => s.agentId === a.id);
               const activeSess = sessions.filter((s) => s.state === "active");
-              const claimedFiles = activeSess.flatMap((s) => {
-                try { return JSON.parse(s.claimedFilesJson || "[]") as string[]; } catch { return []; }
-              });
               const lastActivity = activeSess.length > 0
                 ? activeSess.reduce((latest, s) => s.lastActivity > latest ? s.lastActivity : latest, "")
                 : null;
               const presence = lastActivity && (now - new Date(lastActivity).getTime() < TWO_MINUTES)
                 ? "online" : activeSess.length > 0 ? "idle" : "offline";
-              return {
+
+              const base = {
                 id: a.id,
                 name: a.name,
+                role: a.roleId,
+                trustTier: a.trustTier,
+                presence,
+                activeSessions: activeSess.length,
+                lastActivity,
+              };
+
+              if (!detailed) return base;
+
+              const claimedFiles = activeSess.flatMap((s) => {
+                try { return JSON.parse(s.claimedFilesJson || "[]") as string[]; } catch { return []; }
+              });
+              return {
+                ...base,
                 type: a.type,
                 provider: a.provider,
                 model: a.model,
                 modelFamily: a.modelFamily,
                 modelVersion: a.modelVersion,
                 identitySource: a.identitySource,
-                role: a.roleId,
-                trustTier: a.trustTier,
                 registeredAt: a.registeredAt,
-                presence,
-                activeSessions: activeSess.length,
                 claimedFiles,
-                lastActivity,
               };
             }),
           }),

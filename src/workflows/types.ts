@@ -94,6 +94,7 @@ export interface WorkflowStepResult {
   durationMs: number;
   input?: Record<string, unknown>;
   output?: unknown;
+  itemCount?: number;
   items?: WorkflowItemResult[];
   errorCode?: string;
   message?: string;

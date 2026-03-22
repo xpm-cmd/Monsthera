@@ -17,6 +17,10 @@ import type {
 const TEMPLATE_PATTERN = /\{\{\s*([^}]+?)\s*\}\}/g;
 const FULL_TEMPLATE_PATTERN = /^\{\{\s*([^}]+?)\s*\}\}$/;
 const MAX_WORKFLOW_STEPS = 20;
+/** Max chars for any single string value stored in workflow context. */
+const MAX_CONTEXT_STRING_LENGTH = 4_000;
+/** Max forEach item results to keep in the step result (tail). */
+const MAX_FOREACH_ITEM_RESULTS = 5;
 const DEFAULT_QUORUM_ROLES = [...GOVERNANCE_ANALYTICAL_SPECIALIZATIONS];
 const DEFAULT_QUORUM_POLL_INTERVAL_MS = 2_000;
 const MAX_QUORUM_TIMEOUT_MS = 120_000;
@@ -91,8 +95,8 @@ export async function runWorkflow(
     steps.push(outcome.stepResult);
 
     if (outcome.output !== undefined) {
-      context.steps[step.key] = outcome.output;
-      context.last = outcome.output;
+      context.steps[step.key] = trimStepOutput(outcome.output);
+      context.last = outcome.output;  // last is ephemeral, keep full for immediate use
     }
 
     if (outcome.stepResult.status === "failed") {
@@ -225,6 +229,11 @@ async function executeStepForEach(
     }
   }
 
+  // Only keep the last N item results to avoid unbounded growth in the step result.
+  const trimmedItems = items.length > MAX_FOREACH_ITEM_RESULTS
+    ? items.slice(-MAX_FOREACH_ITEM_RESULTS)
+    : items;
+
   return {
     stepResult: {
       key: step.key,
@@ -232,7 +241,8 @@ async function executeStepForEach(
       description: step.description,
       status: sawFailure ? "partial" : "completed",
       durationMs: Date.now() - startedAt,
-      items,
+      itemCount: items.length,
+      items: trimmedItems,
       output: outputs,
     },
     output: outputs,
@@ -561,6 +571,38 @@ function normalizeStepCall(
     errorCode: result.errorCode,
     message: result.message,
   };
+}
+
+/**
+ * Deep-truncate string values in a step output to prevent unbounded context
+ * growth.  Preserves structure (objects/arrays) but caps individual strings.
+ * Returns the original value when no truncation is needed (zero-alloc fast path).
+ */
+function trimStepOutput(value: unknown, maxStr = MAX_CONTEXT_STRING_LENGTH): unknown {
+  if (value === undefined || value === null) return value;
+  if (typeof value === "string") {
+    return value.length > maxStr ? value.slice(0, maxStr) + "…[trimmed]" : value;
+  }
+  if (typeof value !== "object") return value;
+
+  if (Array.isArray(value)) {
+    let changed = false;
+    const result = value.map((item) => {
+      const trimmed = trimStepOutput(item, maxStr);
+      if (trimmed !== item) changed = true;
+      return trimmed;
+    });
+    return changed ? result : value;
+  }
+
+  let changed = false;
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const trimmed = trimStepOutput(entry, maxStr);
+    if (trimmed !== entry) changed = true;
+    result[key] = trimmed;
+  }
+  return changed ? result : value;
 }
 
 export function resolveTemplateValue(value: unknown, context: WorkflowContext): unknown {

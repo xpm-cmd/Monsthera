@@ -132,10 +132,11 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
     {
       state: z.enum(["proposed", "validated", "applied", "committed", "stale", "failed"])
         .optional().describe("Filter by patch state"),
+      limit: z.number().int().min(1).max(100).default(20).describe("Max patches to return"),
       agentId: AgentIdSchema.describe("Agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
     },
-    async ({ state, agentId, sessionId }) => {
+    async ({ state, limit: rawLimit, agentId, sessionId }) => {
       const c = await getContext();
       const result = resolveAgent(c, agentId, sessionId);
       if (!result.ok) {
@@ -157,10 +158,15 @@ export function registerPatchTools(server: McpServer, getContext: GetContext): v
         };
       }
 
+      const limit = rawLimit ?? 20;
+      const payload = buildPatchListPayload(c.db, c.repoId, state);
+      const hasMore = payload.patches.length > limit;
+      if (hasMore) payload.patches = payload.patches.slice(0, limit);
+      payload.count = payload.patches.length;
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(buildPatchListPayload(c.db, c.repoId, state), null, 2),
+          text: JSON.stringify({ ...payload, hasMore }),
         }],
       };
     },

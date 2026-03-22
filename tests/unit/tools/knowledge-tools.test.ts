@@ -184,7 +184,8 @@ describe("knowledge tools", () => {
       limit: 10,
     });
 
-    expect(searchKnowledge).toHaveBeenCalledWith(sqlite, "shared auth", 10, undefined);
+    // limit + 1 for hasMore detection (user passed limit=10, tool requests 11)
+    expect(searchKnowledge).toHaveBeenCalledWith(sqlite, "shared auth", 11, undefined);
     expect(JSON.parse(result.content[0].text)).toMatchObject({
       query: "shared auth",
       scope: "repo",

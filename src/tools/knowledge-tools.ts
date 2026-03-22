@@ -125,8 +125,9 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       limit: z.number().int().min(1).max(50).default(10).describe("Max results"),
       summary: z.boolean().default(false).describe("Return only key, title, type, and score (no content or tags). ~90% smaller."),
     },
-    async ({ query, scope, type, limit, summary }) => {
+    async ({ query, scope, type, limit: rawLimit, summary }) => {
       const c = await getContext();
+      const limit = rawLimit ?? 10;
       const results = await searchKnowledgeEntries({
         db: c.db,
         sqlite: c.sqlite,
@@ -137,17 +138,20 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
         query,
         scope,
         type,
-        limit,
+        limit: limit + 1,
       });
 
+      const hasMore = results.length > limit;
+      const trimmedResults = hasMore ? results.slice(0, limit) : results;
+
       const payload = summary
-        ? buildKnowledgeSearchBriefPayload(query, scope, results)
-        : buildKnowledgeSearchPayload(query, scope, results);
+        ? buildKnowledgeSearchBriefPayload(query, scope, trimmedResults)
+        : buildKnowledgeSearchPayload(query, scope, trimmedResults);
 
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(payload),
+          text: JSON.stringify({ ...payload, hasMore }),
         }],
       };
     },
@@ -164,18 +168,23 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       status: z.enum(["active", "archived"]).default("active").describe("Filter by status"),
       limit: z.number().int().min(1).max(100).default(20).describe("Max results"),
     },
-    async ({ scope, type, tags, status, limit }) => {
+    async ({ scope, type, tags, status, limit: rawLimit }) => {
       const c = await getContext();
+      const limit = rawLimit ?? 20;
+      const payload = buildKnowledgeListPayload(c.db, c.globalDb, {
+        scope,
+        type,
+        tags,
+        status,
+        limit: limit + 1,
+      });
+      const hasMore = payload.entries.length > limit;
+      if (hasMore) payload.entries = payload.entries.slice(0, limit);
+      payload.count = payload.entries.length;
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(buildKnowledgeListPayload(c.db, c.globalDb, {
-            scope,
-            type,
-            tags,
-            status,
-            limit,
-          })),
+          text: JSON.stringify({ ...payload, hasMore }),
         }],
       };
     },

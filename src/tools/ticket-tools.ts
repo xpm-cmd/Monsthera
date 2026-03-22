@@ -424,7 +424,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       tags: TagsSchema.optional().describe("Filter by tags (AND logic)"),
       limit: z.number().int().min(1).max(100).default(20),
     },
-    async ({ agentId, sessionId, status, assigneeAgentId, severity, creatorAgentId, tags, limit }) => {
+    async ({ agentId, sessionId, status, assigneeAgentId, severity, creatorAgentId, tags, limit: rawLimit }) => {
       const c = await getContext();
       const result = resolveAgent(c, agentId, sessionId);
       if (!result.ok) return errText(result.error);
@@ -433,14 +433,19 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const access = checkToolAccess("list_tickets", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
 
-      return okJson(buildTicketListPayload(c.db, c.repoId, {
+      const limit = rawLimit ?? 20;
+      const payload = buildTicketListPayload(c.db, c.repoId, {
         status,
         assigneeAgentId,
         severity,
         creatorAgentId,
         tags,
-        limit,
-      }));
+        limit: limit + 1,
+      });
+      const hasMore = payload.tickets.length > limit;
+      if (hasMore) payload.tickets = payload.tickets.slice(0, limit);
+      payload.count = payload.tickets.length;
+      return okJson({ ...payload, hasMore });
     },
   );
 
@@ -457,7 +462,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       assigneeAgentId: AgentIdSchema.optional(),
       limit: z.number().int().min(1).max(50).default(10),
     },
-    async ({ query, agentId, sessionId, status, severity, assigneeAgentId, limit }) => {
+    async ({ query, agentId, sessionId, status, severity, assigneeAgentId, limit: rawLimit }) => {
       const c = await getContext();
       const result = resolveAgent(c, agentId, sessionId);
       if (!result.ok) return errText(result.error);
@@ -466,13 +471,17 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const access = checkToolAccess("search_tickets", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
 
-      const results = c.searchRouter.searchTickets(query, c.repoId, limit, {
+      const limit = rawLimit ?? 10;
+      const results = c.searchRouter.searchTickets(query, c.repoId, limit + 1, {
         status,
         severity,
         assigneeAgentId,
       });
 
-      const tickets = results.flatMap((result) => {
+      const hasMore = results.length > limit;
+      const trimmedResults = hasMore ? results.slice(0, limit) : results;
+
+      const tickets = trimmedResults.flatMap((result) => {
         const ticket = queries.getTicketById(c.db, result.ticketInternalId);
         if (!ticket) return [];
         return [{
@@ -495,6 +504,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       return okJson({
         query,
         count: tickets.length,
+        hasMore,
         tickets,
       });
     },
@@ -996,7 +1006,7 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       specialization: z.string().optional().describe("Filter by specialization"),
       limit: z.number().int().min(1).max(100).default(50),
     },
-    async ({ agentId, sessionId, targetAgentId, ticketId, specialization, limit }) => {
+    async ({ agentId, sessionId, targetAgentId, ticketId, specialization, limit: rawLimit }) => {
       const c = await getContext();
       const result = resolveAgent(c, agentId, sessionId);
       if (!result.ok) return errText(result.error);
@@ -1005,14 +1015,17 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const access = checkToolAccess("list_tickets", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
 
+      const limit = rawLimit ?? 50;
       const queryAgentId = targetAgentId ?? resolved.agentId;
       const verdicts = queries.listVerdictsByAgent(c.db, c.repoId, queryAgentId, {
         ticketId,
         specialization,
-        limit,
+        limit: limit + 1,
       });
 
-      return okJson({ agentId: queryAgentId, count: verdicts.length, verdicts });
+      const hasMore = verdicts.length > limit;
+      const trimmed = hasMore ? verdicts.slice(0, limit) : verdicts;
+      return okJson({ agentId: queryAgentId, count: trimmed.length, hasMore, verdicts: trimmed });
     },
   );
 

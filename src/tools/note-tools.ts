@@ -126,10 +126,11 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
     "List notes, optionally filtered by type",
     {
       type: z.enum(NOTE_TYPES).optional().describe("Filter by note type"),
+      limit: z.number().int().min(1).max(100).default(20).describe("Max notes to return"),
       agentId: AgentIdSchema.describe("Agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
     },
-    async ({ type, agentId, sessionId }) => {
+    async ({ type, limit: rawLimit, agentId, sessionId }) => {
       const c = await getContext();
       const result = resolveAgent(c, agentId, sessionId);
       if (!result.ok) {
@@ -164,15 +165,20 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
         };
       }
 
-      const notes = queries
+      const limit = rawLimit ?? 20;
+      const allNotes = queries
         .getNotesByRepo(c.db, c.repoId, type)
         .filter((note) => canReadNoteType(resolved.role, note.type));
+
+      const hasMore = allNotes.length > limit;
+      const notes = hasMore ? allNotes.slice(0, limit) : allNotes;
 
       return {
         content: [{
           type: "text" as const,
           text: JSON.stringify({
             count: notes.length,
+            hasMore,
             notes: notes.map((n) => ({
               key: n.key, type: n.type,
               content: n.content.slice(0, 200) + (n.content.length > 200 ? "..." : ""),
