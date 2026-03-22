@@ -90,7 +90,8 @@ export async function rebaseOnMain(
       const conflicts = conflictOutput.split("\n").filter(Boolean);
       await git(["rebase", "--abort"], { cwd: worktreePath });
       return { rebased: false, conflicts };
-    } catch {
+    } catch (innerErr) {
+      console.warn(`[agora] rebaseOnMain: failed to extract conflicts:`, innerErr);
       try { await git(["rebase", "--abort"], { cwd: worktreePath }); } catch { /* already clean */ }
       return { rebased: false, conflicts: ["unknown conflict"] };
     }
@@ -119,7 +120,8 @@ export async function mergeAgentWork(
       // Abort the failed merge
       await git(["merge", "--abort"], { cwd: mainRepoRoot });
       return { merged: false, commitSha: null, conflicts };
-    } catch {
+    } catch (innerErr) {
+      console.warn(`[agora] mergeAgentWork: failed to extract conflicts for ${branchName}:`, innerErr);
       return { merged: false, commitSha: null, conflicts: ["unknown conflict"] };
     }
   }

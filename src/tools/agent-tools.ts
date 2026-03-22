@@ -121,6 +121,8 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
       const agents = queries.getAllAgents(c.db);
       const allSessions = queries.getAllSessions(c.db);
       const activeCount = allSessions.filter((s) => s.state === "active").length;
+      const TWO_MINUTES = 2 * 60 * 1000;
+      const now = Date.now();
 
       return {
         content: [{
@@ -130,26 +132,35 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
             totalSessions: allSessions.length,
             activeSessions: activeCount,
             reapedSessions: reaped,
-            agents: agents.map((a) => ({
-              id: a.id,
-              name: a.name,
-              type: a.type,
-              provider: a.provider,
-              model: a.model,
-              modelFamily: a.modelFamily,
-              modelVersion: a.modelVersion,
-              identitySource: a.identitySource,
-              role: a.roleId,
-              trustTier: a.trustTier,
-              registeredAt: a.registeredAt,
-            })),
-            sessions: allSessions.map((s) => ({
-              id: s.id,
-              agentId: s.agentId,
-              state: s.state,
-              connectedAt: s.connectedAt,
-              lastActivity: s.lastActivity,
-            })),
+            agents: agents.map((a) => {
+              const sessions = allSessions.filter((s) => s.agentId === a.id);
+              const activeSess = sessions.filter((s) => s.state === "active");
+              const claimedFiles = activeSess.flatMap((s) => {
+                try { return JSON.parse(s.claimedFilesJson || "[]") as string[]; } catch { return []; }
+              });
+              const lastActivity = activeSess.length > 0
+                ? activeSess.reduce((latest, s) => s.lastActivity > latest ? s.lastActivity : latest, "")
+                : null;
+              const presence = lastActivity && (now - new Date(lastActivity).getTime() < TWO_MINUTES)
+                ? "online" : activeSess.length > 0 ? "idle" : "offline";
+              return {
+                id: a.id,
+                name: a.name,
+                type: a.type,
+                provider: a.provider,
+                model: a.model,
+                modelFamily: a.modelFamily,
+                modelVersion: a.modelVersion,
+                identitySource: a.identitySource,
+                role: a.roleId,
+                trustTier: a.trustTier,
+                registeredAt: a.registeredAt,
+                presence,
+                activeSessions: activeSess.length,
+                claimedFiles,
+                lastActivity,
+              };
+            }),
           }, null, 2),
         }],
       };

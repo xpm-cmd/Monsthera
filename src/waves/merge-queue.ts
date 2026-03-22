@@ -194,7 +194,8 @@ async function bisect(
       // Culprit is in the first half
       return bisect(repoRoot, integrationBranch, checkpointSha, firstHalf, testCommand, testTimeout);
     }
-  } catch {
+  } catch (err) {
+    console.warn(`[agora] bisect: unexpected error during merge-queue bisection:`, err);
     await cleanupWorktree(repoRoot, worktreePath);
     return undefined;
   }

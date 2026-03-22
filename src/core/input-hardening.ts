@@ -110,13 +110,21 @@ export function parseJsonWithSchema<T>(
   return result.success ? result.data : fallback;
 }
 
-function safeParseJson(raw: string | null | undefined): unknown {
+export function safeParseJson(raw: string | null | undefined): unknown {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as unknown;
   } catch {
     return null;
   }
+}
+
+/** Parse JSON and return a Record if it's an object, null otherwise. */
+export function safeParseJsonObject(raw: string | null | undefined): Record<string, unknown> | null {
+  const parsed = safeParseJson(raw);
+  return (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+    ? parsed as Record<string, unknown>
+    : null;
 }
 
 function flatPrimitiveRecordSchema(opts: {

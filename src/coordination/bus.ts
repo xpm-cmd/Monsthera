@@ -3,6 +3,7 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { MessageType } from "../../schemas/coordination.js";
 import type * as schema from "../db/schema.js";
 import * as queries from "../db/queries.js";
+import { safeParseJsonObject } from "../core/input-hardening.js";
 
 export type Topology = "hub-spoke" | "hybrid" | "mesh";
 export type MessagePriority = "critical" | "normal" | "low";
@@ -131,7 +132,7 @@ export class CoordinationBus {
   ): BusMessage[] {
     const source = this.db && this.repoId !== null
       ? queries.getCoordinationMessagesByRepo(this.db, this.repoId, { since }).map((m) => {
-        const raw = parsePayloadJson(m.payloadJson);
+        const raw = safeParseJsonObject(m.payloadJson) ?? {};
         // Extract __meta if present (DB-persisted priority/laneId)
         const meta = raw.__meta as { priority?: string; laneId?: string | null } | undefined;
         const { __meta: _, ...payload } = raw;
@@ -200,14 +201,3 @@ export class CoordinationBus {
   }
 }
 
-function parsePayloadJson(raw: string | null | undefined): Record<string, unknown> {
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    return (parsed && typeof parsed === "object" && !Array.isArray(parsed))
-      ? parsed as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
-}

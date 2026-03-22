@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import type { InsightStream } from "../core/insight-stream.js";
 import { renderDashboard } from "./html.js";
 import { cleanupExpiredPayloads } from "../logging/event-logger.js";
+import { safeParseJsonObject } from "../core/input-hardening.js";
 import {
   getOverview, getAgentsList, getEventLogsList,
   getPatchesList, getNotesList, getKnowledgeList, getTicketsList, getTicketDetail, getPresence,
@@ -884,7 +885,7 @@ export function buildConvoyStatus(deps: DashboardDeps, groupIdFilter?: string | 
     .filter((g) => g.launchedAt !== null)
     .filter((g) => !groupIdFilter || g.groupId === groupIdFilter)
     .map((g) => {
-      const wavePlan = safeParseJson(g.wavePlanJson);
+      const wavePlan = safeParseJsonObject(g.wavePlanJson) ?? {};
       const waveArrays: string[][] = Array.isArray(wavePlan.waves) ? wavePlan.waves : [];
       const ticketRows = queries.getWorkGroupTickets(deps.db, g.id);
 
@@ -914,12 +915,3 @@ export function buildConvoyStatus(deps: DashboardDeps, groupIdFilter?: string | 
     });
 }
 
-function safeParseJson(raw: string | null | undefined): Record<string, unknown> {
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
-  } catch {
-    return {};
-  }
-}

@@ -6,6 +6,7 @@ import * as queries from "../db/queries.js";
 import { getHead } from "../git/operations.js";
 import { logEvent } from "../logging/event-logger.js";
 import { TOOL_ACCESS_POLICY } from "../trust/tool-policy.js";
+import { safeParseJsonObject } from "../core/input-hardening.js";
 
 type GetContext = () => Promise<AgoraContext>;
 export type ToolHandler = (input: unknown) => Promise<unknown>;
@@ -225,7 +226,7 @@ function mapCodeToStatus(rawCode: string): "stale" | "denied" | "error" {
 
 function classifyResult(result: unknown): Pick<RuntimeEventInput, "status" | "denialReason" | "errorCode" | "errorDetail"> {
   const output = serializeResult(result);
-  const parsed = tryParseJson(output);
+  const parsed = safeParseJsonObject(output);
   const isError = Boolean(result && typeof result === "object" && Reflect.get(result, "isError"));
   const detail = extractDetail(parsed, output);
 
@@ -332,14 +333,6 @@ export function normalizeErrorCode(value: string): string {
   return normalized || "error";
 }
 
-function tryParseJson(text: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
-  } catch {
-    return null;
-  }
-}
 
 function safeStringify(value: unknown): string {
   try {

@@ -66,7 +66,8 @@ export async function mergeTicketToIntegration(
       await git(["merge", "--abort"], { cwd: repoRoot });
       await git(["checkout", originalBranch], { cwd: repoRoot });
       return { merged: false, commitSha: null, conflicts };
-    } catch {
+    } catch (innerErr) {
+      console.warn(`[agora] mergeTicketToIntegration: failed to extract conflicts for ${agentBranch}:`, innerErr);
       try { await git(["merge", "--abort"], { cwd: repoRoot }); } catch { /* already clean */ }
       try { await git(["checkout", originalBranch], { cwd: repoRoot }); } catch { /* best effort */ }
       return { merged: false, commitSha: null, conflicts: ["unknown conflict"] };
@@ -91,7 +92,8 @@ export async function rebaseOnBranch(
       const conflicts = conflictOutput.split("\n").filter(Boolean);
       await git(["rebase", "--abort"], { cwd: worktreePath });
       return { rebased: false, conflicts };
-    } catch {
+    } catch (innerErr) {
+      console.warn(`[agora] rebaseOnBranch: failed to extract conflicts on ${targetBranch}:`, innerErr);
       try { await git(["rebase", "--abort"], { cwd: worktreePath }); } catch { /* already clean */ }
       return { rebased: false, conflicts: ["unknown conflict"] };
     }
@@ -117,7 +119,8 @@ export async function mergeIntegrationToMain(
       const conflicts = conflictOutput.split("\n").filter(Boolean);
       await git(["merge", "--abort"], { cwd: repoRoot });
       return { merged: false, commitSha: null, conflicts };
-    } catch {
+    } catch (innerErr) {
+      console.warn(`[agora] mergeIntegrationToMain: failed to extract conflicts for ${integrationBranch}:`, innerErr);
       try { await git(["merge", "--abort"], { cwd: repoRoot }); } catch { /* already clean */ }
       return { merged: false, commitSha: null, conflicts: ["unknown conflict"] };
     }
