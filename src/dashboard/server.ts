@@ -48,10 +48,17 @@ import { TicketSeverity, TicketStatus } from "../../schemas/ticket.js";
 import { COUNCIL_SPECIALIZATIONS } from "../../schemas/council.js";
 import { loadConfigFile, resolveConfig, type AgoraConfig } from "../core/config.js";
 
+const MAX_SSE_CONNECTIONS = 50;
+
 export class DashboardSSE {
   private clients = new Set<ServerResponse>();
 
-  addClient(res: ServerResponse): void {
+  addClient(res: ServerResponse): boolean {
+    if (this.clients.size >= MAX_SSE_CONNECTIONS) {
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Too many SSE connections", max: MAX_SSE_CONNECTIONS }));
+      return false;
+    }
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -60,6 +67,7 @@ export class DashboardSSE {
     res.write(":\n\n"); // SSE comment as keepalive
     this.clients.add(res);
     res.on("close", () => this.clients.delete(res));
+    return true;
   }
 
   broadcast(event: DashboardEvent): void {
@@ -162,10 +170,21 @@ const UpdateConvoySettingsBodySchema = z.object({
   autoRefresh: z.boolean().optional(),
 });
 
+/** Check dashboard POST auth. Returns true if request is authorized. Sends 401 on failure. */
+function checkPostAuth(req: IncomingMessage, res: ServerResponse, token: string | undefined): boolean {
+  if (!token) return true; // No token configured = open access
+  const header = req.headers["x-dashboard-token"] ?? req.headers["authorization"]?.replace("Bearer ", "");
+  if (header === token) return true;
+  res.writeHead(401, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "Unauthorized: provide X-Dashboard-Token header" }));
+  return false;
+}
+
 export function startDashboard(
   deps: DashboardDeps,
   port: number,
   insight: InsightStream,
+  dashboardToken?: string,
 ): Server & { sse: DashboardSSE } {
   const sse = new DashboardSSE();
   let lastDashboardEventId = getLatestDashboardEventId(deps.db, deps.repoId);
@@ -237,6 +256,11 @@ export function startDashboard(
         const convoys = buildConvoyStatus(deps, groupIdFilter);
         res.writeHead(200, { "Content-Type": "application/json", ...SECURITY_HEADERS });
         res.end(JSON.stringify({ convoys }));
+        return;
+      }
+
+      // Gate all POST mutations behind optional dashboard token
+      if (req.method === "POST" && !checkPostAuth(req, res, dashboardToken)) {
         return;
       }
 

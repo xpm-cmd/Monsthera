@@ -189,7 +189,7 @@ async function cmdServe(config: ReturnType<typeof resolveConfig>, insight: Insig
             semanticBlendAlpha: config.search.semanticBlendAlpha,
           }, params),
         },
-      }, config.dashboardPort, insight);
+      }, config.dashboardPort, insight, config.dashboardToken);
 
     }
   } catch (err) {
