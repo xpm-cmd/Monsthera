@@ -1,13 +1,14 @@
 {
   "name": "monsthera-mcp",
   "version": "1.0.0",
-  "description": "Local, commit-scoped shared context and multi-agent coordination platform for co-coding",
+  "description": "Give your AI coding agents a shared brain, a backlog, and the ability to work together",
   "type": "module",
   "bin": {
     "monsthera": "dist/index.js"
   },
   "files": [
     "dist",
+    ".monsthera/workflows",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
