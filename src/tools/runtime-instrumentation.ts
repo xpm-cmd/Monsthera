@@ -323,7 +323,7 @@ function truncateDetail(value: string): string {
   return trimmed.length > 240 ? `${trimmed.slice(0, 237)}...` : trimmed;
 }
 
-function normalizeErrorCode(value: string): string {
+export function normalizeErrorCode(value: string): string {
   const normalized = value
     .trim()
     .toLowerCase()

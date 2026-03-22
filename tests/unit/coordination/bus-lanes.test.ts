@@ -107,20 +107,6 @@ describe("CoordinationBus — lanes, priority & backpressure", () => {
     expect(msgs).toHaveLength(2);
   });
 
-  it("getBackpressure returns per-agent message counts", () => {
-    const bus = new CoordinationBus("hub-spoke");
-
-    bus.send({ from: "a1", to: "a2", type: "status_update", payload: {} });
-    bus.send({ from: "a1", to: "a2", type: "status_update", payload: {} });
-    bus.send({ from: "a1", to: "a3", type: "status_update", payload: {} });
-    bus.send({ from: "a1", to: null, type: "status_update", payload: {} }); // broadcast — no target
-
-    const bp = bus.getBackpressure();
-    expect(bp.get("a2")).toBe(2);
-    expect(bp.get("a3")).toBe(1);
-    expect(bp.has("a1")).toBe(false); // not a recipient
-  });
-
   it("defaults priority to normal and laneId to null", () => {
     const bus = new CoordinationBus("hub-spoke");
     const msg = bus.send({ from: "a1", to: "a2", type: "status_update", payload: {} });

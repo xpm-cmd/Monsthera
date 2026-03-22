@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import { AgoraError } from "../core/errors.js";
 import type { InstrumentedToolRegistration } from "./runtime-instrumentation.js";
-import { classifyResultForLogging, getInstrumentedToolRegistry } from "./runtime-instrumentation.js";
+import { classifyResultForLogging, getInstrumentedToolRegistry, normalizeErrorCode } from "./runtime-instrumentation.js";
 
 // Re-export types from canonical location for backward compat
 export type { ToolRunnerCallResult, ToolRunnerErrorCode } from "../core/tool-types.js";
@@ -98,14 +98,7 @@ export function getToolRunner(server: McpServer): ToolRunner {
   return instrumentableServer[TOOL_RUNNER]!;
 }
 
-function normalizeErrorCode(value: string): string {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return normalized || "execution_failed";
-}
+
 
 function validateToolInput(
   tool: string,

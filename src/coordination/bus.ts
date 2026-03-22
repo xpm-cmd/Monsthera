@@ -176,22 +176,6 @@ export class CoordinationBus {
     return filtered.slice(-limit);
   }
 
-  /** Get per-agent count of pending messages (messages addressed TO each agent). */
-  getBackpressure(): Map<string, number> {
-    const counts = new Map<string, number>();
-
-    const source = this.db && this.repoId !== null
-      ? queries.getCoordinationMessagesByRepo(this.db, this.repoId, {}).map((m) => m.toAgentId)
-      : this.messages.map((m) => m.to);
-
-    for (const to of source) {
-      if (to === null) continue;
-      counts.set(to, (counts.get(to) ?? 0) + 1);
-    }
-
-    return counts;
-  }
-
   getTopology(): Topology {
     return this.topology;
   }

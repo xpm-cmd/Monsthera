@@ -767,7 +767,7 @@ export function getKnowledgeByIds(db: DB, ids: number[]) {
 
 export function queryKnowledge(
   db: DB,
-  opts: { type?: string; tags?: string[]; status?: string },
+  opts: { type?: string; tags?: string[]; status?: string; limit?: number },
 ) {
   const conditions = [];
 
@@ -777,11 +777,17 @@ export function queryKnowledge(
     conditions.push(eq(tables.knowledge.type, opts.type));
   }
 
+  const effectiveLimit = opts.limit ?? 200;
+
+  // When filtering by tags in JS, fetch more rows to compensate for post-filter
+  const fetchLimit = (opts.tags && opts.tags.length > 0) ? effectiveLimit * 3 : effectiveLimit;
+
   const results = db
     .select()
     .from(tables.knowledge)
     .where(and(...conditions))
     .orderBy(desc(tables.knowledge.updatedAt))
+    .limit(fetchLimit)
     .all();
 
   // Post-filter by tags (AND logic)
@@ -792,7 +798,7 @@ export function queryKnowledge(
         maxItemLength: 64,
       });
       return opts.tags!.every((t) => entryTags.includes(t));
-    });
+    }).slice(0, effectiveLimit);
   }
 
   return results;
@@ -1480,7 +1486,7 @@ export function getCoordinationMessagesByRepo(
     .where(and(...conditions))
     .orderBy(tables.coordinationMessages.id);
 
-  return opts?.limit ? query.limit(opts.limit).all() : query.all();
+  return query.limit(opts?.limit ?? 1000).all();
 }
 
 export function getLatestCoordinationMessageId(db: DB, repoId: number): number {
