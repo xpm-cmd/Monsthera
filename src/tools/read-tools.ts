@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { okJson } from "./response-helpers.js";
 import { z } from "zod/v4";
 import { VERSION, SUPPORTED_LANGUAGES, STAGE_A_MAX_CANDIDATES, STAGE_B_MAX_EXPANDED, MAX_DIFF_LINES_PER_FILE, HEARTBEAT_TIMEOUT_MS } from "../core/constants.js";
 import type { AgoraContext } from "../core/context.js";
@@ -761,12 +762,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         ...(autoReindexed && { autoReindexed: true as const }),
       }, verbosity);
 
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify(payload),
-        }],
-      };
+      return okJson(payload);
     },
   );
 
@@ -833,12 +829,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         recentCommits,
       }, verbosity);
 
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify(payload),
-        }],
-      };
+      return okJson(payload);
     },
   );
 
@@ -906,12 +897,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         matchedKnowledge: matchedKnowledge as IssuePackPayload["matchedKnowledge"],
       }, verbosity);
 
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify(payload),
-        }],
-      };
+      return okJson(payload);
     },
   );
 

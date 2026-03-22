@@ -112,12 +112,20 @@ export async function runWorkflow(
     }
   }
 
+  // Strip input/output from individual step results to avoid duplication
+  // with the `outputs` map.  Keep them only on failed steps for debugging.
+  const compactSteps = steps.map((s) => {
+    if (s.status === "failed" || s.status === "partial") return s;
+    const { input: _i, output: _o, ...rest } = s;
+    return rest;
+  });
+
   return {
     name: spec.name,
     description: spec.description,
     status,
     params: effectiveParams,
-    steps,
+    steps: compactSteps,
     outputs: context.steps,
     durationMs: Date.now() - startedAt,
   };
@@ -489,9 +497,23 @@ async function executeQuorumCheckpoint(
     });
   }
 
+  // Cache the last checkpoint so we only re-summarize when verdicts actually change.
+  let lastVerdictCount = verdictRows.length;
+  let cachedCheckpoint = summarizeCheckpoint(verdictRows, now() - startedAt, dispatchReport);
+
   while (true) {
     const elapsedMs = now() - startedAt;
-    const checkpoint = summarizeCheckpoint(verdictRows, elapsedMs, dispatchReport);
+
+    // Re-summarize only when verdict count changed or timeout boundary crossed
+    if (verdictRows.length !== lastVerdictCount || cachedCheckpoint.timedOut !== (elapsedMs >= parsed.timeoutMs)) {
+      lastVerdictCount = verdictRows.length;
+      cachedCheckpoint = summarizeCheckpoint(verdictRows, elapsedMs, dispatchReport);
+    } else {
+      // Just update the elapsed time in the cached output (cheap)
+      cachedCheckpoint.output.elapsedMs = elapsedMs;
+    }
+
+    const checkpoint = cachedCheckpoint;
     if (checkpoint.consensus.advisoryReady) {
       return {
         stepResult: {
