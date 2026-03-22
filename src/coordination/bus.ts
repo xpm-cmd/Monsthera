@@ -131,7 +131,7 @@ export class CoordinationBus {
     },
   ): BusMessage[] {
     const source = this.db && this.repoId !== null
-      ? queries.getCoordinationMessagesByRepo(this.db, this.repoId, { since }).map((m) => {
+      ? queries.getCoordinationMessagesByRepo(this.db, this.repoId, { since, limit: limit * 3 }).map((m) => {
         const raw = safeParseJsonObject(m.payloadJson) ?? {};
         // Extract __meta if present (DB-persisted priority/laneId)
         const meta = raw.__meta as { priority?: string; laneId?: string | null } | undefined;

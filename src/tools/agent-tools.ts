@@ -68,7 +68,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
               message: result.resumed
                 ? `Resumed as ${result.role} with trust tier ${result.trustTier} (same agentId, new session)`
                 : `Registered as ${result.role} with trust tier ${result.trustTier}`,
-            }, null, 2),
+            }),
           }],
         };
       } catch (error) {
@@ -110,7 +110,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
               totalSessions: status.sessions.length,
               activeSessions: status.activeSessions.length,
               sessions: status.sessions,
-            }, null, 2),
+            }),
           }],
         };
       }
@@ -161,7 +161,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
                 lastActivity,
               };
             }),
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -208,7 +208,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
             sender: resolved.agentId,
             message,
             timestamp: new Date().toISOString(),
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -253,7 +253,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
             text: JSON.stringify({
               denied: true,
               reason: "Only facilitators or admins may override claim conflicts",
-            }, null, 2),
+            }),
           }],
           isError: true,
         };
@@ -275,7 +275,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
               denied: true,
               reason: "Strict claim enforcement: conflicting claims exist",
               conflicts: claimResult.conflicts,
-            }, null, 2),
+            }),
           }],
           isError: true,
         };
@@ -291,7 +291,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
             conflicts: claimResult.conflicts,
             overridden: override && claimResult.conflicts.length > 0,
             warning: claimResult.conflicts.length > 0 ? "Some files are already claimed by other agents" : null,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -321,7 +321,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ ended: false, reason: "Session already disconnected", sessionId }, null, 2),
+            text: JSON.stringify({ ended: false, reason: "Session already disconnected", sessionId }),
           }],
         };
       }
@@ -340,7 +340,7 @@ export function registerAgentTools(server: McpServer, getContext: GetContext): v
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ ended: true, sessionId, agentId: session.agentId }, null, 2),
+          text: JSON.stringify({ ended: true, sessionId, agentId: session.agentId }),
         }],
       };
     },

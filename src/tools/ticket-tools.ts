@@ -34,6 +34,7 @@ import {
   updateTicketStatusRecord,
 } from "../tickets/service.js";
 import {
+  buildTicketBriefPayload,
   buildTicketDetailPayload,
   buildTicketListPayload,
 } from "../tickets/read-model.js";
@@ -502,13 +503,14 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
   // ─── get_ticket ─────────────────────────────────────────────
   server.tool(
     "get_ticket",
-    "Get full ticket details with history, comments, and linked patches",
+    "Get ticket details. Use summary=true for lightweight view (core fields only, 1 DB query); omit or set false for full details with history, comments, verdicts, and linked patches.",
     {
       ticketId: TicketIdSchema.describe("Ticket ID (TKT-...)"),
       agentId: AgentIdSchema.describe("Requesting agent ID"),
       sessionId: SessionIdSchema.describe("Active session ID"),
+      summary: z.boolean().default(false).describe("Return only core fields (id, title, status, severity, assignee, tags). Much cheaper in tokens."),
     },
-    async ({ ticketId, agentId, sessionId }) => {
+    async ({ ticketId, agentId, sessionId, summary }) => {
       const c = await getContext();
       const result = resolveAgent(c, agentId, sessionId);
       if (!result.ok) return errText(result.error);
@@ -517,7 +519,9 @@ export function registerTicketTools(server: McpServer, getContext: GetContext): 
       const access = checkToolAccess("get_ticket", resolved.role, resolved.trustTier);
       if (!access.allowed) return errJson({ denied: true, reason: access.reason });
 
-      const payload = buildTicketDetailPayload(c.db, c.repoId, ticketId);
+      const payload = summary
+        ? buildTicketBriefPayload(c.db, c.repoId, ticketId)
+        : buildTicketDetailPayload(c.db, c.repoId, ticketId);
       if (!payload) return errText(`Ticket not found: ${ticketId}`);
       return okJson(payload);
     },

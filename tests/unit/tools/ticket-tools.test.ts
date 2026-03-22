@@ -1799,7 +1799,7 @@ describe("ticket tools", () => {
 
     expect(denied.isError).toBe(true);
     expect(denied.content[0].text).toContain("Model voter cap exceeded");
-    expect(denied.content[0].text).toContain("\"validation\": \"model_voter_cap\"");
+    expect(denied.content[0].text).toContain("\"validation\":\"model_voter_cap\"");
   });
 
   it("authorizes verdict via council_assignment when agent has assignment", async () => {

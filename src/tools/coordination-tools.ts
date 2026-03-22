@@ -68,7 +68,7 @@ export function registerCoordinationTools(server: McpServer, getContext: GetCont
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ sent: true, messageId: msg.id, timestamp: msg.timestamp }, null, 2),
+          text: JSON.stringify({ sent: true, messageId: msg.id, timestamp: msg.timestamp }),
         }],
       };
     },
@@ -104,7 +104,7 @@ export function registerCoordinationTools(server: McpServer, getContext: GetCont
             topology: c.bus.getTopology(),
             count: messages.length,
             messages,
-          }, null, 2),
+          }),
         }],
       };
     },

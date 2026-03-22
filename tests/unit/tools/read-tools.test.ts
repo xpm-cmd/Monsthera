@@ -625,13 +625,19 @@ describe("read tool verbosity shaping", () => {
     expect(compact.candidatesTruncated).toBe(true);
     expect(compact.candidates).toHaveLength(5);
     expect(compact.candidates[0]).not.toHaveProperty("symbols");
-    expect(compact.expanded).toEqual([]);
+    expect(compact).not.toHaveProperty("expanded");
+    expect(compact).not.toHaveProperty("trustTier");
+    expect(compact).not.toHaveProperty("searchBackend");
+    expect(compact).not.toHaveProperty("latencyMs");
+    expect(compact).not.toHaveProperty("rankingMetadata");
+    expect(compact).not.toHaveProperty("bundleId");
+    expect(compact).not.toHaveProperty("repoId");
 
     const minimal = shapeCodePackResult(payload, "minimal") as Record<string, any>;
     expect(minimal.verbosity).toBe("minimal");
     expect(minimal.candidates).toHaveLength(3);
     expect(minimal.candidates[0]).not.toHaveProperty("relevanceScore");
-    expect(minimal.expanded).toEqual([]);
+    expect(minimal).not.toHaveProperty("expanded");
   });
 
   it("drops diff bodies and truncates deterministic slices for change packs", () => {

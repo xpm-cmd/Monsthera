@@ -59,6 +59,38 @@ export interface KnowledgeSearchPayload {
   }>;
 }
 
+export interface KnowledgeSearchBriefPayload {
+  query: string;
+  scope: KnowledgeScope;
+  count: number;
+  results: Array<{
+    key: string;
+    type: string;
+    scope: "repo" | "global";
+    title: string;
+    score: number;
+  }>;
+}
+
+export function buildKnowledgeSearchBriefPayload(
+  query: string,
+  scope: KnowledgeScope,
+  results: KnowledgeSearchEntry[],
+): KnowledgeSearchBriefPayload {
+  return {
+    query,
+    scope,
+    count: results.length,
+    results: results.map((entry) => ({
+      key: entry.key,
+      type: entry.type,
+      scope: entry.scope,
+      title: entry.title,
+      score: Math.round(entry.score * 1000) / 1000,
+    })),
+  };
+}
+
 export function prepareKnowledgeSearchTarget(
   initializer: KnowledgeSearchInitializer,
   sqlite: DatabaseType,

@@ -122,7 +122,7 @@ export function registerJobTools(server: McpServer, getContext: GetContext): voi
             template,
             slotsCreated: created.length,
             slotIds: created,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -177,7 +177,7 @@ export function registerJobTools(server: McpServer, getContext: GetContext): voi
               progressNote: s.progressNote,
               // systemPrompt intentionally omitted
             })),
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -215,7 +215,7 @@ export function registerJobTools(server: McpServer, getContext: GetContext): voi
               denied: true,
               reason: `You already have an active job: ${activeSlot.slotId} (${activeSlot.label}). Complete or release it first.`,
               activeSlot: { slotId: activeSlot.slotId, label: activeSlot.label, status: activeSlot.status },
-            }, null, 2),
+            }),
           }],
           isError: true,
         };
@@ -239,7 +239,7 @@ export function registerJobTools(server: McpServer, getContext: GetContext): voi
                 denied: true,
                 reason: `No open ${resolved.role} slots in loop "${loopId}"`,
                 suggestion: "Try list_jobs to see available slots",
-              }, null, 2),
+              }),
             }],
             isError: true,
           };
@@ -288,7 +288,7 @@ export function registerJobTools(server: McpServer, getContext: GetContext): voi
             ticketId: slot.ticketId,
             systemPrompt: slot.systemPrompt,
             context,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -365,7 +365,7 @@ export function registerJobTools(server: McpServer, getContext: GetContext): voi
             status: newStatus ?? slot.status,
             progressNote: progressNote ?? slot.progressNote,
             lastHeartbeat: now,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -410,7 +410,7 @@ export function registerJobTools(server: McpServer, getContext: GetContext): voi
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ completed: true, slotId: targetSlotId, label: slot.label }, null, 2),
+          text: JSON.stringify({ completed: true, slotId: targetSlotId, label: slot.label }),
         }],
       };
     },
@@ -478,7 +478,7 @@ export function registerJobTools(server: McpServer, getContext: GetContext): voi
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ released: true, slotId: targetSlotId, label: slot.label }, null, 2),
+          text: JSON.stringify({ released: true, slotId: targetSlotId, label: slot.label }),
         }],
       };
     },

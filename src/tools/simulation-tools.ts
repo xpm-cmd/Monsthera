@@ -90,7 +90,7 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify(output, null, 2),
+            text: JSON.stringify(output),
           }],
         };
       } catch (err) {
@@ -99,7 +99,7 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ error: message, stack }, null, 2),
+            text: JSON.stringify({ error: message, stack }),
           }],
         };
       }
@@ -185,7 +185,7 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify(output, null, 2),
+            text: JSON.stringify(output),
           }],
         };
       } catch (err) {
@@ -194,7 +194,7 @@ export function registerSimulationTools(server: McpServer, getContext: GetContex
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ error: message, stack }, null, 2),
+            text: JSON.stringify({ error: message, stack }),
           }],
         };
       }

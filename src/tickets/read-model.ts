@@ -191,6 +191,42 @@ export function buildTicketDetailPayload(
   };
 }
 
+/** Lightweight single-query ticket view — only core fields an agent needs for decisions. */
+export interface TicketBriefPayload {
+  ticketId: string;
+  title: string;
+  status: string;
+  severity: string;
+  priority: number;
+  assigneeAgentId: string | null;
+  creatorAgentId: string;
+  tags: string[];
+  acceptanceCriteria: string | null;
+  updatedAt: string;
+}
+
+export function buildTicketBriefPayload(
+  db: DB,
+  repoId: number,
+  ticketId: string,
+): TicketBriefPayload | null {
+  const ticket = queries.getTicketByTicketId(db, ticketId, repoId);
+  if (!ticket) return null;
+
+  return {
+    ticketId: ticket.ticketId,
+    title: ticket.title,
+    status: ticket.status,
+    severity: ticket.severity,
+    priority: ticket.priority,
+    assigneeAgentId: ticket.assigneeAgentId,
+    creatorAgentId: ticket.creatorAgentId,
+    tags: parseStringArrayJson(ticket.tagsJson, { maxItems: 25, maxItemLength: 64 }),
+    acceptanceCriteria: ticket.acceptanceCriteria,
+    updatedAt: ticket.updatedAt,
+  };
+}
+
 export function buildTicketSummaryPayload(db: DB, repoId: number): TicketSummaryPayload {
   return {
     totalCount: queries.getTotalTicketCount(db, repoId),

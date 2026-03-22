@@ -65,7 +65,7 @@ export function registerProtectionTools(server: McpServer, getContext: GetContex
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ added: true, id: artifact.id, pathPattern, reason }, null, 2),
+          text: JSON.stringify({ added: true, id: artifact.id, pathPattern, reason }),
         }],
       };
     },
@@ -120,7 +120,7 @@ export function registerProtectionTools(server: McpServer, getContext: GetContex
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ removed: true, pathPattern }, null, 2),
+          text: JSON.stringify({ removed: true, pathPattern }),
         }],
       };
     },
@@ -169,7 +169,7 @@ export function registerProtectionTools(server: McpServer, getContext: GetContex
               createdBy: a.createdBy,
               createdAt: a.createdAt,
             })),
-          }, null, 2),
+          }),
         }],
       };
     },

@@ -140,27 +140,16 @@ export function shapeCodePackResult(
 
   return {
     verbosity,
-    bundleId: payload.bundleId,
-    repoId: payload.repoId,
     commit: payload.commit,
     query: payload.query,
-    timestamp: payload.timestamp,
     currentHead: payload.currentHead,
     indexStale: payload.indexStale,
     ...(payload.autoReindexed ? { autoReindexed: true } : {}),
     candidateCount: payload.candidates.length,
-    candidatesTruncated: isTruncated(payload.candidates.length, candidateLimit),
-    candidates,
-    expanded: [],
-    ...(verbosity === "compact"
-      ? {
-          trustTier: payload.trustTier,
-          redactionPolicy: payload.redactionPolicy,
-          searchBackend: payload.searchBackend,
-          latencyMs: payload.latencyMs,
-          rankingMetadata: payload.rankingMetadata,
-        }
+    ...(isTruncated(payload.candidates.length, candidateLimit)
+      ? { candidatesTruncated: true }
       : {}),
+    candidates,
   };
 }
 
@@ -304,7 +293,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
               autoCascade: c.config.lifecycle?.autoCascadeBlocked ?? false,
             },
           },
-        }, null, 2),
+        }),
       }],
     };
   });
@@ -354,7 +343,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           })),
           availableReviewRoles: repoAgentCatalog.availableReviewRoles,
           repoAgentWarnings: repoAgentCatalog.warnings,
-        }, null, 2),
+        }),
       }],
     };
   });
@@ -682,7 +671,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ tool: toolName, inputSchema: s }, null, 2),
+          text: JSON.stringify({ tool: toolName, inputSchema: s }),
         }],
       };
     },
@@ -712,7 +701,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
               error: "No index available. Run request_reindex first.",
               indexStale: true,
               currentHead: head,
-            }, null, 2),
+            }),
           }],
           isError: true,
         };
@@ -775,7 +764,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(payload, null, 2),
+          text: JSON.stringify(payload),
         }],
       };
     },
@@ -803,7 +792,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
               text: JSON.stringify({
                 error: `Invalid commit hash: ${base}`,
                 hint: "Provide a valid commit SHA or omit sinceCommit to use recent history",
-              }, null, 2),
+              }),
             }],
             isError: true,
           };
@@ -847,7 +836,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(payload, null, 2),
+          text: JSON.stringify(payload),
         }],
       };
     },
@@ -920,7 +909,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(payload, null, 2),
+          text: JSON.stringify(payload),
         }],
       };
     },
@@ -957,7 +946,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(result, null, 2),
+          text: JSON.stringify(result),
         }],
       };
     },
@@ -977,7 +966,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(result, null, 2),
+          text: JSON.stringify(result),
         }],
       };
     },
@@ -997,7 +986,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(result, null, 2),
+          text: JSON.stringify(result),
         }],
       };
     },
@@ -1024,7 +1013,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             sortBy,
             count: metrics.length,
             metrics,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -1048,7 +1037,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             scope: scope ?? "(all files)",
             totalCycles: cycles.length,
             cycles,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -1068,7 +1057,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(result, null, 2),
+          text: JSON.stringify(result),
         }],
       };
     },
@@ -1212,7 +1201,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             }),
             totalApprovedUnassigned: candidates.length,
             claimedPaths: claimed,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -1251,7 +1240,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             indexed: !!file,
             forward,
             reverse,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -1308,7 +1297,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             kind,
             totalResults: results.length,
             references: results,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -1337,7 +1326,7 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
             totalDependencies: deps.filter(d => !d.isCycle).length,
             cyclesDetected: cycles.length,
             dependencies: deps,
-          }, null, 2),
+          }),
         }],
       };
     },

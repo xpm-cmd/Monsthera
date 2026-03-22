@@ -63,7 +63,7 @@ export function registerWorkflowTools(server: McpServer, getContext: GetContext)
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify(missing, null, 2),
+            text: JSON.stringify(missing),
           }],
           isError: true,
         };
@@ -137,7 +137,7 @@ export function registerWorkflowTools(server: McpServer, getContext: GetContext)
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(result, null, 2),
+          text: JSON.stringify(result),
         }],
         ...(result.status === "failed" ? { isError: true } : {}),
       };

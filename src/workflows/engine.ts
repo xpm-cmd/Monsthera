@@ -631,6 +631,15 @@ function resolvePathSegments(value: unknown, segments: string[]): unknown {
 export function evaluateCondition(condition: string, context: WorkflowContext): boolean {
   const normalized = condition.trim();
   if (!normalized) return false;
+
+  // Support && (all must be truthy) and || (any must be truthy)
+  if (normalized.includes("&&")) {
+    return normalized.split("&&").every((part) => evaluateCondition(part, context));
+  }
+  if (normalized.includes("||")) {
+    return normalized.split("||").some((part) => evaluateCondition(part, context));
+  }
+
   if (normalized.startsWith("!")) {
     return !Boolean(resolvePath(normalized.slice(1), context));
   }

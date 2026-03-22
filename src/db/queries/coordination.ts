@@ -28,7 +28,7 @@ export function getCoordinationMessagesByRepo(
     .where(and(...conditions))
     .orderBy(tables.coordinationMessages.id);
 
-  return query.limit(opts?.limit ?? 1000).all();
+  return query.limit(opts?.limit ?? 200).all();
 }
 
 export function getLatestCoordinationMessageId(db: DB, repoId: number): number {

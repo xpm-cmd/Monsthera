@@ -9,7 +9,7 @@ import {
   TagsSchema,
 } from "../core/input-hardening.js";
 import * as queries from "../db/queries.js";
-import { buildKnowledgeSearchPayload, searchKnowledgeEntries } from "../knowledge/search.js";
+import { buildKnowledgeSearchBriefPayload, buildKnowledgeSearchPayload, searchKnowledgeEntries } from "../knowledge/search.js";
 import { buildKnowledgeListPayload } from "../knowledge/read-model.js";
 import { checkToolAccess } from "../trust/tiers.js";
 import { resolveAgent } from "./resolve-agent.js";
@@ -108,7 +108,7 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ key, type, scope, title, knowledgeId: entry.id }, null, 2),
+          text: JSON.stringify({ key, type, scope, title, knowledgeId: entry.id }),
         }],
       };
     },
@@ -117,14 +117,15 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
   // ─── search_knowledge ──────────────────────────────────────
   server.tool(
     "search_knowledge",
-    "Search knowledge by FTS5 full-text search, enhanced with semantic similarity when available. Searches both repo and global scopes by default.",
+    "Search knowledge by FTS5 full-text search, enhanced with semantic similarity when available. Use summary=true to return only keys/titles/scores (no content/tags) for browsing.",
     {
       query: z.string().trim().min(1).max(1000).describe("Search query"),
       scope: z.enum(["repo", "global", "all"]).default("all").describe("Which scope to search"),
       type: z.enum(KNOWLEDGE_TYPES).optional().describe("Filter by type"),
       limit: z.number().int().min(1).max(50).default(10).describe("Max results"),
+      summary: z.boolean().default(false).describe("Return only key, title, type, and score (no content or tags). ~90% smaller."),
     },
-    async ({ query, scope, type, limit }) => {
+    async ({ query, scope, type, limit, summary }) => {
       const c = await getContext();
       const results = await searchKnowledgeEntries({
         db: c.db,
@@ -139,10 +140,14 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
         limit,
       });
 
+      const payload = summary
+        ? buildKnowledgeSearchBriefPayload(query, scope, results)
+        : buildKnowledgeSearchPayload(query, scope, results);
+
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify(buildKnowledgeSearchPayload(query, scope, results), null, 2),
+          text: JSON.stringify(payload),
         }],
       };
     },
@@ -170,7 +175,7 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
             tags,
             status,
             limit,
-          }), null, 2),
+          })),
         }],
       };
     },
@@ -238,7 +243,7 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ archived: true, key, scope }, null, 2),
+          text: JSON.stringify({ archived: true, key, scope }),
         }],
       };
     },
@@ -306,7 +311,7 @@ export function registerKnowledgeTools(server: McpServer, getContext: GetContext
       return {
         content: [{
           type: "text" as const,
-          text: JSON.stringify({ deleted: true, key, scope }, null, 2),
+          text: JSON.stringify({ deleted: true, key, scope }),
         }],
       };
     },

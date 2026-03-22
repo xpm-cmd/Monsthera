@@ -88,7 +88,7 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ action: "updated", key, type, commitSha: currentHead }, null, 2),
+            text: JSON.stringify({ action: "updated", key, type, commitSha: currentHead }),
           }],
         };
       }
@@ -114,7 +114,7 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
           type: "text" as const,
           text: JSON.stringify({
             action: "created", key, type, noteId: note.id, commitSha: currentHead,
-          }, null, 2),
+          }),
         }],
       };
     },
@@ -178,7 +178,7 @@ export function registerNoteTools(server: McpServer, getContext: GetContext): vo
               content: n.content.slice(0, 200) + (n.content.length > 200 ? "..." : ""),
               agentId: n.agentId, commitSha: n.commitSha, updatedAt: n.updatedAt,
             })),
-          }, null, 2),
+          }),
         }],
       };
     },
