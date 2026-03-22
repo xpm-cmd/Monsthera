@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .monsthera/
+!.monsthera/workflows/
 Monsthera/
 *.db
 *.db-journal
