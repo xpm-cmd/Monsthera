@@ -179,22 +179,35 @@ export async function cleanupOrphanedWorktrees(
   return { removed, errors };
 }
 
+/** Allowed test commands — allowlist approach prevents command injection entirely. */
+const ALLOWED_TEST_COMMANDS: ReadonlySet<string> = new Set([
+  "npm test", "npm run test", "npx vitest run", "npx vitest",
+  "npx jest", "yarn test", "pnpm test", "make test",
+  "cargo test", "go test ./...", "pytest", "python -m pytest",
+]);
+
 /**
  * Run a test command in the agent's worktree.
- * Returns pass/fail with output summary.
+ * Uses execFile with argument array (no shell) to prevent command injection.
+ * Only allowlisted commands are permitted.
  */
 export async function runTestsInWorktree(
   worktreePath: string,
   testCommand: string,
   timeoutMs: number = 120_000,
 ): Promise<{ passed: boolean; output: string }> {
-  // Reject shell metacharacters to prevent command injection
-  const SHELL_METACHAR = /[;|&$`(){}><\n\\]/;
-  if (SHELL_METACHAR.test(testCommand)) {
-    return { passed: false, output: `Rejected: testCommand contains unsafe shell characters` };
+  const trimmed = testCommand.trim();
+  if (!ALLOWED_TEST_COMMANDS.has(trimmed)) {
+    return {
+      passed: false,
+      output: `Rejected: testCommand is not in the allowlist. Allowed: ${[...ALLOWED_TEST_COMMANDS].join(", ")}`,
+    };
   }
+
+  const [cmd, ...args] = trimmed.split(/\s+/) as [string, ...string[]];
+
   try {
-    const { stdout, stderr } = await execFileAsync("sh", ["-c", testCommand], {
+    const { stdout, stderr } = await execFileAsync(cmd, args, {
       cwd: worktreePath,
       maxBuffer: MAX_BUFFER,
       timeout: timeoutMs,

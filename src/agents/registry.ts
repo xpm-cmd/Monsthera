@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema.js";
@@ -159,6 +159,17 @@ function normalizeIdentity(input: {
   };
 }
 
+/** Constant-time string comparison to prevent timing side-channel attacks. */
+function safeTokenEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    // Compare against self to keep constant time even on length mismatch
+    const buf = Buffer.from(a, "utf8");
+    timingSafeEqual(buf, buf);
+    return false;
+  }
+  return timingSafeEqual(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
+}
+
 function resolveRegistrationRole(
   desiredRole: RoleId,
   authToken: string | undefined,
@@ -174,7 +185,7 @@ function resolveRegistrationRole(
     if (registrationAuth.observerOpenRegistration) {
       return "observer";
     }
-    if (expectedToken && authToken === expectedToken) {
+    if (expectedToken && authToken && safeTokenEqual(authToken, expectedToken)) {
       return "observer";
     }
     throw new AgentRegistrationError("Observer registration is closed and requires a valid authToken");
@@ -184,7 +195,7 @@ function resolveRegistrationRole(
     throw new AgentRegistrationError(`Role ${desiredRole} is not configured for self-registration`);
   }
 
-  if (authToken !== expectedToken) {
+  if (!authToken || !safeTokenEqual(authToken, expectedToken)) {
     throw new AgentRegistrationError(`Invalid authToken for role ${desiredRole}`);
   }
 

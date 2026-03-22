@@ -9,6 +9,7 @@ import {
 import * as queries from "../db/queries.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
+import { errJson, errText } from "./response-helpers.js";
 
 type GetContext = () => Promise<AgoraContext>;
 
@@ -32,12 +33,12 @@ export function registerWorkGroupTools(server: McpServer, getContext: GetContext
       const c = await getContext();
       const resolved = resolveAgent(c, agentId, sessionId);
       if (!resolved.ok) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: resolved.error }) }] };
+        return errText(resolved.error);
       }
 
       const access = checkToolAccess("create_work_group", resolved.agent.role, resolved.agent.trustTier);
       if (!access.allowed) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ denied: true, reason: access.reason }) }], isError: true };
+        return errJson({ denied: true, reason: access.reason });
       }
 
       const now = new Date().toISOString();
@@ -107,17 +108,17 @@ export function registerWorkGroupTools(server: McpServer, getContext: GetContext
       const c = await getContext();
       const resolved = resolveAgent(c, agentId, sessionId);
       if (!resolved.ok) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: resolved.error }) }] };
+        return errText(resolved.error);
       }
 
       const access = checkToolAccess("update_work_group", resolved.agent.role, resolved.agent.trustTier);
       if (!access.allowed) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ denied: true, reason: access.reason }) }], isError: true };
+        return errJson({ denied: true, reason: access.reason });
       }
 
       const group = queries.getWorkGroupByGroupId(c.db, groupId);
       if (!group) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Work group ${groupId} not found` }) }] };
+        return errJson({ error: `Work group ${groupId} not found` });
       }
 
       const updates: Parameters<typeof queries.updateWorkGroup>[2] = {
@@ -158,17 +159,17 @@ export function registerWorkGroupTools(server: McpServer, getContext: GetContext
       const c = await getContext();
       const resolved = resolveAgent(c, agentId, sessionId);
       if (!resolved.ok) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: resolved.error }) }] };
+        return errText(resolved.error);
       }
 
       const access = checkToolAccess("add_tickets_to_group", resolved.agent.role, resolved.agent.trustTier);
       if (!access.allowed) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ denied: true, reason: access.reason }) }], isError: true };
+        return errJson({ denied: true, reason: access.reason });
       }
 
       const group = queries.getWorkGroupByGroupId(c.db, groupId);
       if (!group) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Work group ${groupId} not found` }) }] };
+        return errJson({ error: `Work group ${groupId} not found` });
       }
 
       let warning: string | undefined;
@@ -176,7 +177,7 @@ export function registerWorkGroupTools(server: McpServer, getContext: GetContext
         warning = "Adding tickets to a completed work group. Consider re-opening it (status=open) first.";
       }
       if (group.status === "cancelled") {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Cannot add tickets to a cancelled work group" }) }] };
+        return errJson({ error: "Cannot add tickets to a cancelled work group" });
       }
 
       const now = new Date().toISOString();
@@ -233,17 +234,17 @@ export function registerWorkGroupTools(server: McpServer, getContext: GetContext
       const c = await getContext();
       const resolved = resolveAgent(c, agentId, sessionId);
       if (!resolved.ok) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: resolved.error }) }] };
+        return errText(resolved.error);
       }
 
       const access = checkToolAccess("remove_tickets_from_group", resolved.agent.role, resolved.agent.trustTier);
       if (!access.allowed) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ denied: true, reason: access.reason }) }], isError: true };
+        return errJson({ denied: true, reason: access.reason });
       }
 
       const group = queries.getWorkGroupByGroupId(c.db, groupId);
       if (!group) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Work group ${groupId} not found` }) }] };
+        return errJson({ error: `Work group ${groupId} not found` });
       }
 
       const now = new Date().toISOString();
@@ -290,12 +291,12 @@ export function registerWorkGroupTools(server: McpServer, getContext: GetContext
       const c = await getContext();
       const resolved = resolveAgent(c, agentId, sessionId);
       if (!resolved.ok) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: resolved.error }) }] };
+        return errText(resolved.error);
       }
 
       const access = checkToolAccess("list_work_groups", resolved.agent.role, resolved.agent.trustTier);
       if (!access.allowed) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ denied: true, reason: access.reason }) }], isError: true };
+        return errJson({ denied: true, reason: access.reason });
       }
 
       const groups = queries.listWorkGroups(c.db, c.repoId, { status, tag });

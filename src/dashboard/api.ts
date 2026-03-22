@@ -582,9 +582,10 @@ function getTicketAgentBadges(deps: DashboardDeps, ticketId: string, now: number
 }
 
 export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
-  const tickets = queries.getTicketsByRepo(deps.db, deps.repoId);
-  const ticket = tickets.find((entry) => entry.ticketId === ticketId) ?? null;
+  const ticket = queries.getTicketByTicketId(deps.db, ticketId, deps.repoId);
   if (!ticket) return null;
+  // Lazy duplicate detection: only load tickets when needed, cache-friendly
+  const tickets = queries.getTicketsByRepo(deps.db, deps.repoId);
   const duplicateInsights = buildDashboardDuplicateInsights(tickets);
   const duplicateSignal = duplicateInsights.byTicketId.get(ticket.ticketId) ?? null;
   const duplicateClusters = duplicateInsights.clusters
@@ -662,13 +663,22 @@ export function getTicketDetail(deps: DashboardDeps, ticketId: string) {
         }
       : null,
     dependencies: { blocking, blockedBy, relatedTo },
-    comments: comments.map((comment) => ({
-      agentId: comment.agentId,
-      agentName: queries.getAgent(deps.db, comment.agentId)?.name ?? null,
-      agentType: queries.getAgent(deps.db, comment.agentId)?.type ?? null,
-      content: comment.content,
-      createdAt: comment.createdAt,
-    })),
+    comments: (() => {
+      const agentIds = new Set(comments.map((c) => c.agentId));
+      const agentMap = new Map(
+        [...agentIds].map((id) => [id, queries.getAgent(deps.db, id)]),
+      );
+      return comments.map((comment) => {
+        const agent = agentMap.get(comment.agentId);
+        return {
+          agentId: comment.agentId,
+          agentName: agent?.name ?? null,
+          agentType: agent?.type ?? null,
+          content: comment.content,
+          createdAt: comment.createdAt,
+        };
+      });
+    })(),
     history: history.map((entry) => ({
       fromStatus: entry.fromStatus,
       toStatus: entry.toStatus,

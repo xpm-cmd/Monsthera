@@ -4,6 +4,7 @@ import type { AgoraContext } from "../core/context.js";
 import { AgentIdSchema, SessionIdSchema } from "../core/input-hardening.js";
 import { resolveAgent } from "./resolve-agent.js";
 import { checkToolAccess } from "../trust/tiers.js";
+import { errJson, errText } from "./response-helpers.js";
 import * as queries from "../db/queries.js";
 import { computeWaves, preflightWorkGroup, getReadyTickets, type TicketNode, type WavePlan } from "../waves/scheduler.js";
 import { placeNewTickets, type RefreshCandidate, type WaveSlot, type RefreshResult } from "../waves/auto-refresh.js";
@@ -27,23 +28,23 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
       const c = await getContext();
       const resolved = resolveAgent(c, agentId, sessionId);
       if (!resolved.ok) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: resolved.error }) }] };
+        return errText(resolved.error);
       }
 
       const access = checkToolAccess("compute_waves", resolved.agent.role, resolved.agent.trustTier);
       if (!access.allowed) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ denied: true, reason: access.reason }) }], isError: true };
+        return errJson({ denied: true, reason: access.reason });
       }
 
       const group = queries.getWorkGroupByGroupId(c.db, groupId);
       if (!group) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Work group ${groupId} not found` }) }] };
+        return errJson({ error: `Work group ${groupId} not found` });
       }
 
       // Get all tickets in the group
       const groupTickets = queries.getWorkGroupTickets(c.db, group.id);
       if (groupTickets.length === 0) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Work group has no tickets" }) }] };
+        return errJson({ error: "Work group has no tickets" });
       }
 
       // Build a set of ticket internal IDs in this group for filtering edges
@@ -146,29 +147,29 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
       const c = await getContext();
       const resolved = resolveAgent(c, agentId, sessionId);
       if (!resolved.ok) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: resolved.error }) }] };
+        return errText(resolved.error);
       }
 
       const access = checkToolAccess("launch_convoy", resolved.agent.role, resolved.agent.trustTier);
       if (!access.allowed) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ denied: true, reason: access.reason }) }], isError: true };
+        return errJson({ denied: true, reason: access.reason });
       }
 
       const group = queries.getWorkGroupByGroupId(c.db, groupId);
       if (!group) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Work group ${groupId} not found` }) }] };
+        return errJson({ error: `Work group ${groupId} not found` });
       }
 
       if (!group.wavePlanJson) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: "No wave plan computed. Run compute_waves first." }) }] };
+        return errJson({ error: "No wave plan computed. Run compute_waves first." });
       }
 
       if (group.status !== "open") {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Work group status is '${group.status}', must be 'open' to launch` }) }] };
+        return errJson({ error: `Work group status is '${group.status}', must be 'open' to launch` });
       }
 
       if (group.launchedAt) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Convoy already launched", launchedAt: group.launchedAt }) }] };
+        return errJson({ error: "Convoy already launched", launchedAt: group.launchedAt });
       }
 
       // Create integration branch
@@ -233,25 +234,25 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
       const c = await getContext();
       const resolved = resolveAgent(c, agentId, sessionId);
       if (!resolved.ok) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: resolved.error }) }] };
+        return errText(resolved.error);
       }
 
       const access = checkToolAccess("advance_wave", resolved.agent.role, resolved.agent.trustTier);
       if (!access.allowed) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ denied: true, reason: access.reason }) }], isError: true };
+        return errJson({ denied: true, reason: access.reason });
       }
 
       const group = queries.getWorkGroupByGroupId(c.db, groupId);
       if (!group) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Work group ${groupId} not found` }) }] };
+        return errJson({ error: `Work group ${groupId} not found` });
       }
 
       if (!group.launchedAt || group.currentWave === null || group.currentWave === undefined) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: "Convoy not launched. Run launch_convoy first." }) }] };
+        return errJson({ error: "Convoy not launched. Run launch_convoy first." });
       }
 
       if (!group.integrationBranch) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: "No integration branch found" }) }] };
+        return errJson({ error: "No integration branch found" });
       }
 
       const currentWave = group.currentWave;
@@ -448,17 +449,17 @@ export function registerWaveTools(server: McpServer, getContext: GetContext): vo
       const c = await getContext();
       const resolved = resolveAgent(c, agentId, sessionId);
       if (!resolved.ok) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: resolved.error }) }] };
+        return errText(resolved.error);
       }
 
       const access = checkToolAccess("get_wave_status", resolved.agent.role, resolved.agent.trustTier);
       if (!access.allowed) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ denied: true, reason: access.reason }) }], isError: true };
+        return errJson({ denied: true, reason: access.reason });
       }
 
       const group = queries.getWorkGroupByGroupId(c.db, groupId);
       if (!group) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ error: `Work group ${groupId} not found` }) }] };
+        return errJson({ error: `Work group ${groupId} not found` });
       }
 
       if (!group.wavePlanJson) {

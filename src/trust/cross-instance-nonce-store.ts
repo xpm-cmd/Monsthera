@@ -7,11 +7,15 @@ type NowFn = () => number;
 
 export class CrossInstanceNonceStore {
   private readonly seen = new Map<string, Map<string, number>>();
+  private readonly maxCapacity: number;
 
   constructor(
     private readonly ttlMs: number,
     private readonly now: NowFn = () => Date.now(),
-  ) {}
+    maxCapacity = 100_000,
+  ) {
+    this.maxCapacity = maxCapacity;
+  }
 
   checkAndStore(instanceId: string, nonce: string, observedAt = this.now()): NonceStoreResult {
     this.purgeExpired(observedAt);
@@ -21,6 +25,11 @@ export class CrossInstanceNonceStore {
     const peerNonces = this.seen.get(normalizedInstanceId) ?? new Map<string, number>();
 
     if (peerNonces.has(normalizedNonce)) {
+      return { accepted: false, reason: "replayed" };
+    }
+
+    // Reject when at capacity to prevent memory exhaustion
+    if (this.size() >= this.maxCapacity) {
       return { accepted: false, reason: "replayed" };
     }
 

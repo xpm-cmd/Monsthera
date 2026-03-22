@@ -36,7 +36,9 @@ export const files = sqliteTable("files", {
   indexedAt: text("indexed_at"),
   commitSha: text("commit_sha"),
   embedding: blob("embedding"),  // 384-dim float32 for semantic search, nullable
-});
+}, (table) => ({
+  repoPathIdx: uniqueIndex("idx_files_repo_path").on(table.repoId, table.path),
+}));
 
 // --- Code Chunks ---
 
@@ -59,7 +61,9 @@ export const imports = sqliteTable("imports", {
   sourceFileId: integer("source_file_id").notNull().references(() => files.id),
   targetPath: text("target_path").notNull(),
   kind: text("kind").notNull(), // "import", "require", "from"
-});
+}, (table) => ({
+  sourceFileIdx: index("idx_imports_source_file").on(table.sourceFileId),
+}));
 
 // --- Symbol References ---
 
@@ -70,7 +74,10 @@ export const symbolReferences = sqliteTable("symbol_references", {
   targetName: text("target_name").notNull(),      // called function/class/type name
   referenceKind: text("reference_kind").notNull(), // "call" | "member_call" | "type_ref"
   line: integer("line").notNull(),
-});
+}, (table) => ({
+  sourceFileIdx: index("idx_symbol_refs_source_file").on(table.sourceFileId),
+  targetNameIdx: index("idx_symbol_refs_target_name").on(table.targetName),
+}));
 
 // --- Notes ---
 
@@ -108,7 +115,9 @@ export const patches = sqliteTable("patches", {
   ticketId: integer("ticket_id").references(() => tickets.id),  // physical FK for new installs, app-level for migrated
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-});
+}, (table) => ({
+  ticketIdx: index("idx_patches_ticket").on(table.ticketId),
+}));
 
 // --- Tickets ---
 
@@ -143,7 +152,9 @@ export const ticketHistory = sqliteTable("ticket_history", {
   sessionId: text("session_id").notNull(),
   comment: text("comment"),
   timestamp: text("timestamp").notNull(),
-});
+}, (table) => ({
+  ticketIdx: index("idx_ticket_history_ticket").on(table.ticketId),
+}));
 
 export const ticketComments = sqliteTable("ticket_comments", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -152,7 +163,9 @@ export const ticketComments = sqliteTable("ticket_comments", {
   sessionId: text("session_id").notNull(),
   content: text("content").notNull(),
   createdAt: text("created_at").notNull(),
-});
+}, (table) => ({
+  ticketIdx: index("idx_ticket_comments_ticket").on(table.ticketId),
+}));
 
 export const reviewVerdicts = sqliteTable("review_verdicts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -192,7 +205,10 @@ export const ticketDependencies = sqliteTable("ticket_dependencies", {
   relationType: text("relation_type").notNull(), // "blocks" | "relates_to"
   createdByAgentId: text("created_by_agent_id").notNull(),
   createdAt: text("created_at").notNull(),
-});
+}, (table) => ({
+  fromTicketIdx: index("idx_ticket_deps_from").on(table.fromTicketId),
+  toTicketIdx: index("idx_ticket_deps_to").on(table.toTicketId),
+}));
 
 // --- Work Groups ---
 
@@ -236,7 +252,9 @@ export const coordinationMessages = sqliteTable("coordination_messages", {
   type: text("type").notNull(),
   payloadJson: text("payload_json").notNull(),
   timestamp: text("timestamp").notNull(),
-});
+}, (table) => ({
+  repoIdx: index("idx_coord_msgs_repo").on(table.repoId, table.id),
+}));
 
 // --- Dashboard Events ---
 
@@ -246,7 +264,9 @@ export const dashboardEvents = sqliteTable("dashboard_events", {
   eventType: text("event_type").notNull(),
   dataJson: text("data_json").notNull(),
   timestamp: text("timestamp").notNull(),
-});
+}, (table) => ({
+  repoIdx: index("idx_dashboard_events_repo").on(table.repoId, table.id),
+}));
 
 // --- Agents ---
 
@@ -346,7 +366,10 @@ export const eventLogs = sqliteTable("event_logs", {
   errorCode: text("error_code"),
   errorDetail: text("error_detail"),
   denialReason: text("denial_reason"),
-});
+}, (table) => ({
+  agentIdx: index("idx_event_logs_agent").on(table.agentId),
+  timestampIdx: index("idx_event_logs_timestamp").on(table.timestamp),
+}));
 
 // --- Knowledge ---
 
