@@ -235,7 +235,7 @@ export const MonstheraConfigSchema = z.object({
   httpPort: z.number().int().min(1024).max(65535).default(3000),
   noDashboard: z.boolean().default(false),
   dashboardToken: z.string().min(1).optional().describe("Bearer token for dashboard POST endpoints; if unset, mutations are open"),
-  semanticEnabled: z.boolean().default(false),
+  semanticEnabled: z.boolean().default(true),
   search: SearchConfigSchema.default(DEFAULT_SEARCH_CONFIG),
   registrationAuth: RegistrationAuthSchema.default({
     enabled: false,

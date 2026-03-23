@@ -28,7 +28,7 @@ describe("MonstheraConfigSchema", () => {
     expect(result.debugLogging).toBe(false);
     expect(result.transport).toBe("stdio");
     expect(result.coordinationTopology).toBe("hub-spoke");
-    expect(result.semanticEnabled).toBe(false);
+    expect(result.semanticEnabled).toBe(true);
     expect(result.zoektEnabled).toBe(true);
     expect(result.noDashboard).toBe(false);
   });
