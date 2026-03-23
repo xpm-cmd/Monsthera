@@ -46,6 +46,7 @@ export function registerSpawnTools(server: McpServer, getContext: GetContext): v
 
       // 3. Register spawned agent with stable name
       const spawnName = `spawn-${role}-${ticketId.slice(4, 16)}`;
+      const authToken = c.config.registrationAuth?.roleTokens?.[role];
       let registration;
       try {
         registration = registerAgent(
@@ -54,6 +55,7 @@ export function registerSpawnTools(server: McpServer, getContext: GetContext): v
             name: spawnName,
             type: "spawned",
             desiredRole: role,
+            authToken,
           },
           { registrationAuth: c.config.registrationAuth },
         );
