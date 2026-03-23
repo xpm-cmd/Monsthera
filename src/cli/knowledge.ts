@@ -83,7 +83,7 @@ export async function cmdKnowledge(config: KnowledgeCliConfig, insight: InsightS
           db,
           repoPath: repoRoot,
           zoektEnabled: config.zoektEnabled ?? true,
-          semanticEnabled: config.semanticEnabled ?? false,
+          semanticEnabled: config.semanticEnabled ?? true,
           searchConfig: config.search,
           indexDir: join(mainRepoRoot, config.monstheraDir),
           onFallback: (message) => insight.warn(message),

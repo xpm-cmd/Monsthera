@@ -13,7 +13,7 @@ import {
   type SearchConfigShape,
 } from "./constants.js";
 import { resolve, dirname } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const DEFAULT_SEMANTIC_BLEND_ALPHA = DEFAULT_SEMANTIC_BLEND_ALPHA_VALUE;
@@ -55,7 +55,7 @@ export class SemanticReranker {
 
     this.loading = (async () => {
       try {
-        const { pipeline, env } = await import("@huggingface/transformers");
+        const { pipeline: createPipeline, env } = await import("@huggingface/transformers");
 
         // Point transformers.js at the bundled models directory so it works
         // offline.  If the directory doesn't exist we still allow remote
@@ -70,13 +70,30 @@ export class SemanticReranker {
           env.cacheDir = resolve(bundledModelsDir, "..", ".cache");
         }
 
-        this.pipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
+        this.pipeline = await createPipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
           dtype: "q8",
         });
         this.available = true;
         return true;
-      } catch (err) {
-        this.opts.onFallback?.(`Semantic model load failed: ${err}`);
+      } catch (firstErr) {
+        // If local model path was set, retry without it — allows remote download
+        // when the bundled model directory exists but is incomplete.
+        const bundledModelsDir = getBundledModelsDir();
+        if (bundledModelsDir) {
+          try {
+            const { pipeline: createPipeline, env } = await import("@huggingface/transformers");
+            env.localModelPath = "";
+            env.allowLocalModels = false;
+            this.pipeline = await createPipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
+              dtype: "q8",
+            });
+            this.available = true;
+            return true;
+          } catch {
+            // Both local and remote failed — fall through
+          }
+        }
+        this.opts.onFallback?.(`Semantic model load failed: ${firstErr}`);
         this.available = false;
         return false;
       }
@@ -500,7 +517,7 @@ function getBundledModelsDir(): string | null {
     let dir = dirname(thisFile);
     for (let i = 0; i < 5; i++) {
       const candidate = resolve(dir, ".monsthera", "models");
-      if (existsSync(candidate)) {
+      if (existsSync(candidate) && hasModelFiles(candidate)) {
         // transformers.js expects the path to end with /
         return candidate.endsWith("/") ? candidate : candidate + "/";
       }
@@ -512,4 +529,19 @@ function getBundledModelsDir(): string | null {
     // Non-fatal — fall through to remote loading
   }
   return null;
+}
+
+/**
+ * Verify that the models directory actually contains model files,
+ * not just an empty directory structure.
+ */
+function hasModelFiles(modelsDir: string): boolean {
+  try {
+    const onnxDir = resolve(modelsDir, "Xenova", "all-MiniLM-L6-v2", "onnx");
+    if (!existsSync(onnxDir)) return false;
+    const files = readdirSync(onnxDir);
+    return files.some((f) => f.endsWith(".onnx") || f.endsWith(".onnx_data"));
+  } catch {
+    return false;
+  }
 }
