@@ -9,6 +9,7 @@
   "files": [
     "dist",
     ".monsthera/workflows",
+    ".monsthera/models",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
@@ -24,6 +25,7 @@
     "lint": "eslint src/ tests/",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src/ tests/",
+    "download-model": "node scripts/download-model.mjs",
     "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
