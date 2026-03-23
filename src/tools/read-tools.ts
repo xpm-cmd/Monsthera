@@ -29,6 +29,7 @@ import {
   CrossInstanceSearchSurfaceSchema,
   searchAcrossRemoteInstances,
 } from "../federation/search.js";
+import { searchKnowledgeEntries } from "../knowledge/search.js";
 import { resolveAgent } from "./resolve-agent.js";
 
 type GetContext = () => Promise<MonstheraContext>;
@@ -1031,31 +1032,27 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
         n.type.toLowerCase().includes(q),
       );
 
-      // Search knowledge entries via FTS5 (always available, no model dependency)
-      const searchKnowledgeFts = (sqlite: typeof c.sqlite, db: typeof c.db, scopeLabel: string) => {
-        const ftsResults = c.searchRouter.searchKnowledge(sqlite, query, 10);
-        return ftsResults.map((r) => {
-          const entry = queries.getKnowledgeById(db, r.knowledgeId);
-          if (!entry) return null;
-          return {
-            key: entry.key,
-            type: entry.type,
-            scope: scopeLabel,
-            title: entry.title,
-            content: entry.content.slice(0, 500) + (entry.content.length > 500 ? "..." : ""),
-            tags: parseStringArrayJson(entry.tagsJson, {
-              maxItems: 25,
-              maxItemLength: 64,
-            }),
-            updatedAt: entry.updatedAt,
-          };
-        }).filter(Boolean);
-      };
+      // Search knowledge entries via hybrid search (FTS5 + semantic vector when available)
+      const knowledgeResults = await searchKnowledgeEntries(
+        {
+          db: c.db,
+          sqlite: c.sqlite,
+          globalDb: c.globalDb ?? null,
+          globalSqlite: c.globalSqlite ?? null,
+          searchRouter: c.searchRouter,
+        },
+        { query, scope: "all", limit: 10 },
+      );
 
-      const matchedKnowledge = [
-        ...searchKnowledgeFts(c.sqlite, c.db, "repo"),
-        ...(c.globalSqlite && c.globalDb ? searchKnowledgeFts(c.globalSqlite, c.globalDb, "global") : []),
-      ];
+      const matchedKnowledge = knowledgeResults.map((entry) => ({
+        key: entry.key,
+        type: entry.type,
+        scope: entry.scope,
+        title: entry.title,
+        content: entry.content.slice(0, 500) + (entry.content.length > 500 ? "..." : ""),
+        tags: entry.tags,
+        updatedAt: entry.updatedAt,
+      }));
 
       const payload = shapeIssuePackResult({
         currentHead: head,

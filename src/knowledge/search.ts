@@ -167,16 +167,17 @@ export async function searchKnowledgeEntries(
       const seenKeys = new Set(results.map((entry) => makeResultKey(entry.scope, entry.key)));
 
       for (const target of targets) {
+        const knowledgeVectorMinScore = deps.searchRouter.getSearchConfig().thresholds.knowledgeVectorMinScore;
         const vectorResults = reranker.searchKnowledgeByVector(target.sqlite, queryEmbedding, limit * 3);
         // Batch-load full entries for vector results
         const vectorIds = vectorResults
-          .filter((e) => (!opts.type || e.type === opts.type) && e.score >= 0.6)
+          .filter((e) => (!opts.type || e.type === opts.type) && e.score >= knowledgeVectorMinScore)
           .map((e) => e.id);
         const fullEntries = queries.getKnowledgeByIds(target.db, vectorIds);
         const fullEntryMap = new Map(fullEntries.map((e) => [e.id, e]));
         for (const entry of vectorResults) {
           if (opts.type && entry.type !== opts.type) continue;
-          if (entry.score < 0.6) continue;
+          if (entry.score < knowledgeVectorMinScore) continue;
 
           const fullEntry = fullEntryMap.get(entry.id);
           if (!fullEntry?.content) continue;

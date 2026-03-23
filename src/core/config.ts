@@ -10,6 +10,7 @@ import {
   DEFAULT_CONFIG_FILE_PENALTY_FACTOR,
   DEFAULT_FILE_BM25_WEIGHTS,
   DEFAULT_KNOWLEDGE_BM25_WEIGHTS,
+  DEFAULT_KNOWLEDGE_VECTOR_MIN_SCORE,
   DEFAULT_MIN_RELEVANCE_SCORE,
   DEFAULT_MIN_RELEVANCE_SCORE_SCOPED,
   DEFAULT_SEARCH_CONFIG,
@@ -125,6 +126,7 @@ export const SearchPenaltyConfigSchema = z.object({
 export const SearchThresholdConfigSchema = z.object({
   relevance: z.number().min(0).max(1).default(DEFAULT_MIN_RELEVANCE_SCORE),
   scopedRelevance: z.number().min(0).max(1).default(DEFAULT_MIN_RELEVANCE_SCORE_SCOPED),
+  knowledgeVectorMinScore: z.number().min(0).max(1).default(DEFAULT_KNOWLEDGE_VECTOR_MIN_SCORE),
   andQueryTermCount: z.number().int().min(1).max(10).default(DEFAULT_AND_QUERY_TERM_THRESHOLD),
 });
 
