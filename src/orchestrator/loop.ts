@@ -16,6 +16,7 @@ export interface OrchestratorConfig {
   llmFallback?: boolean;
   repoPath: string;
   maxRetries?: number; // default 1
+  authToken?: string;
 }
 
 export interface OrchestratorCallbacks {
@@ -145,10 +146,14 @@ export async function runOrchestrator(
   });
 
   // 1. REGISTER as facilitator
-  const regResult = asRecord(await callbacks.callTool("register_agent", {
+  const regParams: Record<string, unknown> = {
     name: "orchestrator",
     desiredRole: "facilitator",
-  }));
+  };
+  if (config.authToken) {
+    regParams.authToken = config.authToken;
+  }
+  const regResult = asRecord(await callbacks.callTool("register_agent", regParams));
   if (!regResult.agentId || !regResult.sessionId) {
     throw new Error(`register_agent failed: missing agentId or sessionId in response: ${JSON.stringify(regResult)}`);
   }

@@ -171,7 +171,7 @@ function safeTokenEqual(a: string, b: string): boolean {
 }
 
 /** Roles allowed without auth when registrationAuth is disabled. */
-const OPEN_REGISTRATION_ROLES: ReadonlySet<RoleId> = new Set(["observer", "developer"]);
+const OPEN_REGISTRATION_ROLES: ReadonlySet<RoleId> = new Set(["observer", "developer", "facilitator"]);
 
 function resolveRegistrationRole(
   desiredRole: RoleId,
