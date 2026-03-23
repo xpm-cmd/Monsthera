@@ -171,7 +171,7 @@ function safeTokenEqual(a: string, b: string): boolean {
 }
 
 /** Roles allowed without auth when registrationAuth is disabled. */
-const OPEN_REGISTRATION_ROLES: ReadonlySet<RoleId> = new Set(["observer", "developer"]);
+const OPEN_REGISTRATION_ROLES: ReadonlySet<RoleId> = new Set(["observer", "developer", "facilitator"]);
 
 function resolveRegistrationRole(
   desiredRole: RoleId,
@@ -179,7 +179,7 @@ function resolveRegistrationRole(
   registrationAuth: RegistrationAuth | undefined,
 ): RoleId {
   if (!registrationAuth?.enabled) {
-    // Without auth enabled, only allow safe roles — never admin/facilitator/planner
+    // Without auth enabled, allow observer/developer/facilitator — never admin/planner
     return OPEN_REGISTRATION_ROLES.has(desiredRole) ? desiredRole : "observer";
   }
 

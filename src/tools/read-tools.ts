@@ -651,6 +651,21 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           direction: "enum: inbound|outbound|both (default outbound)",
           maxDepth: "number 1-5 (default 3)",
         },
+        analyze_coupling: {
+          scope: "string (optional path prefix)",
+          sortBy: "enum: instability|totalCoupling|afferent|efferent (default totalCoupling)",
+          limit: "number 1-100 (default 20)",
+        },
+        find_dependency_cycles: {
+          scope: "string (optional path prefix)",
+          maxCycles: "number 1-100 (default 50)",
+        },
+        find_references: {
+          symbolName: "string (required)",
+          direction: "enum: forward|reverse (default reverse)",
+          kind: "enum: call|member_call|type_ref|all (default all)",
+          limit: "number 1-200 (default 50)",
+        },
         // ── export tools ──
         export_audit: {
           format: "enum: json|csv (required)",
@@ -659,6 +674,169 @@ export function registerReadTools(server: McpServer, getContext: GetContext): vo
           since: "string ISO timestamp (optional)",
           until: "string ISO timestamp (optional)",
           limit: "number 1-10000 (default 10000)",
+        },
+        // ── simulation tools ──
+        run_simulation: {
+          targetCorpusSize: "number 1-1000 (default 200)",
+          realWorkBatchSize: "number 1-100 (default 50)",
+          skipRealWork: "boolean (default true)",
+          phase: "enum: all|A|B|C|D|E (default all)",
+          outputPath: "string (default .monsthera/simulation-results.jsonl)",
+          ticketTimeoutMs: "number 10000-600000 (default 120000)",
+        },
+        run_optimization: {
+          iterations: "number 1-20 (default 3)",
+          topK: "number 1-50 (default 5)",
+          testCommand: "string (default pnpm test)",
+          testTimeoutMs: "number 10000-600000 (default 120000)",
+          outputPath: "string (default .monsthera/simulation-results.jsonl)",
+          ticketTimeoutMs: "number 10000-600000 (default 120000)",
+        },
+        // ── job tools ──
+        create_loop: {
+          loopId: "string (1-100 chars)",
+          template: "enum: full-team|full-team-unified-council|small-team|custom (default full-team)",
+          slots: "object[] (required if template=custom; each: role, label, description, systemPrompt, contextJson, ticketId)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        list_jobs: {
+          loopId: "string (optional, 1-100 chars)",
+          status: "enum: open|claimed|active|completed|abandoned (optional)",
+          role: "string (optional, max 50 chars)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        claim_job: {
+          slotId: "string (optional, max 50 chars)",
+          loopId: "string (optional, max 100 chars)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        update_job_progress: {
+          slotId: "string (1-50 chars)",
+          progressNote: "string (optional, max 500 chars)",
+          status: "enum: active|completed (optional)",
+          ticketId: "string (optional, max 50 chars)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        complete_job: {
+          slotId: "string (1-50 chars)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        release_job: {
+          slotId: "string (1-50 chars)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        // ── work group tools ──
+        create_work_group: {
+          title: "string (1-200 chars)",
+          description: "string (optional, max 2000 chars)",
+          tags: "string[] (optional, max 25 tags)",
+          ticketIds: "string[] (optional, max 50 TKT-... IDs)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        update_work_group: {
+          groupId: "string (WG-...)",
+          title: "string (optional, 1-200 chars)",
+          description: "string (optional, max 2000 chars)",
+          status: "enum: open|completed|cancelled (optional)",
+          tags: "string[] (optional, max 25 tags)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        add_tickets_to_group: {
+          groupId: "string (WG-...)",
+          ticketIds: "string[] (1-50 TKT-... IDs)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        remove_tickets_from_group: {
+          groupId: "string (WG-...)",
+          ticketIds: "string[] (1-50 TKT-... IDs)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        list_work_groups: {
+          status: "enum: open|completed|cancelled (optional)",
+          tag: "string (optional, filter by tag)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        // ── decompose tools ──
+        decompose_goal: {
+          goal: "string (1-1000 chars)",
+          scope: "string (optional, max 500 chars, path scope filter)",
+          proposedTasks: "object[] (1-20 tasks with: title, description, affectedPaths, tags, severity, priority, rationale, dependsOn)",
+          maxTickets: "number 1-20 (default 8)",
+          dryRun: "boolean (default true)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        // ── wave/convoy tools ──
+        compute_waves: {
+          groupId: "string (WG-...)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        launch_convoy: {
+          groupId: "string (WG-...)",
+          testCommand: "string (optional)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        advance_wave: {
+          groupId: "string (WG-...)",
+          testCommand: "string (optional)",
+          testTimeoutMs: "number (positive, optional)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        get_wave_status: {
+          groupId: "string (WG-...)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        // ── spawn tools ──
+        spawn_agent: {
+          ticketId: "string (TKT-...)",
+          role: "enum: developer|reviewer (default developer)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        // ── governance tools ──
+        get_governance_settings: {
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        get_ticket_metrics: {
+          agentId: "string (required)",
+          sessionId: "string (required)",
+        },
+        list_events: {
+          agentId: "string (required)",
+          sessionId: "string (required)",
+          limit: "number 1-200 (default 50)",
+          since: "string ISO timestamp (optional)",
+        },
+        // ── ticket tools (additional) ──
+        list_verdicts: {
+          agentId: "string (required)",
+          sessionId: "string (required)",
+          targetAgentId: "string (optional, defaults to caller)",
+          ticketId: "string (optional, TKT-...)",
+          specialization: "string (optional)",
+          limit: "number 1-100 (default 50)",
+        },
+        prune_stale_relations: {
+          dryRun: "boolean (default true)",
+          olderThanDays: "number 1-90 (default 7)",
+          agentId: "string (required)",
+          sessionId: "string (required)",
         },
       };
 

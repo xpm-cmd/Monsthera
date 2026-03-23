@@ -32,7 +32,7 @@ function buildCallbacks(overrides: Partial<OrchestratorCallbacks> = {}): Orchest
     callTool: async (name, params) => {
       toolCalls.push({ name, params });
 
-      if (name === "register_agent") return { agentId: "orch-agent", sessionId: "orch-session" };
+      if (name === "register_agent") return { agentId: "orch-agent", sessionId: "orch-session", role: "facilitator" };
       if (name === "compute_waves") return { waveCount: 2 };
       if (name === "launch_convoy") return { integrationBranch: "integration/WG-test" };
       if (name === "get_wave_status") return { dispatchedTickets: ["TKT-a"], currentWave: 0 };
@@ -60,7 +60,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1", "TKT-2"] };
@@ -85,7 +85,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
@@ -111,7 +111,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
@@ -140,7 +140,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1", "TKT-2", "TKT-3", "TKT-4", "TKT-5"] };
@@ -167,7 +167,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
@@ -197,7 +197,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
@@ -220,7 +220,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 0 };
         return {};
       },
@@ -239,7 +239,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-stuck"] };
@@ -266,7 +266,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
@@ -301,7 +301,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
@@ -329,7 +329,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
@@ -353,7 +353,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
@@ -376,7 +376,7 @@ describe("orchestrator loop", () => {
     const cbs = buildCallbacks({
       callTool: async (name, params) => {
         cbs.toolCalls.push({ name, params });
-        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch" };
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "facilitator" };
         if (name === "compute_waves") return { waveCount: 1 };
         if (name === "launch_convoy") return { integrationBranch: "int/WG" };
         if (name === "get_wave_status") return { dispatchedTickets: ["TKT-1"] };
@@ -402,5 +402,19 @@ describe("orchestrator loop", () => {
     // First conflict → retry (via heuristic), then heuristic sees it in conflictHistory → skip
     // Either way, ticket ends up skipped
     expect(result.skippedTickets).toContain("TKT-1");
+  });
+
+  it("throws early if registration returns a non-facilitator role", async () => {
+    const cbs = buildCallbacks({
+      callTool: async (name, params) => {
+        cbs.toolCalls.push({ name, params });
+        if (name === "register_agent") return { agentId: "orch", sessionId: "s-orch", role: "observer" };
+        return {};
+      },
+    });
+
+    await expect(runOrchestrator(buildConfig(), cbs)).rejects.toThrow(
+      /must be registered as facilitator or admin.*got "observer"/,
+    );
   });
 });

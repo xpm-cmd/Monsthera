@@ -16,6 +16,7 @@ export interface OrchestratorConfig {
   llmFallback?: boolean;
   repoPath: string;
   maxRetries?: number; // default 1
+  authToken?: string;
 }
 
 export interface OrchestratorCallbacks {
@@ -145,16 +146,27 @@ export async function runOrchestrator(
   });
 
   // 1. REGISTER as facilitator
-  const regResult = asRecord(await callbacks.callTool("register_agent", {
+  const regParams: Record<string, unknown> = {
     name: "orchestrator",
     desiredRole: "facilitator",
-  }));
+  };
+  if (config.authToken) {
+    regParams.authToken = config.authToken;
+  }
+  const regResult = asRecord(await callbacks.callTool("register_agent", regParams));
   if (!regResult.agentId || !regResult.sessionId) {
     throw new Error(`register_agent failed: missing agentId or sessionId in response: ${JSON.stringify(regResult)}`);
   }
   const agentId = String(regResult.agentId);
   const sessionId = String(regResult.sessionId);
-  callbacks.log("info", `Registered as ${agentId}`);
+  const assignedRole = String(regResult.role ?? "unknown");
+  if (assignedRole !== "facilitator" && assignedRole !== "admin") {
+    throw new Error(
+      `Orchestrator must be registered as facilitator or admin, but got "${assignedRole}". ` +
+      `Ensure registrationAuth is disabled or provide a valid --auth-token for the facilitator role.`,
+    );
+  }
+  callbacks.log("info", `Registered as ${agentId} (role: ${assignedRole})`);
 
   // 2. COMPUTE waves
   const wavesResult = asRecord(await callbacks.callTool("compute_waves", {

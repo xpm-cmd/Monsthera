@@ -28,6 +28,7 @@ export async function cmdOrchestrate(
   const llmFallback = args.includes("--llm-fallback");
   const maxRetries = parseInt(getArg(args, "--max-retries") ?? "1", 10);
   const spawnCommand = getArg(args, "--spawn-command");
+  const authToken = getArg(args, "--auth-token") ?? config.registrationAuth?.roleTokens?.facilitator;
 
   let context: MonstheraContext | null = null;
   const baseGetContext = createMonstheraContextLoader(config, insight, { startLifecycleSweep: false });
@@ -48,6 +49,7 @@ export async function cmdOrchestrate(
     llmFallback,
     maxRetries,
     repoPath: config.repoPath,
+    authToken,
   };
 
   const callbacks: OrchestratorCallbacks = {
