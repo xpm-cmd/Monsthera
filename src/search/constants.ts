@@ -25,6 +25,7 @@ export const DEFAULT_MIN_RELEVANCE_SCORE_SCOPED = 0.20;
 export const DEFAULT_AND_QUERY_TERM_THRESHOLD = 3;
 
 export const FTS5_ONLY_PENALTY_FACTOR = 0.8;
+export const VECTOR_ONLY_PENALTY_FACTOR = 0.8;
 export const SCOPED_VECTOR_ONLY_PENALTY_FACTOR = 0.85;
 
 export interface SearchConfigShape {

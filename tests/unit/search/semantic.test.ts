@@ -8,6 +8,7 @@ import {
   buildEmbeddingText,
   DEFAULT_SEMANTIC_BLEND_ALPHA,
   FTS5_ONLY_PENALTY_FACTOR,
+  VECTOR_ONLY_PENALTY_FACTOR,
   mergeResults,
   SCOPED_VECTOR_ONLY_PENALTY_FACTOR,
   SemanticReranker,
@@ -335,13 +336,26 @@ describe("mergeResults", () => {
 
     const merged = mergeResults(fts5, vector, 5, 0.6);
     expect(merged.length).toBe(1);
-    // Vector only: score = 0.9 * 0.6 = 0.54
-    expect(merged[0]!.score).toBeCloseTo(0.54, 5);
+    // Vector only: score = 0.9 * VECTOR_ONLY_PENALTY_FACTOR (0.8) = 0.72
+    expect(merged[0]!.score).toBeCloseTo(0.9 * VECTOR_ONLY_PENALTY_FACTOR, 5);
   });
 
   it("softens scoped vector-only demotion", () => {
     const merged = mergeResults([], [{ path: "src/vec-only.ts", score: 0.9 }], 5, DEFAULT_SEMANTIC_BLEND_ALPHA, true);
-    expect(merged[0]!.score).toBeCloseTo(0.9 * DEFAULT_SEMANTIC_BLEND_ALPHA * SCOPED_VECTOR_ONLY_PENALTY_FACTOR, 5);
+    expect(merged[0]!.score).toBeCloseTo(0.9 * VECTOR_ONLY_PENALTY_FACTOR * SCOPED_VECTOR_ONLY_PENALTY_FACTOR, 5);
+  });
+
+  it("applies symmetric penalties to single-source results", () => {
+    const score = 0.7;
+    const fts5Only = mergeResults([{ path: "a.ts", score: 10 }], [], 5);
+    const vectorOnly = mergeResults([], [{ path: "b.ts", score: score }], 5);
+
+    // FTS5-only: 1.0 * FTS5_ONLY_PENALTY_FACTOR = 0.8
+    expect(fts5Only[0]!.score).toBeCloseTo(FTS5_ONLY_PENALTY_FACTOR, 5);
+    // Vector-only: 0.7 * VECTOR_ONLY_PENALTY_FACTOR = 0.56
+    expect(vectorOnly[0]!.score).toBeCloseTo(score * VECTOR_ONLY_PENALTY_FACTOR, 5);
+    // Both penalty factors are equal, so equal scores get equal treatment
+    expect(FTS5_ONLY_PENALTY_FACTOR).toBe(VECTOR_ONLY_PENALTY_FACTOR);
   });
 
   it("deduplicates and ranks correctly with mixed sources", () => {
