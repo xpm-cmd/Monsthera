@@ -1,6 +1,6 @@
 {
   "name": "monsthera-mcp",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Give your AI coding agents a shared brain, a backlog, and the ability to work together",
   "type": "module",
   "bin": {
