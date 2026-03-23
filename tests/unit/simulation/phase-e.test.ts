@@ -29,7 +29,7 @@ function buildSimCallbacks(opts: {
     events,
     get spawnCount() { return spawnCount; },
     callTool: async (name, params) => {
-      if (name === "register_agent") return { agentId: "sim-orch", sessionId: "sim-session" };
+      if (name === "register_agent") return { agentId: "sim-orch", sessionId: "sim-session", role: "facilitator" };
       if (name === "compute_waves") return { waveCount: totalWaves };
       if (name === "launch_convoy") return { integrationBranch: "monsthera/convoy/WG-sim" };
       if (name === "get_wave_status") {
