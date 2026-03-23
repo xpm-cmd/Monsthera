@@ -19,11 +19,18 @@ tmp/
 .idea/
 .mcp.json
 
-# Tool / AI config
+# Tool / AI config (personal instructions)
 .claude/
 .gemini/
+.copilot/
+.cursorrules
+.cursorignore
 GEMINI.md
+CLAUDE.local.md
+*.local.md
 AGENT-MEMORY-CONTEXT.md
+settings.local.json
+.mcp.json
 
 # Misc
 *.bak
