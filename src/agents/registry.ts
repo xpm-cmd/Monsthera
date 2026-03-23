@@ -179,7 +179,7 @@ function resolveRegistrationRole(
   registrationAuth: RegistrationAuth | undefined,
 ): RoleId {
   if (!registrationAuth?.enabled) {
-    // Without auth enabled, only allow safe roles — never admin/facilitator/planner
+    // Without auth enabled, allow observer/developer/facilitator — never admin/planner
     return OPEN_REGISTRATION_ROLES.has(desiredRole) ? desiredRole : "observer";
   }
 

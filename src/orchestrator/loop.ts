@@ -159,7 +159,14 @@ export async function runOrchestrator(
   }
   const agentId = String(regResult.agentId);
   const sessionId = String(regResult.sessionId);
-  callbacks.log("info", `Registered as ${agentId}`);
+  const assignedRole = String(regResult.role ?? "unknown");
+  if (assignedRole !== "facilitator" && assignedRole !== "admin") {
+    throw new Error(
+      `Orchestrator must be registered as facilitator or admin, but got "${assignedRole}". ` +
+      `Ensure registrationAuth is disabled or provide a valid --auth-token for the facilitator role.`,
+    );
+  }
+  callbacks.log("info", `Registered as ${agentId} (role: ${assignedRole})`);
 
   // 2. COMPUTE waves
   const wavesResult = asRecord(await callbacks.callTool("compute_waves", {
