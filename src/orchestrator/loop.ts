@@ -77,9 +77,23 @@ interface ActiveProcess {
 const MAX_STALE_POLLS = 5;
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return (value && typeof value === "object" && !Array.isArray(value))
-    ? value as Record<string, unknown>
-    : {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const obj = value as Record<string, unknown>;
+  // MCP tool responses wrap data in { content: [{ type: "text", text: "{...}" }] }
+  if (Array.isArray(obj.content)) {
+    const first = obj.content[0] as Record<string, unknown> | undefined;
+    if (first && typeof first.text === "string") {
+      try {
+        const parsed = JSON.parse(first.text);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        // fall through to return raw object
+      }
+    }
+  }
+  return obj;
 }
 
 function asStringArray(value: unknown): string[] {
@@ -135,8 +149,11 @@ export async function runOrchestrator(
     name: "orchestrator",
     desiredRole: "facilitator",
   }));
-  const agentId = String(regResult.agentId ?? "orchestrator");
-  const sessionId = String(regResult.sessionId ?? "session-orch");
+  if (!regResult.agentId || !regResult.sessionId) {
+    throw new Error(`register_agent failed: missing agentId or sessionId in response: ${JSON.stringify(regResult)}`);
+  }
+  const agentId = String(regResult.agentId);
+  const sessionId = String(regResult.sessionId);
   callbacks.log("info", `Registered as ${agentId}`);
 
   // 2. COMPUTE waves
