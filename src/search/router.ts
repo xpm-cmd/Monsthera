@@ -4,7 +4,7 @@ import type * as schema from "../db/schema.js";
 import type { SearchBackend, SearchBackendName, SearchResult } from "./interface.js";
 import { FTS5Backend, type KnowledgeFtsResult, type TicketFtsResult } from "./fts5.js";
 import { ZoektBackend } from "./zoekt.js";
-import { SemanticReranker, mergeResults } from "./semantic.js";
+import { SemanticReranker, mergeResults, buildEmbeddingText } from "./semantic.js";
 import { DEFAULT_SEARCH_CONFIG, type SearchConfigShape } from "./constants.js";
 import { getIndexedCommit } from "../indexing/indexer.js";
 import { getHead } from "../git/operations.js";
@@ -92,8 +92,81 @@ export class SearchRouter {
       if (!ok) {
         this.opts.onFallback?.("Semantic model failed to load, disabling semantic re-ranking");
         this.semantic = null;
+      } else {
+        // Backfill embeddings for files indexed before semantic was available.
+        // Runs in background so it doesn't block startup.
+        this.backfillEmbeddings(this.opts.repoId).catch(() => {});
       }
     }
+  }
+
+  /**
+   * Generate embeddings for files and knowledge entries that were indexed
+   * before the semantic model was available (embedding IS NULL).
+   * Non-blocking: errors are silently ignored per-row.
+   */
+  private async backfillEmbeddings(repoId: number): Promise<void> {
+    if (!this.semantic?.isAvailable()) return;
+
+    let totalBackfilled = 0;
+
+    // --- File embeddings ---
+    const files = this.opts.sqlite
+      .prepare("SELECT id, path, language, summary, symbols_json FROM files WHERE repo_id = ? AND embedding IS NULL")
+      .all(repoId) as Array<{ id: number; path: string; language: string | null; summary: string | null; symbols_json: string | null }>;
+
+    for (const file of files) {
+      try {
+        const text = buildEmbeddingText({
+          path: file.path,
+          language: file.language,
+          summary: file.summary ?? "",
+          symbolsJson: file.symbols_json ?? "[]",
+        });
+        const embedding = await this.semantic.embed(text);
+        if (embedding) {
+          this.semantic.storeEmbedding(file.id, embedding);
+          totalBackfilled++;
+        }
+      } catch {
+        // Non-fatal: skip this file
+      }
+    }
+
+    // --- Knowledge embeddings (repo DB) ---
+    totalBackfilled += await this.backfillKnowledgeEmbeddings(this.opts.sqlite);
+
+    if (totalBackfilled > 0) {
+      this.opts.onFallback?.(`Backfilled ${totalBackfilled} embeddings`);
+    }
+  }
+
+  /** Backfill knowledge entries missing embeddings in a given sqlite handle. */
+  async backfillKnowledgeEmbeddings(sqlite: DatabaseType): Promise<number> {
+    if (!this.semantic?.isAvailable()) return 0;
+
+    let rows: Array<{ id: number; title: string; content: string }>;
+    try {
+      rows = sqlite
+        .prepare("SELECT id, title, content FROM knowledge WHERE embedding IS NULL AND status = 'active'")
+        .all() as typeof rows;
+    } catch {
+      return 0; // table may not exist
+    }
+
+    let count = 0;
+    for (const row of rows) {
+      try {
+        const embedding = await this.semantic.embed(`${row.title}. ${row.content}`);
+        if (embedding) {
+          this.semantic.storeKnowledgeEmbedding(sqlite, row.id, embedding);
+          count++;
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+    return count;
   }
 
   async search(query: string, repoId: number, limit?: number, scope?: string): Promise<SearchResult[]> {
