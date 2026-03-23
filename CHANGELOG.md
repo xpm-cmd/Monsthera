@@ -8,6 +8,14 @@ All notable changes to Monsthera are documented here.
 
 - **Rebrand: Agora → Monsthera** — Renamed all references in root-level markdown files (README, AGENT-MEMORY-CONTEXT, AGENTS, CONTRIBUTING, SECURITY, CHANGELOG). Updated product name, CLI commands, npm package (`monsthera-mcp`), directory paths (`.monsthera/`), database name (`monsthera.db`), HTTP headers (`x-monsthera-`), and GitHub URLs (`xpm-cmd/Monsthera`).
 
+## [2.0.1] - 2026-03-23
+
+### Fixed
+
+- **spawn_agent auth token** — `spawn_agent` now correctly passes `authToken` from `registrationAuth.roleTokens` to `registerAgent()`, fixing agent registration failures when auth is enabled
+- **Orchestrator response parsing** — `asRecord()` now unwraps MCP-style `{ content: [{ text: "{...}" }] }` responses so `agentId`/`sessionId` are correctly extracted instead of silently falling back to `"orchestrator"`
+- **Fail-fast on missing agent identity** — Replaced silent fallbacks with explicit errors when `agentId`/`sessionId` are missing from spawn responses
+
 ### Added
 
 - **Symbol references + code chunks** — Tree-sitter extracts function calls, member calls, and type references into `symbol_references`. Code chunks store per-symbol line ranges with embeddings for finer semantic search (`c00d628`)
