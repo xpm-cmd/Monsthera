@@ -8,12 +8,14 @@ import {
   DEFAULT_SEARCH_CONFIG,
   DEFAULT_SEMANTIC_BLEND_ALPHA as DEFAULT_SEMANTIC_BLEND_ALPHA_VALUE,
   FTS5_ONLY_PENALTY_FACTOR as FTS5_ONLY_PENALTY_FACTOR_VALUE,
+  VECTOR_ONLY_PENALTY_FACTOR as VECTOR_ONLY_PENALTY_FACTOR_VALUE,
   SCOPED_VECTOR_ONLY_PENALTY_FACTOR as SCOPED_VECTOR_ONLY_PENALTY_FACTOR_VALUE,
   type SearchConfigShape,
 } from "./constants.js";
 
 export const DEFAULT_SEMANTIC_BLEND_ALPHA = DEFAULT_SEMANTIC_BLEND_ALPHA_VALUE;
 export const FTS5_ONLY_PENALTY_FACTOR = FTS5_ONLY_PENALTY_FACTOR_VALUE;
+export const VECTOR_ONLY_PENALTY_FACTOR = VECTOR_ONLY_PENALTY_FACTOR_VALUE;
 export const SCOPED_VECTOR_ONLY_PENALTY_FACTOR = SCOPED_VECTOR_ONLY_PENALTY_FACTOR_VALUE;
 
 export interface SemanticRerankerOptions {
@@ -346,7 +348,7 @@ export function mergeResults(
     } else if (normalizedFts5 !== undefined) {
       score = normalizedFts5 * FTS5_ONLY_PENALTY_FACTOR;
     } else {
-      score = vectorScore! * alpha * (demoteVectorOnly ? SCOPED_VECTOR_ONLY_PENALTY_FACTOR : 1.0);
+      score = vectorScore! * VECTOR_ONLY_PENALTY_FACTOR * (demoteVectorOnly ? SCOPED_VECTOR_ONLY_PENALTY_FACTOR : 1.0);
     }
 
     merged.push({

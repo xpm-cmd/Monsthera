@@ -198,7 +198,7 @@ describe("SearchRouter", () => {
           knowledge: { title: 3.0, content: 1.0 },
         },
         penalties: { testFiles: 0.4, configFiles: 0.5 },
-        thresholds: { relevance: 0.35, scopedRelevance: 0.2, andQueryTermCount: 3 },
+        thresholds: { relevance: 0.35, scopedRelevance: 0.2, knowledgeVectorMinScore: 0.45, andQueryTermCount: 3 },
       },
     });
 
