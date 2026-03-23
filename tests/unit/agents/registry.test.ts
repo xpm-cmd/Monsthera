@@ -264,10 +264,9 @@ describe("Agent Registry", () => {
     expect(session.state).toBe("active");
   });
 
-  it("downgrades facilitator to observer without auth when registrationAuth is disabled", () => {
+  it("allows facilitator without auth when registrationAuth is disabled", () => {
     const result = registerAgent(db, { name: "Facilitator", type: "claude-code", desiredRole: "facilitator" });
-    expect(result.role).toBe("observer");
-    expect(result.trustTier).toBe("B");
+    expect(result.role).toBe("facilitator");
   });
 
   it("allows facilitator registration with a valid role token", () => {

@@ -23,6 +23,7 @@ tmp/
 .claude/
 .gemini/
 GEMINI.md
+CLAUDE.md
 AGENT-MEMORY-CONTEXT.md
 
 # Misc
