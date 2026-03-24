@@ -69,6 +69,8 @@ export function createMonstheraContextLoader(
       globalSqlite = globalResult.globalSqlite;
       if (globalSqlite) {
         prepareKnowledgeSearchTarget(searchRouter, globalSqlite);
+        // Backfill global knowledge embeddings in background
+        searchRouter.backfillKnowledgeEmbeddings(globalSqlite).catch(() => {});
       }
     } catch (err) {
       insight.warn(`Global knowledge DB init failed: ${err}`);

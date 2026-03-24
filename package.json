@@ -1,6 +1,6 @@
 {
   "name": "monsthera-mcp",
-  "version": "2.0.9",
+  "version": "2.0.12",
   "description": "Give your AI coding agents a shared brain, a backlog, and the ability to work together",
   "type": "module",
   "bin": {
@@ -9,6 +9,7 @@
   "files": [
     "dist",
     ".monsthera/workflows",
+    ".monsthera/models",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
@@ -24,7 +25,8 @@
     "lint": "eslint src/ tests/",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src/ tests/",
-    "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test",
+    "download-model": "node scripts/download-model.mjs",
+    "prepublishOnly": "pnpm download-model && pnpm build && pnpm typecheck && pnpm test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "coverage": "vitest run --coverage",
