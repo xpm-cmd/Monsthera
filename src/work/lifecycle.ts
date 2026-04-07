@@ -22,13 +22,13 @@ const TERMINAL_PHASES = new Set<WorkPhaseType>([WorkPhase.DONE, WorkPhase.CANCEL
 
 // ─── Guard Sets ─────────────────────────────────────────────────────────────
 
-interface GuardEntry {
+export interface GuardEntry {
   readonly name: string;
   readonly check: (article: WorkArticle) => boolean;
 }
 
 /** Get the guard set for a specific transition. Returns empty array for cancellation. */
-function getGuardSet(article: WorkArticle, from: WorkPhaseType, to: WorkPhaseType): GuardEntry[] {
+export function getGuardSet(article: WorkArticle, from: WorkPhaseType, to: WorkPhaseType): GuardEntry[] {
   const key = `${from}:${to}`;
   switch (key) {
     case "planning:enrichment": {
@@ -58,6 +58,17 @@ function getGuardSet(article: WorkArticle, from: WorkPhaseType, to: WorkPhaseTyp
       ];
     default:
       return [];
+  }
+}
+
+/** Get the next forward phase in the lifecycle, or null if none */
+export function getNextPhase(phase: WorkPhaseType): WorkPhaseType | null {
+  switch (phase) {
+    case WorkPhase.PLANNING: return WorkPhase.ENRICHMENT;
+    case WorkPhase.ENRICHMENT: return WorkPhase.IMPLEMENTATION;
+    case WorkPhase.IMPLEMENTATION: return WorkPhase.REVIEW;
+    case WorkPhase.REVIEW: return WorkPhase.DONE;
+    default: return null;
   }
 }
 

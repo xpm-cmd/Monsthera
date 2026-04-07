@@ -19,6 +19,7 @@ import { InMemorySearchIndexRepository } from "../search/in-memory-repository.js
 import { InMemoryOrchestrationEventRepository } from "../orchestration/in-memory-repository.js";
 import { StubEmbeddingProvider } from "../search/embedding.js";
 import { SearchService } from "../search/service.js";
+import { OrchestrationService } from "../orchestration/service.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -32,6 +33,7 @@ export interface MonstheraContainer extends Disposable {
   readonly searchRepo: SearchIndexRepository;
   readonly searchService: SearchService;
   readonly orchestrationRepo: OrchestrationEventRepository;
+  readonly orchestrationService: OrchestrationService;
 }
 
 /**
@@ -139,6 +141,19 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
     config: config.search,
     logger,
   });
+  const orchestrationService = new OrchestrationService({
+    workRepo,
+    orchestrationRepo,
+    logger,
+    autoAdvance: config.orchestration.autoAdvance,
+    pollIntervalMs: config.orchestration.pollIntervalMs,
+  });
+
+  // Start auto-advance loop if configured
+  if (config.orchestration.autoAdvance) {
+    orchestrationService.start();
+    stack.defer(() => { orchestrationService.stop(); });
+  }
 
   return {
     config,
@@ -151,6 +166,7 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
     searchRepo,
     searchService,
     orchestrationRepo,
+    orchestrationService,
     async dispose() {
       logger.info("Shutting down container");
       await stack.dispose();
