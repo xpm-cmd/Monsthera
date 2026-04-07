@@ -6,7 +6,7 @@
   "bin": { "monsthera": "dist/bin.js" },
   "files": ["dist", "LICENSE", "README.md", "CHANGELOG.md"],
   "scripts": {
-    "dev": "tsx watch src/index.ts -- serve",
+    "dev": "tsx watch src/bin.ts serve",
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
