@@ -3,7 +3,7 @@
   "version": "3.0.0-alpha.0",
   "description": "Knowledge-native development platform for AI coding agents",
   "type": "module",
-  "bin": { "monsthera": "dist/index.js" },
+  "bin": { "monsthera": "dist/bin.js" },
   "files": ["dist", "LICENSE", "README.md", "CHANGELOG.md"],
   "scripts": {
     "dev": "tsx watch src/index.ts -- serve",
