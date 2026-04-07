@@ -1,7 +1,7 @@
 import type { Repository } from "../core/repository.js";
 import type { Result } from "../core/result.js";
 import type { WorkId, AgentId, WorkPhase, Priority, WorkTemplate, Timestamp } from "../core/types.js";
-import type { NotFoundError, StorageError, StateTransitionError } from "../core/errors.js";
+import type { NotFoundError, StorageError, StateTransitionError, ValidationError } from "../core/errors.js";
 
 /** Enrichment role assignment */
 export interface EnrichmentAssignment {
@@ -75,10 +75,25 @@ export interface UpdateWorkArticleInput {
 /** Work article repository with domain-specific queries */
 export interface WorkArticleRepository
   extends Repository<WorkArticle, CreateWorkArticleInput, UpdateWorkArticleInput> {
+  /** Override: terminal-phase articles cannot be deleted */
+  delete(id: string): Promise<Result<void, NotFoundError | StateTransitionError | StorageError>>;
+  /** Override: terminal-phase articles cannot be updated */
+  update(id: string, input: UpdateWorkArticleInput): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>>;
   findByPhase(phase: WorkPhase): Promise<Result<WorkArticle[], StorageError>>;
   findByAssignee(agentId: AgentId): Promise<Result<WorkArticle[], StorageError>>;
   findByPriority(priority: Priority): Promise<Result<WorkArticle[], StorageError>>;
   findActive(): Promise<Result<WorkArticle[], StorageError>>;
   findBlocked(): Promise<Result<WorkArticle[], StorageError>>;
   advancePhase(id: WorkId, targetPhase: WorkPhase): Promise<Result<WorkArticle, StateTransitionError | NotFoundError | StorageError>>;
+
+  /** Record an enrichment contribution or skip for a role */
+  contributeEnrichment(id: WorkId, role: string, status: "contributed" | "skipped"): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>>;
+  /** Add a reviewer to the article */
+  assignReviewer(id: WorkId, agentId: AgentId): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>>;
+  /** Record a review outcome */
+  submitReview(id: WorkId, agentId: AgentId, status: "approved" | "changes-requested"): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>>;
+  /** Add a dependency (blockedBy relationship) */
+  addDependency(id: WorkId, blockedById: WorkId): Promise<Result<WorkArticle, NotFoundError | StateTransitionError | StorageError>>;
+  /** Remove a dependency */
+  removeDependency(id: WorkId, blockedById: WorkId): Promise<Result<WorkArticle, NotFoundError | StateTransitionError | StorageError>>;
 }

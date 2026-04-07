@@ -6,6 +6,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { MonstheraContainer } from "./core/container.js";
 import { knowledgeToolDefinitions, handleKnowledgeTool } from "./tools/knowledge-tools.js";
+import { workToolDefinitions, handleWorkTool } from "./tools/work-tools.js";
 
 /**
  * Start the MCP server with a Monsthera container.
@@ -27,6 +28,9 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const knowledgeTools = knowledgeToolDefinitions();
   const knowledgeToolNames = new Set(knowledgeTools.map((t) => t.name));
 
+  const workTools = workToolDefinitions();
+  const workToolNames = new Set(workTools.map((t) => t.name));
+
   // Register tools/list handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
@@ -42,6 +46,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
           },
         },
         ...knowledgeTools,
+        ...workTools,
       ],
     };
   });
@@ -65,6 +70,10 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
 
     if (knowledgeToolNames.has(name)) {
       return handleKnowledgeTool(name, args, container.knowledgeService);
+    }
+
+    if (workToolNames.has(name)) {
+      return handleWorkTool(name, args, container.workService);
     }
 
     return {

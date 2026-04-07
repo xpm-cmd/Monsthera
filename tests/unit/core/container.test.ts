@@ -14,6 +14,7 @@ describe("createContainer()", () => {
     expect(container).toHaveProperty("knowledgeRepo");
     expect(container).toHaveProperty("knowledgeService");
     expect(container).toHaveProperty("workRepo");
+    expect(container).toHaveProperty("workService");
     expect(container).toHaveProperty("searchRepo");
     expect(container).toHaveProperty("orchestrationRepo");
     expect(container).toHaveProperty("dispose");
@@ -69,12 +70,9 @@ describe("createContainer()", () => {
     await container.dispose();
   });
 
-  it("stub repo methods throw 'not implemented' (workRepo, searchRepo, orchestrationRepo)", async () => {
+  it("stub repo methods throw 'not implemented' (searchRepo, orchestrationRepo)", async () => {
     const container = await createContainer(testConfig);
-    // knowledgeRepo is now a real InMemoryKnowledgeArticleRepository (Phase 2)
-    expect(() => container.workRepo.findActive()).toThrow(
-      "WorkArticleRepository.findActive() is not implemented (Phase 1 stub)",
-    );
+    // knowledgeRepo and workRepo are now real in-memory repos (Phase 3)
     expect(() => container.searchRepo.reindex()).toThrow(
       "SearchIndexRepository.reindex() is not implemented (Phase 1 stub)",
     );

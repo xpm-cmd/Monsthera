@@ -13,6 +13,8 @@ import { VERSION } from "./constants.js";
 import { DisposableStack } from "./lifecycle.js";
 import { InMemoryKnowledgeArticleRepository } from "../knowledge/in-memory-repository.js";
 import { KnowledgeService } from "../knowledge/service.js";
+import { InMemoryWorkArticleRepository } from "../work/in-memory-repository.js";
+import { WorkService } from "../work/service.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -22,6 +24,7 @@ export interface MonstheraContainer extends Disposable {
   readonly knowledgeRepo: KnowledgeArticleRepository;
   readonly knowledgeService: KnowledgeService;
   readonly workRepo: WorkArticleRepository;
+  readonly workService: WorkService;
   readonly searchRepo: SearchIndexRepository;
   readonly orchestrationRepo: OrchestrationEventRepository;
 }
@@ -44,20 +47,21 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
   // Create status reporter
   const status = createStatusReporter(VERSION);
 
-  // Phase 2: Real in-memory knowledge repository; other repos remain stubs
+  // Phase 3: Real in-memory knowledge + work repositories; other repos remain stubs
   const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
-  const workRepo = createInMemoryStub<WorkArticleRepository>("WorkArticleRepository");
+  const workRepo = new InMemoryWorkArticleRepository();
   const searchRepo = createInMemoryStub<SearchIndexRepository>("SearchIndexRepository");
   const orchestrationRepo = createInMemoryStub<OrchestrationEventRepository>("OrchestrationEventRepository");
 
-  // Wire up KnowledgeService with the real repo
+  // Wire up KnowledgeService and WorkService with real repos
   const knowledgeService = new KnowledgeService({ knowledgeRepo, logger });
+  const workService = new WorkService({ workRepo, logger });
 
   // Register subsystem health checks
   status.register("storage", () => ({
     name: "storage",
     healthy: true,
-    detail: "In-memory (Phase 2)",
+    detail: "In-memory (Phase 3)",
   }));
 
   logger.info("Container created", { repoPath: config.repoPath, verbosity: config.verbosity });
@@ -69,6 +73,7 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
     knowledgeRepo,
     knowledgeService,
     workRepo,
+    workService,
     searchRepo,
     orchestrationRepo,
     async dispose() {

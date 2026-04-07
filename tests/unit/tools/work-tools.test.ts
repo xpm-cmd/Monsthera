@@ -1,0 +1,508 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  workToolDefinitions,
+  handleWorkTool,
+} from "../../../src/tools/work-tools.js";
+import { WorkService } from "../../../src/work/service.js";
+import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
+import { createLogger } from "../../../src/core/logger.js";
+import { WorkTemplate, Priority, WorkPhase } from "../../../src/core/types.js";
+import type { WorkArticle } from "../../../src/work/repository.js";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function createService(): WorkService {
+  return new WorkService({
+    workRepo: new InMemoryWorkArticleRepository(),
+    logger: createLogger({ level: "warn", domain: "test" }),
+  });
+}
+
+const validInput = {
+  title: "Test Work Article",
+  template: WorkTemplate.FEATURE,
+  priority: Priority.MEDIUM,
+  author: "agent-123",
+};
+
+async function seedWork(
+  service: WorkService,
+  overrides?: Record<string, unknown>,
+): Promise<WorkArticle> {
+  const result = await service.createWork({ ...validInput, ...overrides });
+  if (!result.ok) throw new Error(`seed failed: ${result.error.message}`);
+  return result.value;
+}
+
+// ---------------------------------------------------------------------------
+// workToolDefinitions
+// ---------------------------------------------------------------------------
+
+describe("workToolDefinitions", () => {
+  it("returns exactly 11 tools", () => {
+    const defs = workToolDefinitions();
+    expect(defs).toHaveLength(11);
+  });
+
+  it("each tool has name, description, and inputSchema", () => {
+    const defs = workToolDefinitions();
+    for (const def of defs) {
+      expect(typeof def.name).toBe("string");
+      expect(def.name.length).toBeGreaterThan(0);
+      expect(typeof def.description).toBe("string");
+      expect(def.description.length).toBeGreaterThan(0);
+      expect(def.inputSchema).toBeDefined();
+      expect(def.inputSchema.type).toBe("object");
+      expect(typeof def.inputSchema.properties).toBe("object");
+    }
+  });
+
+  it("tool names match the expected set", () => {
+    const names = workToolDefinitions().map((d) => d.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "create_work",
+        "get_work",
+        "update_work",
+        "delete_work",
+        "list_work",
+        "advance_phase",
+        "contribute_enrichment",
+        "assign_reviewer",
+        "submit_review",
+        "add_dependency",
+        "remove_dependency",
+      ]),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// create_work
+// ---------------------------------------------------------------------------
+
+describe("create_work", () => {
+  let service: WorkService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("returns JSON work article on success", async () => {
+    const response = await handleWorkTool("create_work", validInput, service);
+    expect(response.isError).toBeUndefined();
+    expect(response.content).toHaveLength(1);
+    expect(response.content[0]!.type).toBe("text");
+    const article = JSON.parse(response.content[0]!.text) as WorkArticle;
+    expect(article.title).toBe(validInput.title);
+    expect(article.template).toBe(validInput.template);
+    expect(article.id).toBeTruthy();
+    expect(article.phase).toBe(WorkPhase.PLANNING);
+  });
+
+  it("returns isError: true on validation failure (missing required fields)", async () => {
+    const { title: _t, ...withoutTitle } = validInput;
+    const response = await handleWorkTool("create_work", withoutTitle, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+    expect(typeof body.message).toBe("string");
+  });
+
+  it("returns isError: true for invalid template value", async () => {
+    const response = await handleWorkTool("create_work", { ...validInput, template: "bad-template" }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// get_work
+// ---------------------------------------------------------------------------
+
+describe("get_work", () => {
+  let service: WorkService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("returns article by id", async () => {
+    const article = await seedWork(service);
+    const response = await handleWorkTool("get_work", { id: article.id }, service);
+    expect(response.isError).toBeUndefined();
+    const fetched = JSON.parse(response.content[0]!.text) as WorkArticle;
+    expect(fetched.id).toBe(article.id);
+    expect(fetched.title).toBe(article.title);
+  });
+
+  it("returns NOT_FOUND error for unknown id", async () => {
+    const response = await handleWorkTool("get_work", { id: "ghost-id" }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
+    expect(body.error).toBe("NOT_FOUND");
+  });
+
+  it("returns VALIDATION_FAILED when id is missing", async () => {
+    const response = await handleWorkTool("get_work", {}, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// update_work
+// ---------------------------------------------------------------------------
+
+describe("update_work", () => {
+  let service: WorkService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("returns updated article on success", async () => {
+    const article = await seedWork(service);
+    const response = await handleWorkTool(
+      "update_work",
+      { id: article.id, title: "Updated Title" },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const updated = JSON.parse(response.content[0]!.text) as WorkArticle;
+    expect(updated.title).toBe("Updated Title");
+    expect(updated.priority).toBe(article.priority);
+  });
+
+  it("returns NOT_FOUND error for unknown id", async () => {
+    const response = await handleWorkTool(
+      "update_work",
+      { id: "nonexistent", title: "New Title" },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
+    expect(body.error).toBe("NOT_FOUND");
+  });
+
+  it("returns VALIDATION_FAILED when id is missing", async () => {
+    const response = await handleWorkTool("update_work", { title: "New" }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// delete_work
+// ---------------------------------------------------------------------------
+
+describe("delete_work", () => {
+  let service: WorkService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("returns { deleted: true } on success", async () => {
+    const article = await seedWork(service);
+    const response = await handleWorkTool("delete_work", { id: article.id }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { deleted: boolean };
+    expect(body.deleted).toBe(true);
+  });
+
+  it("returns NOT_FOUND error for unknown id", async () => {
+    const response = await handleWorkTool("delete_work", { id: "ghost-id" }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
+    expect(body.error).toBe("NOT_FOUND");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// list_work
+// ---------------------------------------------------------------------------
+
+describe("list_work", () => {
+  let service: WorkService;
+
+  beforeEach(async () => {
+    service = createService();
+    await seedWork(service, { title: "A" });
+    await seedWork(service, { title: "B" });
+    await seedWork(service, { title: "C" });
+  });
+
+  it("returns all work articles when no phase provided", async () => {
+    const response = await handleWorkTool("list_work", {}, service);
+    expect(response.isError).toBeUndefined();
+    const articles = JSON.parse(response.content[0]!.text) as WorkArticle[];
+    expect(articles).toHaveLength(3);
+  });
+
+  it("filters by phase when provided", async () => {
+    // All seeded articles are in PLANNING phase
+    const response = await handleWorkTool("list_work", { phase: WorkPhase.PLANNING }, service);
+    expect(response.isError).toBeUndefined();
+    const articles = JSON.parse(response.content[0]!.text) as WorkArticle[];
+    expect(articles).toHaveLength(3);
+    expect(articles.every((a) => a.phase === WorkPhase.PLANNING)).toBe(true);
+  });
+
+  it("returns empty array for a phase with no articles", async () => {
+    const response = await handleWorkTool("list_work", { phase: WorkPhase.DONE }, service);
+    expect(response.isError).toBeUndefined();
+    const articles = JSON.parse(response.content[0]!.text) as WorkArticle[];
+    expect(articles).toEqual([]);
+  });
+
+  it("returns VALIDATION_FAILED for invalid phase string", async () => {
+    const response = await handleWorkTool("list_work", { phase: "not-a-phase" }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// advance_phase
+// ---------------------------------------------------------------------------
+
+describe("advance_phase", () => {
+  let service: WorkService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("succeeds for a valid transition with guards met", async () => {
+    const contentWithGuards = "## Objective\nDo the thing.\n\n## Acceptance Criteria\n- [ ] Works.";
+    const article = await seedWork(service, { content: contentWithGuards });
+
+    const response = await handleWorkTool(
+      "advance_phase",
+      { id: article.id, targetPhase: WorkPhase.ENRICHMENT },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const updated = JSON.parse(response.content[0]!.text) as WorkArticle;
+    expect(updated.phase).toBe(WorkPhase.ENRICHMENT);
+  });
+
+  it("returns VALIDATION_FAILED for an invalid phase string", async () => {
+    const article = await seedWork(service);
+    const response = await handleWorkTool(
+      "advance_phase",
+      { id: article.id, targetPhase: "not-a-phase" },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("returns error when guard fails (missing required content sections)", async () => {
+    // Article without ## Objective or ## Acceptance Criteria
+    const article = await seedWork(service, { content: "Just a plain description." });
+    const response = await handleWorkTool(
+      "advance_phase",
+      { id: article.id, targetPhase: WorkPhase.ENRICHMENT },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(["GUARD_FAILED", "STATE_TRANSITION_INVALID"]).toContain(body.error);
+  });
+
+  it("returns VALIDATION_FAILED when id is missing", async () => {
+    const response = await handleWorkTool(
+      "advance_phase",
+      { targetPhase: WorkPhase.ENRICHMENT },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// contribute_enrichment
+// ---------------------------------------------------------------------------
+
+describe("contribute_enrichment", () => {
+  it("records enrichment contribution", async () => {
+    const service = createService();
+    const create = await handleWorkTool("create_work", {
+      title: "Test", template: "feature", priority: "medium", author: "agent-1",
+    }, service);
+    const article = JSON.parse(create.content[0]!.text) as WorkArticle;
+    const result = await handleWorkTool("contribute_enrichment", {
+      id: article.id, role: "architecture", status: "contributed",
+    }, service);
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("rejects invalid enrichment status", async () => {
+    const service = createService();
+    const create = await handleWorkTool("create_work", {
+      title: "Test", template: "feature", priority: "medium", author: "agent-1",
+    }, service);
+    const article = JSON.parse(create.content[0]!.text) as WorkArticle;
+    const result = await handleWorkTool("contribute_enrichment", {
+      id: article.id, role: "architecture", status: "invalid",
+    }, service);
+    expect(result.isError).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// assign_reviewer
+// ---------------------------------------------------------------------------
+
+describe("assign_reviewer", () => {
+  it("assigns a reviewer", async () => {
+    const service = createService();
+    const create = await handleWorkTool("create_work", {
+      title: "Test", template: "feature", priority: "medium", author: "agent-1",
+    }, service);
+    const article = JSON.parse(create.content[0]!.text) as WorkArticle;
+    const result = await handleWorkTool("assign_reviewer", {
+      id: article.id, agentId: "reviewer-1",
+    }, service);
+    expect(result.isError).toBeUndefined();
+    const updated = JSON.parse(result.content[0]!.text) as WorkArticle;
+    expect(updated.reviewers).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// submit_review
+// ---------------------------------------------------------------------------
+
+describe("submit_review", () => {
+  it("records review outcome", async () => {
+    const service = createService();
+    const create = await handleWorkTool("create_work", {
+      title: "Test", template: "feature", priority: "medium", author: "agent-1",
+    }, service);
+    const article = JSON.parse(create.content[0]!.text) as WorkArticle;
+    await handleWorkTool("assign_reviewer", { id: article.id, agentId: "reviewer-1" }, service);
+    const result = await handleWorkTool("submit_review", {
+      id: article.id, agentId: "reviewer-1", status: "approved",
+    }, service);
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("rejects invalid review status", async () => {
+    const service = createService();
+    const create = await handleWorkTool("create_work", {
+      title: "Test", template: "feature", priority: "medium", author: "agent-1",
+    }, service);
+    const article = JSON.parse(create.content[0]!.text) as WorkArticle;
+    await handleWorkTool("assign_reviewer", { id: article.id, agentId: "reviewer-1" }, service);
+    const result = await handleWorkTool("submit_review", {
+      id: article.id, agentId: "reviewer-1", status: "invalid",
+    }, service);
+    expect(result.isError).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// add_dependency
+// ---------------------------------------------------------------------------
+
+describe("add_dependency", () => {
+  it("adds a dependency", async () => {
+    const service = createService();
+    const a = await handleWorkTool("create_work", {
+      title: "A", template: "feature", priority: "medium", author: "agent-1",
+    }, service);
+    const b = await handleWorkTool("create_work", {
+      title: "B", template: "feature", priority: "medium", author: "agent-1",
+    }, service);
+    const articleA = JSON.parse(a.content[0]!.text) as WorkArticle;
+    const articleB = JSON.parse(b.content[0]!.text) as WorkArticle;
+    const result = await handleWorkTool("add_dependency", {
+      id: articleA.id, blockedById: articleB.id,
+    }, service);
+    expect(result.isError).toBeUndefined();
+    const updated = JSON.parse(result.content[0]!.text) as WorkArticle;
+    expect(updated.blockedBy).toContain(articleB.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// remove_dependency
+// ---------------------------------------------------------------------------
+
+describe("remove_dependency", () => {
+  it("removes a dependency", async () => {
+    const service = createService();
+    const a = await handleWorkTool("create_work", {
+      title: "A", template: "feature", priority: "medium", author: "agent-1",
+    }, service);
+    const b = await handleWorkTool("create_work", {
+      title: "B", template: "feature", priority: "medium", author: "agent-1",
+    }, service);
+    const articleA = JSON.parse(a.content[0]!.text) as WorkArticle;
+    const articleB = JSON.parse(b.content[0]!.text) as WorkArticle;
+    await handleWorkTool("add_dependency", { id: articleA.id, blockedById: articleB.id }, service);
+    const result = await handleWorkTool("remove_dependency", {
+      id: articleA.id, blockedById: articleB.id,
+    }, service);
+    expect(result.isError).toBeUndefined();
+    const updated = JSON.parse(result.content[0]!.text) as WorkArticle;
+    expect(updated.blockedBy).not.toContain(articleB.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// unknown tool
+// ---------------------------------------------------------------------------
+
+describe("unknown tool", () => {
+  it("returns NOT_FOUND error for an unrecognized tool name", async () => {
+    const service = createService();
+    const response = await handleWorkTool("does_not_exist", {}, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
+    expect(body.error).toBe("NOT_FOUND");
+    expect(body.message).toContain("does_not_exist");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Response format contracts
+// ---------------------------------------------------------------------------
+
+describe("response format", () => {
+  let service: WorkService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("success response has content array with type: text", async () => {
+    const response = await handleWorkTool("create_work", validInput, service);
+    expect(Array.isArray(response.content)).toBe(true);
+    expect(response.content[0]!.type).toBe("text");
+    expect(typeof response.content[0]!.text).toBe("string");
+    expect(response.isError).toBeUndefined();
+  });
+
+  it("error response has isError: true and JSON body with error + message", async () => {
+    const response = await handleWorkTool("get_work", { id: "missing" }, service);
+    expect(response.isError).toBe(true);
+    expect(Array.isArray(response.content)).toBe(true);
+    expect(response.content[0]!.type).toBe("text");
+    const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
+    expect(typeof body.error).toBe("string");
+    expect(typeof body.message).toBe("string");
+  });
+});
