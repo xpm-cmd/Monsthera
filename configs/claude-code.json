@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "monsthera": {
-      "command": "npx",
-      "args": ["-y", "monsthera-mcp@latest", "serve"],
-      "env": {}
-    }
-  }
-}
