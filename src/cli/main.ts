@@ -61,8 +61,12 @@ function parseCommaSeparated(args: string[], flag: string, short?: string): stri
 async function withContainer<T>(args: string[], fn: (container: MonstheraContainer) => Promise<T>): Promise<T> {
   const repoPath = parseRepoPath(args) ?? process.cwd();
   const configResult = loadConfig(repoPath);
-  const config = configResult.ok ? configResult.value : defaultConfig(repoPath);
-  const container = await createContainer(config);
+  if (!configResult.ok) {
+    console.error(`Config error: ${configResult.error.message}`);
+    console.error("Fix .monsthera/config.json or use 'monsthera serve' which falls back to defaults.");
+    process.exit(1);
+  }
+  const container = await createContainer(configResult.value);
   try {
     return await fn(container);
   } finally {
@@ -452,7 +456,11 @@ async function handleWorkEnrich(args: string[]): Promise<void> {
     }
 
     const role = requireFlag(args, "--role");
-    const status = requireFlag(args, "--status") as "contributed" | "skipped";
+    const status = requireFlag(args, "--status");
+    if (status !== "contributed" && status !== "skipped") {
+      console.error(`Invalid --status "${status}". Must be "contributed" or "skipped".`);
+      process.exit(1);
+    }
     const result = await container.workService.contributeEnrichment(id, role, status);
     if (!result.ok) {
       console.error(formatError(result.error));
@@ -471,7 +479,11 @@ async function handleWorkReview(args: string[]): Promise<void> {
     }
 
     const reviewer = requireFlag(args, "--reviewer");
-    const status = requireFlag(args, "--status") as "approved" | "changes-requested";
+    const status = requireFlag(args, "--status");
+    if (status !== "approved" && status !== "changes-requested") {
+      console.error(`Invalid --status "${status}". Must be "approved" or "changes-requested".`);
+      process.exit(1);
+    }
     const result = await container.workService.submitReview(id, reviewer, status);
     if (!result.ok) {
       console.error(formatError(result.error));

@@ -2,8 +2,11 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MonstheraContainer } from "../core/container.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
+import { WorkPhase } from "../core/types.js";
 import type { MonstheraError } from "../core/errors.js";
 import { ErrorCode } from "../core/errors.js";
+
+const VALID_PHASES = new Set(Object.values(WorkPhase));
 
 // ─── Public interface ────────────────────────────────────────────────────────
 
@@ -129,7 +132,12 @@ async function handleRequest(
 
   // ── GET /api/work ────────────────────────────────────────────────────────
   if (pathname === "/api/work") {
-    const phase = (searchParams.get("phase") ?? undefined) as WorkPhaseType | undefined;
+    const phaseParam = searchParams.get("phase") ?? undefined;
+    if (phaseParam && !VALID_PHASES.has(phaseParam as WorkPhaseType)) {
+      errorResponse(res, 400, "VALIDATION_FAILED", `Invalid phase "${phaseParam}". Must be one of: ${[...VALID_PHASES].join(", ")}`);
+      return;
+    }
+    const phase = phaseParam as WorkPhaseType | undefined;
     const result = await container.workService.listWork(phase);
     if (result.ok) {
       jsonResponse(res, 200, result.value);
