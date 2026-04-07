@@ -203,6 +203,10 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
     if (!mutable.ok) return mutable;
     const existing = mutable.value;
 
+    if (existing.phase !== WorkPhase.ENRICHMENT) {
+      return err(new StateTransitionError(existing.phase, "contributeEnrichment", `Enrichment contributions are only accepted during the enrichment phase`));
+    }
+
     const idx = existing.enrichmentRoles.findIndex((r) => r.role === role);
     if (idx === -1) {
       return err(new ValidationError(`Enrichment role "${role}" not found on this article`));
@@ -249,6 +253,10 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
     const mutable = this.getMutable(id);
     if (!mutable.ok) return mutable;
     const existing = mutable.value;
+
+    if (existing.phase !== WorkPhase.REVIEW) {
+      return err(new StateTransitionError(existing.phase, "submitReview", `Reviews are only accepted during the review phase`));
+    }
 
     const idx = existing.reviewers.findIndex((r) => r.agentId === reviewerAgentId);
     if (idx === -1) {

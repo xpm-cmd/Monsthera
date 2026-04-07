@@ -567,6 +567,17 @@ describe("advancePhase", () => {
 // contributeEnrichment
 // ---------------------------------------------------------------------------
 
+/** Helper to create an article already in enrichment phase */
+async function createEnrichmentArticle(repo: InMemoryWorkArticleRepository): Promise<WorkArticle> {
+  const article = await createArticle(repo, {
+    content: "## Objective\n\nDo it\n\n## Acceptance Criteria\n\n- Done",
+  });
+  await repo.advancePhase(article.id, WorkPhase.ENRICHMENT);
+  const result = await repo.findById(article.id);
+  if (!result.ok) throw new Error("setup failed");
+  return result.value;
+}
+
 describe("contributeEnrichment", () => {
   let repo: InMemoryWorkArticleRepository;
 
@@ -575,8 +586,8 @@ describe("contributeEnrichment", () => {
   });
 
   it("marks an enrichment role as contributed", async () => {
-    // Create a feature article (has architecture + testing roles)
-    const article = await createArticle(repo);
+    // Create a feature article (has architecture + testing roles) in enrichment phase
+    const article = await createEnrichmentArticle(repo);
     const result = await repo.contributeEnrichment(article.id, "architecture", "contributed");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -586,7 +597,7 @@ describe("contributeEnrichment", () => {
   });
 
   it("marks an enrichment role as skipped", async () => {
-    const article = await createArticle(repo);
+    const article = await createEnrichmentArticle(repo);
     const result = await repo.contributeEnrichment(article.id, "testing", "skipped");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -595,11 +606,19 @@ describe("contributeEnrichment", () => {
   });
 
   it("returns ValidationError for unknown role", async () => {
-    const article = await createArticle(repo);
+    const article = await createEnrichmentArticle(repo);
     const result = await repo.contributeEnrichment(article.id, "unknown-role", "contributed");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("VALIDATION_FAILED");
+  });
+
+  it("returns StateTransitionError when called on planning-phase article", async () => {
+    const article = await createArticle(repo);
+    const result = await repo.contributeEnrichment(article.id, "architecture", "contributed");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.STATE_TRANSITION_INVALID);
   });
 
   it("returns NotFoundError for unknown article", async () => {
@@ -652,6 +671,23 @@ describe("assignReviewer", () => {
 // submitReview
 // ---------------------------------------------------------------------------
 
+/** Helper to create an article already in review phase (spike template, minEnrichment=0) */
+async function createReviewArticle(repo: InMemoryWorkArticleRepository): Promise<WorkArticle> {
+  const article = await createArticle(repo, {
+    template: WorkTemplate.SPIKE,
+    content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1",
+  });
+  await repo.advancePhase(article.id, WorkPhase.ENRICHMENT);
+  await repo.advancePhase(article.id, WorkPhase.IMPLEMENTATION);
+  await repo.update(article.id, {
+    content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1\n\n## Implementation\n\nDone",
+  });
+  await repo.advancePhase(article.id, WorkPhase.REVIEW);
+  const result = await repo.findById(article.id);
+  if (!result.ok) throw new Error("setup failed");
+  return result.value;
+}
+
 describe("submitReview", () => {
   let repo: InMemoryWorkArticleRepository;
 
@@ -660,7 +696,7 @@ describe("submitReview", () => {
   });
 
   it("sets reviewer status to approved", async () => {
-    const article = await createArticle(repo);
+    const article = await createReviewArticle(repo);
     await repo.assignReviewer(article.id, agentId("reviewer-1"));
     const result = await repo.submitReview(article.id, agentId("reviewer-1"), "approved");
     expect(result.ok).toBe(true);
@@ -670,7 +706,7 @@ describe("submitReview", () => {
   });
 
   it("sets reviewer status to changes-requested", async () => {
-    const article = await createArticle(repo);
+    const article = await createReviewArticle(repo);
     await repo.assignReviewer(article.id, agentId("reviewer-1"));
     const result = await repo.submitReview(article.id, agentId("reviewer-1"), "changes-requested");
     expect(result.ok).toBe(true);
@@ -679,11 +715,19 @@ describe("submitReview", () => {
   });
 
   it("returns ValidationError for unassigned reviewer", async () => {
-    const article = await createArticle(repo);
+    const article = await createReviewArticle(repo);
     const result = await repo.submitReview(article.id, agentId("unknown-reviewer"), "approved");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("VALIDATION_FAILED");
+  });
+
+  it("returns StateTransitionError when called on enrichment-phase article", async () => {
+    const article = await createEnrichmentArticle(repo);
+    const result = await repo.submitReview(article.id, agentId("reviewer-1"), "approved");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.STATE_TRANSITION_INVALID);
   });
 
   it("returns NotFoundError for unknown article", async () => {

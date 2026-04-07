@@ -340,8 +340,11 @@ describe("contribute_enrichment", () => {
     const service = createService();
     const create = await handleWorkTool("create_work", {
       title: "Test", template: "feature", priority: "medium", author: "agent-1",
+      content: "## Objective\n\nDo it\n\n## Acceptance Criteria\n\n- Done",
     }, service);
     const article = JSON.parse(create.content[0]!.text) as WorkArticle;
+    // Advance to enrichment phase before contributing
+    await handleWorkTool("advance_phase", { id: article.id, targetPhase: WorkPhase.ENRICHMENT }, service);
     const result = await handleWorkTool("contribute_enrichment", {
       id: article.id, role: "architecture", status: "contributed",
     }, service);
@@ -352,8 +355,11 @@ describe("contribute_enrichment", () => {
     const service = createService();
     const create = await handleWorkTool("create_work", {
       title: "Test", template: "feature", priority: "medium", author: "agent-1",
+      content: "## Objective\n\nDo it\n\n## Acceptance Criteria\n\n- Done",
     }, service);
     const article = JSON.parse(create.content[0]!.text) as WorkArticle;
+    // Advance to enrichment phase before contributing
+    await handleWorkTool("advance_phase", { id: article.id, targetPhase: WorkPhase.ENRICHMENT }, service);
     const result = await handleWorkTool("contribute_enrichment", {
       id: article.id, role: "architecture", status: "invalid",
     }, service);
@@ -388,26 +394,51 @@ describe("assign_reviewer", () => {
 describe("submit_review", () => {
   it("records review outcome", async () => {
     const service = createService();
+    // Use spike template (minEnrichmentCount=0) to simplify advancing to review phase
     const create = await handleWorkTool("create_work", {
-      title: "Test", template: "feature", priority: "medium", author: "agent-1",
+      title: "Test", template: WorkTemplate.SPIKE, priority: "medium", author: "agent-1",
+      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1",
     }, service);
     const article = JSON.parse(create.content[0]!.text) as WorkArticle;
-    await handleWorkTool("assign_reviewer", { id: article.id, agentId: "reviewer-1" }, service);
+    const id = article.id;
+    // planning → enrichment
+    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.ENRICHMENT }, service);
+    // enrichment → implementation
+    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.IMPLEMENTATION }, service);
+    // add implementation section
+    await handleWorkTool("update_work", {
+      id,
+      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1\n\n## Implementation\n\nDone",
+    }, service);
+    // implementation → review
+    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.REVIEW }, service);
+    // assign reviewer after reaching review phase
+    await handleWorkTool("assign_reviewer", { id, agentId: "reviewer-1" }, service);
     const result = await handleWorkTool("submit_review", {
-      id: article.id, agentId: "reviewer-1", status: "approved",
+      id, agentId: "reviewer-1", status: "approved",
     }, service);
     expect(result.isError).toBeUndefined();
   });
 
   it("rejects invalid review status", async () => {
     const service = createService();
+    // Use spike template to advance to review phase
     const create = await handleWorkTool("create_work", {
-      title: "Test", template: "feature", priority: "medium", author: "agent-1",
+      title: "Test", template: WorkTemplate.SPIKE, priority: "medium", author: "agent-1",
+      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1",
     }, service);
     const article = JSON.parse(create.content[0]!.text) as WorkArticle;
-    await handleWorkTool("assign_reviewer", { id: article.id, agentId: "reviewer-1" }, service);
+    const id = article.id;
+    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.ENRICHMENT }, service);
+    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.IMPLEMENTATION }, service);
+    await handleWorkTool("update_work", {
+      id,
+      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1\n\n## Implementation\n\nDone",
+    }, service);
+    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.REVIEW }, service);
+    await handleWorkTool("assign_reviewer", { id, agentId: "reviewer-1" }, service);
     const result = await handleWorkTool("submit_review", {
-      id: article.id, agentId: "reviewer-1", status: "invalid",
+      id, agentId: "reviewer-1", status: "invalid",
     }, service);
     expect(result.isError).toBe(true);
   });

@@ -287,8 +287,12 @@ describe("contributeEnrichment", () => {
       template: "feature",
       priority: "medium",
       author: "agent-1",
+      content: "## Objective\n\nDo it\n\n## Acceptance Criteria\n\n- Done",
     });
     if (!createResult.ok) throw new Error("setup failed");
+    // Advance to enrichment phase before contributing
+    const advanceResult = await service.advancePhase(createResult.value.id, WorkPhase.ENRICHMENT);
+    if (!advanceResult.ok) throw new Error("advance failed");
     const result = await service.contributeEnrichment(createResult.value.id, "architecture", "contributed");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -325,15 +329,32 @@ describe("assignReviewer", () => {
 describe("submitReview", () => {
   it("records review outcome", async () => {
     const { service } = createService();
+    // Use spike template (minEnrichmentCount=0) to simplify the path to review phase
     const createResult = await service.createWork({
-      title: "Feature Work",
-      template: "feature",
+      title: "Spike Work",
+      template: WorkTemplate.SPIKE,
       priority: "medium",
       author: "agent-1",
+      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1",
     });
     if (!createResult.ok) throw new Error("setup failed");
-    await service.assignReviewer(createResult.value.id, "reviewer-1");
-    const result = await service.submitReview(createResult.value.id, "reviewer-1", "approved");
+    const id = createResult.value.id;
+    // planning → enrichment
+    const e = await service.advancePhase(id, WorkPhase.ENRICHMENT);
+    if (!e.ok) throw new Error(`advance to enrichment failed: ${e.error.message}`);
+    // enrichment → implementation
+    const i = await service.advancePhase(id, WorkPhase.IMPLEMENTATION);
+    if (!i.ok) throw new Error(`advance to implementation failed: ${i.error.message}`);
+    // add implementation section
+    await service.updateWork(id, {
+      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1\n\n## Implementation\n\nDone",
+    });
+    // implementation → review
+    const r = await service.advancePhase(id, WorkPhase.REVIEW);
+    if (!r.ok) throw new Error(`advance to review failed: ${r.error.message}`);
+    // assign reviewer after reaching review phase
+    await service.assignReviewer(id, "reviewer-1");
+    const result = await service.submitReview(id, "reviewer-1", "approved");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.reviewers[0]?.status).toBe("approved");
