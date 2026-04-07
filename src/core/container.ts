@@ -11,6 +11,8 @@ import { createLogger } from "./logger.js";
 import { createStatusReporter } from "./status.js";
 import { VERSION } from "./constants.js";
 import { DisposableStack } from "./lifecycle.js";
+import { InMemoryKnowledgeArticleRepository } from "../knowledge/in-memory-repository.js";
+import { KnowledgeService } from "../knowledge/service.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -18,6 +20,7 @@ export interface MonstheraContainer extends Disposable {
   readonly logger: Logger;
   readonly status: StatusReporter;
   readonly knowledgeRepo: KnowledgeArticleRepository;
+  readonly knowledgeService: KnowledgeService;
   readonly workRepo: WorkArticleRepository;
   readonly searchRepo: SearchIndexRepository;
   readonly orchestrationRepo: OrchestrationEventRepository;
@@ -41,18 +44,20 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
   // Create status reporter
   const status = createStatusReporter(VERSION);
 
-  // Phase 1: In-memory stub repositories
-  // These will be replaced with real implementations in later phases
-  const knowledgeRepo = createInMemoryStub<KnowledgeArticleRepository>("KnowledgeArticleRepository");
+  // Phase 2: Real in-memory knowledge repository; other repos remain stubs
+  const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
   const workRepo = createInMemoryStub<WorkArticleRepository>("WorkArticleRepository");
   const searchRepo = createInMemoryStub<SearchIndexRepository>("SearchIndexRepository");
   const orchestrationRepo = createInMemoryStub<OrchestrationEventRepository>("OrchestrationEventRepository");
+
+  // Wire up KnowledgeService with the real repo
+  const knowledgeService = new KnowledgeService({ knowledgeRepo, logger });
 
   // Register subsystem health checks
   status.register("storage", () => ({
     name: "storage",
     healthy: true,
-    detail: "In-memory stub (Phase 1)",
+    detail: "In-memory (Phase 2)",
   }));
 
   logger.info("Container created", { repoPath: config.repoPath, verbosity: config.verbosity });
@@ -62,6 +67,7 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
     logger,
     status,
     knowledgeRepo,
+    knowledgeService,
     workRepo,
     searchRepo,
     orchestrationRepo,

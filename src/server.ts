@@ -5,6 +5,7 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { MonstheraContainer } from "./core/container.js";
+import { knowledgeToolDefinitions, handleKnowledgeTool } from "./tools/knowledge-tools.js";
 
 /**
  * Start the MCP server with a Monsthera container.
@@ -14,7 +15,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const server = new Server(
     {
       name: "monsthera",
-      version: container.config.repoPath ? "3.0.0-alpha.0" : "3.0.0-alpha.0",
+      version: "3.0.0-alpha.0",
     },
     {
       capabilities: {
@@ -22,6 +23,9 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
       },
     },
   );
+
+  const knowledgeTools = knowledgeToolDefinitions();
+  const knowledgeToolNames = new Set(knowledgeTools.map((t) => t.name));
 
   // Register tools/list handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -37,13 +41,17 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
             required: [],
           },
         },
+        ...knowledgeTools,
       ],
     };
   });
 
   // Register tools/call handler
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    if (request.params.name === "status") {
+    const { name } = request.params;
+    const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+
+    if (name === "status") {
       const systemStatus = container.status.getStatus();
       return {
         content: [
@@ -55,11 +63,15 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
       };
     }
 
+    if (knowledgeToolNames.has(name)) {
+      return handleKnowledgeTool(name, args, container.knowledgeService);
+    }
+
     return {
       content: [
         {
           type: "text" as const,
-          text: `Unknown tool: ${request.params.name}`,
+          text: `Unknown tool: ${name}`,
         },
       ],
       isError: true,
