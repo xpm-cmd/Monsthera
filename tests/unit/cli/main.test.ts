@@ -86,4 +86,112 @@ describe("CLI main()", () => {
     expect(parsed).toHaveProperty("subsystems");
     expect(parsed.version).toBe(VERSION);
   });
+
+  // ─── Help text includes Phase 6 commands ─────────────────────────────────
+
+  it("--help includes knowledge, work, search, reindex", async () => {
+    const output = await captureStdout(() => main(["--help"]));
+    expect(output).toContain("knowledge");
+    expect(output).toContain("work");
+    expect(output).toContain("search");
+    expect(output).toContain("reindex");
+  });
+
+  // ─── Knowledge subcommand ────────────────────────────────────────────────
+
+  describe("knowledge subcommand", () => {
+    it("knowledge create prints the created article", async () => {
+      const output = await captureStdout(() =>
+        main(["knowledge", "create", "--title", "Test Article", "--category", "engineering", "--content", "body text"]),
+      );
+      expect(output).toContain("Test Article");
+      expect(output).toContain("engineering");
+      expect(output).toContain("body text");
+      expect(output).toContain("ID:");
+    });
+
+    it("knowledge list prints a table or empty message", async () => {
+      const output = await captureStdout(() => main(["knowledge", "list"]));
+      // Either "No knowledge articles found." or a table with headers
+      expect(output.length).toBeGreaterThan(0);
+    });
+
+    it("knowledge get prints error for non-existent ID", async () => {
+      // Each CLI invocation creates a fresh in-memory container, so no
+      // previously-created article persists. Verify the error path works.
+      await main(["knowledge", "get", "no-such-id"]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("NOT_FOUND"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("knowledge delete prints success message", async () => {
+      const output = await captureStdout(() =>
+        main(["knowledge", "delete", "non-existent-id"]),
+      );
+      expect(output).toContain("Deleted knowledge article");
+    });
+
+    it("knowledge with no subcommand prints error", async () => {
+      await main(["knowledge"]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // ─── Work subcommand ─────────────────────────────────────────────────────
+
+  describe("work subcommand", () => {
+    it("work create prints the created work article", async () => {
+      const output = await captureStdout(() =>
+        main(["work", "create", "--title", "Task", "--template", "feature", "--author", "agent-1"]),
+      );
+      expect(output).toContain("Task");
+      expect(output).toContain("feature");
+      expect(output).toContain("ID:");
+    });
+
+    it("work list prints articles or empty message", async () => {
+      const output = await captureStdout(() => main(["work", "list"]));
+      expect(output.length).toBeGreaterThan(0);
+    });
+
+    it("work get prints error for non-existent ID", async () => {
+      await main(["work", "get", "no-such-id"]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("NOT_FOUND"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("work with no subcommand prints error", async () => {
+      await main(["work"]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // ─── Search subcommand ───────────────────────────────────────────────────
+
+  describe("search subcommand", () => {
+    it("search with no query prints error", async () => {
+      await main(["search"]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("Missing required argument"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("search someterms does not crash", async () => {
+      const output = await captureStdout(() => main(["search", "someterms"]));
+      // May return "No results found." or actual results — either is fine
+      expect(output).toBeDefined();
+    });
+  });
+
+  // ─── Reindex subcommand ──────────────────────────────────────────────────
+
+  describe("reindex subcommand", () => {
+    it("reindex runs without error and prints counts", async () => {
+      const output = await captureStdout(() => main(["reindex"]));
+      expect(output).toContain("Reindex complete");
+      expect(output).toMatch(/\d+ knowledge article/);
+      expect(output).toMatch(/\d+ work article/);
+    });
+  });
 });

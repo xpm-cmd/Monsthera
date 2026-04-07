@@ -8,6 +8,8 @@ import type { MonstheraContainer } from "./core/container.js";
 import { knowledgeToolDefinitions, handleKnowledgeTool } from "./tools/knowledge-tools.js";
 import { workToolDefinitions, handleWorkTool } from "./tools/work-tools.js";
 import { searchToolDefinitions, handleSearchTool } from "./tools/search-tools.js";
+import { orchestrationToolDefinitions, handleOrchestrationTool } from "./tools/orchestration-tools.js";
+import { statusToolDefinitions, handleStatusTool } from "./tools/status-tools.js";
 
 /**
  * Start the MCP server with a Monsthera container.
@@ -35,23 +37,21 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const searchTools = searchToolDefinitions();
   const searchToolNames = new Set(searchTools.map((t) => t.name));
 
+  const orchestrationTools = orchestrationToolDefinitions();
+  const orchestrationToolNames = new Set(orchestrationTools.map((t) => t.name));
+
+  const statusTools = statusToolDefinitions();
+  const statusToolNames = new Set(statusTools.map((t) => t.name));
+
   // Register tools/list handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
       tools: [
-        {
-          name: "status",
-          description:
-            "Returns the current system status, including version, uptime, and subsystem health.",
-          inputSchema: {
-            type: "object" as const,
-            properties: {},
-            required: [],
-          },
-        },
         ...knowledgeTools,
         ...workTools,
         ...searchTools,
+        ...orchestrationTools,
+        ...statusTools,
       ],
     };
   });
@@ -60,18 +60,6 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name } = request.params;
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
-
-    if (name === "status") {
-      const systemStatus = container.status.getStatus();
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(systemStatus, null, 2),
-          },
-        ],
-      };
-    }
 
     if (knowledgeToolNames.has(name)) {
       return handleKnowledgeTool(name, args, container.knowledgeService);
@@ -83,6 +71,14 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
 
     if (searchToolNames.has(name)) {
       return handleSearchTool(name, args, container.searchService);
+    }
+
+    if (orchestrationToolNames.has(name)) {
+      return handleOrchestrationTool(name, args, container.orchestrationRepo);
+    }
+
+    if (statusToolNames.has(name)) {
+      return handleStatusTool(name, args, container.status);
     }
 
     return {
