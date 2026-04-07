@@ -62,7 +62,7 @@ describe("createContainer()", () => {
     await container.dispose();
   });
 
-  it("container has stub repositories", async () => {
+  it("container has all repositories", async () => {
     const container = await createContainer(testConfig);
     expect(container.knowledgeRepo).toBeDefined();
     expect(container.workRepo).toBeDefined();
@@ -71,12 +71,13 @@ describe("createContainer()", () => {
     await container.dispose();
   });
 
-  it("stub repo methods throw 'not implemented' (orchestrationRepo)", async () => {
+  it("orchestrationRepo is a working in-memory implementation", async () => {
     const container = await createContainer(testConfig);
-    // knowledgeRepo, workRepo, and searchRepo are now real in-memory repos (Phase 4)
-    expect(() => container.orchestrationRepo.findRecent(10)).toThrow(
-      "OrchestrationEventRepository.findRecent() is not implemented (Phase 1 stub)",
-    );
+    const result = await container.orchestrationRepo.findRecent(10);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([]);
+    }
     await container.dispose();
   });
 

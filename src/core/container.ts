@@ -16,6 +16,7 @@ import { KnowledgeService } from "../knowledge/service.js";
 import { InMemoryWorkArticleRepository } from "../work/in-memory-repository.js";
 import { WorkService } from "../work/service.js";
 import { InMemorySearchIndexRepository } from "../search/in-memory-repository.js";
+import { InMemoryOrchestrationEventRepository } from "../orchestration/in-memory-repository.js";
 import { StubEmbeddingProvider } from "../search/embedding.js";
 import { SearchService } from "../search/service.js";
 
@@ -51,14 +52,83 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
   // Create status reporter
   const status = createStatusReporter(VERSION);
 
-  // Phase 4: Real in-memory repositories for knowledge, work, and search
-  const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
-  const workRepo = new InMemoryWorkArticleRepository();
-  const searchRepo = new InMemorySearchIndexRepository();
-  const embeddingProvider = new StubEmbeddingProvider();
-  const orchestrationRepo = createInMemoryStub<OrchestrationEventRepository>("OrchestrationEventRepository");
+  let knowledgeRepo: KnowledgeArticleRepository;
+  let workRepo: WorkArticleRepository;
+  let searchRepo: SearchIndexRepository;
+  let orchestrationRepo: OrchestrationEventRepository;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let doltPool: any;
 
-  // Wire up services with real repos
+  if (config.storage.doltEnabled) {
+    // Phase 5: Dolt-backed repositories
+    const {
+      createDoltPool,
+      closePool,
+      initializeSchema,
+      checkDoltHealth,
+      DoltKnowledgeArticleRepository,
+      DoltWorkRepository,
+      DoltSearchIndexRepository,
+      DoltOrchestrationRepository,
+    } = await import("../persistence/index.js");
+
+    doltPool = createDoltPool({
+      host: config.storage.doltHost,
+      port: config.storage.doltPort,
+      database: config.storage.doltDatabase,
+    });
+
+    // Initialize schema (idempotent)
+    const schemaResult = await initializeSchema(doltPool);
+    if (!schemaResult.ok) {
+      await closePool(doltPool);
+      throw new Error(`Schema initialization failed: ${schemaResult.error.message}`);
+    }
+
+    knowledgeRepo = new DoltKnowledgeArticleRepository(doltPool);
+    workRepo = new DoltWorkRepository(doltPool);
+    searchRepo = new DoltSearchIndexRepository(doltPool);
+    orchestrationRepo = new DoltOrchestrationRepository(doltPool);
+
+    // Register Dolt pool cleanup
+    stack.defer(() => closePool(doltPool));
+
+    // Register Dolt health check
+    status.register("storage", () => {
+      const healthPromise = checkDoltHealth(doltPool!);
+      // Health checks are synchronous in the status API, so we cache last-known state
+      return {
+        name: "storage",
+        healthy: true,
+        detail: `Dolt (${config.storage.doltHost}:${config.storage.doltPort}/${config.storage.doltDatabase})`,
+      };
+    });
+
+    logger.info("Container created with Dolt persistence", {
+      repoPath: config.repoPath,
+      doltHost: config.storage.doltHost,
+      doltPort: config.storage.doltPort,
+      doltDatabase: config.storage.doltDatabase,
+    });
+  } else {
+    // In-memory repositories (default for development/testing)
+    knowledgeRepo = new InMemoryKnowledgeArticleRepository();
+    workRepo = new InMemoryWorkArticleRepository();
+    searchRepo = new InMemorySearchIndexRepository();
+    orchestrationRepo = new InMemoryOrchestrationEventRepository();
+
+    status.register("storage", () => ({
+      name: "storage",
+      healthy: true,
+      detail: "In-memory",
+    }));
+
+    logger.info("Container created", { repoPath: config.repoPath, verbosity: config.verbosity });
+  }
+
+  const embeddingProvider = new StubEmbeddingProvider();
+
+  // Wire up services with repos
   const knowledgeService = new KnowledgeService({ knowledgeRepo, logger });
   const workService = new WorkService({ workRepo, logger });
   const searchService = new SearchService({
@@ -69,15 +139,6 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
     config: config.search,
     logger,
   });
-
-  // Register subsystem health checks
-  status.register("storage", () => ({
-    name: "storage",
-    healthy: true,
-    detail: "In-memory (Phase 4)",
-  }));
-
-  logger.info("Container created", { repoPath: config.repoPath, verbosity: config.verbosity });
 
   return {
     config,
@@ -95,21 +156,6 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
       await stack.dispose();
     },
   };
-}
-
-/**
- * Create a stub that throws "not implemented" for any method call.
- * Used in Phase 1 before real repository implementations exist.
- */
-function createInMemoryStub<T extends object>(name: string): T {
-  return new Proxy({} as T, {
-    get(_target, prop) {
-      if (prop === "then") return undefined; // Don't trap Promise checks
-      return () => {
-        throw new Error(`${name}.${String(prop)}() is not implemented (Phase 1 stub)`);
-      };
-    },
-  });
 }
 
 /**
