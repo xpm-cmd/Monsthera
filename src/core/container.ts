@@ -15,6 +15,9 @@ import { InMemoryKnowledgeArticleRepository } from "../knowledge/in-memory-repos
 import { KnowledgeService } from "../knowledge/service.js";
 import { InMemoryWorkArticleRepository } from "../work/in-memory-repository.js";
 import { WorkService } from "../work/service.js";
+import { InMemorySearchIndexRepository } from "../search/in-memory-repository.js";
+import { StubEmbeddingProvider } from "../search/embedding.js";
+import { SearchService } from "../search/service.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -26,6 +29,7 @@ export interface MonstheraContainer extends Disposable {
   readonly workRepo: WorkArticleRepository;
   readonly workService: WorkService;
   readonly searchRepo: SearchIndexRepository;
+  readonly searchService: SearchService;
   readonly orchestrationRepo: OrchestrationEventRepository;
 }
 
@@ -47,21 +51,30 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
   // Create status reporter
   const status = createStatusReporter(VERSION);
 
-  // Phase 3: Real in-memory knowledge + work repositories; other repos remain stubs
+  // Phase 4: Real in-memory repositories for knowledge, work, and search
   const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
   const workRepo = new InMemoryWorkArticleRepository();
-  const searchRepo = createInMemoryStub<SearchIndexRepository>("SearchIndexRepository");
+  const searchRepo = new InMemorySearchIndexRepository();
+  const embeddingProvider = new StubEmbeddingProvider();
   const orchestrationRepo = createInMemoryStub<OrchestrationEventRepository>("OrchestrationEventRepository");
 
-  // Wire up KnowledgeService and WorkService with real repos
+  // Wire up services with real repos
   const knowledgeService = new KnowledgeService({ knowledgeRepo, logger });
   const workService = new WorkService({ workRepo, logger });
+  const searchService = new SearchService({
+    searchRepo,
+    knowledgeRepo,
+    workRepo,
+    embeddingProvider,
+    config: config.search,
+    logger,
+  });
 
   // Register subsystem health checks
   status.register("storage", () => ({
     name: "storage",
     healthy: true,
-    detail: "In-memory (Phase 3)",
+    detail: "In-memory (Phase 4)",
   }));
 
   logger.info("Container created", { repoPath: config.repoPath, verbosity: config.verbosity });
@@ -75,6 +88,7 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
     workRepo,
     workService,
     searchRepo,
+    searchService,
     orchestrationRepo,
     async dispose() {
       logger.info("Shutting down container");

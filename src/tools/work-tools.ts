@@ -56,7 +56,7 @@ export function workToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "create_work",
-      description: "Create a new work article.",
+      description: "Create a new work article. Call index_article afterwards to make it searchable.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -84,7 +84,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "update_work",
-      description: "Update an existing work article.",
+      description: "Update an existing work article. Call index_article afterwards to refresh search index.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -103,7 +103,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "delete_work",
-      description: "Delete a work article by ID.",
+      description: "Delete a work article by ID. Call remove_from_index afterwards to clean search index.",
       inputSchema: {
         type: "object" as const,
         properties: {

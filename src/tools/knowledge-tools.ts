@@ -23,7 +23,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "create_article",
-      description: "Create a new knowledge article.",
+      description: "Create a new knowledge article. Call index_article afterwards to make it searchable.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -49,7 +49,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "update_article",
-      description: "Update an existing knowledge article.",
+      description: "Update an existing knowledge article. Call index_article afterwards to refresh search index.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -65,7 +65,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "delete_article",
-      description: "Delete a knowledge article by ID.",
+      description: "Delete a knowledge article by ID. Call remove_from_index afterwards to clean search index.",
       inputSchema: {
         type: "object" as const,
         properties: {

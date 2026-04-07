@@ -7,6 +7,7 @@ import {
 import type { MonstheraContainer } from "./core/container.js";
 import { knowledgeToolDefinitions, handleKnowledgeTool } from "./tools/knowledge-tools.js";
 import { workToolDefinitions, handleWorkTool } from "./tools/work-tools.js";
+import { searchToolDefinitions, handleSearchTool } from "./tools/search-tools.js";
 
 /**
  * Start the MCP server with a Monsthera container.
@@ -31,6 +32,9 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const workTools = workToolDefinitions();
   const workToolNames = new Set(workTools.map((t) => t.name));
 
+  const searchTools = searchToolDefinitions();
+  const searchToolNames = new Set(searchTools.map((t) => t.name));
+
   // Register tools/list handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
@@ -47,6 +51,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
         },
         ...knowledgeTools,
         ...workTools,
+        ...searchTools,
       ],
     };
   });
@@ -74,6 +79,10 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
 
     if (workToolNames.has(name)) {
       return handleWorkTool(name, args, container.workService);
+    }
+
+    if (searchToolNames.has(name)) {
+      return handleSearchTool(name, args, container.searchService);
     }
 
     return {

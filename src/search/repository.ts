@@ -24,5 +24,8 @@ export interface SearchIndexRepository {
   indexArticle(id: string, title: string, content: string, type: "knowledge" | "work"): Promise<Result<void, StorageError>>;
   removeArticle(id: string): Promise<Result<void, StorageError>>;
   search(options: SearchOptions): Promise<Result<SearchResult[], StorageError>>;
+  /** Rebuild all derived index structures (inverted index, title terms) from stored documents. */
   reindex(): Promise<Result<void, StorageError>>;
+  /** Remove all documents and index structures from the index. */
+  clear(): Promise<Result<void, StorageError>>;
 }
