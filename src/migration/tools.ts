@@ -71,14 +71,14 @@ export async function handleMigrationTool(
       return successResponse(result.value);
     }
     case "migration_status": {
-      return successResponse({
-        aliasesRegistered: service.aliasStore.size,
-      });
+      const result = await service.getStatus();
+      if (!result.ok) return errorResponse(result.error.code, result.error.message);
+      return successResponse(result.value);
     }
     case "resolve_v2_alias": {
       const alias = requireString(args, "alias");
       if (isErrorResponse(alias)) return alias;
-      const result = service.aliasStore.resolve(alias);
+      const result = await service.resolveAlias(alias);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       if (result.value === undefined) {
         return errorResponse("NOT_FOUND", `No v3 article found for v2 alias: ${alias}`);

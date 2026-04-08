@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { randomUUID } from "node:crypto";
 import { createContainer, createTestContainer } from "../../src/core/container.js";
 import { defaultConfig } from "../../src/core/config.js";
 import { KnowledgeService } from "../../src/knowledge/service.js";
@@ -6,13 +7,15 @@ import { InMemoryKnowledgeArticleRepository } from "../../src/knowledge/in-memor
 import { NotFoundError } from "../../src/core/errors.js";
 import type { MonstheraContainer } from "../../src/core/container.js";
 
-const testConfig = defaultConfig("/tmp/monsthera-test");
+function createKnowledgeTestConfig() {
+  return defaultConfig(`/tmp/monsthera-test-${randomUUID()}`);
+}
 
 describe("Knowledge system integration", () => {
   let container: MonstheraContainer;
 
   beforeEach(async () => {
-    container = await createContainer(testConfig);
+    container = await createContainer(createKnowledgeTestConfig());
   });
 
   // ── 1: Container boots with real knowledgeRepo ──────────────────────────────
@@ -247,5 +250,29 @@ describe("Knowledge system integration", () => {
     expect(article.updatedAt).toBeTruthy();
 
     await container.dispose();
+  });
+
+  it("persists articles across container restarts on the same repo path", async () => {
+    const config = createKnowledgeTestConfig();
+    const first = await createContainer(config);
+
+    const created = await first.knowledgeService.createArticle({
+      title: "Persistent Architecture Note",
+      category: "architecture",
+      content: "This should survive a restart.",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("unexpected");
+
+    await first.dispose();
+
+    const second = await createContainer(config);
+    const reloaded = await second.knowledgeService.getArticleBySlug("persistent-architecture-note");
+    expect(reloaded.ok).toBe(true);
+    if (!reloaded.ok) throw new Error("unexpected");
+    expect(reloaded.value.id).toBe(created.value.id);
+    expect(reloaded.value.content).toBe("This should survive a restart.");
+
+    await second.dispose();
   });
 });

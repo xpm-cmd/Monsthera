@@ -3,7 +3,7 @@ import { ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import type { StorageError } from "../core/errors.js";
 import { WorkPhase } from "../core/types.js";
-import type { WorkId, AgentId, WorkPhase as WorkPhaseType, Priority } from "../core/types.js";
+import type { AgentId, WorkPhase as WorkPhaseType, Priority } from "../core/types.js";
 import type { WorkArticle, WorkArticleRepository } from "../work/repository.js";
 import { executeQuery } from "./connection.js";
 import {

@@ -189,6 +189,9 @@ export async function startDashboard(
   port?: number,
 ): Promise<DashboardServer> {
   const resolvedPort = port ?? container.config.server.port;
+  const resolvedHost = container.config.server.host === "localhost"
+    ? "127.0.0.1"
+    : container.config.server.host;
 
   const server = createServer((req, res) => {
     handleRequest(container, req, res).catch((error) => {
@@ -202,11 +205,11 @@ export async function startDashboard(
   return new Promise<DashboardServer>((resolve, reject) => {
     server.once("error", reject);
 
-    server.listen(resolvedPort, () => {
+    server.listen(resolvedPort, resolvedHost, () => {
       server.removeListener("error", reject);
       const addr = server.address();
       const actualPort = typeof addr === "object" && addr !== null ? addr.port : resolvedPort;
-      container.logger.info("Dashboard server started", { port: actualPort });
+      container.logger.info("Dashboard server started", { port: actualPort, host: resolvedHost });
 
       resolve({
         port: actualPort,

@@ -114,10 +114,11 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
 
     // Cascade: remove dangling blockedBy references in other articles
     for (const [otherId, article] of this.store) {
-      if (article.blockedBy.some((dep) => dep === id)) {
+      if (article.blockedBy.some((dep) => dep === id) || article.dependencies.some((dep) => dep === id)) {
         this.store.set(otherId, {
           ...article,
           blockedBy: article.blockedBy.filter((dep) => dep !== id),
+          dependencies: article.dependencies.filter((dep) => dep !== id),
         });
       }
     }
@@ -293,6 +294,9 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
     const updated: WorkArticle = {
       ...existing,
       blockedBy: [...existing.blockedBy, blockedById],
+      dependencies: existing.dependencies.includes(blockedById)
+        ? existing.dependencies
+        : [...existing.dependencies, blockedById],
       updatedAt: timestamp(),
     };
     this.store.set(id, updated);
@@ -310,6 +314,7 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
     const updated: WorkArticle = {
       ...existing,
       blockedBy: existing.blockedBy.filter((dep) => dep !== blockedById),
+      dependencies: existing.dependencies.filter((dep) => dep !== blockedById),
       updatedAt: timestamp(),
     };
     this.store.set(id, updated);

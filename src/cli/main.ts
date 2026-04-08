@@ -1,8 +1,11 @@
 /* eslint-disable no-console */
+import * as path from "node:path";
 import { loadConfig, defaultConfig } from "../core/config.js";
 import { createContainer } from "../core/container.js";
 import { VERSION } from "../core/constants.js";
 import { startServer } from "../server.js";
+import { SqliteV2SourceReader } from "../migration/v2-reader.js";
+import type { MigrationMode } from "../migration/types.js";
 import {
   formatSearchResults,
   formatError,
@@ -17,7 +20,9 @@ async function handleServe(args: string[]): Promise<void> {
   const repoPath = parseFlag(args, "--repo", "-r") ?? process.cwd();
   const configResult = loadConfig(repoPath);
   const config = configResult.ok ? configResult.value : defaultConfig(repoPath);
-  const container = await createContainer(config);
+  const sourcePath = parseFlag(args, "--source");
+  const v2Reader = sourcePath ? new SqliteV2SourceReader(sourcePath) : undefined;
+  const container = await createContainer(config, v2Reader ? { v2Reader } : undefined);
   await startServer(container);
 }
 
@@ -47,6 +52,7 @@ function handleHelp(): void {
       "  work <subcommand>        Manage work articles",
       "  search <query>           Search across all articles",
       "  reindex                  Rebuild the search index",
+      "  migrate                  Run v2 -> v3 migration from SQLite",
       "  doctor                   Run health checks and diagnostics",
       "",
       "KNOWLEDGE SUBCOMMANDS",
@@ -65,6 +71,9 @@ function handleHelp(): void {
       "  work enrich   <id> --role <role> --status <contributed|skipped>",
       "  work review   <id> --reviewer <agent-id> --status <approved|changes-requested>",
       "",
+      "MIGRATION",
+      "  migrate [--mode <dry-run|validate|execute>] [--source <sqlite-path>] [--force] [--json]",
+      "",
       "OPTIONS",
       "  --repo, -r <path>   Repository path (defaults to cwd)",
       "  --version, -v       Print version and exit",
@@ -76,6 +85,7 @@ function handleHelp(): void {
       "  monsthera work create --title \"Add auth\" --template feature --author agent-1 --priority high",
       "  monsthera search \"authentication\"",
       "  monsthera reindex",
+      "  monsthera migrate --mode dry-run --source .monsthera/monsthera.db --json",
       "",
     ].join("\n"),
   );
@@ -178,6 +188,63 @@ async function handleDoctor(args: string[]): Promise<void> {
   });
 }
 
+// ─── Migration ──────────────────────────────────────────────────────────────
+
+function parseMigrationMode(args: string[]): MigrationMode {
+  if (args.includes("--dry-run")) return "dry-run";
+  if (args.includes("--validate")) return "validate";
+  if (args.includes("--execute")) return "execute";
+  return (parseFlag(args, "--mode") as MigrationMode | undefined) ?? "dry-run";
+}
+
+async function handleMigrate(args: string[]): Promise<void> {
+  const repoPath = parseFlag(args, "--repo", "-r") ?? process.cwd();
+  const configResult = loadConfig(repoPath);
+  const config = configResult.ok ? configResult.value : defaultConfig(repoPath);
+  const sourcePath = parseFlag(args, "--source") ?? path.join(repoPath, ".monsthera", "monsthera.db");
+  const mode = parseMigrationMode(args);
+  const force = args.includes("--force");
+  const asJson = args.includes("--json");
+
+  const container = await createContainer(config, { v2Reader: new SqliteV2SourceReader(sourcePath) });
+
+  try {
+    if (!container.migrationService) {
+      console.error("Migration service is unavailable.");
+      process.exit(1);
+    }
+
+    const result = await container.migrationService.run(mode, { force });
+    if (!result.ok) {
+      console.error(formatError(result.error));
+      process.exit(1);
+    }
+
+    if (asJson) {
+      process.stdout.write(JSON.stringify(result.value, null, 2) + "\n");
+      return;
+    }
+
+    process.stdout.write(
+      [
+        `Mode: ${result.value.mode}`,
+        `Total: ${result.value.total}`,
+        `Created: ${result.value.created}`,
+        `Skipped: ${result.value.skipped}`,
+        `Failed: ${result.value.failed}`,
+        "",
+      ].join("\n"),
+    );
+
+    for (const item of result.value.items) {
+      const suffix = item.reason ? ` (${item.reason})` : "";
+      process.stdout.write(`- ${item.v2Id}: ${item.status}${suffix}\n`);
+    }
+  } finally {
+    await container.dispose();
+  }
+}
+
 // ─── Main entry point ────────────────────────────────────────────────────────
 
 export async function main(args: string[]): Promise<void> {
@@ -202,6 +269,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "reindex":
         await handleReindex(args.slice(1));
+        break;
+      case "migrate":
+        await handleMigrate(args.slice(1));
         break;
       case "doctor":
         await handleDoctor(args.slice(1));

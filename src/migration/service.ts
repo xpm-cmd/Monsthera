@@ -40,6 +40,22 @@ export class MigrationService {
 
   // ─── Public API ─────────────────────────────────────────────────────────────
 
+  async getStatus(): Promise<Result<{ aliasesRegistered: number; migratedArticles: number }, MonstheraError>> {
+    const hydrateResult = await this.hydrateAliasStore();
+    if (!hydrateResult.ok) return hydrateResult;
+
+    return ok({
+      aliasesRegistered: this.aliasStore.size,
+      migratedArticles: hydrateResult.value,
+    });
+  }
+
+  async resolveAlias(alias: string): Promise<Result<string | undefined, MonstheraError>> {
+    const hydrateResult = await this.hydrateAliasStore();
+    if (!hydrateResult.ok) return hydrateResult;
+    return this.aliasStore.resolve(alias);
+  }
+
   /**
    * Run migration in the specified mode.
    *
@@ -59,6 +75,9 @@ export class MigrationService {
       const startTime = Date.now();
       const force = options?.force ?? false;
       this.logger.info("Starting migration", { operation: "run", mode, force });
+
+      const hydrateResult = await this.hydrateAliasStore();
+      if (!hydrateResult.ok) return hydrateResult;
 
       // 1. Read all v2 tickets
       const ticketsResult = await this.v2.readTickets();
@@ -165,7 +184,9 @@ export class MigrationService {
     }
 
     // Register alias
-    this.aliasStore.register(mapped.v2Id, workId(createResult.value));
+    for (const alias of mapped.aliases) {
+      this.aliasStore.register(alias, workId(createResult.value));
+    }
 
     this.logger.info("Migrated ticket", { operation: "processTicket", v2Id: ticketId, v3Id: createResult.value });
     return { v2Id: ticketId, v3Id: createResult.value, status: "created" };
@@ -187,7 +208,11 @@ export class MigrationService {
       template: mapped.template as "feature" | "bugfix" | "refactor" | "spike",
       priority: mapped.priority as "critical" | "high" | "medium" | "low",
       author: agentId("migration"),
-      tags: [...mapped.tags, `v2:${mapped.v2Id}`, `migration-hash:${mapped.migrationHash}`],
+      tags: [
+        ...mapped.tags,
+        ...mapped.aliases.map((alias) => `v2:${alias}`),
+        `migration-hash:${mapped.migrationHash}`,
+      ],
       content: mapped.content,
     };
 
@@ -203,5 +228,28 @@ export class MigrationService {
     return allResult.value.some((article) =>
       article.tags.includes(`migration-hash:${hash}`),
     );
+  }
+
+  private async hydrateAliasStore(): Promise<Result<number, MonstheraError>> {
+    const allResult = await this.workRepo.findMany();
+    if (!allResult.ok) return allResult;
+
+    let migratedArticles = 0;
+
+    for (const article of allResult.value) {
+      const aliases = article.tags
+        .filter((tag) => tag.startsWith("v2:"))
+        .map((tag) => tag.slice(3))
+        .filter(Boolean);
+
+      if (aliases.length === 0) continue;
+      migratedArticles++;
+
+      for (const alias of aliases) {
+        this.aliasStore.register(alias, article.id);
+      }
+    }
+
+    return ok(migratedArticles);
   }
 }

@@ -90,6 +90,8 @@ export function assembleWorkArticle(
   const tags = JSON.parse(row.tags ?? "[]") as string[];
   const references = JSON.parse(row.references ?? "[]") as string[];
   const codeRefs = JSON.parse(row.code_refs ?? "[]") as string[];
+  const dependenciesRaw = JSON.parse(row.dependencies ?? "[]") as unknown[];
+  const dependencies = dependenciesRaw.map((id) => workId(String(id)));
   const blockedByRaw = JSON.parse(row.blocked_by ?? "[]") as unknown[];
   const blockedBy = blockedByRaw.map((id) => workId(String(id)));
 
@@ -108,7 +110,7 @@ export function assembleWorkArticle(
     tags,
     references,
     codeRefs,
-    dependencies: [],
+    dependencies,
     blockedBy,
     content: row.content,
     createdAt: timestamp(row.created_at),

@@ -1,3 +1,6 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { MonstheraConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { StatusReporter } from "./status.js";
@@ -11,9 +14,9 @@ import { createLogger } from "./logger.js";
 import { createStatusReporter } from "./status.js";
 import { VERSION } from "./constants.js";
 import { DisposableStack } from "./lifecycle.js";
-import { InMemoryKnowledgeArticleRepository } from "../knowledge/in-memory-repository.js";
+import { FileSystemKnowledgeArticleRepository } from "../knowledge/file-repository.js";
 import { KnowledgeService } from "../knowledge/service.js";
-import { InMemoryWorkArticleRepository } from "../work/in-memory-repository.js";
+import { FileSystemWorkArticleRepository } from "../work/file-repository.js";
 import { WorkService } from "../work/service.js";
 import { InMemorySearchIndexRepository } from "../search/in-memory-repository.js";
 import { InMemoryOrchestrationEventRepository } from "../orchestration/in-memory-repository.js";
@@ -64,8 +67,12 @@ export async function createContainer(
   let workRepo: WorkArticleRepository | undefined;
   let searchRepo: SearchIndexRepository | undefined;
   let orchestrationRepo: OrchestrationEventRepository | undefined;
+  const markdownRoot = path.resolve(config.repoPath, config.storage.markdownRoot);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let doltPool: any;
+
+  knowledgeRepo = new FileSystemKnowledgeArticleRepository(markdownRoot);
+  workRepo = new FileSystemWorkArticleRepository(markdownRoot);
 
   if (config.storage.doltEnabled) {
     try {
@@ -73,8 +80,6 @@ export async function createContainer(
         createDoltPool,
         closePool,
         initializeSchema,
-        DoltKnowledgeArticleRepository,
-        DoltWorkRepository,
         DoltSearchIndexRepository,
         DoltOrchestrationRepository,
       } = await import("../persistence/index.js");
@@ -94,8 +99,6 @@ export async function createContainer(
         await closePool(doltPool);
         doltPool = undefined;
       } else {
-        knowledgeRepo = new DoltKnowledgeArticleRepository(doltPool);
-        workRepo = new DoltWorkRepository(doltPool);
         searchRepo = new DoltSearchIndexRepository(doltPool);
         orchestrationRepo = new DoltOrchestrationRepository(doltPool);
 
@@ -104,11 +107,12 @@ export async function createContainer(
         status.register("storage", () => ({
           name: "storage",
           healthy: true,
-          detail: `Dolt (${config.storage.doltHost}:${config.storage.doltPort}/${config.storage.doltDatabase})`,
+          detail: `Markdown (${markdownRoot}) + Dolt index (${config.storage.doltHost}:${config.storage.doltPort}/${config.storage.doltDatabase})`,
         }));
 
-        logger.info("Container created with Dolt persistence", {
+        logger.info("Container created with Markdown storage and Dolt index", {
           repoPath: config.repoPath,
+          markdownRoot,
           doltHost: config.storage.doltHost,
           doltPort: config.storage.doltPort,
           doltDatabase: config.storage.doltDatabase,
@@ -123,9 +127,7 @@ export async function createContainer(
   }
 
   // Fall through to in-memory if Dolt didn't initialize
-  if (!knowledgeRepo) {
-    knowledgeRepo = new InMemoryKnowledgeArticleRepository();
-    workRepo = new InMemoryWorkArticleRepository();
+  if (!searchRepo) {
     searchRepo = new InMemorySearchIndexRepository();
     orchestrationRepo = new InMemoryOrchestrationEventRepository();
 
@@ -133,10 +135,16 @@ export async function createContainer(
     status.register("storage", () => ({
       name: "storage",
       healthy: !degraded,
-      detail: degraded ? "In-memory (degraded — Dolt unavailable)" : "In-memory",
+      detail: degraded
+        ? `Markdown (${markdownRoot}) + in-memory index (degraded — Dolt unavailable)`
+        : `Markdown (${markdownRoot})`,
     }));
 
-    logger.info("Container created", { repoPath: config.repoPath, verbosity: config.verbosity });
+    logger.info("Container created", {
+      repoPath: config.repoPath,
+      markdownRoot,
+      verbosity: config.verbosity,
+    });
   }
 
   const embeddingProvider = new StubEmbeddingProvider();
@@ -164,6 +172,9 @@ export async function createContainer(
   const migrationService = options?.v2Reader
     ? new MigrationService({ v2Reader: options.v2Reader, workRepo: workRepo!, logger })
     : undefined;
+  if (options?.v2Reader) {
+    stack.defer(() => options.v2Reader!.close());
+  }
 
   // Register stat recording for observability
   status.register("knowledge", () => ({
@@ -215,7 +226,12 @@ export async function createTestContainer(
   overrides?: Partial<MonstheraContainer>,
 ): Promise<MonstheraContainer> {
   const { defaultConfig } = await import("./config.js");
-  const config = defaultConfig("/tmp/monsthera-test");
+  const repoPath = path.join("/tmp", `monsthera-test-${randomUUID()}`);
+  const config = defaultConfig(repoPath);
   const container = await createContainer(config);
-  return { ...container, ...overrides };
+  const dispose = async () => {
+    await container.dispose();
+    await fs.rm(repoPath, { recursive: true, force: true });
+  };
+  return { ...container, ...overrides, dispose };
 }

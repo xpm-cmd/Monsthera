@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
 import { main } from "../../../src/cli/main.js";
 import { VERSION } from "../../../src/core/constants.js";
 
@@ -19,6 +20,10 @@ function captureStdout(fn: () => void | Promise<void>): Promise<string> {
     }
     resolve(chunks.join(""));
   });
+}
+
+function withTempRepo(args: string[]): string[] {
+  return [...args, "--repo", `/tmp/monsthera-cli-test-${randomUUID()}`];
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -78,7 +83,7 @@ describe("CLI main()", () => {
   });
 
   it("status command prints JSON status to stdout", async () => {
-    const output = await captureStdout(() => main(["status"]));
+    const output = await captureStdout(() => main(withTempRepo(["status"])));
     // Should be parseable JSON
     const parsed = JSON.parse(output);
     expect(parsed).toHaveProperty("version");
@@ -102,7 +107,7 @@ describe("CLI main()", () => {
   describe("knowledge subcommand", () => {
     it("knowledge create prints the created article", async () => {
       const output = await captureStdout(() =>
-        main(["knowledge", "create", "--title", "Test Article", "--category", "engineering", "--content", "body text"]),
+        main(withTempRepo(["knowledge", "create", "--title", "Test Article", "--category", "engineering", "--content", "body text"])),
       );
       expect(output).toContain("Test Article");
       expect(output).toContain("engineering");
@@ -111,7 +116,7 @@ describe("CLI main()", () => {
     });
 
     it("knowledge list prints a table or empty message", async () => {
-      const output = await captureStdout(() => main(["knowledge", "list"]));
+      const output = await captureStdout(() => main(withTempRepo(["knowledge", "list"])));
       // Either "No knowledge articles found." or a table with headers
       expect(output.length).toBeGreaterThan(0);
     });
@@ -119,14 +124,14 @@ describe("CLI main()", () => {
     it("knowledge get prints error for non-existent ID", async () => {
       // Each CLI invocation creates a fresh in-memory container, so no
       // previously-created article persists. Verify the error path works.
-      await main(["knowledge", "get", "no-such-id"]);
+      await main(withTempRepo(["knowledge", "get", "no-such-id"]));
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("NOT_FOUND"));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
     it("knowledge delete prints success message", async () => {
       const output = await captureStdout(() =>
-        main(["knowledge", "delete", "non-existent-id"]),
+        main(withTempRepo(["knowledge", "delete", "non-existent-id"])),
       );
       expect(output).toContain("Deleted knowledge article");
     });
@@ -143,7 +148,7 @@ describe("CLI main()", () => {
   describe("work subcommand", () => {
     it("work create prints the created work article", async () => {
       const output = await captureStdout(() =>
-        main(["work", "create", "--title", "Task", "--template", "feature", "--author", "agent-1"]),
+        main(withTempRepo(["work", "create", "--title", "Task", "--template", "feature", "--author", "agent-1"])),
       );
       expect(output).toContain("Task");
       expect(output).toContain("feature");
@@ -151,12 +156,12 @@ describe("CLI main()", () => {
     });
 
     it("work list prints articles or empty message", async () => {
-      const output = await captureStdout(() => main(["work", "list"]));
+      const output = await captureStdout(() => main(withTempRepo(["work", "list"])));
       expect(output.length).toBeGreaterThan(0);
     });
 
     it("work get prints error for non-existent ID", async () => {
-      await main(["work", "get", "no-such-id"]);
+      await main(withTempRepo(["work", "get", "no-such-id"]));
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("NOT_FOUND"));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
@@ -172,13 +177,13 @@ describe("CLI main()", () => {
 
   describe("search subcommand", () => {
     it("search with no query prints error", async () => {
-      await main(["search"]);
+      await main(withTempRepo(["search"]));
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("Missing required argument"));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
     it("search someterms does not crash", async () => {
-      const output = await captureStdout(() => main(["search", "someterms"]));
+      const output = await captureStdout(() => main(withTempRepo(["search", "someterms"])));
       // May return "No results found." or actual results — either is fine
       expect(output).toBeDefined();
     });
@@ -188,7 +193,7 @@ describe("CLI main()", () => {
 
   describe("reindex subcommand", () => {
     it("reindex runs without error and prints counts", async () => {
-      const output = await captureStdout(() => main(["reindex"]));
+      const output = await captureStdout(() => main(withTempRepo(["reindex"])));
       expect(output).toContain("Reindex complete");
       expect(output).toMatch(/\d+ knowledge article/);
       expect(output).toMatch(/\d+ work article/);
