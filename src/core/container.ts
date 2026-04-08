@@ -20,6 +20,8 @@ import { InMemoryOrchestrationEventRepository } from "../orchestration/in-memory
 import { StubEmbeddingProvider } from "../search/embedding.js";
 import { SearchService } from "../search/service.js";
 import { OrchestrationService } from "../orchestration/service.js";
+import { MigrationService } from "../migration/service.js";
+import type { V2SourceReader } from "../migration/types.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -34,13 +36,17 @@ export interface MonstheraContainer extends Disposable {
   readonly searchService: SearchService;
   readonly orchestrationRepo: OrchestrationEventRepository;
   readonly orchestrationService: OrchestrationService;
+  readonly migrationService?: MigrationService;
 }
 
 /**
  * Create the Monsthera runtime container.
  * Wires up all dependencies based on config.
  */
-export async function createContainer(config: MonstheraConfig): Promise<MonstheraContainer> {
+export async function createContainer(
+  config: MonstheraConfig,
+  options?: { v2Reader?: V2SourceReader },
+): Promise<MonstheraContainer> {
   const stack = new DisposableStack();
 
   // Create logger based on verbosity
@@ -149,6 +155,11 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
     pollIntervalMs: config.orchestration.pollIntervalMs,
   });
 
+  // Wire up migration service if a v2 reader is provided
+  const migrationService = options?.v2Reader
+    ? new MigrationService({ v2Reader: options.v2Reader, workRepo, logger })
+    : undefined;
+
   // Start auto-advance loop if configured
   if (config.orchestration.autoAdvance) {
     orchestrationService.start();
@@ -167,6 +178,7 @@ export async function createContainer(config: MonstheraConfig): Promise<Monsther
     searchService,
     orchestrationRepo,
     orchestrationService,
+    migrationService,
     async dispose() {
       logger.info("Shutting down container");
       await stack.dispose();

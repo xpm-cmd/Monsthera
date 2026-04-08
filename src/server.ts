@@ -10,6 +10,7 @@ import { workToolDefinitions, handleWorkTool } from "./tools/work-tools.js";
 import { searchToolDefinitions, handleSearchTool } from "./tools/search-tools.js";
 import { orchestrationToolDefinitions, handleOrchestrationTool } from "./tools/orchestration-tools.js";
 import { statusToolDefinitions, handleStatusTool } from "./tools/status-tools.js";
+import { migrationToolDefinitions, handleMigrationTool } from "./migration/tools.js";
 
 /**
  * Start the MCP server with a Monsthera container.
@@ -43,6 +44,9 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const statusTools = statusToolDefinitions();
   const statusToolNames = new Set(statusTools.map((t) => t.name));
 
+  const migrationTools = container.migrationService ? migrationToolDefinitions() : [];
+  const migrationToolNames = new Set(migrationTools.map((t) => t.name));
+
   // Register tools/list handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
@@ -52,6 +56,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
         ...searchTools,
         ...orchestrationTools,
         ...statusTools,
+        ...migrationTools,
       ],
     };
   });
@@ -79,6 +84,10 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
 
     if (statusToolNames.has(name)) {
       return handleStatusTool(name, args, container.status);
+    }
+
+    if (migrationToolNames.has(name) && container.migrationService) {
+      return handleMigrationTool(name, args, container.migrationService);
     }
 
     return {
