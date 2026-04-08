@@ -1,4 +1,4 @@
-import type { Pool, RowDataPacket } from "mysql2/promise";
+import type { Pool } from "mysql2/promise";
 import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import type {
@@ -27,6 +27,14 @@ import {
   type ReviewRow,
   type PhaseHistoryRow,
 } from "./dolt-work-helpers.js";
+import {
+  queryAll,
+  queryByPhase,
+  queryByAssignee,
+  queryByPriority,
+  queryActive,
+  queryBlocked,
+} from "./dolt-work-queries.js";
 
 const TERMINAL_PHASES = new Set<WorkPhaseType>([WorkPhase.DONE, WorkPhase.CANCELLED]);
 
@@ -95,44 +103,7 @@ export class DoltWorkRepository implements WorkArticleRepository {
   }
 
   async findMany(_filter?: Record<string, unknown>): Promise<Result<WorkArticle[], StorageError>> {
-    const articleResult = await executeQuery(this.pool, "SELECT * FROM work_articles");
-
-    if (!articleResult.ok) return articleResult;
-
-    const articles = articleResult.value as WorkArticleRow[];
-    const workArticles: WorkArticle[] = [];
-
-    for (const row of articles) {
-      const enrichmentResult = await executeQuery(
-        this.pool,
-        "SELECT * FROM enrichment_assignments WHERE work_id = ?",
-        [row.id],
-      );
-      if (!enrichmentResult.ok) return enrichmentResult;
-
-      const reviewResult = await executeQuery(
-        this.pool,
-        "SELECT * FROM review_assignments WHERE work_id = ?",
-        [row.id],
-      );
-      if (!reviewResult.ok) return reviewResult;
-
-      const historyResult = await executeQuery(
-        this.pool,
-        "SELECT * FROM phase_history WHERE work_id = ? ORDER BY entered_at ASC",
-        [row.id],
-      );
-      if (!historyResult.ok) return historyResult;
-
-      const enrichments = enrichmentResult.value as EnrichmentRow[];
-      const reviews = reviewResult.value as ReviewRow[];
-      const history = historyResult.value as PhaseHistoryRow[];
-
-      const article = assembleWorkArticle(row, enrichments, reviews, history);
-      workArticles.push(article);
-    }
-
-    return ok(workArticles);
+    return queryAll(this.pool);
   }
 
   async create(
@@ -293,104 +264,23 @@ export class DoltWorkRepository implements WorkArticleRepository {
   }
 
   async findByPhase(phase: WorkPhaseType): Promise<Result<WorkArticle[], StorageError>> {
-    const result = await executeQuery(this.pool, "SELECT id FROM work_articles WHERE phase = ?", [
-      phase,
-    ]);
-
-    if (!result.ok) return result;
-
-    const rows = result.value as RowDataPacket[];
-    const articles: WorkArticle[] = [];
-
-    for (const row of rows) {
-      const articleResult = await this.findById((row as unknown as { id: string }).id);
-      if (!articleResult.ok) return articleResult;
-      articles.push(articleResult.value);
-    }
-
-    return ok(articles);
+    return queryByPhase(this.pool, phase, this.findById.bind(this));
   }
 
   async findByAssignee(agentIdParam: AgentId): Promise<Result<WorkArticle[], StorageError>> {
-    const result = await executeQuery(this.pool, "SELECT id FROM work_articles WHERE assignee = ?", [
-      agentIdParam,
-    ]);
-
-    if (!result.ok) return result;
-
-    const rows = result.value as RowDataPacket[];
-    const articles: WorkArticle[] = [];
-
-    for (const row of rows) {
-      const articleResult = await this.findById((row as unknown as { id: string }).id);
-      if (!articleResult.ok) return articleResult;
-      articles.push(articleResult.value);
-    }
-
-    return ok(articles);
+    return queryByAssignee(this.pool, agentIdParam, this.findById.bind(this));
   }
 
   async findByPriority(priority: Priority): Promise<Result<WorkArticle[], StorageError>> {
-    const result = await executeQuery(
-      this.pool,
-      "SELECT id FROM work_articles WHERE priority = ?",
-      [priority],
-    );
-
-    if (!result.ok) return result;
-
-    const rows = result.value as RowDataPacket[];
-    const articles: WorkArticle[] = [];
-
-    for (const row of rows) {
-      const articleResult = await this.findById((row as unknown as { id: string }).id);
-      if (!articleResult.ok) return articleResult;
-      articles.push(articleResult.value);
-    }
-
-    return ok(articles);
+    return queryByPriority(this.pool, priority, this.findById.bind(this));
   }
 
   async findActive(): Promise<Result<WorkArticle[], StorageError>> {
-    const result = await executeQuery(
-      this.pool,
-      "SELECT id FROM work_articles WHERE phase != ? AND phase != ?",
-      [WorkPhase.DONE, WorkPhase.CANCELLED],
-    );
-
-    if (!result.ok) return result;
-
-    const rows = result.value as RowDataPacket[];
-    const articles: WorkArticle[] = [];
-
-    for (const row of rows) {
-      const articleResult = await this.findById((row as unknown as { id: string }).id);
-      if (!articleResult.ok) return articleResult;
-      articles.push(articleResult.value);
-    }
-
-    return ok(articles);
+    return queryActive(this.pool, this.findById.bind(this));
   }
 
   async findBlocked(): Promise<Result<WorkArticle[], StorageError>> {
-    const result = await executeQuery(
-      this.pool,
-      "SELECT id FROM work_articles WHERE blocked_by != ?",
-      [JSON.stringify([])],
-    );
-
-    if (!result.ok) return result;
-
-    const rows = result.value as RowDataPacket[];
-    const articles: WorkArticle[] = [];
-
-    for (const row of rows) {
-      const articleResult = await this.findById((row as unknown as { id: string }).id);
-      if (!articleResult.ok) return articleResult;
-      articles.push(articleResult.value);
-    }
-
-    return ok(articles);
+    return queryBlocked(this.pool, this.findById.bind(this));
   }
 
   async advancePhase(

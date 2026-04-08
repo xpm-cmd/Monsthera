@@ -72,6 +72,9 @@ export const WorkPhase = {
 
 export type WorkPhase = (typeof WorkPhase)[keyof typeof WorkPhase];
 
+/** Set of all valid WorkPhase values (for input validation) */
+export const VALID_PHASES: ReadonlySet<string> = new Set<string>(Object.values(WorkPhase));
+
 /** Work article priority */
 export const Priority = {
   CRITICAL: "critical",

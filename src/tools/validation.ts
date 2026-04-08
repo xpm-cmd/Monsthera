@@ -82,7 +82,7 @@ export function isErrorResponse(value: unknown): value is ToolResponse {
 /** Validate a string is one of the allowed enum values */
 export function requireEnum(
   value: string,
-  validValues: Set<string>,
+  validValues: ReadonlySet<string>,
   fieldName: string,
 ): ToolResponse | null {
   if (!validValues.has(value)) {

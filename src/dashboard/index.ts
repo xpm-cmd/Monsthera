@@ -2,11 +2,9 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MonstheraContainer } from "../core/container.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
-import { WorkPhase } from "../core/types.js";
+import { VALID_PHASES } from "../core/types.js";
 import type { MonstheraError } from "../core/errors.js";
 import { ErrorCode } from "../core/errors.js";
-
-const VALID_PHASES = new Set(Object.values(WorkPhase));
 
 // ─── Public interface ────────────────────────────────────────────────────────
 

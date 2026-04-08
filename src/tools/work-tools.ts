@@ -1,12 +1,10 @@
 import type { WorkService } from "../work/service.js";
-import { WorkPhase } from "../core/types.js";
+import { VALID_PHASES } from "../core/types.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import type { ToolDefinition, ToolResponse } from "./knowledge-tools.js";
 import { successResponse, errorResponse, requireString, optionalString, isErrorResponse, requireEnum } from "./validation.js";
 
-// ─── Tool Definitions ─────────────────────────────────────────────────────────
-
-const VALID_PHASES: Set<string> = new Set(Object.values(WorkPhase));
+// ─── Tool Definitions ───────────────────────────────────────────────────��─────
 
 const VALID_ENRICHMENT_STATUSES: Set<string> = new Set(["contributed", "skipped"]);
 const VALID_REVIEW_STATUSES: Set<string> = new Set(["approved", "changes-requested"]);
