@@ -36,7 +36,7 @@ export class SearchService {
     this.workRepo = deps.workRepo;
     this.embeddingProvider = deps.embeddingProvider;
     this.config = deps.config;
-    this.logger = deps.logger;
+    this.logger = deps.logger.child({ domain: "search" });
   }
 
   // ─── search ────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ export class SearchService {
       semanticEnabled: this.config.semanticEnabled,
     };
 
-    this.logger.debug("Searching articles", { query: validated.value.query, type: validated.value.type });
+    this.logger.debug("Searching articles", { operation: "search", query: validated.value.query, type: validated.value.type });
     return this.searchRepo.search(options);
   }
 
@@ -67,7 +67,7 @@ export class SearchService {
     const article = articleResult.value;
     const indexContent = this.buildIndexContent(article.content, article.codeRefs);
 
-    this.logger.info("Indexing knowledge article", { id });
+    this.logger.info("Indexing knowledge article", { operation: "indexKnowledgeArticle", id });
     return this.searchRepo.indexArticle(article.id, article.title, indexContent, "knowledge");
   }
 
@@ -82,20 +82,21 @@ export class SearchService {
     const article = articleResult.value;
     const indexContent = this.buildIndexContent(article.content, article.codeRefs);
 
-    this.logger.info("Indexing work article", { id });
+    this.logger.info("Indexing work article", { operation: "indexWorkArticle", id });
     return this.searchRepo.indexArticle(article.id, article.title, indexContent, "work");
   }
 
   // ─── removeArticle ─────────────────────────────────────────────────────────
 
   async removeArticle(id: string): Promise<Result<void, StorageError>> {
-    this.logger.info("Removing article from search index", { id });
+    this.logger.info("Removing article from search index", { operation: "removeArticle", id });
     return this.searchRepo.removeArticle(id);
   }
 
   // ─── fullReindex ───────────────────────────────────────────────────────────
 
   async fullReindex(): Promise<Result<{ knowledgeCount: number; workCount: number }, StorageError>> {
+    const startTime = Date.now();
     const knowledgeResult = await this.knowledgeRepo.findMany();
     if (!knowledgeResult.ok) return knowledgeResult;
 
@@ -127,9 +128,12 @@ export class SearchService {
     const reindexResult = await this.searchRepo.reindex();
     if (!reindexResult.ok) return reindexResult;
 
+    const durationMs = Date.now() - startTime;
     this.logger.info("Full reindex complete", {
+      operation: "fullReindex",
       knowledgeCount: knowledgeArticles.length,
       workCount: workArticles.length,
+      durationMs,
     });
 
     return ok({ knowledgeCount: knowledgeArticles.length, workCount: workArticles.length });

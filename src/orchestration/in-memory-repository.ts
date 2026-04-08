@@ -10,11 +10,17 @@ import type {
 } from "./repository.js";
 
 export class InMemoryOrchestrationEventRepository implements OrchestrationEventRepository {
+  private static readonly MAX_EVENTS = 10_000;
   private events: OrchestrationEvent[] = [];
 
   async logEvent(
     event: Omit<OrchestrationEvent, "id" | "createdAt">,
   ): Promise<Result<OrchestrationEvent, StorageError>> {
+    // Evict oldest events if at capacity
+    if (this.events.length >= InMemoryOrchestrationEventRepository.MAX_EVENTS) {
+      this.events = this.events.slice(-Math.floor(InMemoryOrchestrationEventRepository.MAX_EVENTS * 0.9));
+    }
+
     const logged: OrchestrationEvent = {
       id: generateId("evt"),
       workId: event.workId,

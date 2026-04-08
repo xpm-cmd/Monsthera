@@ -18,7 +18,7 @@ export class KnowledgeService {
 
   constructor(deps: KnowledgeServiceDeps) {
     this.repo = deps.knowledgeRepo;
-    this.logger = deps.logger;
+    this.logger = deps.logger.child({ domain: "knowledge" });
   }
 
   async createArticle(
@@ -26,21 +26,21 @@ export class KnowledgeService {
   ): Promise<Result<KnowledgeArticle, ValidationError | StorageError>> {
     const validated = validateCreateInput(input);
     if (!validated.ok) return validated;
-    this.logger.info("Creating knowledge article", { title: validated.value.title });
+    this.logger.info("Creating knowledge article", { operation: "createArticle", title: validated.value.title });
     return this.repo.create(validated.value);
   }
 
   async getArticle(
     id: string,
   ): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>> {
-    this.logger.debug("Getting knowledge article", { id });
+    this.logger.debug("Getting knowledge article", { operation: "getArticle", id });
     return this.repo.findById(id);
   }
 
   async getArticleBySlug(
     slugValue: string,
   ): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>> {
-    this.logger.debug("Getting knowledge article by slug", { slug: slugValue });
+    this.logger.debug("Getting knowledge article by slug", { operation: "getArticleBySlug", slug: slugValue });
     return this.repo.findBySlug(brandSlug(slugValue));
   }
 
@@ -50,14 +50,14 @@ export class KnowledgeService {
   ): Promise<Result<KnowledgeArticle, NotFoundError | ValidationError | StorageError>> {
     const validated = validateUpdateInput(input);
     if (!validated.ok) return validated;
-    this.logger.info("Updating knowledge article", { id });
+    this.logger.info("Updating knowledge article", { operation: "updateArticle", id });
     return this.repo.update(id, validated.value);
   }
 
   async deleteArticle(
     id: string,
   ): Promise<Result<void, NotFoundError | StorageError>> {
-    this.logger.info("Deleting knowledge article", { id });
+    this.logger.info("Deleting knowledge article", { operation: "deleteArticle", id });
     return this.repo.delete(id);
   }
 
@@ -65,10 +65,10 @@ export class KnowledgeService {
     category?: string,
   ): Promise<Result<KnowledgeArticle[], StorageError>> {
     if (category) {
-      this.logger.debug("Listing knowledge articles by category", { category });
+      this.logger.debug("Listing knowledge articles by category", { operation: "listArticles", category });
       return this.repo.findByCategory(category);
     }
-    this.logger.debug("Listing all knowledge articles");
+    this.logger.debug("Listing all knowledge articles", { operation: "listArticles" });
     return this.repo.findMany();
   }
 
@@ -78,7 +78,7 @@ export class KnowledgeService {
     if (!query.trim()) {
       return err(new ValidationErrorClass("Search query must not be empty"));
     }
-    this.logger.debug("Searching knowledge articles", { query });
+    this.logger.debug("Searching knowledge articles", { operation: "searchArticles", query });
     return this.repo.search(query);
   }
 }

@@ -35,7 +35,7 @@ export class OrchestrationService {
   constructor(deps: OrchestrationServiceDeps) {
     this.workRepo = deps.workRepo;
     this.eventRepo = deps.orchestrationRepo;
-    this.logger = deps.logger;
+    this.logger = deps.logger.child({ domain: "orchestration" });
     this.autoAdvance = deps.autoAdvance ?? false;
     this.pollIntervalMs = deps.pollIntervalMs ?? 30000;
   }
@@ -43,7 +43,7 @@ export class OrchestrationService {
   // ─── Scanning ─────────────────────────────────────────────────────────────
 
   async scanActiveWork(): Promise<Result<WorkArticle[], StorageError>> {
-    this.logger.debug("Scanning active work articles");
+    this.logger.debug("Scanning active work articles", { operation: "scanActiveWork" });
     return this.workRepo.findActive();
   }
 
@@ -140,7 +140,7 @@ export class OrchestrationService {
       details: { from, to },
     });
 
-    this.logger.info("Work article advanced", { workId: id, from, to });
+    this.logger.info("Work article advanced", { operation: "tryAdvance", workId: id, from, to });
 
     const result: AdvanceResult = {
       workId: id,
@@ -213,6 +213,7 @@ export class OrchestrationService {
     });
 
     this.logger.info("Wave planned", {
+      operation: "planWave",
       readyCount: items.length,
       blockedCount: blockedItems.length,
     });
@@ -250,6 +251,7 @@ export class OrchestrationService {
     }
 
     this.logger.info("Wave executed", {
+      operation: "executeWave",
       advancedCount: advanced.length,
       failedCount: failed.length,
     });
@@ -261,13 +263,14 @@ export class OrchestrationService {
 
   start(): void {
     if (!this.autoAdvance) {
-      this.logger.debug("Auto-advance is disabled, not starting polling loop");
+      this.logger.debug("Auto-advance is disabled, not starting polling loop", { operation: "start" });
       return;
     }
     if (this.running) return;
 
     this.running = true;
     this.logger.info("Starting orchestration polling loop", {
+      operation: "start",
       pollIntervalMs: this.pollIntervalMs,
     });
 
@@ -275,7 +278,7 @@ export class OrchestrationService {
       try {
         const planResult = await this.planWave({ autoAdvanceOnly: true });
         if (!planResult.ok) {
-          this.logger.error("Wave planning failed", { error: planResult.error.message });
+          this.logger.error("Wave planning failed", { operation: "autoAdvance", error: planResult.error.message });
           return;
         }
         if (planResult.value.items.length > 0) {
@@ -283,6 +286,7 @@ export class OrchestrationService {
         }
       } catch (e) {
         this.logger.error("Orchestration loop error", {
+          operation: "autoAdvance",
           error: e instanceof Error ? e.message : String(e),
         });
       }
@@ -295,7 +299,7 @@ export class OrchestrationService {
       this.pollTimer = null;
     }
     this.running = false;
-    this.logger.info("Orchestration polling loop stopped");
+    this.logger.info("Orchestration polling loop stopped", { operation: "stop" });
   }
 
   get isRunning(): boolean {

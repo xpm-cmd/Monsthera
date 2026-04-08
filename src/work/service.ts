@@ -19,7 +19,7 @@ export class WorkService {
 
   constructor(deps: WorkServiceDeps) {
     this.repo = deps.workRepo;
-    this.logger = deps.logger;
+    this.logger = deps.logger.child({ domain: "work" });
   }
 
   async createWork(
@@ -27,14 +27,14 @@ export class WorkService {
   ): Promise<Result<WorkArticle, ValidationError | StorageError>> {
     const validated = validateCreateWorkInput(input);
     if (!validated.ok) return validated;
-    this.logger.info("Creating work article", { title: validated.value.title });
+    this.logger.info("Creating work article", { operation: "createWork", title: validated.value.title });
     return this.repo.create(validated.value as unknown as CreateWorkArticleInput);
   }
 
   async getWork(
     id: string,
   ): Promise<Result<WorkArticle, NotFoundError | StorageError>> {
-    this.logger.debug("Getting work article", { id });
+    this.logger.debug("Getting work article", { operation: "getWork", id });
     return this.repo.findById(id);
   }
 
@@ -44,14 +44,14 @@ export class WorkService {
   ): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>> {
     const validated = validateUpdateWorkInput(input);
     if (!validated.ok) return validated;
-    this.logger.info("Updating work article", { id });
+    this.logger.info("Updating work article", { operation: "updateWork", id });
     return this.repo.update(id, validated.value as unknown as UpdateWorkArticleInput);
   }
 
   async deleteWork(
     id: string,
   ): Promise<Result<void, NotFoundError | StateTransitionError | StorageError>> {
-    this.logger.info("Deleting work article", { id });
+    this.logger.info("Deleting work article", { operation: "deleteWork", id });
     return this.repo.delete(id);
   }
 
@@ -59,10 +59,10 @@ export class WorkService {
     phase?: WorkPhaseType,
   ): Promise<Result<WorkArticle[], StorageError>> {
     if (phase) {
-      this.logger.debug("Listing work articles by phase", { phase });
+      this.logger.debug("Listing work articles by phase", { operation: "listWork", phase });
       return this.repo.findByPhase(phase);
     }
-    this.logger.debug("Listing all work articles");
+    this.logger.debug("Listing all work articles", { operation: "listWork" });
     return this.repo.findMany();
   }
 
@@ -70,7 +70,7 @@ export class WorkService {
     id: string,
     targetPhase: WorkPhaseType,
   ): Promise<Result<WorkArticle, StateTransitionError | GuardFailedError | NotFoundError | StorageError>> {
-    this.logger.info("Advancing work article phase", { id, targetPhase });
+    this.logger.info("Advancing work article phase", { operation: "advancePhase", id, targetPhase });
     return this.repo.advancePhase(workId(id), targetPhase);
   }
 
@@ -81,7 +81,7 @@ export class WorkService {
     role: string,
     status: "contributed" | "skipped",
   ): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>> {
-    this.logger.info("Recording enrichment contribution", { id, role, status });
+    this.logger.info("Recording enrichment contribution", { operation: "contributeEnrichment", id, role, status });
     return this.repo.contributeEnrichment(workId(id), role, status);
   }
 
@@ -89,7 +89,7 @@ export class WorkService {
     id: string,
     reviewerAgentId: string,
   ): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>> {
-    this.logger.info("Assigning reviewer", { id, reviewerAgentId });
+    this.logger.info("Assigning reviewer", { operation: "assignReviewer", id, reviewerAgentId });
     return this.repo.assignReviewer(workId(id), agentId(reviewerAgentId));
   }
 
@@ -98,7 +98,7 @@ export class WorkService {
     reviewerAgentId: string,
     status: "approved" | "changes-requested",
   ): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>> {
-    this.logger.info("Submitting review", { id, reviewerAgentId, status });
+    this.logger.info("Submitting review", { operation: "submitReview", id, reviewerAgentId, status });
     return this.repo.submitReview(workId(id), agentId(reviewerAgentId), status);
   }
 
@@ -108,7 +108,7 @@ export class WorkService {
     id: string,
     blockedById: string,
   ): Promise<Result<WorkArticle, NotFoundError | StateTransitionError | StorageError>> {
-    this.logger.info("Adding dependency", { id, blockedById });
+    this.logger.info("Adding dependency", { operation: "addDependency", id, blockedById });
     return this.repo.addDependency(workId(id), workId(blockedById));
   }
 
@@ -116,7 +116,7 @@ export class WorkService {
     id: string,
     blockedById: string,
   ): Promise<Result<WorkArticle, NotFoundError | StateTransitionError | StorageError>> {
-    this.logger.info("Removing dependency", { id, blockedById });
+    this.logger.info("Removing dependency", { operation: "removeDependency", id, blockedById });
     return this.repo.removeDependency(workId(id), workId(blockedById));
   }
 }

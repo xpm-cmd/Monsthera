@@ -1,9 +1,10 @@
 import type { Pool, RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
-import { NotFoundError, StorageError, ValidationError } from "../core/errors.js";
+import type { ValidationError } from "../core/errors.js";
+import { NotFoundError, StorageError } from "../core/errors.js";
 import { generateArticleId, articleId, timestamp } from "../core/types.js";
-import type { ArticleId, Slug } from "../core/types.js";
+import type { Slug } from "../core/types.js";
 import { uniqueSlug } from "../knowledge/slug.js";
 import type {
   KnowledgeArticle,

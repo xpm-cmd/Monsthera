@@ -1,9 +1,9 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import { ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
-import { StorageError } from "../core/errors.js";
+import type { StorageError } from "../core/errors.js";
 import { generateId, timestamp, workId, agentId } from "../core/types.js";
-import type { WorkId, AgentId, Timestamp } from "../core/types.js";
+import type { WorkId } from "../core/types.js";
 import type {
   OrchestrationEvent,
   OrchestrationEventRepository,

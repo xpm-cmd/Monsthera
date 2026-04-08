@@ -1,20 +1,6 @@
 import type { StatusReporter } from "../core/status.js";
 import type { ToolDefinition, ToolResponse } from "./knowledge-tools.js";
-
-/** Helper to build a success response */
-function successResponse(data: unknown): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-  };
-}
-
-/** Helper to build an error response */
-function errorResponse(code: string, message: string): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify({ error: code, message }) }],
-    isError: true,
-  };
-}
+import { successResponse, errorResponse } from "./validation.js";
 
 /** Returns the status tool definitions for MCP ListTools */
 export function statusToolDefinitions(): ToolDefinition[] {

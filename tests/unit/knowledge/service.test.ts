@@ -9,8 +9,8 @@ import type { KnowledgeArticle } from "../../../src/knowledge/repository.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createSpyLogger(): Logger & { calls: { level: string; message: string; context?: Record<string, unknown> }[] } {
-  const calls: { level: string; message: string; context?: Record<string, unknown> }[] = [];
+function createSpyLogger(sharedCalls?: { level: string; message: string; context?: Record<string, unknown> }[]): Logger & { calls: { level: string; message: string; context?: Record<string, unknown> }[] } {
+  const calls = sharedCalls ?? [];
   const log = (level: string) => (message: string, context?: Record<string, unknown>) => {
     calls.push({ level, message, context });
   };
@@ -20,7 +20,7 @@ function createSpyLogger(): Logger & { calls: { level: string; message: string; 
     info: log("info"),
     warn: log("warn"),
     error: log("error"),
-    child: () => createSpyLogger(),
+    child: () => createSpyLogger(calls),
   };
 }
 

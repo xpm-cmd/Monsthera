@@ -60,75 +60,80 @@ export async function createContainer(
   // Create status reporter
   const status = createStatusReporter(VERSION);
 
-  let knowledgeRepo: KnowledgeArticleRepository;
-  let workRepo: WorkArticleRepository;
-  let searchRepo: SearchIndexRepository;
-  let orchestrationRepo: OrchestrationEventRepository;
+  let knowledgeRepo: KnowledgeArticleRepository | undefined;
+  let workRepo: WorkArticleRepository | undefined;
+  let searchRepo: SearchIndexRepository | undefined;
+  let orchestrationRepo: OrchestrationEventRepository | undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let doltPool: any;
 
   if (config.storage.doltEnabled) {
-    // Phase 5: Dolt-backed repositories
-    const {
-      createDoltPool,
-      closePool,
-      initializeSchema,
-      checkDoltHealth,
-      DoltKnowledgeArticleRepository,
-      DoltWorkRepository,
-      DoltSearchIndexRepository,
-      DoltOrchestrationRepository,
-    } = await import("../persistence/index.js");
+    try {
+      const {
+        createDoltPool,
+        closePool,
+        initializeSchema,
+        DoltKnowledgeArticleRepository,
+        DoltWorkRepository,
+        DoltSearchIndexRepository,
+        DoltOrchestrationRepository,
+      } = await import("../persistence/index.js");
 
-    doltPool = createDoltPool({
-      host: config.storage.doltHost,
-      port: config.storage.doltPort,
-      database: config.storage.doltDatabase,
-    });
+      doltPool = createDoltPool({
+        host: config.storage.doltHost,
+        port: config.storage.doltPort,
+        database: config.storage.doltDatabase,
+      });
 
-    // Initialize schema (idempotent)
-    const schemaResult = await initializeSchema(doltPool);
-    if (!schemaResult.ok) {
-      await closePool(doltPool);
-      throw new Error(`Schema initialization failed: ${schemaResult.error.message}`);
+      const schemaResult = await initializeSchema(doltPool);
+      if (!schemaResult.ok) {
+        logger.warn("Dolt schema initialization failed, falling back to in-memory storage", {
+          error: schemaResult.error.message,
+          domain: "persistence",
+        });
+        await closePool(doltPool);
+        doltPool = undefined;
+      } else {
+        knowledgeRepo = new DoltKnowledgeArticleRepository(doltPool);
+        workRepo = new DoltWorkRepository(doltPool);
+        searchRepo = new DoltSearchIndexRepository(doltPool);
+        orchestrationRepo = new DoltOrchestrationRepository(doltPool);
+
+        stack.defer(() => closePool(doltPool));
+
+        status.register("storage", () => ({
+          name: "storage",
+          healthy: true,
+          detail: `Dolt (${config.storage.doltHost}:${config.storage.doltPort}/${config.storage.doltDatabase})`,
+        }));
+
+        logger.info("Container created with Dolt persistence", {
+          repoPath: config.repoPath,
+          doltHost: config.storage.doltHost,
+          doltPort: config.storage.doltPort,
+          doltDatabase: config.storage.doltDatabase,
+        });
+      }
+    } catch (e) {
+      logger.warn("Failed to initialize Dolt, falling back to in-memory storage", {
+        error: e instanceof Error ? e.message : String(e),
+        domain: "persistence",
+      });
     }
+  }
 
-    knowledgeRepo = new DoltKnowledgeArticleRepository(doltPool);
-    workRepo = new DoltWorkRepository(doltPool);
-    searchRepo = new DoltSearchIndexRepository(doltPool);
-    orchestrationRepo = new DoltOrchestrationRepository(doltPool);
-
-    // Register Dolt pool cleanup
-    stack.defer(() => closePool(doltPool));
-
-    // Register Dolt health check
-    status.register("storage", () => {
-      const healthPromise = checkDoltHealth(doltPool!);
-      // Health checks are synchronous in the status API, so we cache last-known state
-      return {
-        name: "storage",
-        healthy: true,
-        detail: `Dolt (${config.storage.doltHost}:${config.storage.doltPort}/${config.storage.doltDatabase})`,
-      };
-    });
-
-    logger.info("Container created with Dolt persistence", {
-      repoPath: config.repoPath,
-      doltHost: config.storage.doltHost,
-      doltPort: config.storage.doltPort,
-      doltDatabase: config.storage.doltDatabase,
-    });
-  } else {
-    // In-memory repositories (default for development/testing)
+  // Fall through to in-memory if Dolt didn't initialize
+  if (!knowledgeRepo) {
     knowledgeRepo = new InMemoryKnowledgeArticleRepository();
     workRepo = new InMemoryWorkArticleRepository();
     searchRepo = new InMemorySearchIndexRepository();
     orchestrationRepo = new InMemoryOrchestrationEventRepository();
 
+    const degraded = config.storage.doltEnabled;
     status.register("storage", () => ({
       name: "storage",
-      healthy: true,
-      detail: "In-memory",
+      healthy: !degraded,
+      detail: degraded ? "In-memory (degraded — Dolt unavailable)" : "In-memory",
     }));
 
     logger.info("Container created", { repoPath: config.repoPath, verbosity: config.verbosity });
@@ -136,20 +141,20 @@ export async function createContainer(
 
   const embeddingProvider = new StubEmbeddingProvider();
 
-  // Wire up services with repos
-  const knowledgeService = new KnowledgeService({ knowledgeRepo, logger });
-  const workService = new WorkService({ workRepo, logger });
+  // Wire up services with repos — repos are guaranteed to be set by this point
+  const knowledgeService = new KnowledgeService({ knowledgeRepo: knowledgeRepo!, logger });
+  const workService = new WorkService({ workRepo: workRepo!, logger });
   const searchService = new SearchService({
-    searchRepo,
-    knowledgeRepo,
-    workRepo,
+    searchRepo: searchRepo!,
+    knowledgeRepo: knowledgeRepo!,
+    workRepo: workRepo!,
     embeddingProvider,
     config: config.search,
     logger,
   });
   const orchestrationService = new OrchestrationService({
-    workRepo,
-    orchestrationRepo,
+    workRepo: workRepo!,
+    orchestrationRepo: orchestrationRepo!,
     logger,
     autoAdvance: config.orchestration.autoAdvance,
     pollIntervalMs: config.orchestration.pollIntervalMs,
@@ -157,8 +162,25 @@ export async function createContainer(
 
   // Wire up migration service if a v2 reader is provided
   const migrationService = options?.v2Reader
-    ? new MigrationService({ v2Reader: options.v2Reader, workRepo, logger })
+    ? new MigrationService({ v2Reader: options.v2Reader, workRepo: workRepo!, logger })
     : undefined;
+
+  // Register stat recording for observability
+  status.register("knowledge", () => ({
+    name: "knowledge",
+    healthy: true,
+    detail: "Knowledge service",
+  }));
+  status.register("work", () => ({
+    name: "work",
+    healthy: true,
+    detail: "Work service",
+  }));
+  status.register("search", () => ({
+    name: "search",
+    healthy: true,
+    detail: "Search service",
+  }));
 
   // Start auto-advance loop if configured
   if (config.orchestration.autoAdvance) {
@@ -170,13 +192,13 @@ export async function createContainer(
     config,
     logger,
     status,
-    knowledgeRepo,
+    knowledgeRepo: knowledgeRepo!,
     knowledgeService,
-    workRepo,
+    workRepo: workRepo!,
     workService,
-    searchRepo,
+    searchRepo: searchRepo!,
     searchService,
-    orchestrationRepo,
+    orchestrationRepo: orchestrationRepo!,
     orchestrationService,
     migrationService,
     async dispose() {

@@ -1,21 +1,7 @@
 import type { MigrationService } from "./service.js";
 import type { ToolDefinition, ToolResponse } from "../tools/knowledge-tools.js";
 import type { MigrationMode } from "./types.js";
-
-// ─── Private Helpers ─────────────────────────────────────────────────────────
-
-function successResponse(data: unknown): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-  };
-}
-
-function errorResponse(code: string, message: string): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify({ error: code, message }) }],
-    isError: true,
-  };
-}
+import { successResponse, errorResponse, requireString, isErrorResponse, requireEnum } from "../tools/validation.js";
 
 const VALID_MODES: Set<string> = new Set(["dry-run", "validate", "execute"]);
 
@@ -75,10 +61,10 @@ export async function handleMigrationTool(
 ): Promise<ToolResponse> {
   switch (name) {
     case "migrate_v2": {
-      const mode = args.mode;
-      if (typeof mode !== "string" || !VALID_MODES.has(mode)) {
-        return errorResponse("VALIDATION_FAILED", `"mode" must be one of: dry-run, validate, execute`);
-      }
+      const mode = requireString(args, "mode");
+      if (isErrorResponse(mode)) return mode;
+      const modeErr = requireEnum(mode, VALID_MODES, "mode");
+      if (modeErr) return modeErr;
       const force = typeof args.force === "boolean" ? args.force : false;
       const result = await service.run(mode as MigrationMode, { force });
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
@@ -90,10 +76,8 @@ export async function handleMigrationTool(
       });
     }
     case "resolve_v2_alias": {
-      const alias = args.alias;
-      if (typeof alias !== "string" || alias.length === 0) {
-        return errorResponse("VALIDATION_FAILED", `"alias" is required and must be a non-empty string`);
-      }
+      const alias = requireString(args, "alias");
+      if (isErrorResponse(alias)) return alias;
       const result = service.aliasStore.resolve(alias);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       if (result.value === undefined) {

@@ -1,7 +1,8 @@
 import type { Result } from "../core/result.js";
 import type { Logger } from "../core/logger.js";
 import type { MonstheraError } from "../core/errors.js";
-import { ok } from "../core/result.js";
+import { ok, err } from "../core/result.js";
+import { ConcurrencyConflictError } from "../core/errors.js";
 import { agentId, workId } from "../core/types.js";
 import type { WorkArticleRepository, CreateWorkArticleInput } from "../work/repository.js";
 import type {
@@ -28,12 +29,13 @@ export class MigrationService {
   private readonly v2: V2SourceReader;
   private readonly workRepo: WorkArticleRepository;
   private readonly logger: Logger;
+  private running = false;
   readonly aliasStore = new AliasStore();
 
   constructor(deps: MigrationServiceDeps) {
     this.v2 = deps.v2Reader;
     this.workRepo = deps.workRepo;
-    this.logger = deps.logger;
+    this.logger = deps.logger.child({ domain: "migration" });
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────────
@@ -49,43 +51,55 @@ export class MigrationService {
     mode: MigrationMode,
     options?: { force?: boolean },
   ): Promise<Result<MigrationReport, MonstheraError>> {
-    const force = options?.force ?? false;
-    this.logger.info("Starting migration", { mode, force });
-
-    // 1. Read all v2 tickets
-    const ticketsResult = await this.v2.readTickets();
-    if (!ticketsResult.ok) return ticketsResult;
-    const tickets = ticketsResult.value;
-
-    this.logger.info("Read v2 tickets", { count: tickets.length });
-
-    // 2. Map each ticket
-    const items: MigrationItemResult[] = [];
-
-    for (const ticket of tickets) {
-      const item = await this.processTicket(ticket.id, mode, force);
-      items.push(item);
+    if (this.running) {
+      return err(new ConcurrencyConflictError("migration", { reason: "Migration is already running" }));
     }
+    this.running = true;
+    try {
+      const startTime = Date.now();
+      const force = options?.force ?? false;
+      this.logger.info("Starting migration", { operation: "run", mode, force });
 
-    // 3. Build report
-    const report: MigrationReport = {
-      mode,
-      total: items.length,
-      created: items.filter((i) => i.status === "created").length,
-      skipped: items.filter((i) => i.status === "skipped").length,
-      failed: items.filter((i) => i.status === "failed").length,
-      items,
-    };
+      // 1. Read all v2 tickets
+      const ticketsResult = await this.v2.readTickets();
+      if (!ticketsResult.ok) return ticketsResult;
+      const tickets = ticketsResult.value;
 
-    this.logger.info("Migration complete", {
-      mode,
-      total: report.total,
-      created: report.created,
-      skipped: report.skipped,
-      failed: report.failed,
-    });
+      this.logger.info("Read v2 tickets", { operation: "run", count: tickets.length });
 
-    return ok(report);
+      // 2. Map each ticket
+      const items: MigrationItemResult[] = [];
+
+      for (const ticket of tickets) {
+        const item = await this.processTicket(ticket.id, mode, force);
+        items.push(item);
+      }
+
+      // 3. Build report
+      const report: MigrationReport = {
+        mode,
+        total: items.length,
+        created: items.filter((i) => i.status === "created").length,
+        skipped: items.filter((i) => i.status === "skipped").length,
+        failed: items.filter((i) => i.status === "failed").length,
+        items,
+      };
+
+      const durationMs = Date.now() - startTime;
+      this.logger.info("Migration complete", {
+        operation: "run",
+        mode,
+        total: report.total,
+        created: report.created,
+        skipped: report.skipped,
+        failed: report.failed,
+        durationMs,
+      });
+
+      return ok(report);
+    } finally {
+      this.running = false;
+    }
   }
 
   // ─── Private ────────────────────────────────────────────────────────────────
@@ -120,7 +134,7 @@ export class MigrationService {
 
     // Check idempotency — skip if already migrated (unless --force)
     if (!force && this.aliasStore.has(mapped.v2Id)) {
-      this.logger.debug("Skipping already-migrated ticket", { v2Id: ticketId });
+      this.logger.debug("Skipping already-migrated ticket", { operation: "processTicket", v2Id: ticketId });
       return { v2Id: ticketId, status: "skipped", reason: "Already migrated" };
     }
 
@@ -128,7 +142,7 @@ export class MigrationService {
     if (!force) {
       const existingCheck = await this.findByMigrationHash(mapped.migrationHash);
       if (existingCheck) {
-        this.logger.debug("Skipping ticket with existing migration hash", { v2Id: ticketId });
+        this.logger.debug("Skipping ticket with existing migration hash", { operation: "processTicket", v2Id: ticketId });
         return { v2Id: ticketId, status: "skipped", reason: "Migration hash already exists in v3" };
       }
     }
@@ -153,7 +167,7 @@ export class MigrationService {
     // Register alias
     this.aliasStore.register(mapped.v2Id, workId(createResult.value));
 
-    this.logger.info("Migrated ticket", { v2Id: ticketId, v3Id: createResult.value });
+    this.logger.info("Migrated ticket", { operation: "processTicket", v2Id: ticketId, v3Id: createResult.value });
     return { v2Id: ticketId, v3Id: createResult.value, status: "created" };
   }
 

@@ -76,6 +76,19 @@ async function handleRequest(
   const url = new URL(req.url!, `http://${req.headers.host}`);
   const { pathname, searchParams } = url;
 
+  // ── GET /api/health ──────────────────────────────────────────────────────
+  if (pathname === "/api/health") {
+    const status = container.status.getStatus();
+    const allHealthy = status.subsystems.every((s) => s.healthy);
+    jsonResponse(res, allHealthy ? 200 : 503, {
+      healthy: allHealthy,
+      version: status.version,
+      uptime: status.uptime,
+      subsystems: status.subsystems,
+    });
+    return;
+  }
+
   // ── GET /api/status ──────────────────────────────────────────────────────
   if (pathname === "/api/status") {
     const status = container.status.getStatus();

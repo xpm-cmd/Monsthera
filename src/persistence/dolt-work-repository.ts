@@ -1,13 +1,15 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
+import type {
+  StorageError,
+} from "../core/errors.js";
 import {
   NotFoundError,
   ValidationError,
   StateTransitionError,
-  StorageError,
 } from "../core/errors.js";
-import { WorkPhase, generateWorkId, timestamp, workId, agentId } from "../core/types.js";
+import { WorkPhase, generateWorkId, timestamp } from "../core/types.js";
 import type { WorkId, AgentId, WorkPhase as WorkPhaseType, Priority } from "../core/types.js";
 import { checkTransition } from "../work/lifecycle.js";
 import { WORK_TEMPLATES } from "../work/templates.js";
@@ -16,9 +18,6 @@ import type {
   WorkArticleRepository,
   CreateWorkArticleInput,
   UpdateWorkArticleInput,
-  EnrichmentAssignment,
-  ReviewAssignment,
-  PhaseHistoryEntry,
 } from "../work/repository.js";
 import { executeQuery, executeMutation, executeTransaction } from "./connection.js";
 import {

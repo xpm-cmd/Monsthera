@@ -1,4 +1,5 @@
 import type { KnowledgeService } from "../knowledge/service.js";
+import { successResponse, errorResponse, requireString, optionalString, isErrorResponse, MAX_QUERY_LENGTH } from "./validation.js";
 
 /** MCP tool definition shape */
 export interface ToolDefinition {
@@ -98,45 +99,6 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
   ];
 }
 
-/** Helper to build a success response */
-function successResponse(data: unknown): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-  };
-}
-
-/** Helper to build an error response */
-function errorResponse(code: string, message: string): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify({ error: code, message }) }],
-    isError: true,
-  };
-}
-
-/** Extract a required string arg, returning an error response if missing or wrong type */
-function requireString(args: Record<string, unknown>, key: string): string | ToolResponse {
-  const value = args[key];
-  if (typeof value !== "string" || value.length === 0) {
-    return errorResponse("VALIDATION_FAILED", `"${key}" is required and must be a non-empty string`);
-  }
-  return value;
-}
-
-/** Extract an optional string arg, returning an error response if present but wrong type */
-function optionalString(args: Record<string, unknown>, key: string): string | undefined | ToolResponse {
-  const value = args[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string") {
-    return errorResponse("VALIDATION_FAILED", `"${key}" must be a string`);
-  }
-  return value;
-}
-
-/** Type guard: is the value a ToolResponse (i.e., an error from arg extraction)? */
-function isErrorResponse(value: unknown): value is ToolResponse {
-  return typeof value === "object" && value !== null && "isError" in value;
-}
-
 /** Handle a knowledge tool call */
 export async function handleKnowledgeTool(
   name: string,
@@ -188,7 +150,7 @@ export async function handleKnowledgeTool(
       return successResponse(result.value);
     }
     case "search_articles": {
-      const query = requireString(args, "query");
+      const query = requireString(args, "query", MAX_QUERY_LENGTH);
       if (isErrorResponse(query)) return query;
       const result = await service.searchArticles(query);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);

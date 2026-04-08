@@ -12,6 +12,13 @@ export interface SystemStatus {
   uptime: number;
   timestamp: Timestamp;
   subsystems: SubsystemStatus[];
+  stats?: {
+    knowledgeArticleCount?: number;
+    workArticleCount?: number;
+    searchIndexSize?: number;
+    lastReindexAt?: string;
+    lastMigrationAt?: string;
+  };
 }
 
 export interface StatusReporter {
@@ -23,11 +30,15 @@ export interface StatusReporter {
 
   /** Get current system status */
   getStatus(): SystemStatus;
+
+  /** Record a stat value */
+  recordStat(key: string, value: unknown): void;
 }
 
 export function createStatusReporter(version: string): StatusReporter {
   const startTime = Date.now();
   const checks = new Map<string, () => SubsystemStatus>();
+  const stats = new Map<string, unknown>();
 
   return {
     register(name, check) {
@@ -38,18 +49,26 @@ export function createStatusReporter(version: string): StatusReporter {
       checks.delete(name);
     },
 
+    recordStat(key: string, value: unknown) {
+      stats.set(key, value);
+    },
+
     getStatus(): SystemStatus {
       const subsystems: SubsystemStatus[] = [];
       for (const check of checks.values()) {
         subsystems.push(check());
       }
 
-      return {
+      const result: SystemStatus = {
         version,
         uptime: Date.now() - startTime,
         timestamp: timestamp(),
         subsystems,
       };
+      if (stats.size > 0) {
+        result.stats = Object.fromEntries(stats) as SystemStatus["stats"];
+      }
+      return result;
     },
   };
 }

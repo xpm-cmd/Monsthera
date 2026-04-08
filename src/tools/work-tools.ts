@@ -2,47 +2,7 @@ import type { WorkService } from "../work/service.js";
 import { WorkPhase } from "../core/types.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import type { ToolDefinition, ToolResponse } from "./knowledge-tools.js";
-
-// ─── Private Helpers ──────────────────────────────────────────────────────────
-
-/** Helper to build a success response */
-function successResponse(data: unknown): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-  };
-}
-
-/** Helper to build an error response */
-function errorResponse(code: string, message: string): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify({ error: code, message }) }],
-    isError: true,
-  };
-}
-
-/** Extract a required string arg, returning an error response if missing or wrong type */
-function requireString(args: Record<string, unknown>, key: string): string | ToolResponse {
-  const value = args[key];
-  if (typeof value !== "string" || value.length === 0) {
-    return errorResponse("VALIDATION_FAILED", `"${key}" is required and must be a non-empty string`);
-  }
-  return value;
-}
-
-/** Extract an optional string arg, returning an error response if present but wrong type */
-function optionalString(args: Record<string, unknown>, key: string): string | undefined | ToolResponse {
-  const value = args[key];
-  if (value === undefined) return undefined;
-  if (typeof value !== "string") {
-    return errorResponse("VALIDATION_FAILED", `"${key}" must be a string`);
-  }
-  return value;
-}
-
-/** Type guard: is the value a ToolResponse (i.e., an error from arg extraction)? */
-function isErrorResponse(value: unknown): value is ToolResponse {
-  return typeof value === "object" && value !== null && "isError" in value;
-}
+import { successResponse, errorResponse, requireString, optionalString, isErrorResponse, requireEnum } from "./validation.js";
 
 // ─── Tool Definitions ─────────────────────────────────────────────────────────
 
@@ -246,8 +206,9 @@ export async function handleWorkTool(
     case "list_work": {
       const phase = optionalString(args, "phase");
       if (isErrorResponse(phase)) return phase;
-      if (phase !== undefined && !VALID_PHASES.has(phase)) {
-        return errorResponse("VALIDATION_FAILED", `"${phase}" is not a valid phase`);
+      if (phase !== undefined) {
+        const enumErr = requireEnum(phase, VALID_PHASES, "phase");
+        if (enumErr) return enumErr;
       }
       const result = await service.listWork(phase as WorkPhaseType);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
@@ -258,9 +219,8 @@ export async function handleWorkTool(
       if (isErrorResponse(id)) return id;
       const targetPhase = requireString(args, "targetPhase");
       if (isErrorResponse(targetPhase)) return targetPhase;
-      if (!VALID_PHASES.has(targetPhase)) {
-        return errorResponse("VALIDATION_FAILED", `"${targetPhase}" is not a valid phase`);
-      }
+      const phaseErr = requireEnum(targetPhase, VALID_PHASES, "targetPhase");
+      if (phaseErr) return phaseErr;
       const result = await service.advancePhase(id, targetPhase as WorkPhaseType);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
@@ -272,9 +232,8 @@ export async function handleWorkTool(
       if (isErrorResponse(role)) return role;
       const status = requireString(args, "status");
       if (isErrorResponse(status)) return status;
-      if (!VALID_ENRICHMENT_STATUSES.has(status)) {
-        return errorResponse("VALIDATION_FAILED", `"${status}" is not a valid enrichment status`);
-      }
+      const enrichErr = requireEnum(status, VALID_ENRICHMENT_STATUSES, "status");
+      if (enrichErr) return enrichErr;
       const result = await service.contributeEnrichment(id, role, status as "contributed" | "skipped");
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
@@ -295,9 +254,8 @@ export async function handleWorkTool(
       if (isErrorResponse(agentIdVal)) return agentIdVal;
       const status = requireString(args, "status");
       if (isErrorResponse(status)) return status;
-      if (!VALID_REVIEW_STATUSES.has(status)) {
-        return errorResponse("VALIDATION_FAILED", `"${status}" is not a valid review status`);
-      }
+      const reviewErr = requireEnum(status, VALID_REVIEW_STATUSES, "status");
+      if (reviewErr) return reviewErr;
       const result = await service.submitReview(id, agentIdVal, status as "approved" | "changes-requested");
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);

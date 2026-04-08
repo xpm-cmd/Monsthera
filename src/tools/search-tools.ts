@@ -1,5 +1,6 @@
 import type { SearchService } from "../search/service.js";
 import type { ToolDefinition, ToolResponse } from "./knowledge-tools.js";
+import { successResponse, errorResponse, requireString, isErrorResponse, requireEnum } from "./validation.js";
 
 export type { ToolDefinition, ToolResponse };
 
@@ -64,39 +65,6 @@ export function searchToolDefinitions(): ToolDefinition[] {
   ];
 }
 
-// ─── Private helpers ──────────────────────────────────────────────────────────
-
-function successResponse(data: unknown): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-  };
-}
-
-function errorResponse(code: string, message: string): ToolResponse {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify({ error: code, message }) }],
-    isError: true,
-  };
-}
-
-function requireString(
-  args: Record<string, unknown>,
-  key: string,
-): string | ToolResponse {
-  const value = args[key];
-  if (typeof value !== "string" || value.length === 0) {
-    return errorResponse(
-      "VALIDATION_FAILED",
-      `"${key}" is required and must be a non-empty string`,
-    );
-  }
-  return value;
-}
-
-function isErrorResponse(value: unknown): value is ToolResponse {
-  return typeof value === "object" && value !== null && "isError" in value;
-}
-
 // ─── Valid source values ──────────────────────────────────────────────────────
 
 const VALID_SOURCES = new Set(["knowledge", "work"]);
@@ -120,9 +88,8 @@ export async function handleSearchTool(
       if (isErrorResponse(id)) return id;
       const source = requireString(args, "source");
       if (isErrorResponse(source)) return source;
-      if (!VALID_SOURCES.has(source)) {
-        return errorResponse("VALIDATION_FAILED", `"source" must be "knowledge" or "work"`);
-      }
+      const sourceErr = requireEnum(source, VALID_SOURCES, "source");
+      if (sourceErr) return sourceErr;
       const result =
         source === "knowledge"
           ? await service.indexKnowledgeArticle(id)

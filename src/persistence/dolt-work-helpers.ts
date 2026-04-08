@@ -3,10 +3,7 @@ import {
   workId,
   agentId,
   timestamp,
-  type WorkId,
-  type AgentId,
   type WorkPhase,
-  type Timestamp,
 } from "../core/types.js";
 import type {
   WorkArticle,

@@ -110,6 +110,7 @@ function handleHelp(): void {
       "  work <subcommand>        Manage work articles",
       "  search <query>           Search across all articles",
       "  reindex                  Rebuild the search index",
+      "  doctor                   Run health checks and diagnostics",
       "",
       "KNOWLEDGE SUBCOMMANDS",
       "  knowledge create  --title <t> --category <c> --content <body> [--tags t1,t2] [--code-refs r1,r2]",
@@ -546,6 +547,50 @@ async function handleReindex(args: string[]): Promise<void> {
   });
 }
 
+// ─── Doctor ─────────────────────────────────────────────────────────────────
+
+async function handleDoctor(args: string[]): Promise<void> {
+  await withContainer(args, async (container) => {
+    process.stdout.write("Monsthera Doctor\n");
+    process.stdout.write("================\n\n");
+
+    const status = container.status.getStatus();
+
+    // Version & uptime
+    process.stdout.write(`Version: ${status.version}\n`);
+    process.stdout.write(`Uptime: ${Math.round(status.uptime / 1000)}s\n\n`);
+
+    // Subsystem health
+    process.stdout.write("Subsystems:\n");
+    let allHealthy = true;
+    for (const sub of status.subsystems) {
+      const icon = sub.healthy ? "[OK]" : "[FAIL]";
+      if (!sub.healthy) allHealthy = false;
+      process.stdout.write(`  ${icon} ${sub.name}${sub.detail ? ` — ${sub.detail}` : ""}\n`);
+    }
+    process.stdout.write("\n");
+
+    // Article counts
+    const knowledgeResult = await container.knowledgeService.listArticles();
+    const workResult = await container.workService.listWork();
+    if (knowledgeResult.ok) {
+      process.stdout.write(`Knowledge articles: ${knowledgeResult.value.length}\n`);
+    }
+    if (workResult.ok) {
+      process.stdout.write(`Work articles: ${workResult.value.length}\n`);
+    }
+    process.stdout.write("\n");
+
+    // Overall verdict
+    if (allHealthy) {
+      process.stdout.write("All systems healthy.\n");
+    } else {
+      process.stdout.write("Some subsystems are unhealthy. Check configuration.\n");
+      process.exit(1);
+    }
+  });
+}
+
 // ─── Main entry point ────────────────────────────────────────────────────────
 
 export async function main(args: string[]): Promise<void> {
@@ -570,6 +615,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "reindex":
         await handleReindex(args.slice(1));
+        break;
+      case "doctor":
+        await handleDoctor(args.slice(1));
         break;
       case "--version":
       case "-v":

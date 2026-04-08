@@ -13,6 +13,7 @@ import { timestamp } from "../../../src/core/types.js";
 const mockStatus: StatusReporter = {
   register: () => {},
   unregister: () => {},
+  recordStat: () => {},
   getStatus: (): SystemStatus => ({
     version: "test",
     uptime: 0,
