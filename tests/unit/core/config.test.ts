@@ -1,537 +1,244 @@
-import { afterEach, describe, it, expect } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
+  defaultConfig,
+  validateConfig,
+  applyEnvOverrides,
+  loadConfig,
   MonstheraConfigSchema,
-  resolveConfig,
-  mergeConfigSources,
-  loadConfigFile,
 } from "../../../src/core/config.js";
-import { DEFAULT_SEARCH_CONFIG } from "../../../src/search/constants.js";
 
-const tempDirs: string[] = [];
+// ─── defaultConfig() ─────────────────────────────────────────────────────────
 
-afterEach(() => {
-  for (const dir of tempDirs) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-  tempDirs.length = 0;
+describe("defaultConfig()", () => {
+  it("returns a valid config with all defaults", () => {
+    const config = defaultConfig("/some/repo");
+    expect(config.repoPath).toBe("/some/repo");
+    expect(config.verbosity).toBe("normal");
+    expect(config.storage.markdownRoot).toBe("knowledge");
+    expect(config.storage.doltEnabled).toBe(false);
+    expect(config.storage.doltHost).toBe("localhost");
+    expect(config.storage.doltPort).toBe(3306);
+    expect(config.storage.doltDatabase).toBe("monsthera");
+    expect(config.search.semanticEnabled).toBe(true);
+    expect(config.search.embeddingModel).toBe("nomic-embed-text");
+    expect(config.search.embeddingProvider).toBe("ollama");
+    expect(config.search.alpha).toBe(0.5);
+    expect(config.search.ollamaUrl).toBe("http://localhost:11434");
+    expect(config.orchestration.autoAdvance).toBe(false);
+    expect(config.orchestration.pollIntervalMs).toBe(30000);
+    expect(config.orchestration.maxConcurrentAgents).toBe(5);
+    expect(config.server.port).toBe(3000);
+    expect(config.server.host).toBe("localhost");
+  });
 });
+
+// ─── validateConfig() ────────────────────────────────────────────────────────
+
+describe("validateConfig()", () => {
+  it("accepts a valid config object", () => {
+    const result = validateConfig({ repoPath: "/my/project" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.repoPath).toBe("/my/project");
+    }
+  });
+
+  it("rejects config missing repoPath", () => {
+    const result = validateConfig({});
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("ConfigurationError");
+      expect(result.error.message).toMatch(/invalid configuration/i);
+    }
+  });
+
+  it("applies defaults for optional sections", () => {
+    const result = validateConfig({ repoPath: "/repo" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // All optional sections should have defaults
+      expect(result.value.storage).toBeDefined();
+      expect(result.value.search).toBeDefined();
+      expect(result.value.orchestration).toBeDefined();
+      expect(result.value.server).toBeDefined();
+      expect(result.value.verbosity).toBe("normal");
+    }
+  });
+
+  it("accepts a fully specified config", () => {
+    const result = validateConfig({
+      repoPath: "/repo",
+      verbosity: "debug",
+      storage: { markdownRoot: "docs", doltEnabled: true, doltHost: "db", doltPort: 3306, doltDatabase: "test" },
+      search: {
+        semanticEnabled: false,
+        embeddingModel: "custom-model",
+        embeddingProvider: "huggingface",
+        alpha: 0.7,
+        ollamaUrl: "http://remote:11434",
+      },
+      orchestration: { autoAdvance: true, pollIntervalMs: 5000, maxConcurrentAgents: 10 },
+      server: { port: 8080, host: "0.0.0.0" },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.verbosity).toBe("debug");
+      expect(result.value.server.port).toBe(8080);
+    }
+  });
+});
+
+// ─── applyEnvOverrides() ─────────────────────────────────────────────────────
+
+describe("applyEnvOverrides()", () => {
+  beforeEach(() => {
+    // Clean up relevant env vars before each test
+    delete process.env["MONSTHERA_VERBOSITY"];
+    delete process.env["MONSTHERA_PORT"];
+    delete process.env["MONSTHERA_HOST"];
+    delete process.env["MONSTHERA_DOLT_ENABLED"];
+    delete process.env["MONSTHERA_MARKDOWN_ROOT"];
+    delete process.env["MONSTHERA_SEMANTIC_ENABLED"];
+    delete process.env["MONSTHERA_EMBEDDING_MODEL"];
+    delete process.env["MONSTHERA_OLLAMA_URL"];
+  });
+
+  afterEach(() => {
+    // Restore after each test
+    delete process.env["MONSTHERA_VERBOSITY"];
+    delete process.env["MONSTHERA_PORT"];
+    delete process.env["MONSTHERA_HOST"];
+    delete process.env["MONSTHERA_DOLT_ENABLED"];
+    delete process.env["MONSTHERA_MARKDOWN_ROOT"];
+    delete process.env["MONSTHERA_SEMANTIC_ENABLED"];
+    delete process.env["MONSTHERA_EMBEDDING_MODEL"];
+    delete process.env["MONSTHERA_OLLAMA_URL"];
+  });
+
+  it("merges MONSTHERA_VERBOSITY", () => {
+    process.env["MONSTHERA_VERBOSITY"] = "debug";
+    const result = applyEnvOverrides({ repoPath: "/repo" });
+    expect(result["verbosity"]).toBe("debug");
+  });
+
+  it("merges MONSTHERA_PORT as a number", () => {
+    process.env["MONSTHERA_PORT"] = "8080";
+    const result = applyEnvOverrides({ repoPath: "/repo" });
+    expect(typeof (result["server"] as Record<string, unknown>)?.["port"]).toBe("number");
+    expect((result["server"] as Record<string, unknown>)?.["port"]).toBe(8080);
+  });
+
+  it("does not override when env vars are not set", () => {
+    const base = { repoPath: "/repo", verbosity: "quiet" };
+    const result = applyEnvOverrides(base);
+    expect(result["verbosity"]).toBe("quiet");
+  });
+
+  it("merges MONSTHERA_DOLT_ENABLED as boolean", () => {
+    process.env["MONSTHERA_DOLT_ENABLED"] = "true";
+    const result = applyEnvOverrides({ repoPath: "/repo" });
+    expect((result["storage"] as Record<string, unknown>)?.["doltEnabled"]).toBe(true);
+  });
+
+  it("preserves existing server config when setting port", () => {
+    process.env["MONSTHERA_PORT"] = "9000";
+    const result = applyEnvOverrides({ repoPath: "/repo", server: { host: "0.0.0.0", port: 3000 } });
+    const server = result["server"] as Record<string, unknown>;
+    expect(server["host"]).toBe("0.0.0.0");
+    expect(server["port"]).toBe(9000);
+  });
+});
+
+// ─── loadConfig() ────────────────────────────────────────────────────────────
+
+describe("loadConfig()", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "monsthera-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns defaults when no config file exists", () => {
+    const result = loadConfig(tmpDir);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.repoPath).toBe(tmpDir);
+      expect(result.value.verbosity).toBe("normal");
+      expect(result.value.server.port).toBe(3000);
+    }
+  });
+
+  it("reads config from file when it exists", () => {
+    const configDir = path.join(tmpDir, ".monsthera");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, "config.json"),
+      JSON.stringify({ verbosity: "verbose", server: { port: 9999 } }),
+      "utf-8",
+    );
+
+    const result = loadConfig(tmpDir);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.verbosity).toBe("verbose");
+      expect(result.value.server.port).toBe(9999);
+      expect(result.value.repoPath).toBe(tmpDir);
+    }
+  });
+
+  it("returns error for malformed JSON", () => {
+    const configDir = path.join(tmpDir, ".monsthera");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, "config.json"), "{ this is not valid json }", "utf-8");
+
+    const result = loadConfig(tmpDir);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("ConfigurationError");
+      expect(result.error.message).toMatch(/malformed json/i);
+    }
+  });
+});
+
+// ─── Schema validation edge cases ────────────────────────────────────────────
 
 describe("MonstheraConfigSchema", () => {
-  it("parses valid config with only repoPath", () => {
-    const result = MonstheraConfigSchema.parse({ repoPath: "/test/repo" });
-
-    expect(result.repoPath).toBe("/test/repo");
-    expect(result.verbosity).toBe("normal");
-    expect(result.debugLogging).toBe(false);
-    expect(result.transport).toBe("stdio");
-    expect(result.coordinationTopology).toBe("hub-spoke");
-    expect(result.semanticEnabled).toBe(true);
-    expect(result.zoektEnabled).toBe(true);
-    expect(result.noDashboard).toBe(false);
-  });
-
-  it("applies default values for all optional fields", () => {
-    const result = MonstheraConfigSchema.parse({ repoPath: "/r" });
-
-    expect(result.monstheraDir).toBe(".monsthera");
-    expect(result.dbName).toBe("monsthera.db");
-    expect(result.dashboardPort).toBeGreaterThanOrEqual(1024);
-    expect(result.httpPort).toBe(3000);
-    expect(result.excludePatterns.length).toBeGreaterThan(0);
-    expect(result.sensitiveFilePatterns).toContain(".env");
-    expect(result.secretPatterns).toEqual([]);
-    expect(result.crossInstance.enabled).toBe(false);
-    expect(result.crossInstance.peers).toEqual([]);
-    expect(result.search).toEqual(DEFAULT_SEARCH_CONFIG);
-    expect(result.ticketQuorum.enabled).toBe(true);
-    expect(result.ticketQuorum.vetoSpecializations).toEqual(["architect", "security"]);
-    expect(result.governance.modelDiversity).toEqual({
-      strict: true,
-      maxVotersPerModel: 3,
+  it("rejects invalid verbosity level", () => {
+    const result = MonstheraConfigSchema.safeParse({
+      repoPath: "/repo",
+      verbosity: "super-verbose",
     });
-    expect(result.governance.backlogPlanningGate).toEqual({
-      enforce: true,
-      minIterations: 3,
-      requiredDistinctModels: 2,
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects alpha out of 0-1 range (above 1)", () => {
+    const result = MonstheraConfigSchema.safeParse({
+      repoPath: "/repo",
+      search: { alpha: 1.5 },
     });
-    expect(result.governance.requireBinding).toBe(false);
-    expect(result.retrospective.enabled).toBe(false);
+    expect(result.success).toBe(false);
   });
 
-  it("rejects missing repoPath", () => {
-    expect(() => MonstheraConfigSchema.parse({})).toThrow();
-  });
-
-  it("rejects invalid dashboardPort (below 1024)", () => {
-    expect(() => MonstheraConfigSchema.parse({ repoPath: "/r", dashboardPort: 80 })).toThrow();
-  });
-
-  it("rejects invalid dashboardPort (above 65535)", () => {
-    expect(() => MonstheraConfigSchema.parse({ repoPath: "/r", dashboardPort: 70000 })).toThrow();
-  });
-
-  it("rejects invalid verbosity", () => {
-    expect(() => MonstheraConfigSchema.parse({ repoPath: "/r", verbosity: "debug" })).toThrow();
-  });
-
-  it("rejects invalid transport", () => {
-    expect(() => MonstheraConfigSchema.parse({ repoPath: "/r", transport: "grpc" })).toThrow();
-  });
-
-  it("accepts valid registrationAuth", () => {
-    const result = MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      registrationAuth: {
-        enabled: true,
-        observerOpenRegistration: false,
-        roleTokens: { developer: "secret-123" },
-      },
+  it("rejects alpha out of 0-1 range (below 0)", () => {
+    const result = MonstheraConfigSchema.safeParse({
+      repoPath: "/repo",
+      search: { alpha: -0.1 },
     });
-
-    expect(result.registrationAuth.enabled).toBe(true);
-    expect(result.registrationAuth.observerOpenRegistration).toBe(false);
-    expect(result.registrationAuth.roleTokens.developer).toBe("secret-123");
+    expect(result.success).toBe(false);
   });
 
-  it("accepts valid toolRateLimits", () => {
-    const result = MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      toolRateLimits: {
-        defaultPerMinute: 20,
-        overrides: { get_code_pack: 5, status: 100 },
-      },
+  it("rejects pollIntervalMs below minimum (1000)", () => {
+    const result = MonstheraConfigSchema.safeParse({
+      repoPath: "/repo",
+      orchestration: { pollIntervalMs: 500 },
     });
-
-    expect(result.toolRateLimits.defaultPerMinute).toBe(20);
-    expect(result.toolRateLimits.overrides.get_code_pack).toBe(5);
-    expect(result.toolRateLimits.overrides.status).toBe(100);
-  });
-
-  it("accepts valid search tuning config", () => {
-    const result = MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      search: {
-        semanticBlendAlpha: 0.65,
-        bm25: {
-          file: { path: 2.0, summary: 1.2, symbols: 2.5 },
-        },
-        penalties: {
-          testFiles: 0.55,
-        },
-        thresholds: {
-          andQueryTermCount: 2,
-        },
-      },
-    });
-
-    expect(result.search.semanticBlendAlpha).toBe(0.65);
-    expect(result.search.bm25.file).toEqual({ path: 2.0, summary: 1.2, symbols: 2.5 });
-    expect(result.search.bm25.ticket).toEqual(DEFAULT_SEARCH_CONFIG.bm25.ticket);
-    expect(result.search.penalties.testFiles).toBe(0.55);
-    expect(result.search.penalties.configFiles).toBe(DEFAULT_SEARCH_CONFIG.penalties.configFiles);
-    expect(result.search.thresholds.andQueryTermCount).toBe(2);
-  });
-
-  it("accepts valid crossInstance config", () => {
-    const result = MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      crossInstance: {
-        enabled: true,
-        instanceId: "monsthera-main",
-        peers: [
-          {
-            instanceId: "monsthera-docs",
-            baseUrl: "https://monsthera.example.test",
-            sharedSecret: "1234567890abcdef",
-            allowedCapabilities: ["read_code", "read_knowledge"],
-          },
-        ],
-      },
-    });
-
-    expect(result.crossInstance.enabled).toBe(true);
-    expect(result.crossInstance.instanceId).toBe("monsthera-main");
-    expect(result.crossInstance.peers).toHaveLength(1);
-    expect(result.crossInstance.peers[0]?.allowedCapabilities).toEqual(["read_code", "read_knowledge"]);
-  });
-
-  it("accepts valid ticketQuorum config", () => {
-    const result = MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      ticketQuorum: {
-        requiredPasses: 5,
-        vetoSpecializations: ["security"],
-      },
-    });
-
-    expect(result.ticketQuorum.requiredPasses).toBe(5);
-    expect(result.ticketQuorum.vetoSpecializations).toEqual(["security"]);
-  });
-
-  it("accepts valid governance binding config", () => {
-    const result = MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      governance: {
-        requireBinding: true,
-        nonVotingRoles: ["facilitator"],
-        modelDiversity: { strict: true },
-        backlogPlanningGate: { minIterations: 4 },
-      },
-    });
-
-    expect(result.governance.requireBinding).toBe(true);
-    expect(result.governance.modelDiversity).toEqual({
-      strict: true,
-      maxVotersPerModel: 3,
-    });
-    expect(result.governance.backlogPlanningGate).toEqual({
-      enforce: true,
-      minIterations: 4,
-      requiredDistinctModels: 2,
-    });
-    expect(result.governance.reviewerIndependence).toEqual({
-      strict: true,
-      identityKey: "agent",
-    });
-  });
-
-  it("accepts valid retrospective config", () => {
-    const result = MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      retrospective: {
-        enabled: true,
-        ticketId: "TKT-ce4deff5",
-      },
-    });
-
-    expect(result.retrospective).toEqual({
-      enabled: true,
-      ticketId: "TKT-ce4deff5",
-      commentOnIdle: false,
-    });
-  });
-
-  it("rejects enabled retrospective without a ticket id", () => {
-    expect(() => MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      retrospective: {
-        enabled: true,
-      },
-    })).toThrow(/retrospective\.ticketId is required/i);
-  });
-
-  it("rejects crossInstance enabled without instanceId", () => {
-    expect(() => MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      crossInstance: {
-        enabled: true,
-      },
-    })).toThrow(/instanceId is required/i);
-  });
-
-  it("rejects duplicate crossInstance peer ids", () => {
-    expect(() => MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      crossInstance: {
-        enabled: true,
-        instanceId: "monsthera-main",
-        peers: [
-          {
-            instanceId: "monsthera-peer",
-            baseUrl: "https://one.example.test",
-            sharedSecret: "1234567890abcdef",
-          },
-          {
-            instanceId: "monsthera-peer",
-            baseUrl: "https://two.example.test",
-            sharedSecret: "abcdef1234567890",
-          },
-        ],
-      },
-    })).toThrow(/duplicate peer instanceId/i);
-  });
-
-  it("rejects ticketQuorum requiredPasses above council size", () => {
-    expect(() => MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      ticketQuorum: {
-        requiredPasses: 7,
-      },
-    })).toThrow();
-  });
-
-  it("rejects toolRateLimits with rate below 1", () => {
-    expect(() => MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      toolRateLimits: { defaultPerMinute: 0 },
-    })).toThrow();
-  });
-
-  it("accepts custom secretPatterns", () => {
-    const result = MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      secretPatterns: [{ name: "AWS Key", pattern: "AKIA[A-Z0-9]{16}", flags: "g" }],
-    });
-
-    expect(result.secretPatterns).toHaveLength(1);
-    expect(result.secretPatterns[0]!.name).toBe("AWS Key");
-  });
-
-  it("rejects secretPatterns with invalid flags", () => {
-    expect(() => MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      secretPatterns: [{ name: "Bad", pattern: ".*", flags: "xyz" }],
-    })).toThrow();
-  });
-
-  it("rejects invalid search alpha", () => {
-    expect(() => MonstheraConfigSchema.parse({
-      repoPath: "/r",
-      search: { semanticBlendAlpha: 1.5 },
-    })).toThrow();
-  });
-});
-
-describe("resolveConfig", () => {
-  it("returns a fully resolved config with defaults", () => {
-    const config = resolveConfig({ repoPath: "/test" });
-
-    expect(config.repoPath).toBe("/test");
-    expect(config.verbosity).toBe("normal");
-    expect(config.transport).toBe("stdio");
-  });
-
-  it("preserves explicit overrides", () => {
-    const config = resolveConfig({
-      repoPath: "/test",
-      verbosity: "verbose",
-      debugLogging: true,
-    });
-
-    expect(config.verbosity).toBe("verbose");
-    expect(config.debugLogging).toBe(true);
-  });
-});
-
-describe("mergeConfigSources", () => {
-  it("returns empty object when no sources provided", () => {
-    expect(mergeConfigSources()).toEqual({});
-  });
-
-  it("skips undefined sources", () => {
-    const result = mergeConfigSources(undefined, { repoPath: "/r" }, undefined);
-    expect(result.repoPath).toBe("/r");
-  });
-
-  it("later sources override earlier ones", () => {
-    const result = mergeConfigSources(
-      { repoPath: "/first", verbosity: "quiet" },
-      { repoPath: "/second" },
-    );
-
-    expect(result.repoPath).toBe("/second");
-    expect(result.verbosity).toBe("quiet");
-  });
-
-  it("deep-merges registrationAuth", () => {
-    const result = mergeConfigSources(
-      { registrationAuth: { enabled: false, roleTokens: { observer: "obs-token" } } } as Partial<any>,
-      { registrationAuth: { enabled: true, roleTokens: { developer: "dev-token" } } } as Partial<any>,
-    );
-
-    expect(result.registrationAuth).toEqual({
-      enabled: true,
-      roleTokens: { observer: "obs-token", developer: "dev-token" },
-    });
-  });
-
-  it("deep-merges toolRateLimits", () => {
-    const result = mergeConfigSources(
-      { toolRateLimits: { defaultPerMinute: 10, overrides: { status: 50 } } } as Partial<any>,
-      { toolRateLimits: { defaultPerMinute: 20, overrides: { get_code_pack: 5 } } } as Partial<any>,
-    );
-
-    expect(result.toolRateLimits).toEqual({
-      defaultPerMinute: 20,
-      overrides: { status: 50, get_code_pack: 5 },
-    });
-  });
-
-  it("deep-merges search tuning config", () => {
-    const result = mergeConfigSources(
-      {
-        search: {
-          semanticBlendAlpha: 0.55,
-          bm25: { file: { path: 1.8 } },
-        },
-      } as Partial<any>,
-      {
-        search: {
-          penalties: { testFiles: 0.6 },
-          thresholds: { scopedRelevance: 0.25 },
-        },
-      } as Partial<any>,
-    );
-
-    expect(result.search).toEqual({
-      semanticBlendAlpha: 0.55,
-      bm25: { file: { path: 1.8 } },
-      penalties: { testFiles: 0.6 },
-      thresholds: { scopedRelevance: 0.25 },
-    });
-  });
-
-  it("deep-merges crossInstance and preserves peers when later source omits them", () => {
-    const result = mergeConfigSources(
-      {
-        crossInstance: {
-          enabled: true,
-          instanceId: "monsthera-main",
-          peers: [{
-            instanceId: "monsthera-peer",
-            baseUrl: "https://peer.example.test",
-            sharedSecret: "1234567890abcdef",
-          }],
-        },
-      } as Partial<any>,
-      {
-        crossInstance: {
-          nonceTtlSeconds: 900,
-        },
-      } as Partial<any>,
-    );
-
-    expect(result.crossInstance).toEqual({
-      enabled: true,
-      instanceId: "monsthera-main",
-      nonceTtlSeconds: 900,
-      peers: [{
-        instanceId: "monsthera-peer",
-        baseUrl: "https://peer.example.test",
-        sharedSecret: "1234567890abcdef",
-      }],
-    });
-  });
-
-  it("deep-merges ticketQuorum config", () => {
-    const result = mergeConfigSources(
-      {
-        ticketQuorum: {
-          requiredPasses: 5,
-          vetoSpecializations: ["security"],
-        },
-      } as Partial<any>,
-      {
-        ticketQuorum: {
-          enabled: false,
-        },
-      } as Partial<any>,
-    );
-
-    expect(result.ticketQuorum).toEqual({
-      requiredPasses: 5,
-      vetoSpecializations: ["security"],
-      enabled: false,
-    });
-  });
-
-  it("does not clobber existing registrationAuth when source has no registrationAuth", () => {
-    const result = mergeConfigSources(
-      { registrationAuth: { enabled: true, roleTokens: { developer: "tok" } } } as Partial<any>,
-      { verbosity: "verbose" },
-    );
-
-    expect(result.registrationAuth).toEqual({
-      enabled: true,
-      roleTokens: { developer: "tok" },
-    });
-  });
-
-  it("deep-merges retrospective config", () => {
-    const result = mergeConfigSources(
-      { retrospective: { enabled: true, ticketId: "TKT-ce4deff5" } } as Partial<any>,
-      { retrospective: { commentOnIdle: true } } as Partial<any>,
-    );
-
-    expect(result.retrospective).toEqual({
-      enabled: true,
-      ticketId: "TKT-ce4deff5",
-      commentOnIdle: true,
-    });
-  });
-
-  it("deep-merges governance backlog planning gate config", () => {
-    const result = mergeConfigSources(
-      { governance: { backlogPlanningGate: { enforce: true, minIterations: 3 } } } as Partial<any>,
-      { governance: { backlogPlanningGate: { requiredDistinctModels: 4 } } } as Partial<any>,
-    );
-
-    expect(result.governance).toEqual({
-      backlogPlanningGate: {
-        enforce: true,
-        minIterations: 3,
-        requiredDistinctModels: 4,
-      },
-    });
-  });
-});
-
-describe("loadConfigFile", () => {
-  it("returns empty config when the file does not exist", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-config-missing-"));
-    tempDirs.push(repoPath);
-
-    expect(loadConfigFile(repoPath)).toEqual({});
-  });
-
-  it("loads a valid config object from disk", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-config-valid-"));
-    tempDirs.push(repoPath);
-    mkdirSync(join(repoPath, ".monsthera"), { recursive: true });
-
-    writeFileSync(
-      join(repoPath, ".monsthera", "config.json"),
-      JSON.stringify({
-        verbosity: "verbose",
-        registrationAuth: {
-          enabled: true,
-          roleTokens: { developer: "secret-123" },
-        },
-      }),
-      { encoding: "utf-8" },
-    );
-
-    expect(loadConfigFile(repoPath)).toEqual({
-      verbosity: "verbose",
-      registrationAuth: {
-        enabled: true,
-        roleTokens: { developer: "secret-123" },
-      },
-    });
-  });
-
-  it("throws when config contains invalid JSON", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-config-json-"));
-    tempDirs.push(repoPath);
-    mkdirSync(join(repoPath, ".monsthera"), { recursive: true });
-
-    writeFileSync(join(repoPath, ".monsthera", "config.json"), "{bad json", { encoding: "utf-8" });
-
-    expect(() => loadConfigFile(repoPath)).toThrow();
-  });
-
-  it("throws when config is not an object", () => {
-    const repoPath = mkdtempSync(join(tmpdir(), "monsthera-config-shape-"));
-    tempDirs.push(repoPath);
-    mkdirSync(join(repoPath, ".monsthera"), { recursive: true });
-
-    writeFileSync(join(repoPath, ".monsthera", "config.json"), JSON.stringify(["not", "an", "object"]), {
-      encoding: "utf-8",
-    });
-
-    expect(() => loadConfigFile(repoPath)).toThrow(/expected an object/i);
+    expect(result.success).toBe(false);
   });
 });

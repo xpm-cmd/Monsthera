@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "monsthera": {
-      "command": "monsthera",
-      "args": ["serve", "--repo-path", "."],
-      "env": {}
-    }
-  }
-}
