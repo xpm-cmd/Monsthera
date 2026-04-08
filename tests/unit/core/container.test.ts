@@ -105,7 +105,7 @@ describe("createTestContainer()", () => {
 
   it("uses /tmp/monsthera-test as the default repo path", async () => {
     const container = await createTestContainer();
-    expect(container.config.repoPath).toBe("/tmp/monsthera-test");
+    expect(container.config.repoPath).toMatch(/^\/tmp\/monsthera-test-/);
     await container.dispose();
   });
 

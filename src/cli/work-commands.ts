@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import { WorkPhase, VALID_PHASES } from "../core/types.js";
+import { VALID_PHASES } from "../core/types.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import {
   formatWorkArticle,

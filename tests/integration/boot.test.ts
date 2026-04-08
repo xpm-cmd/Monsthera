@@ -50,7 +50,7 @@ describe("Integration: Container boot", () => {
 
   it("createTestContainer boots and disposes cleanly", async () => {
     const container = await createTestContainer();
-    expect(container.config.repoPath).toBe("/tmp/monsthera-test");
+    expect(container.config.repoPath).toMatch(/^\/tmp\/monsthera-test-/);
 
     const status = container.status.getStatus();
     expect(status.version).toBe(VERSION);

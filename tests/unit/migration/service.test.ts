@@ -189,6 +189,25 @@ describe("MigrationService", () => {
       expect(resolved.value).toBeDefined();
     });
 
+    it("rehydrates aliases from migrated articles after a restart", async () => {
+      reader.tickets = [makeTicket()];
+
+      const firstRun = await service.run("execute");
+      expect(firstRun.ok).toBe(true);
+      if (!firstRun.ok) return;
+
+      const secondService = new MigrationService({
+        v2Reader: reader,
+        workRepo,
+        logger: createLogger({ level: "warn", domain: "test" }),
+      });
+
+      const resolved = await secondService.resolveAlias("T-2001");
+      expect(resolved.ok).toBe(true);
+      if (!resolved.ok) return;
+      expect(resolved.value).toBe(firstRun.value.items[0]!.v3Id);
+    });
+
     it("skips already-migrated tickets on second run", async () => {
       reader.tickets = [makeTicket()];
 

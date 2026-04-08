@@ -756,6 +756,7 @@ describe("addDependency", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.blockedBy).toContain(blocker.id);
+    expect(result.value.dependencies).toContain(blocker.id);
   });
 
   it("is idempotent for same dependency", async () => {
@@ -803,6 +804,7 @@ describe("removeDependency", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.blockedBy).not.toContain(blocker.id);
+    expect(result.value.dependencies).not.toContain(blocker.id);
   });
 
   it("is safe to remove non-existent dependency", async () => {

@@ -12,7 +12,7 @@ import {
 import { WorkPhase, generateWorkId, timestamp } from "../core/types.js";
 import type { WorkId, AgentId, WorkPhase as WorkPhaseType, Priority } from "../core/types.js";
 import { checkTransition } from "../work/lifecycle.js";
-import { WORK_TEMPLATES } from "../work/templates.js";
+import { WORK_TEMPLATES, generateInitialContent } from "../work/templates.js";
 import type {
   WorkArticle,
   WorkArticleRepository,
@@ -135,7 +135,7 @@ export class DoltWorkRepository implements WorkArticleRepository {
         JSON.stringify([]),
         JSON.stringify([]),
         JSON.stringify([]),
-        input.content ?? "",
+        input.content ?? generateInitialContent(input.template),
         now,
         now,
       ]);
@@ -231,19 +231,22 @@ export class DoltWorkRepository implements WorkArticleRepository {
       // Delete work_articles
       await connection.execute("DELETE FROM work_articles WHERE id = ?", [id]);
 
-      // Cascade: remove dangling blockedBy references in other articles
+      // Cascade: remove dangling dependency references in other articles
       const articlesResult = await connection.execute(
-        "SELECT id, blocked_by FROM work_articles WHERE blocked_by LIKE ?",
-        [`%"${id}"%`],
+        "SELECT id, dependencies, blocked_by FROM work_articles WHERE blocked_by LIKE ? OR dependencies LIKE ?",
+        [`%"${id}"%`, `%"${id}"%`],
       );
       const [articles] = articlesResult;
 
       for (const row of articles as unknown[]) {
-        const dbRow = row as { id: string; blocked_by: string };
+        const dbRow = row as { id: string; dependencies: string; blocked_by: string };
+        const dependencies = JSON.parse(dbRow.dependencies) as string[];
         const blockedBy = JSON.parse(dbRow.blocked_by) as string[];
+        const filteredDependencies = dependencies.filter((dep) => dep !== id);
         const filtered = blockedBy.filter((dep) => dep !== id);
 
-        await connection.execute("UPDATE work_articles SET blocked_by = ? WHERE id = ?", [
+        await connection.execute("UPDATE work_articles SET dependencies = ?, blocked_by = ? WHERE id = ?", [
+          JSON.stringify(filteredDependencies),
           JSON.stringify(filtered),
           dbRow.id,
         ]);
@@ -445,16 +448,19 @@ export class DoltWorkRepository implements WorkArticleRepository {
     }
 
     const updatedBlockedBy = [...existing.blockedBy, blockedById];
+    const updatedDependencies = existing.dependencies.includes(blockedById)
+      ? existing.dependencies
+      : [...existing.dependencies, blockedById];
     const updateSql = `
       UPDATE work_articles
-      SET blocked_by = ?, updated_at = ?
+      SET dependencies = ?, blocked_by = ?, updated_at = ?
       WHERE id = ?
     `;
 
     const updateResult = await executeMutation(
       this.pool,
       updateSql,
-      [JSON.stringify(updatedBlockedBy), timestamp(), id],
+      [JSON.stringify(updatedDependencies), JSON.stringify(updatedBlockedBy), timestamp(), id],
     );
 
     if (!updateResult.ok) return updateResult;
@@ -471,17 +477,18 @@ export class DoltWorkRepository implements WorkArticleRepository {
 
     const existing = mutable.value;
 
+    const updatedDependencies = existing.dependencies.filter((dep) => dep !== blockedById);
     const updatedBlockedBy = existing.blockedBy.filter((dep) => dep !== blockedById);
     const updateSql = `
       UPDATE work_articles
-      SET blocked_by = ?, updated_at = ?
+      SET dependencies = ?, blocked_by = ?, updated_at = ?
       WHERE id = ?
     `;
 
     const updateResult = await executeMutation(
       this.pool,
       updateSql,
-      [JSON.stringify(updatedBlockedBy), timestamp(), id],
+      [JSON.stringify(updatedDependencies), JSON.stringify(updatedBlockedBy), timestamp(), id],
     );
 
     if (!updateResult.ok) return updateResult;
