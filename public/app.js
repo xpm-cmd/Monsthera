@@ -14,22 +14,46 @@ if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
 
 const content = document.getElementById("content");
 
+// ─── Page lifecycle ─────────────────────────────────────────────────────────
+
+let currentCleanup = null;
+let navigationId = 0; // Incremented on each navigation to cancel stale loads
+
+function teardownCurrentPage() {
+  if (currentCleanup) {
+    try { currentCleanup(); } catch (e) { console.error("Page cleanup error:", e); }
+    currentCleanup = null;
+  }
+  content.textContent = "";
+}
+
 // ─── Route-to-module mapping ────────────────────────────────────────────────
 
 async function loadPage(modulePath, params = {}) {
+  const thisNavId = ++navigationId;
+  teardownCurrentPage();
+
   const currentPath = window.location.pathname;
   updateSidebar(currentPath);
-  content.textContent = "";
+
   const loadingDiv = document.createElement("div");
   loadingDiv.className = "loading";
   loadingDiv.textContent = "Loading...";
   content.appendChild(loadingDiv);
+
   try {
     const mod = await import(modulePath);
+    // If another navigation happened while we were loading, abort
+    if (thisNavId !== navigationId) return;
     content.textContent = "";
-    await mod.render(content, params);
+    const result = await mod.render(content, params);
+    // Check again after async render
+    if (thisNavId !== navigationId) return;
+    // Store cleanup function if the page returned one
+    currentCleanup = typeof result === "function" ? result : (result?.cleanup ?? null);
     if (typeof lucide !== "undefined") lucide.createIcons({ nodes: [content] });
   } catch (err) {
+    if (thisNavId !== navigationId) return;
     console.error("Page load error:", err);
     content.textContent = "";
     const errDiv = document.createElement("div");
@@ -53,7 +77,7 @@ router
   .add("/system/storage", () => loadPage("./pages/system/storage.js"))
   .add("/security", () => loadPage("./pages/security.js"))
   .onNotFound(() => {
-    content.textContent = "";
+    teardownCurrentPage();
     const nf = document.createElement("div");
     nf.className = "loading";
     nf.textContent = "Page not found";

@@ -83,10 +83,13 @@ export async function render(container) {
 
   rerender();
 
+  const ac = new AbortController();
   container.addEventListener("click", (e) => {
     const tab = e.target.closest("[data-tab]");
     if (tab) { viewMode = tab.dataset.tab; expandedId = null; rerender(); return; }
     const workCard = e.target.closest("[data-work-id]");
     if (workCard) { expandedId = expandedId === workCard.dataset.workId ? null : workCard.dataset.workId; rerender(); }
-  });
+  }, { signal: ac.signal });
+
+  return { cleanup: () => ac.abort() };
 }

@@ -86,9 +86,10 @@ export async function render(container) {
 
   cy.on("tap", "node", (evt) => {
     const data = evt.target.data();
-    const drawer = document.getElementById("graph-drawer");
-    const title = document.getElementById("drawer-title");
-    const body = document.getElementById("drawer-body");
+    const drawer = container.querySelector("#graph-drawer");
+    const title = container.querySelector("#drawer-title");
+    const body = container.querySelector("#drawer-body");
+    if (!drawer || !title || !body) return;
     drawer.classList.add("open");
     title.textContent = data.label;
     body.textContent = "";
@@ -105,10 +106,12 @@ export async function render(container) {
     }
   });
 
-  document.getElementById("close-drawer")?.addEventListener("click", () => document.getElementById("graph-drawer")?.classList.remove("open"));
-  document.getElementById("zoom-in")?.addEventListener("click", () => cy.zoom(cy.zoom() * 1.2));
-  document.getElementById("zoom-out")?.addEventListener("click", () => cy.zoom(cy.zoom() / 1.2));
-  document.getElementById("zoom-fit")?.addEventListener("click", () => cy.fit());
+  // Use scoped queries (container.querySelector) and AbortController for cleanup
+  const ac = new AbortController();
+  container.querySelector("#close-drawer")?.addEventListener("click", () => container.querySelector("#graph-drawer")?.classList.remove("open"), { signal: ac.signal });
+  container.querySelector("#zoom-in")?.addEventListener("click", () => cy.zoom(cy.zoom() * 1.2), { signal: ac.signal });
+  container.querySelector("#zoom-out")?.addEventListener("click", () => cy.zoom(cy.zoom() / 1.2), { signal: ac.signal });
+  container.querySelector("#zoom-fit")?.addEventListener("click", () => cy.fit(), { signal: ac.signal });
 
   container.addEventListener("click", (e) => {
     const tab = e.target.closest("[data-tab]");
@@ -120,5 +123,7 @@ export async function render(container) {
       cy.layout({ name: "cose", animate: false, nodeRepulsion: 8000, idealEdgeLength: 120 }).run();
       container.querySelectorAll("[data-tab]").forEach(t => t.classList.toggle("active", t.dataset.tab === mode));
     }
-  });
+  }, { signal: ac.signal });
+
+  return { cleanup: () => { ac.abort(); cy.destroy(); } };
 }

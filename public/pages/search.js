@@ -56,15 +56,17 @@ export async function render(container) {
 
   rerender();
 
+  const ac = new AbortController();
   container.addEventListener("input", (e) => {
     if (!e.target.classList.contains("search-input")) return;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(async () => {
+      if (ac.signal.aborted) return;
       const q = e.target.value.trim();
       if (!q) { results = []; rerender(); return; }
-      try { results = await api.search(q, 20); selectedResult = null; rerender(); } catch { /* ignore */ }
+      try { results = await api.search(q, 20); selectedResult = null; if (!ac.signal.aborted) rerender(); } catch { /* ignore */ }
     }, 300);
-  });
+  }, { signal: ac.signal });
 
   container.addEventListener("click", async (e) => {
     const filter = e.target.closest("[data-filter]");
@@ -75,8 +77,10 @@ export async function render(container) {
         selectedResult = card.dataset.resultType === "knowledge"
           ? await api.getKnowledgeById(card.dataset.resultId)
           : await api.getWorkById(card.dataset.resultId);
-        rerender();
+        if (!ac.signal.aborted) rerender();
       } catch { /* ignore */ }
     }
-  });
+  }, { signal: ac.signal });
+
+  return { cleanup: () => { ac.abort(); clearTimeout(debounceTimer); } };
 }

@@ -94,12 +94,15 @@ export async function render(container) {
 
   rerender();
 
+  const ac = new AbortController();
   container.addEventListener("click", (e) => {
     const articleLink = e.target.closest("[data-article]");
     if (articleLink) { e.preventDefault(); selectedId = articleLink.dataset.article; rerender(); }
-  });
+  }, { signal: ac.signal });
 
   container.addEventListener("input", (e) => {
     if (e.target.classList.contains("search-input")) { searchQuery = e.target.value; rerender(); }
-  });
+  }, { signal: ac.signal });
+
+  return { cleanup: () => ac.abort() };
 }

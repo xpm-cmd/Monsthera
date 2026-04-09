@@ -53,8 +53,11 @@ export async function render(container) {
   }
   rerender();
 
+  const ac = new AbortController();
   container.addEventListener("click", (e) => {
     const link = e.target.closest("[data-agent]");
     if (link) { e.preventDefault(); selectedAgent = link.dataset.agent; rerender(); }
-  });
+  }, { signal: ac.signal });
+
+  return { cleanup: () => ac.abort() };
 }

@@ -43,8 +43,11 @@ export async function render(container) {
   }
   rerender();
 
+  const ac = new AbortController();
   container.addEventListener("click", (e) => {
     const tab = e.target.closest("[data-tab]");
     if (tab) { activeTab = tab.dataset.tab; rerender(); }
-  });
+  }, { signal: ac.signal });
+
+  return { cleanup: () => ac.abort() };
 }

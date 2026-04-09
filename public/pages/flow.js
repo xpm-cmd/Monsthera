@@ -77,8 +77,11 @@ export async function render(container) {
 
   rerender();
 
+  const ac = new AbortController();
   container.addEventListener("click", (e) => {
     const chip = e.target.closest("[data-chip]");
     if (chip) { activePhase = chip.dataset.chip; rerender(); }
-  });
+  }, { signal: ac.signal });
+
+  return { cleanup: () => ac.abort() };
 }
