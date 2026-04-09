@@ -20,7 +20,8 @@ import { FileSystemWorkArticleRepository } from "../work/file-repository.js";
 import { WorkService } from "../work/service.js";
 import { InMemorySearchIndexRepository } from "../search/in-memory-repository.js";
 import { InMemoryOrchestrationEventRepository } from "../orchestration/in-memory-repository.js";
-import { StubEmbeddingProvider } from "../search/embedding.js";
+import { StubEmbeddingProvider, OllamaEmbeddingProvider } from "../search/embedding.js";
+import type { EmbeddingProvider } from "../search/embedding.js";
 import { SearchService } from "../search/service.js";
 import { OrchestrationService } from "../orchestration/service.js";
 import { MigrationService } from "../migration/service.js";
@@ -80,6 +81,7 @@ export async function createContainer(
         createDoltPool,
         closePool,
         initializeSchema,
+        monitorDoltHealth,
         DoltSearchIndexRepository,
         DoltOrchestrationRepository,
       } = await import("../persistence/index.js");
@@ -99,6 +101,8 @@ export async function createContainer(
         await closePool(doltPool);
         doltPool = undefined;
       } else {
+        // Knowledge and Work repos stay FileSystem — Markdown is the source of truth.
+        // Only search index and orchestration events (derived data) move to Dolt.
         searchRepo = new DoltSearchIndexRepository(doltPool);
         orchestrationRepo = new DoltOrchestrationRepository(doltPool);
 
@@ -108,6 +112,25 @@ export async function createContainer(
           name: "storage",
           healthy: true,
           detail: `Markdown (${markdownRoot}) + Dolt index (${config.storage.doltHost}:${config.storage.doltPort}/${config.storage.doltDatabase})`,
+        }));
+
+        // Monitor Dolt health in the background, expose via status check
+        let lastHealthy = true;
+        let lastDetail = "Dolt connected";
+        const stopMonitor = monitorDoltHealth(doltPool, {
+          onHealthChange(health) {
+            lastHealthy = health.healthy;
+            lastDetail = health.healthy
+              ? `Dolt OK (${health.latencyMs}ms, ${health.version ?? "unknown"})`
+              : `Dolt unhealthy: ${health.error ?? "unknown error"}`;
+          },
+        });
+        stack.defer(() => { stopMonitor(); });
+
+        status.register("dolt-health", () => ({
+          name: "dolt-health",
+          healthy: lastHealthy,
+          detail: lastDetail,
         }));
 
         logger.info("Container created with Markdown storage and Dolt index", {
@@ -147,7 +170,19 @@ export async function createContainer(
     });
   }
 
-  const embeddingProvider = new StubEmbeddingProvider();
+  let embeddingProvider: EmbeddingProvider;
+  if (config.search.semanticEnabled && config.search.embeddingProvider === "ollama") {
+    embeddingProvider = new OllamaEmbeddingProvider({
+      ollamaUrl: config.search.ollamaUrl,
+      embeddingModel: config.search.embeddingModel,
+    });
+    logger.info("Using Ollama embedding provider", {
+      model: config.search.embeddingModel,
+      url: config.search.ollamaUrl,
+    });
+  } else {
+    embeddingProvider = new StubEmbeddingProvider();
+  }
 
   // Wire up services with repos — repos are guaranteed to be set by this point
   const knowledgeService = new KnowledgeService({ knowledgeRepo: knowledgeRepo!, logger });
