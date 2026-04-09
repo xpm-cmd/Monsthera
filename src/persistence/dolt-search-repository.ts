@@ -2,7 +2,7 @@ import type { Pool, RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import { StorageError } from "../core/errors.js";
-import type { SearchIndexRepository, SearchOptions, SearchResult } from "../search/repository.js";
+import type { SearchIndexRepository, SearchOptions, SearchResult, SemanticResult } from "../search/repository.js";
 import { tokenize } from "../search/tokenizer.js";
 
 interface SearchDocumentRow extends RowDataPacket {
@@ -34,6 +34,9 @@ const DEFAULT_OFFSET = 0;
 // ---------------------------------------------------------------------------
 
 export class DoltSearchIndexRepository implements SearchIndexRepository {
+  /** In-memory embedding cache (Dolt has no native vector column type). */
+  private readonly embeddings = new Map<string, number[]>();
+
   constructor(private readonly pool: Pool) {}
 
   async indexArticle(
@@ -249,6 +252,78 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
   }
 
   // -------------------------------------------------------------------------
+  // Semantic / vector methods (in-memory cache, Dolt lacks vector columns)
+  // -------------------------------------------------------------------------
+
+  async storeEmbedding(id: string, embedding: number[]): Promise<Result<void, StorageError>> {
+    this.embeddings.set(id, embedding);
+    return ok(undefined);
+  }
+
+  async searchSemantic(
+    queryEmbedding: number[],
+    limit: number,
+    type?: "knowledge" | "work" | "all",
+  ): Promise<Result<SemanticResult[], StorageError>> {
+    try {
+      const scored: Array<{ id: string; score: number }> = [];
+
+      for (const [id, docEmbedding] of this.embeddings) {
+        if (type !== undefined && type !== "all") {
+          // Check doc type via SQL
+          const [rows] = await this.pool.query<RowDataPacket[]>(
+            "SELECT type FROM search_documents WHERE id = ?",
+            [id],
+          );
+          if (rows.length === 0 || (rows[0] as RowDataPacket & { type: string }).type !== type) continue;
+        }
+        const score = cosineSimilarity(queryEmbedding, docEmbedding);
+        scored.push({ id, score });
+      }
+
+      scored.sort((a, b) => b.score - a.score);
+      return ok(scored.slice(0, limit));
+    } catch (error) {
+      return err(new StorageError("Failed to search semantically", { cause: error }));
+    }
+  }
+
+  get embeddingCount(): number {
+    return this.embeddings.size;
+  }
+
+  // -------------------------------------------------------------------------
+  // size + canary
+  // -------------------------------------------------------------------------
+
+  private cachedSize = 0;
+
+  get size(): number {
+    return this.cachedSize;
+  }
+
+  async canary(): Promise<boolean> {
+    try {
+      const [countRows] = await this.pool.query<RowDataPacket[]>(
+        "SELECT COUNT(*) as count FROM search_documents",
+      );
+      this.cachedSize = (countRows[0] as RowDataPacket & { count: number }).count || 0;
+      if (this.cachedSize === 0) return true;
+
+      // Pick any term from the inverted index and verify search returns results
+      const [termRows] = await this.pool.query<RowDataPacket[]>(
+        "SELECT term FROM search_inverted_index LIMIT 1",
+      );
+      if (termRows.length === 0) return false; // documents exist but no terms indexed
+      const term = (termRows[0] as RowDataPacket & { term: string }).term;
+      const result = await this.search({ query: term, limit: 1 });
+      return result.ok && result.value.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
 
@@ -349,4 +424,21 @@ function generateSnippet(content: string, queryTerms: string[]): string {
   const prefix = start > 0 ? "..." : "";
   const suffix = end < content.length ? "..." : "";
   return `${prefix}${snippet}${suffix}`;
+}
+
+// ---------------------------------------------------------------------------
+// Cosine similarity
+// ---------------------------------------------------------------------------
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    normA += a[i]! * a[i]!;
+    normB += b[i]! * b[i]!;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
 }

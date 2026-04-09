@@ -10,7 +10,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     {
       name: "search",
       description:
-        "Quick discovery across knowledge and work articles with BM25 ranking. Use it when you already know the terms; for deep coding or investigation, prefer build_context_pack first so the next reads are ranked and smaller. Normal knowledge/work CRUD flows sync search automatically; use reindex_all only for bulk backfills or repair.",
+        "Quick discovery across knowledge and work articles with BM25 keyword ranking. Queries work best with specific keywords (1-3 terms, AND semantics); longer queries use OR semantics ranked by BM25. For deep coding or investigation, prefer build_context_pack. Normal CRUD flows sync search automatically; use reindex_all only for bulk backfills or repair.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -45,6 +45,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
             description: "Filter by article type",
           },
           limit: { type: "number", description: "Maximum context pack items (1-20, default 8)" },
+          verbose: { type: "boolean", description: "Include full diagnostics and metadata (default false)" },
         },
         required: ["query"],
       },
@@ -109,7 +110,31 @@ export async function handleSearchTool(
     case "build_context_pack": {
       const result = await service.buildContextPack(args);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
-      return successResponse(result.value);
+      const verbose = args.verbose === true;
+      if (verbose) {
+        return successResponse(result.value);
+      }
+      // Slim response: strip diagnostics, reason, searchScore, sourcePath, references
+      const slimItems = result.value.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        type: item.type,
+        score: item.score,
+        snippet: item.snippet,
+        updatedAt: item.updatedAt,
+        ...(item.category !== undefined && { category: item.category }),
+        ...(item.template !== undefined && { template: item.template }),
+        ...(item.phase !== undefined && { phase: item.phase }),
+        codeRefs: item.codeRefs,
+        ...(item.staleCodeRefs.length > 0 && { staleCodeRefs: item.staleCodeRefs }),
+      }));
+      return successResponse({
+        query: result.value.query,
+        mode: result.value.mode,
+        summary: result.value.summary,
+        guidance: result.value.guidance,
+        items: slimItems,
+      });
     }
     case "index_article": {
       const id = requireString(args, "id");

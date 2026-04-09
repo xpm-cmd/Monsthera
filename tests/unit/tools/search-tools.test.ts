@@ -115,16 +115,26 @@ describe("handleSearchTool", () => {
       if (!createResult.ok) throw new Error("seed failed");
       await service.indexKnowledgeArticle(createResult.value.id);
 
-      const response = await handleSearchTool("build_context_pack", { query: "auth", mode: "code" }, service);
-      expect(response.isError).toBeUndefined();
-      const body = JSON.parse(response.content[0]!.text) as {
+      // Non-verbose (default): no diagnostics
+      const slimResponse = await handleSearchTool("build_context_pack", { query: "auth", mode: "code" }, service);
+      expect(slimResponse.isError).toBeUndefined();
+      const slim = JSON.parse(slimResponse.content[0]!.text) as {
         mode: string;
         summary: { itemCount: number };
+        items: Array<{ id: string; diagnostics?: unknown }>;
+      };
+      expect(slim.mode).toBe("code");
+      expect(slim.summary.itemCount).toBeGreaterThanOrEqual(1);
+      expect(slim.items[0]?.diagnostics).toBeUndefined();
+
+      // Verbose: includes diagnostics
+      const verboseResponse = await handleSearchTool("build_context_pack", { query: "auth", mode: "code", verbose: true }, service);
+      expect(verboseResponse.isError).toBeUndefined();
+      const verbose = JSON.parse(verboseResponse.content[0]!.text) as {
+        mode: string;
         items: Array<{ id: string; diagnostics: { quality: { score: number } } }>;
       };
-      expect(body.mode).toBe("code");
-      expect(body.summary.itemCount).toBeGreaterThanOrEqual(1);
-      expect(body.items[0]?.diagnostics.quality.score).toBeGreaterThan(0);
+      expect(verbose.items[0]?.diagnostics.quality.score).toBeGreaterThan(0);
     });
   });
 

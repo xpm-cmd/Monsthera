@@ -7,6 +7,8 @@ import { StorageError } from "../core/errors.js";
 export interface EmbeddingProvider {
   embed(text: string): Promise<Result<number[], MonstheraError>>;
   embedBatch(texts: string[]): Promise<Result<number[][], MonstheraError>>;
+  /** Verify the provider is reachable and the model is available. */
+  healthCheck(): Promise<Result<{ ready: true }, MonstheraError>>;
   readonly dimensions: number;
   readonly modelName: string;
 }
@@ -26,6 +28,10 @@ export class StubEmbeddingProvider implements EmbeddingProvider {
 
   async embedBatch(texts: string[]): Promise<Result<number[][], MonstheraError>> {
     return ok(texts.map(() => []));
+  }
+
+  async healthCheck(): Promise<Result<{ ready: true }, MonstheraError>> {
+    return ok({ ready: true });
   }
 }
 
@@ -90,5 +96,42 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
       results.push(result.value);
     }
     return ok(results);
+  }
+
+  async healthCheck(): Promise<Result<{ ready: true }, MonstheraError>> {
+    // 1. Check if Ollama is reachable
+    let tagsResponse: Response;
+    try {
+      tagsResponse = await fetch(`${this.baseUrl}/api/tags`);
+    } catch (e) {
+      return err(
+        new StorageError(`Ollama not reachable at ${this.baseUrl}`, {
+          cause: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    }
+
+    if (!tagsResponse.ok) {
+      return err(new StorageError(`Ollama API error (${tagsResponse.status})`));
+    }
+
+    // 2. Check if the model is available
+    const data = (await tagsResponse.json()) as { models?: Array<{ name: string }> };
+    const models = data.models ?? [];
+    const modelBase = this.modelName.split(":")[0]!;
+    const available = models.some(
+      (m) => m.name === this.modelName || m.name.startsWith(`${modelBase}:`),
+    );
+
+    if (!available) {
+      const installed = models.map((m) => m.name).join(", ") || "(none)";
+      return err(
+        new StorageError(
+          `Embedding model "${this.modelName}" not found in Ollama. Installed: ${installed}. Run: ollama pull ${this.modelName}`,
+        ),
+      );
+    }
+
+    return ok({ ready: true });
   }
 }

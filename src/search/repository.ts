@@ -19,6 +19,12 @@ export interface SearchOptions {
   readonly semanticEnabled?: boolean;
 }
 
+/** Semantic search result (cosine similarity) */
+export interface SemanticResult {
+  readonly id: string;
+  readonly score: number; // cosine similarity [0, 1]
+}
+
 /** Search index repository */
 export interface SearchIndexRepository {
   indexArticle(id: string, title: string, content: string, type: "knowledge" | "work"): Promise<Result<void, StorageError>>;
@@ -28,4 +34,16 @@ export interface SearchIndexRepository {
   reindex(): Promise<Result<void, StorageError>>;
   /** Remove all documents and index structures from the index. */
   clear(): Promise<Result<void, StorageError>>;
+  /** Number of documents currently stored in the index. */
+  readonly size: number;
+  /** Run a canary check: true if the index can return results, false if queries produce nothing despite having documents. */
+  canary(): Promise<boolean>;
+
+  // ─── Semantic / vector methods ──────────────────────────────────────────────
+  /** Store an embedding vector for a document. */
+  storeEmbedding(id: string, embedding: number[]): Promise<Result<void, StorageError>>;
+  /** Find the top-k most similar documents to a query vector via cosine similarity. */
+  searchSemantic(queryEmbedding: number[], limit: number, type?: "knowledge" | "work" | "all"): Promise<Result<SemanticResult[], StorageError>>;
+  /** Number of stored embedding vectors. */
+  readonly embeddingCount: number;
 }

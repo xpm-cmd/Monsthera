@@ -290,11 +290,10 @@ export async function createContainer(
     healthy: true,
     detail: "Work service",
   }));
-  status.register("search", () => ({
-    name: "search",
-    healthy: true,
-    detail: "Search service",
-  }));
+  status.register("search", () => {
+    const health = searchService.getHealthStatus();
+    return { name: "search", healthy: health.healthy, detail: health.detail };
+  });
   status.register("structure", () => ({
     name: "structure",
     healthy: true,
@@ -315,6 +314,12 @@ export async function createContainer(
   if (config.orchestration.autoAdvance) {
     orchestrationService.start();
     stack.defer(() => { orchestrationService.stop(); });
+  }
+
+  // Auto-reindex on startup to ensure BM25 + embeddings are fresh
+  const reindexResult = await searchService.fullReindex();
+  if (!reindexResult.ok) {
+    logger.warn("Startup reindex failed", { error: reindexResult.error.message });
   }
 
   return {

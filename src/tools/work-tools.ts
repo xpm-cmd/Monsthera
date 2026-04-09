@@ -72,7 +72,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_work",
-      description: "List work articles, optionally filtered by phase, when you need to see the execution queue or a specific part of the lifecycle.",
+      description: "List work articles, optionally filtered by phase. Returns summaries (no content) with pagination. Use get_work to read full content.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -81,6 +81,8 @@ export function workToolDefinitions(): ToolDefinition[] {
             enum: ["planning", "enrichment", "implementation", "review", "done", "cancelled"],
             description: "Filter by phase",
           },
+          limit: { type: "number", description: "Max results (1-100, default 20)" },
+          offset: { type: "number", description: "Skip N results (default 0)" },
         },
       },
     },
@@ -208,9 +210,24 @@ export async function handleWorkTool(
         const enumErr = requireEnum(phase, VALID_PHASES, "phase");
         if (enumErr) return enumErr;
       }
+      const rawLimit = typeof args.limit === "number" ? args.limit : 20;
+      const limit = Math.max(1, Math.min(rawLimit, 100));
+      const rawOffset = typeof args.offset === "number" ? args.offset : 0;
+      const offset = Math.max(0, rawOffset);
       const result = await service.listWork(phase as WorkPhaseType);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
-      return successResponse(result.value);
+      const total = result.value.length;
+      const page = result.value.slice(offset, offset + limit);
+      const summaries = page.map((w) => ({
+        id: w.id,
+        title: w.title,
+        template: w.template,
+        phase: w.phase,
+        priority: w.priority,
+        assignee: w.assignee,
+        updatedAt: w.updatedAt,
+      }));
+      return successResponse({ total, limit, offset, items: summaries });
     }
     case "advance_phase": {
       const id = requireString(args, "id");

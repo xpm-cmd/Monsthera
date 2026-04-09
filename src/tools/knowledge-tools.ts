@@ -77,11 +77,13 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_articles",
-      description: "List knowledge articles, optionally filtered by category. Best when you want to browse a domain rather than run full-text discovery.",
+      description: "List knowledge articles, optionally filtered by category. Returns summaries (no content) with pagination. Use get_article to read full content.",
       inputSchema: {
         type: "object" as const,
         properties: {
           category: { type: "string", description: "Filter by category" },
+          limit: { type: "number", description: "Max results (1-100, default 20)" },
+          offset: { type: "number", description: "Skip N results (default 0)" },
         },
       },
     },
@@ -145,9 +147,23 @@ export async function handleKnowledgeTool(
     case "list_articles": {
       const category = optionalString(args, "category");
       if (isErrorResponse(category)) return category;
+      const rawLimit = typeof args.limit === "number" ? args.limit : 20;
+      const limit = Math.max(1, Math.min(rawLimit, 100));
+      const rawOffset = typeof args.offset === "number" ? args.offset : 0;
+      const offset = Math.max(0, rawOffset);
       const result = await service.listArticles(category);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
-      return successResponse(result.value);
+      const total = result.value.length;
+      const page = result.value.slice(offset, offset + limit);
+      const summaries = page.map((a) => ({
+        id: a.id,
+        title: a.title,
+        slug: a.slug,
+        category: a.category,
+        tags: a.tags,
+        updatedAt: a.updatedAt,
+      }));
+      return successResponse({ total, limit, offset, items: summaries });
     }
     case "search_articles": {
       const query = requireString(args, "query", MAX_QUERY_LENGTH);

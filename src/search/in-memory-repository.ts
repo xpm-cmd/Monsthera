@@ -1,7 +1,7 @@
 import { ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import type { StorageError } from "../core/errors.js";
-import type { SearchIndexRepository, SearchOptions, SearchResult } from "./repository.js";
+import type { SearchIndexRepository, SearchOptions, SearchResult, SemanticResult } from "./repository.js";
 import { tokenize } from "./tokenizer.js";
 
 // ---------------------------------------------------------------------------
@@ -38,6 +38,9 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
 
   /** id → set of terms from title (for title boost during scoring) */
   private readonly titleTerms = new Map<string, Set<string>>();
+
+  /** id → embedding vector for semantic search */
+  private readonly embeddings = new Map<string, number[]>();
 
   // -------------------------------------------------------------------------
   // indexArticle
@@ -84,6 +87,7 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
     if (this.documents.has(id)) {
       this.removeFromIndex(id);
       this.documents.delete(id);
+      this.embeddings.delete(id);
     }
     return ok(undefined);
   }
@@ -151,6 +155,7 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
     this.documents.clear();
     this.invertedIndex.clear();
     this.titleTerms.clear();
+    this.embeddings.clear();
     return ok(undefined);
   }
 
@@ -180,6 +185,62 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
     }
 
     return ok(undefined);
+  }
+
+  // -------------------------------------------------------------------------
+  // Semantic / vector methods
+  // -------------------------------------------------------------------------
+
+  async storeEmbedding(id: string, embedding: number[]): Promise<Result<void, StorageError>> {
+    this.embeddings.set(id, embedding);
+    return ok(undefined);
+  }
+
+  async searchSemantic(
+    queryEmbedding: number[],
+    limit: number,
+    type?: "knowledge" | "work" | "all",
+  ): Promise<Result<SemanticResult[], StorageError>> {
+    const scored: Array<{ id: string; score: number }> = [];
+
+    for (const [id, docEmbedding] of this.embeddings) {
+      // Apply type filter
+      if (type !== undefined && type !== "all") {
+        const doc = this.documents.get(id);
+        if (doc === undefined || doc.type !== type) continue;
+      }
+
+      const score = cosineSimilarity(queryEmbedding, docEmbedding);
+      scored.push({ id, score });
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return ok(scored.slice(0, limit));
+  }
+
+  get embeddingCount(): number {
+    return this.embeddings.size;
+  }
+
+  // -------------------------------------------------------------------------
+  // size
+  // -------------------------------------------------------------------------
+
+  get size(): number {
+    return this.documents.size;
+  }
+
+  // -------------------------------------------------------------------------
+  // canary
+  // -------------------------------------------------------------------------
+
+  async canary(): Promise<boolean> {
+    if (this.documents.size === 0) return true;
+    // Pick the first term from the inverted index and verify search finds it
+    const firstTerm = this.invertedIndex.keys().next().value;
+    if (firstTerm === undefined) return false; // documents exist but no terms indexed
+    const result = await this.search({ query: firstTerm, limit: 1 });
+    return result.ok && result.value.length > 0;
   }
 
   // -------------------------------------------------------------------------
@@ -260,4 +321,21 @@ function generateSnippet(content: string, queryTerms: string[]): string {
   const prefix = start > 0 ? "..." : "";
   const suffix = end < content.length ? "..." : "";
   return `${prefix}${snippet}${suffix}`;
+}
+
+// ---------------------------------------------------------------------------
+// Cosine similarity
+// ---------------------------------------------------------------------------
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    normA += a[i]! * a[i]!;
+    normB += b[i]! * b[i]!;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
 }
