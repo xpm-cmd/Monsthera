@@ -1,9 +1,12 @@
+import * as path from "node:path";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startDashboard } from "../../../src/dashboard/index.js";
 import type { DashboardServer } from "../../../src/dashboard/index.js";
 import { createTestContainer } from "../../../src/core/container.js";
 import type { MonstheraContainer } from "../../../src/core/container.js";
 import { VERSION } from "../../../src/core/constants.js";
+
+const FIXTURES_PUBLIC = path.resolve(import.meta.dirname, "../../fixtures/public");
 
 // ─── Setup / teardown ───────────────────────────────────────────────────────
 
@@ -14,7 +17,7 @@ let dashboardError: NodeJS.ErrnoException | undefined;
 beforeAll(async () => {
   try {
     container = await createTestContainer();
-    dashboard = await startDashboard(container, 0); // port 0 = OS-assigned random port
+    dashboard = await startDashboard(container, 0, { publicDir: FIXTURES_PUBLIC });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EPERM") {
       dashboardError = error as NodeJS.ErrnoException;
@@ -199,5 +202,88 @@ describe("Dashboard JSON API", () => {
       expect(res.headers.get("access-control-allow-origin")).toBe("*");
       expect(res.headers.get("access-control-allow-methods")).toContain("GET");
     });
+  });
+});
+
+// ─── Static file serving ───────────────────────────────────────────────────
+
+describe("Static file serving", () => {
+  it("GET / serves index.html with text/html", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html");
+    const body = await res.text();
+    expect(body).toContain("SPA Shell");
+  });
+
+  it("GET /test.css serves CSS with correct MIME type", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/test.css"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/css");
+    const body = await res.text();
+    expect(body).toContain("color: red");
+  });
+
+  it("GET /test.js serves JS with correct MIME type", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/test.js"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/javascript");
+    const body = await res.text();
+    expect(body).toContain("console.log");
+  });
+
+  it("GET /nonexistent.js returns 404 (not HTML)", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/nonexistent.js"));
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string; message: string };
+    expect(body.error).toBe("NOT_FOUND");
+    expect(body.message).toContain("Asset not found");
+  });
+
+  it("GET /missing.css returns 404 (not HTML)", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/missing.css"));
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("NOT_FOUND");
+  });
+
+  it("GET /flow serves index.html (SPA fallback)", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/flow"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html");
+    const body = await res.text();
+    expect(body).toContain("SPA Shell");
+  });
+
+  it("GET /knowledge/graph serves index.html (SPA fallback for nested route)", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/knowledge/graph"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html");
+    const body = await res.text();
+    expect(body).toContain("SPA Shell");
+  });
+
+  it("rejects directory traversal attempts", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/../package.json"));
+    // Should either be 400 (bad request) or not serve the real file
+    const body = await res.text();
+    expect(body).not.toContain("monsthera");
+  });
+
+  it("API routes still return JSON when static serving is active", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/api/status"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/json");
+    const body = await res.json();
+    expect(body).toHaveProperty("version", VERSION);
   });
 });

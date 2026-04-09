@@ -4,9 +4,11 @@
   "description": "Knowledge-native development platform for AI coding agents",
   "type": "module",
   "bin": { "monsthera": "dist/bin.js" },
-  "files": ["dist", "LICENSE", "README.md", "CHANGELOG.md"],
+  "files": ["dist", "public", "LICENSE", "README.md", "CHANGELOG.md"],
   "scripts": {
     "dev": "tsx watch src/bin.ts serve",
+    "dashboard": "tsx watch src/bin.ts dashboard",
+    "postbuild": "node -e \"const fs=require('fs');try{fs.cpSync('public','dist/public',{recursive:true})}catch{}\"",
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",

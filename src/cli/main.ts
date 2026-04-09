@@ -4,6 +4,7 @@ import { loadConfig, defaultConfig } from "../core/config.js";
 import { createContainer } from "../core/container.js";
 import { VERSION } from "../core/constants.js";
 import { startServer } from "../server.js";
+import { startDashboard } from "../dashboard/index.js";
 import { SqliteV2SourceReader } from "../migration/v2-reader.js";
 import type { MigrationMode } from "../migration/types.js";
 import {
@@ -24,6 +25,17 @@ async function handleServe(args: string[]): Promise<void> {
   const v2Reader = sourcePath ? new SqliteV2SourceReader(sourcePath) : undefined;
   const container = await createContainer(config, v2Reader ? { v2Reader } : undefined);
   await startServer(container);
+}
+
+async function handleDashboard(args: string[]): Promise<void> {
+  const repoPath = parseFlag(args, "--repo", "-r") ?? process.cwd();
+  const configResult = loadConfig(repoPath);
+  const config = configResult.ok ? configResult.value : defaultConfig(repoPath);
+  const container = await createContainer(config);
+  const portFlag = parseFlag(args, "--port", "-p");
+  const port = portFlag ? Number(portFlag) : undefined;
+  const dashboard = await startDashboard(container, port);
+  process.stdout.write(`Dashboard running at http://localhost:${dashboard.port}\n`);
 }
 
 async function handleStatus(args: string[]): Promise<void> {
@@ -47,6 +59,7 @@ function handleHelp(): void {
       "",
       "COMMANDS",
       "  serve                    Start the MCP server (stdio transport)",
+      "  dashboard                Start the HTTP dashboard server",
       "  status                   Print system status as JSON and exit",
       "  knowledge <subcommand>   Manage knowledge articles",
       "  work <subcommand>        Manage work articles",
@@ -254,6 +267,9 @@ export async function main(args: string[]): Promise<void> {
     switch (command) {
       case "serve":
         await handleServe(args.slice(1));
+        break;
+      case "dashboard":
+        await handleDashboard(args.slice(1));
         break;
       case "status":
         await handleStatus(args.slice(1));
