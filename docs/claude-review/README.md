@@ -1,49 +1,24 @@
-# Monsthera Review Package For Claude
+# Monsthera Review Package
 
-This folder collects the current Monsthera v3 proposals and dashboard mockups in a repo-visible location so Claude can review them without depending on ignored folders.
+Dashboard UI proposal for Monsthera v3, with architecture docs and exported screen mockups.
 
 ## Contents
 
-- `proposals/`
-  Mirrored copies of the current Monsthera v3 planning and architecture docs originally kept in `MonstheraV3/`.
-- `assets/export.pdf`
-  Multi-page export of the **v1** dashboard mockups (does not include v2 redesigns).
-- `assets/*.webp`
-  Per-screen v1 exports for visual reference.
-- `assets/v2/*.webp`
-  Per-screen v2 redesign exports (dark mode). **These are the current proposal for the 5 redesigned screens.**
-- `screen-manifest.json`
-  Machine-friendly inventory of all screen names, ids, themes, and exported assets (v1 + v2).
+- `proposals/` — Architecture and domain model docs mirrored from `MonstheraV3/`.
+- `assets/v2/*.webp` — v2 redesigned screens (light + dark). **Current proposal.**
+- `assets/*.webp` — v1 screens not yet redesigned (Work, Search, System, Settings).
+- `screen-manifest.json` — Machine-friendly screen inventory.
+- `design/EDITABLE-SOURCE.md` — Pencil MCP source reference.
 
 ## Proposal Docs
 
-- `proposals/README.md`
 - `proposals/monsthera-architecture-v6-final.md`
 - `proposals/monsthera-ticket-as-article-design.md`
 - `proposals/monsthera-v3-implementation-plan-final.md`
 
-## Mockup Coverage
+## v2 Redesigned Screens
 
-Included dashboard screens:
-
-- Overview
-- Flow
-- Work
-- Knowledge
-- Search
-- System
-- Knowledge Graph
-- Models & Runtime
-- Agent Profiles
-- Integrations
-- Storage & Indexing
-- Security & Permissions
-
-Each exists in both light and dark mode (v1 proposal).
-
-## v2 Redesign (dark mode)
-
-Based on a critical UX/UI review, 5 screens were redesigned to address high-severity findings:
+Based on a critical UX/UI review, 5 screens were redesigned (light + dark = 10 screens):
 
 | Screen | Dark | Light | Findings Resolved |
 |---|---|---|---|
@@ -53,22 +28,18 @@ Based on a critical UX/UI review, 5 screens were redesigned to address high-seve
 | Knowledge Graph v2 | `assets/v2/JssNL.webp` | `assets/v2/9rEyn.webp` | HIGH-2: Compressed graph → full-width canvas with on-demand panels |
 | Security v2 | `assets/v2/x79BN.webp` | `assets/v2/7O2gs.webp` | MEDIUM-4 + HIGH-3: 6 blocks → tabbed layout, sidebar sub-nav |
 
-Each v2 screen exists in both light and dark mode (10 screens total).
+Design source: `/pencil-new.pen` (Pencil MCP). All v2 screen ids are editable.
 
-Design source: `/pencil-new.pen` (Pencil MCP)
+## v1 Screens (not redesigned)
 
-**For review purposes, the v2 dark screens supersede their v1 counterparts:**
-- v2 Overview Dark → replaces v1 Overview (light/dark)
-- v2 Flow Dark → replaces v1 Flow (light/dark)
-- v2 Knowledge Dark → replaces v1 Knowledge (light/dark)
-- v2 Knowledge Graph Dark → replaces v1 Knowledge Graph (light/dark)
-- v2 Security Dark → replaces v1 Security & Permissions (light/dark)
+These screens retain their original v1 design (light + dark):
 
-Screens **not** redesigned in v2 (keep v1 design): Work, Search, System, Models & Runtime, Agent Profiles, Integrations, Storage & Indexing.
+- Work, Search, System, Models & Runtime, Agent Profiles, Integrations, Storage & Indexing
+
+Their Pencil source is no longer available — the exported webp files are the only artifacts.
 
 ## Review Notes
 
-- **The exported webp assets are the primary review surface.** Read the images directly; do not depend on Pencil for review.
-- The v1 editable source (`/pencil-halo.pen`) is no longer available — it was overwritten during the v2 design session. The v1 webp exports in `assets/` remain intact and are the only surviving v1 artifacts.
-- The v2 editable source is `/pencil-new.pen` (Pencil MCP). Only the v2 screen ids (`zs47R`, `PE1fZ`, `byCV9`, `JssNL`, `x79BN`) are inspectable or modifiable through Pencil.
-- The original `MonstheraV3/` folder remains ignored by git, but its contents are mirrored here under `proposals/`.
+- **The exported webp assets are the primary review surface.**
+- v2 screens in `/pencil-new.pen` are editable via Pencil MCP using the ids in `screen-manifest.json`.
+- v1 screens are export-only (not editable). Their Pencil source was lost during the v2 design session.
