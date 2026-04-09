@@ -78,11 +78,11 @@ export function renderChips(items, activeId) {
   ).join("")}</div>`;
 }
 
-export function renderSearchInput(placeholder = "Search...") {
+export function renderSearchInput(placeholder = "Search...", value = "") {
   return `
     <div class="search-input-wrap">
       <i data-lucide="search"></i>
-      <input type="text" class="search-input" placeholder="${esc(placeholder)}">
+      <input type="text" class="search-input" placeholder="${esc(placeholder)}" value="${esc(value)}">
     </div>`;
 }
 

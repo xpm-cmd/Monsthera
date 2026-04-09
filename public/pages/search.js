@@ -70,6 +70,22 @@ export async function render(container) {
   let mode = "code";
   let query = "";
   let debounceTimer = null;
+  let isLoading = false;
+  let errorMessage = null;
+  let loadRequestId = 0;
+  let inputState = {
+    restore: false,
+    start: 0,
+    end: 0,
+  };
+
+  function captureInputState(input) {
+    inputState = {
+      restore: true,
+      start: input.selectionStart ?? query.length,
+      end: input.selectionEnd ?? query.length,
+    };
+  }
 
   function getFiltered() {
     const items = pack?.items || [];
@@ -78,6 +94,20 @@ export async function render(container) {
   }
 
   function buildSummary() {
+    if (errorMessage) {
+      return renderCard(
+        "Context pack",
+        `<p class="text-sm">Monsthera could not build the context pack right now.</p><p class="text-xs text-muted mt-8">${esc(errorMessage)}</p>`,
+      );
+    }
+
+    if (isLoading && !pack) {
+      return renderCard(
+        "Context pack",
+        '<p class="text-sm text-muted">Searching and ranking the best context for this query...</p>',
+      );
+    }
+
     if (!pack) {
       return renderCard(
         "Context pack",
@@ -99,6 +129,7 @@ export async function render(container) {
 
   function buildDOM() {
     const filtered = getFiltered();
+    const hasQuery = query.trim().length > 0;
     const resultListHtml = filtered.length > 0
       ? filtered.map((item) =>
         '<div class="card card--interactive' + (selectedResult?.id === item.id ? ' card--selected' : '') + '" style="cursor:pointer;padding:14px 16px" data-result-id="' + esc(item.id) + '" data-result-type="' + esc(item.type) + '">'
@@ -116,7 +147,13 @@ export async function render(container) {
           + (item.references?.length ? renderBadge(`${item.references.length} refs`, "outline") : "")
           + "</div></div>"
       ).join("\n")
-      : '<p class="text-sm text-muted" style="padding:20px">No context pack yet. Type a query above.</p>';
+      : isLoading
+        ? '<div class="empty-state">Searching and ranking context...</div>'
+        : errorMessage
+          ? `<div class="empty-state">Search failed. ${esc(errorMessage)}</div>`
+          : hasQuery
+            ? '<div class="empty-state">No results for this query yet. Try a shorter term, a file path, or switch mode.</div>'
+            : '<div class="empty-state">Type a query to build a context pack.</div>';
 
     const previewHtml = selectedResult
       ? renderCard(
@@ -136,7 +173,7 @@ export async function render(container) {
     const temp = document.createElement("template");
     temp.innerHTML = [
       '<div class="page-header"><div><div class="page-kicker">Retrieve with intent</div><h1 class="page-title">Search</h1><p class="page-subtitle">Assemble targeted context packs for coding and investigation instead of reading the repo blindly.</p></div><div class="page-actions"><a href="/guide" data-link class="btn btn--outline btn--sm">Open guide</a></div></div>',
-      renderSearchInput("Search code paths, decisions, bugs, architecture, experiments..."),
+      renderSearchInput("Search code paths, decisions, bugs, architecture, experiments...", query),
       '<div class="flex gap-8 mt-4" style="flex-wrap:wrap">'
         + '<button class="tab' + (mode === "code" ? " active" : "") + '" data-mode="code">Code generation</button>'
         + '<button class="tab' + (mode === "research" ? " active" : "") + '" data-mode="research">Investigation</button>'
@@ -159,6 +196,15 @@ export async function render(container) {
   function rerender() {
     container.textContent = "";
     container.appendChild(buildDOM());
+    if (inputState.restore) {
+      const input = container.querySelector(".search-input");
+      if (input) {
+        input.focus();
+        const start = Math.min(inputState.start, input.value.length);
+        const end = Math.min(inputState.end, input.value.length);
+        input.setSelectionRange(start, end);
+      }
+    }
     if (typeof lucide !== "undefined") lucide.createIcons({ nodes: [container] });
   }
 
@@ -167,16 +213,31 @@ export async function render(container) {
     if (!trimmed) {
       pack = null;
       selectedResult = null;
+      errorMessage = null;
+      isLoading = false;
       rerender();
       return;
     }
+
+    const requestId = ++loadRequestId;
+    isLoading = true;
+    errorMessage = null;
+    rerender();
+
     try {
-      pack = await api.getContextPack(trimmed, mode, 10, filterType === "all" ? "all" : filterType);
+      const nextPack = await api.getContextPack(trimmed, mode, 10, filterType === "all" ? "all" : filterType);
+      if (requestId !== loadRequestId || ac.signal.aborted) return;
+      pack = nextPack;
       selectedResult = null;
+      isLoading = false;
+      errorMessage = null;
       rerender();
-    } catch {
+    } catch (error) {
+      if (requestId !== loadRequestId || ac.signal.aborted) return;
       pack = null;
       selectedResult = null;
+      isLoading = false;
+      errorMessage = error?.message || "Unknown search error";
       rerender();
     }
   }
@@ -187,6 +248,7 @@ export async function render(container) {
   container.addEventListener("input", (event) => {
     if (!event.target.classList.contains("search-input")) return;
     query = event.target.value;
+    captureInputState(event.target);
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       void loadPack();
@@ -196,6 +258,7 @@ export async function render(container) {
   container.addEventListener("click", async (event) => {
     const filter = event.target.closest("[data-filter]");
     if (filter) {
+      inputState.restore = false;
       filterType = filter.dataset.filter;
       if (query.trim()) await loadPack();
       else rerender();
@@ -204,6 +267,7 @@ export async function render(container) {
 
     const modeButton = event.target.closest("[data-mode]");
     if (modeButton) {
+      inputState.restore = false;
       mode = modeButton.dataset.mode;
       if (query.trim()) await loadPack();
       else rerender();
@@ -212,6 +276,7 @@ export async function render(container) {
 
     const card = event.target.closest("[data-result-id]");
     if (card) {
+      inputState.restore = false;
       try {
         selectedResult = card.dataset.resultType === "knowledge"
           ? await api.getKnowledgeById(card.dataset.resultId)
