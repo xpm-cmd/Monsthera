@@ -2,9 +2,13 @@ export type {
   V2Ticket,
   V2Verdict,
   V2CouncilAssignment,
+  V2KnowledgeRecord,
+  V2NoteRecord,
   V2SourceReader,
   MigrationMode,
+  MigrationScope,
   MappedArticle,
+  MappedKnowledgeArticle,
   MigrationItemResult,
   MigrationReport,
 } from "./types.js";

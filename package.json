@@ -8,6 +8,12 @@
   "scripts": {
     "dev": "tsx watch src/bin.ts serve",
     "dashboard": "tsx watch src/bin.ts dashboard",
+    "demo:local": "./scripts/demo/run-local.sh",
+    "demo:smoke": "node ./scripts/demo/smoke.mjs",
+    "dolt:install": "./scripts/dolt/install-local.sh",
+    "dolt:start": "./scripts/dolt/start-local.sh",
+    "dolt:start:daemon": "./scripts/dolt/start-local.sh --daemon",
+    "dolt:stop": "./scripts/dolt/stop-local.sh",
     "postbuild": "node -e \"const fs=require('fs');try{fs.cpSync('public','dist/public',{recursive:true})}catch{}\"",
     "build": "tsup",
     "test": "vitest run",

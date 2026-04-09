@@ -5,12 +5,14 @@ import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-me
 import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
 import { StubEmbeddingProvider } from "../../../src/search/embedding.js";
 import { createLogger } from "../../../src/core/logger.js";
+import type { RuntimeStateSnapshot, RuntimeStateStore } from "../../../src/core/runtime-state.js";
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
 let service: SearchService;
 let knowledgeRepo: InMemoryKnowledgeArticleRepository;
 let workRepo: InMemoryWorkArticleRepository;
+let runtimeState: RuntimeStateStore & { snapshot: RuntimeStateSnapshot };
 
 beforeEach(() => {
   const searchRepo = new InMemorySearchIndexRepository();
@@ -18,6 +20,16 @@ beforeEach(() => {
   workRepo = new InMemoryWorkArticleRepository();
   const embeddingProvider = new StubEmbeddingProvider();
   const logger = createLogger({ level: "warn", domain: "test" });
+  runtimeState = {
+    snapshot: {},
+    async read() {
+      return this.snapshot;
+    },
+    async write(patch) {
+      this.snapshot = { ...this.snapshot, ...patch };
+      return this.snapshot;
+    },
+  };
   const config = {
     semanticEnabled: false,
     embeddingModel: "stub",
@@ -26,7 +38,7 @@ beforeEach(() => {
     ollamaUrl: "http://localhost:11434",
   };
 
-  service = new SearchService({ searchRepo, knowledgeRepo, workRepo, embeddingProvider, config, logger });
+  service = new SearchService({ searchRepo, knowledgeRepo, workRepo, embeddingProvider, config, logger, runtimeState });
 });
 
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
@@ -120,6 +132,36 @@ describe("SearchService", () => {
       expect(offsetResult.ok).toBe(true);
       if (!offsetResult.ok) return;
       expect(offsetResult.value.length).toBeLessThanOrEqual(2);
+    });
+  });
+
+  describe("buildContextPack", () => {
+    it("returns ranked context with diagnostics for code generation", async () => {
+      const knowledge = await seedKnowledgeArticle({
+        title: "Auth Architecture",
+        category: "architecture",
+        content: "Authentication flow and guards for the API layer.",
+        codeRefs: ["src/auth/service.ts", "src/auth/router.ts"],
+      });
+      const work = await seedWorkArticle({
+        title: "Auth bugfix",
+        template: "bugfix",
+        content: "## Objective\nFix auth\n\n## Steps to Reproduce\n1. Fail\n\n## Acceptance Criteria\n- [ ] fixed\n\n## Implementation\npatched",
+      });
+
+      await service.indexKnowledgeArticle(knowledge.id);
+      await service.indexWorkArticle(work.id);
+
+      const result = await service.buildContextPack({ query: "auth", mode: "code", limit: 5 });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.value.mode).toBe("code");
+      expect(result.value.items.length).toBeGreaterThan(0);
+      expect(result.value.items[0]?.reason).toContain("code ref");
+      expect(result.value.items.some((item) => item.id === knowledge.id)).toBe(true);
+      expect(result.value.items.some((item) => item.diagnostics.quality.score > 0)).toBe(true);
+      expect(result.value.guidance.length).toBeGreaterThan(0);
     });
   });
 
@@ -229,6 +271,16 @@ describe("SearchService", () => {
       if (!result.ok) return;
       expect(result.value.knowledgeCount).toBe(2);
       expect(result.value.workCount).toBe(1);
+    });
+
+    it("persists reindex freshness stats when a runtime state store is provided", async () => {
+      await seedKnowledgeArticle({ title: "K1", content: "content" });
+      await seedWorkArticle({ title: "W1", content: "content" });
+
+      const result = await service.fullReindex();
+      expect(result.ok).toBe(true);
+      expect(runtimeState.snapshot.searchIndexSize).toBe(2);
+      expect(runtimeState.snapshot.lastReindexAt).toBeTruthy();
     });
 
     it("does not remove stale entries — use removeArticle explicitly", async () => {

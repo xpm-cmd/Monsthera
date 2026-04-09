@@ -14,7 +14,7 @@ export function workToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "create_work",
-      description: "Create a new work article. Call index_article afterwards to make it searchable.",
+      description: "Create the work article that will act as the handoff contract for execution. Add objective, acceptance criteria, owners, references, and code refs as early as possible. Search sync happens automatically; use reindex_all only after bulk imports or recovery work.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -31,7 +31,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "get_work",
-      description: "Get a work article by ID.",
+      description: "Open a work article by ID to inspect the current contract, lifecycle phase, blockers, ownership, and review state.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -42,7 +42,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "update_work",
-      description: "Update an existing work article. Call index_article afterwards to refresh search index.",
+      description: "Update an existing work article to tighten the contract before or during execution. Add owners, references, code refs, blockers, and review expectations as context becomes clear. Search sync happens automatically; manual reindex is not needed for normal edits.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -61,7 +61,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "delete_work",
-      description: "Delete a work article by ID. Call remove_from_index afterwards to clean search index.",
+      description: "Delete a work article by ID. Search sync happens automatically; manual remove_from_index is only for repair flows.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -72,7 +72,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_work",
-      description: "List work articles, optionally filtered by phase.",
+      description: "List work articles, optionally filtered by phase, when you need to see the execution queue or a specific part of the lifecycle.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -86,7 +86,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "advance_phase",
-      description: "Advance a work article to the next phase. Guards must pass.",
+      description: "Advance a work article to the next phase only when the guards pass and the next owner or review gate is explicit.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -102,7 +102,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "contribute_enrichment",
-      description: "Record an enrichment contribution or skip for a role on a work article.",
+      description: "Record an enrichment contribution or an explicit skip for a specialist role on a work article.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -115,7 +115,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "assign_reviewer",
-      description: "Assign a reviewer to a work article.",
+      description: "Assign a real reviewer to a work article so review becomes an explicit gate instead of an implied future step.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -127,7 +127,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "submit_review",
-      description: "Submit a review outcome for a work article.",
+      description: "Submit a review outcome for a work article to close or reopen the review gate explicitly.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -140,7 +140,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "add_dependency",
-      description: "Add a blocking dependency to a work article.",
+      description: "Add a blocking dependency to a work article so automation and humans can see why progress should wait.",
       inputSchema: {
         type: "object" as const,
         properties: {

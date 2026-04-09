@@ -1,9 +1,12 @@
 import type { Result } from "../core/result.js";
 import type { NotFoundError, StorageError, ValidationError, StateTransitionError, GuardFailedError } from "../core/errors.js";
 import type { Logger } from "../core/logger.js";
+import type { StatusReporter } from "../core/status.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import { workId, agentId } from "../core/types.js";
+import type { OrchestrationEventRepository, OrchestrationEventType } from "../orchestration/repository.js";
 import type { WorkArticle, WorkArticleRepository, CreateWorkArticleInput, UpdateWorkArticleInput } from "./repository.js";
+import type { SearchMutationSync } from "../search/sync.js";
 import { validateCreateWorkInput, validateUpdateWorkInput } from "./schemas.js";
 
 // ─── WorkService ─────────────────────────────────────────────────────────────
@@ -11,15 +14,24 @@ import { validateCreateWorkInput, validateUpdateWorkInput } from "./schemas.js";
 export interface WorkServiceDeps {
   workRepo: WorkArticleRepository;
   logger: Logger;
+  searchSync?: SearchMutationSync;
+  status?: StatusReporter;
+  orchestrationRepo?: OrchestrationEventRepository;
 }
 
 export class WorkService {
   private readonly repo: WorkArticleRepository;
   private readonly logger: Logger;
+  private readonly searchSync?: SearchMutationSync;
+  private readonly status?: StatusReporter;
+  private readonly orchestrationRepo?: OrchestrationEventRepository;
 
   constructor(deps: WorkServiceDeps) {
     this.repo = deps.workRepo;
     this.logger = deps.logger.child({ domain: "work" });
+    this.searchSync = deps.searchSync;
+    this.status = deps.status;
+    this.orchestrationRepo = deps.orchestrationRepo;
   }
 
   async createWork(
@@ -28,7 +40,12 @@ export class WorkService {
     const validated = validateCreateWorkInput(input);
     if (!validated.ok) return validated;
     this.logger.info("Creating work article", { operation: "createWork", title: validated.value.title });
-    return this.repo.create(validated.value as unknown as CreateWorkArticleInput);
+    const result = await this.repo.create(validated.value as unknown as CreateWorkArticleInput);
+    if (result.ok) {
+      await this.syncIndexedArticle(result.value.id);
+      await this.refreshCounts();
+    }
+    return result;
   }
 
   async getWork(
@@ -45,14 +62,23 @@ export class WorkService {
     const validated = validateUpdateWorkInput(input);
     if (!validated.ok) return validated;
     this.logger.info("Updating work article", { operation: "updateWork", id });
-    return this.repo.update(id, validated.value as unknown as UpdateWorkArticleInput);
+    const result = await this.repo.update(id, validated.value as unknown as UpdateWorkArticleInput);
+    if (result.ok) {
+      await this.syncIndexedArticle(result.value.id);
+    }
+    return result;
   }
 
   async deleteWork(
     id: string,
   ): Promise<Result<void, NotFoundError | StateTransitionError | StorageError>> {
     this.logger.info("Deleting work article", { operation: "deleteWork", id });
-    return this.repo.delete(id);
+    const result = await this.repo.delete(id);
+    if (result.ok) {
+      await this.removeIndexedArticle(id);
+      await this.refreshCounts();
+    }
+    return result;
   }
 
   async listWork(
@@ -71,7 +97,15 @@ export class WorkService {
     targetPhase: WorkPhaseType,
   ): Promise<Result<WorkArticle, StateTransitionError | GuardFailedError | NotFoundError | StorageError>> {
     this.logger.info("Advancing work article phase", { operation: "advancePhase", id, targetPhase });
-    return this.repo.advancePhase(workId(id), targetPhase);
+    const result = await this.repo.advancePhase(workId(id), targetPhase);
+    if (result.ok) {
+      await this.syncIndexedArticle(result.value.id);
+      await this.logEvent(result.value.id, "phase_advanced", {
+        to: result.value.phase,
+        phaseHistory: result.value.phaseHistory,
+      });
+    }
+    return result;
   }
 
   // ─── Enrichment & Review ───────────────────────────────────────────────────
@@ -82,7 +116,11 @@ export class WorkService {
     status: "contributed" | "skipped",
   ): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>> {
     this.logger.info("Recording enrichment contribution", { operation: "contributeEnrichment", id, role, status });
-    return this.repo.contributeEnrichment(workId(id), role, status);
+    const result = await this.repo.contributeEnrichment(workId(id), role, status);
+    if (result.ok) {
+      await this.syncIndexedArticle(result.value.id);
+    }
+    return result;
   }
 
   async assignReviewer(
@@ -90,7 +128,11 @@ export class WorkService {
     reviewerAgentId: string,
   ): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>> {
     this.logger.info("Assigning reviewer", { operation: "assignReviewer", id, reviewerAgentId });
-    return this.repo.assignReviewer(workId(id), agentId(reviewerAgentId));
+    const result = await this.repo.assignReviewer(workId(id), agentId(reviewerAgentId));
+    if (result.ok) {
+      await this.syncIndexedArticle(result.value.id);
+    }
+    return result;
   }
 
   async submitReview(
@@ -99,7 +141,11 @@ export class WorkService {
     status: "approved" | "changes-requested",
   ): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>> {
     this.logger.info("Submitting review", { operation: "submitReview", id, reviewerAgentId, status });
-    return this.repo.submitReview(workId(id), agentId(reviewerAgentId), status);
+    const result = await this.repo.submitReview(workId(id), agentId(reviewerAgentId), status);
+    if (result.ok) {
+      await this.syncIndexedArticle(result.value.id);
+    }
+    return result;
   }
 
   // ─── Dependencies ─────────────────────────────────────────────────────────
@@ -109,7 +155,12 @@ export class WorkService {
     blockedById: string,
   ): Promise<Result<WorkArticle, NotFoundError | StateTransitionError | StorageError>> {
     this.logger.info("Adding dependency", { operation: "addDependency", id, blockedById });
-    return this.repo.addDependency(workId(id), workId(blockedById));
+    const result = await this.repo.addDependency(workId(id), workId(blockedById));
+    if (result.ok) {
+      await this.syncIndexedArticle(result.value.id);
+      await this.logEvent(result.value.id, "dependency_blocked", { blockedById });
+    }
+    return result;
   }
 
   async removeDependency(
@@ -117,6 +168,64 @@ export class WorkService {
     blockedById: string,
   ): Promise<Result<WorkArticle, NotFoundError | StateTransitionError | StorageError>> {
     this.logger.info("Removing dependency", { operation: "removeDependency", id, blockedById });
-    return this.repo.removeDependency(workId(id), workId(blockedById));
+    const result = await this.repo.removeDependency(workId(id), workId(blockedById));
+    if (result.ok) {
+      await this.syncIndexedArticle(result.value.id);
+      await this.logEvent(result.value.id, "dependency_resolved", { blockedById });
+    }
+    return result;
+  }
+
+  private async syncIndexedArticle(id: string): Promise<void> {
+    if (!this.searchSync) return;
+    const syncResult = await this.searchSync.indexWorkArticle(id);
+    if (!syncResult.ok) {
+      this.logger.warn("Work article indexed with warnings", {
+        operation: "indexWorkArticle",
+        id,
+        error: syncResult.error.message,
+      });
+    }
+  }
+
+  private async removeIndexedArticle(id: string): Promise<void> {
+    if (!this.searchSync) return;
+    const syncResult = await this.searchSync.removeArticle(id);
+    if (!syncResult.ok) {
+      this.logger.warn("Work article removal not reflected in search index", {
+        operation: "removeWorkArticleFromIndex",
+        id,
+        error: syncResult.error.message,
+      });
+    }
+  }
+
+  private async refreshCounts(): Promise<void> {
+    if (!this.status) return;
+    const countResult = await this.repo.findMany();
+    if (countResult.ok) {
+      this.status.recordStat("workArticleCount", countResult.value.length);
+    }
+  }
+
+  private async logEvent(
+    id: string,
+    eventType: OrchestrationEventType,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.orchestrationRepo) return;
+    const eventResult = await this.orchestrationRepo.logEvent({
+      workId: workId(id),
+      eventType,
+      details,
+    });
+    if (!eventResult.ok) {
+      this.logger.warn("Failed to log orchestration event", {
+        operation: "logEvent",
+        id,
+        eventType,
+        error: eventResult.error.message,
+      });
+    }
   }
 }

@@ -13,6 +13,7 @@ export const ArticleFrontmatterSchema = z.object({
   category: z.string().min(1).max(100),
   tags: z.array(z.string()).default([]),
   codeRefs: z.array(z.string()).default([]),
+  sourcePath: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

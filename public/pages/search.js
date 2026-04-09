@@ -1,46 +1,154 @@
-// Search page — API data escaped via esc() in components.js
-// Uses <template> element for safe DOM construction from trusted templates
 import * as api from "../lib/api.js";
-import { renderSearchInput, renderBadge, renderCard, esc } from "../lib/components.js";
+import { renderSearchInput, renderBadge, renderCard, renderHeroCallout, esc } from "../lib/components.js";
+
+function freshnessVariant(state) {
+  switch (state) {
+    case "fresh": return "success";
+    case "attention": return "warning";
+    case "stale": return "error";
+    default: return "outline";
+  }
+}
+
+function typeVariant(type) {
+  return type === "knowledge" ? "primary" : "success";
+}
+
+function buildModeGuide(mode, filterType) {
+  const config = mode === "research"
+    ? {
+        eyebrow: "Investigation mode",
+        title: "Investigation mode",
+        steps: [
+          "Search by symptom, subsystem, or decision topic.",
+          "Prefer fresh and source-linked items before trusting older conclusions.",
+          "If the investigation becomes a scoped task, create a spike in Work and capture the final conclusion in Knowledge.",
+        ],
+        benefit: "Best when quality of evidence matters more than raw velocity.",
+      }
+    : mode === "general"
+      ? {
+          eyebrow: "General orientation",
+          title: "General mode",
+          steps: [
+            "Use broad queries to find the current baseline quickly.",
+            "Open the top items to understand intent, then decide whether the next step belongs in Knowledge, Work, or Flow.",
+            "Use this mode when you are orienting a human or a new agent in the workspace.",
+          ],
+          benefit: "Best for onboarding and fast orientation.",
+        }
+      : {
+          eyebrow: "Code generation mode",
+          title: "Code generation mode",
+          steps: [
+            "Search by feature, bug, module, or architecture concept.",
+            "Open only the top 2 to 4 code-linked items before planning implementation.",
+            "Move the selected references and code refs into a work article so execution stays grounded.",
+          ],
+          benefit: "Best for reducing blind repo reading and speeding implementation.",
+        };
+
+  return renderHeroCallout({
+    eyebrow: config.eyebrow,
+    title: config.title,
+    body: config.benefit,
+    meta: [
+      renderBadge(mode, mode === "code" ? "primary" : mode === "research" ? "warning" : "secondary"),
+      renderBadge(filterType === "all" ? "knowledge + work" : filterType, "outline"),
+    ],
+    steps: config.steps.map((item, index) => ({
+      title: `Step ${index + 1}`,
+      detail: item,
+    })),
+  });
+}
 
 export async function render(container) {
-  let results = [];
+  let pack = null;
   let selectedResult = null;
   let filterType = "all";
+  let mode = "code";
+  let query = "";
   let debounceTimer = null;
 
   function getFiltered() {
-    if (filterType === "all") return results;
-    return results.filter(r => r.type === filterType);
+    const items = pack?.items || [];
+    if (filterType === "all") return items;
+    return items.filter((item) => item.type === filterType);
+  }
+
+  function buildSummary() {
+    if (!pack) {
+      return renderCard(
+        "Context pack",
+        '<p class="text-sm text-muted">Type a query and Monsthera will assemble a ranked pack optimized for code generation or investigation.</p>',
+      );
+    }
+
+    return renderCard(
+      "Context pack",
+      '<div class="guide-hero">'
+        + `<div class="stat-card"><div class="stat-label">Items</div><div class="stat-value">${esc(String(pack.summary.itemCount))}</div><div class="mt-4">${renderBadge(pack.mode, "secondary")}</div></div>`
+        + `<div class="stat-card"><div class="stat-label">Fresh</div><div class="stat-value">${esc(String(pack.summary.freshCount))}</div><div class="mt-4">${renderBadge(pack.summary.staleCount > 0 ? `${pack.summary.staleCount} stale` : "clean", pack.summary.staleCount > 0 ? "warning" : "success")}</div></div>`
+        + `<div class="stat-card"><div class="stat-label">Code-linked</div><div class="stat-value">${esc(String(pack.summary.codeLinkedCount))}</div><div class="mt-4">${renderBadge(pack.summary.sourceLinkedCount > 0 ? `${pack.summary.sourceLinkedCount} source-linked` : "no source links", pack.summary.sourceLinkedCount > 0 ? "primary" : "outline")}</div></div>`
+        + `<div class="stat-card"><div class="stat-label">Index drift</div><div class="stat-value">${esc(String(pack.summary.skippedStaleIndexCount))}</div><div class="mt-4">${renderBadge(pack.summary.skippedStaleIndexCount > 0 ? "repair suggested" : "clean", pack.summary.skippedStaleIndexCount > 0 ? "warning" : "success")}</div></div>`
+        + "</div>"
+        + `<ul class="guide-list">${(pack.guidance || []).map((item) => `<li>${esc(item)}</li>`).join("")}</ul>`,
+    );
   }
 
   function buildDOM() {
     const filtered = getFiltered();
     const resultListHtml = filtered.length > 0
-      ? filtered.map(r =>
-          '<div class="card" style="cursor:pointer;padding:14px 16px" data-result-id="' + esc(r.id) + '" data-result-type="' + esc(r.type) + '">'
-          + '<div class="flex items-center gap-8">' + renderBadge(r.type, r.type === "knowledge" ? "primary" : "success")
-          + '<strong class="text-sm">' + esc(r.title) + "</strong></div>"
-          + (r.snippet ? '<p class="text-xs text-muted mt-4">' + esc(r.snippet) + "</p>" : "")
-          + "</div>"
-        ).join("\n")
-      : '<p class="text-sm text-muted" style="padding:20px">No results. Type a query above.</p>';
+      ? filtered.map((item) =>
+        '<div class="card card--interactive' + (selectedResult?.id === item.id ? ' card--selected' : '') + '" style="cursor:pointer;padding:14px 16px" data-result-id="' + esc(item.id) + '" data-result-type="' + esc(item.type) + '">'
+          + '<div class="flex items-center gap-8" style="flex-wrap:wrap">' + renderBadge(item.type, typeVariant(item.type))
+          + renderBadge(item.diagnostics?.freshness?.label || "unknown", freshnessVariant(item.diagnostics?.freshness?.state))
+          + renderBadge(item.diagnostics?.quality?.label || "quality", "outline")
+          + '<strong class="text-sm">' + esc(item.title) + "</strong></div>"
+          + '<p class="text-xs text-muted mt-4">' + esc(item.reason || "") + "</p>"
+          + (item.snippet ? '<p class="text-xs text-muted mt-8">' + esc(item.snippet) + "</p>" : "")
+          + '<div class="flex gap-8 mt-8" style="flex-wrap:wrap">'
+          + (item.category ? renderBadge(item.category, "secondary") : "")
+          + (item.template ? renderBadge(item.template, "secondary") : "")
+          + (item.phase ? renderBadge(item.phase, "outline") : "")
+          + (item.codeRefs?.length ? renderBadge(`${item.codeRefs.length} code refs`, "primary") : "")
+          + (item.references?.length ? renderBadge(`${item.references.length} refs`, "outline") : "")
+          + "</div></div>"
+      ).join("\n")
+      : '<p class="text-sm text-muted" style="padding:20px">No context pack yet. Type a query above.</p>';
 
-    let previewHtml = selectedResult
-      ? renderCard(null, '<h3 style="font-size:16px;font-weight:600">' + esc(selectedResult.title) + "</h3>"
-          + '<div class="mt-4">' + renderBadge(selectedResult.category || selectedResult.template || selectedResult.type, "secondary") + "</div>"
-          + '<p class="text-sm mt-8">' + esc((selectedResult.content || "").slice(0, 500)) + "</p>")
+    const previewHtml = selectedResult
+      ? renderCard(
+        null,
+        '<h3 style="font-size:16px;font-weight:600">' + esc(selectedResult.title) + "</h3>"
+          + '<div class="flex gap-8 mt-4" style="flex-wrap:wrap">'
+          + renderBadge(selectedResult.category || selectedResult.template || selectedResult.type, "secondary")
+          + (selectedResult.diagnostics?.freshness ? renderBadge(selectedResult.diagnostics.freshness.label, freshnessVariant(selectedResult.diagnostics.freshness.state)) : "")
+          + (selectedResult.diagnostics?.quality ? renderBadge(`${selectedResult.diagnostics.quality.score}/100`, "outline") : "")
+          + "</div>"
+          + (selectedResult.diagnostics?.freshness?.detail ? `<p class="text-xs text-muted mt-8">${esc(selectedResult.diagnostics.freshness.detail)}</p>` : "")
+          + (selectedResult.sourcePath ? `<p class="text-xs text-muted mt-8">Source: <span class="mono">${esc(selectedResult.sourcePath)}</span></p>` : "")
+          + '<p class="text-sm mt-8">' + esc((selectedResult.content || "").slice(0, 800)) + "</p>",
+      )
       : '<p class="text-sm text-muted">Select a result to preview.</p>';
 
     const temp = document.createElement("template");
     temp.innerHTML = [
-      '<div class="page-header"><div><h1 class="page-title">Search</h1><p class="page-subtitle">Search across all articles.</p></div></div>',
-      renderSearchInput("Search articles, work items, code..."),
+      '<div class="page-header"><div><div class="page-kicker">Retrieve with intent</div><h1 class="page-title">Search</h1><p class="page-subtitle">Assemble targeted context packs for coding and investigation instead of reading the repo blindly.</p></div><div class="page-actions"><a href="/guide" data-link class="btn btn--outline btn--sm">Open guide</a></div></div>',
+      renderSearchInput("Search code paths, decisions, bugs, architecture, experiments..."),
+      '<div class="flex gap-8 mt-4" style="flex-wrap:wrap">'
+        + '<button class="tab' + (mode === "code" ? " active" : "") + '" data-mode="code">Code generation</button>'
+        + '<button class="tab' + (mode === "research" ? " active" : "") + '" data-mode="research">Investigation</button>'
+        + '<button class="tab' + (mode === "general" ? " active" : "") + '" data-mode="general">General</button>'
+        + "</div>",
       '<div class="flex gap-8 mt-4">'
         + '<button class="tab' + (filterType === "all" ? " active" : "") + '" data-filter="all">All</button>'
         + '<button class="tab' + (filterType === "knowledge" ? " active" : "") + '" data-filter="knowledge">Knowledge</button>'
         + '<button class="tab' + (filterType === "work" ? " active" : "") + '" data-filter="work">Work</button>'
         + "</div>",
+      buildModeGuide(mode, filterType),
+      buildSummary(),
       '<div class="layout-split" style="margin-top:16px">'
         + '<div class="col-main" style="gap:8px">' + resultListHtml + "</div>"
         + '<div class="col-side">' + previewHtml + "</div></div>",
@@ -54,31 +162,64 @@ export async function render(container) {
     if (typeof lucide !== "undefined") lucide.createIcons({ nodes: [container] });
   }
 
+  async function loadPack() {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      pack = null;
+      selectedResult = null;
+      rerender();
+      return;
+    }
+    try {
+      pack = await api.getContextPack(trimmed, mode, 10, filterType === "all" ? "all" : filterType);
+      selectedResult = null;
+      rerender();
+    } catch {
+      pack = null;
+      selectedResult = null;
+      rerender();
+    }
+  }
+
   rerender();
 
   const ac = new AbortController();
-  container.addEventListener("input", (e) => {
-    if (!e.target.classList.contains("search-input")) return;
+  container.addEventListener("input", (event) => {
+    if (!event.target.classList.contains("search-input")) return;
+    query = event.target.value;
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(async () => {
-      if (ac.signal.aborted) return;
-      const q = e.target.value.trim();
-      if (!q) { results = []; rerender(); return; }
-      try { results = await api.search(q, 20); selectedResult = null; if (!ac.signal.aborted) rerender(); } catch { /* ignore */ }
-    }, 300);
+    debounceTimer = setTimeout(() => {
+      void loadPack();
+    }, 250);
   }, { signal: ac.signal });
 
-  container.addEventListener("click", async (e) => {
-    const filter = e.target.closest("[data-filter]");
-    if (filter) { filterType = filter.dataset.filter; rerender(); return; }
-    const card = e.target.closest("[data-result-id]");
+  container.addEventListener("click", async (event) => {
+    const filter = event.target.closest("[data-filter]");
+    if (filter) {
+      filterType = filter.dataset.filter;
+      if (query.trim()) await loadPack();
+      else rerender();
+      return;
+    }
+
+    const modeButton = event.target.closest("[data-mode]");
+    if (modeButton) {
+      mode = modeButton.dataset.mode;
+      if (query.trim()) await loadPack();
+      else rerender();
+      return;
+    }
+
+    const card = event.target.closest("[data-result-id]");
     if (card) {
       try {
         selectedResult = card.dataset.resultType === "knowledge"
           ? await api.getKnowledgeById(card.dataset.resultId)
           : await api.getWorkById(card.dataset.resultId);
         if (!ac.signal.aborted) rerender();
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }, { signal: ac.signal });
 

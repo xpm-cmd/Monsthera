@@ -32,7 +32,10 @@ export const CreateWorkArticleInputSchema = z.object({
   priority: z.enum(["critical", "high", "medium", "low"]),
   author: z.string().min(1),
   lead: z.string().optional(),
+  assignee: z.string().optional(),
   tags: z.array(z.string()).default([]),
+  references: z.array(z.string()).default([]),
+  codeRefs: z.array(z.string()).default([]),
   content: z.string().optional(),
 });
 

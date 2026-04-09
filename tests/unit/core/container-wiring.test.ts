@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createContainer } from "../../../src/core/container.js";
 import { defaultConfig } from "../../../src/core/config.js";
 import type { MonstheraConfig } from "../../../src/core/config.js";
@@ -11,6 +11,8 @@ import type { MonstheraConfig } from "../../../src/core/config.js";
 
 function makeConfig(overrides: {
   doltEnabled?: boolean;
+  doltHost?: string;
+  doltPort?: number;
   semanticEnabled?: boolean;
   embeddingProvider?: "ollama" | "huggingface";
 }): MonstheraConfig {
@@ -20,6 +22,8 @@ function makeConfig(overrides: {
     storage: {
       ...base.storage,
       doltEnabled: overrides.doltEnabled ?? false,
+      doltHost: overrides.doltHost ?? base.storage.doltHost,
+      doltPort: overrides.doltPort ?? base.storage.doltPort,
     },
     search: {
       ...base.search,
@@ -82,8 +86,8 @@ describe("container wiring: Dolt fallback", () => {
   });
 
   it("falls back to in-memory when doltEnabled but Dolt unavailable", async () => {
-    // doltEnabled=true but no Dolt server running — should gracefully degrade
-    const config = makeConfig({ doltEnabled: true });
+    // Point to an unused high port so the fallback remains deterministic.
+    const config = makeConfig({ doltEnabled: true, doltHost: "127.0.0.1", doltPort: 65530 });
     const container = await createContainer(config);
 
     // Repos should still be present (FS + in-memory fallback)

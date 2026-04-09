@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { WorkService } from "../../../src/work/service.js";
 import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
+import { InMemoryOrchestrationEventRepository } from "../../../src/orchestration/in-memory-repository.js";
 import { ErrorCode } from "../../../src/core/errors.js";
 import { createLogger } from "../../../src/core/logger.js";
 import { WorkPhase, WorkTemplate, Priority } from "../../../src/core/types.js";
@@ -12,9 +13,10 @@ import type { WorkArticle } from "../../../src/work/repository.js";
 
 function createService() {
   const workRepo = new InMemoryWorkArticleRepository();
+  const orchestrationRepo = new InMemoryOrchestrationEventRepository();
   const logger = createLogger({ level: "warn", domain: "test" });
-  const service = new WorkService({ workRepo, logger });
-  return { service, workRepo, logger };
+  const service = new WorkService({ workRepo, logger, orchestrationRepo });
+  return { service, workRepo, orchestrationRepo, logger };
 }
 
 const validCreateInput = {
@@ -273,6 +275,21 @@ describe("advancePhase", () => {
     if (result.ok) return;
     expect(result.error.code).toBe(ErrorCode.STATE_TRANSITION_INVALID);
   });
+
+  it("logs a phase_advanced orchestration event on success", async () => {
+    const { service, orchestrationRepo } = createService();
+    const article = await seedWork(service, {
+      content: "## Objective\nDo the thing.\n\n## Acceptance Criteria\n- [ ] Works.",
+    });
+
+    const result = await service.advancePhase(article.id, WorkPhase.ENRICHMENT);
+    expect(result.ok).toBe(true);
+
+    const events = await orchestrationRepo.findByType("phase_advanced");
+    expect(events.ok).toBe(true);
+    if (!events.ok) return;
+    expect(events.value.some((event) => event.workId === article.id)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -375,6 +392,19 @@ describe("addDependency", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.blockedBy).toContain(b.value.id);
+  });
+
+  it("logs dependency_blocked event", async () => {
+    const { service, orchestrationRepo } = createService();
+    const a = await service.createWork({ title: "A", template: "feature", priority: "medium", author: "agent-1" });
+    const b = await service.createWork({ title: "B", template: "feature", priority: "medium", author: "agent-1" });
+    if (!a.ok || !b.ok) throw new Error("setup failed");
+
+    await service.addDependency(a.value.id, b.value.id);
+    const events = await orchestrationRepo.findByType("dependency_blocked");
+    expect(events.ok).toBe(true);
+    if (!events.ok) return;
+    expect(events.value.some((event) => event.workId === a.value.id)).toBe(true);
   });
 });
 

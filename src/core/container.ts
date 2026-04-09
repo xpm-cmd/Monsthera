@@ -13,6 +13,7 @@ import type { Disposable } from "./lifecycle.js";
 import { createLogger } from "./logger.js";
 import { createStatusReporter } from "./status.js";
 import { VERSION } from "./constants.js";
+import { createRuntimeStateStore } from "./runtime-state.js";
 import { DisposableStack } from "./lifecycle.js";
 import { FileSystemKnowledgeArticleRepository } from "../knowledge/file-repository.js";
 import { KnowledgeService } from "../knowledge/service.js";
@@ -26,6 +27,9 @@ import { SearchService } from "../search/service.js";
 import { OrchestrationService } from "../orchestration/service.js";
 import { MigrationService } from "../migration/service.js";
 import type { V2SourceReader } from "../migration/types.js";
+import { StructureService } from "../structure/service.js";
+import { AgentService } from "../agents/service.js";
+import { IngestService } from "../ingest/service.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -40,6 +44,9 @@ export interface MonstheraContainer extends Disposable {
   readonly searchService: SearchService;
   readonly orchestrationRepo: OrchestrationEventRepository;
   readonly orchestrationService: OrchestrationService;
+  readonly structureService: StructureService;
+  readonly agentsService: AgentService;
+  readonly ingestService: IngestService;
   readonly migrationService?: MigrationService;
 }
 
@@ -63,6 +70,7 @@ export async function createContainer(
 
   // Create status reporter
   const status = createStatusReporter(VERSION);
+  const runtimeState = createRuntimeStateStore(config.repoPath);
 
   let knowledgeRepo: KnowledgeArticleRepository | undefined;
   let workRepo: WorkArticleRepository | undefined;
@@ -90,6 +98,8 @@ export async function createContainer(
         host: config.storage.doltHost,
         port: config.storage.doltPort,
         database: config.storage.doltDatabase,
+        user: config.storage.doltUser,
+        password: config.storage.doltPassword,
       });
 
       const schemaResult = await initializeSchema(doltPool);
@@ -111,7 +121,7 @@ export async function createContainer(
         status.register("storage", () => ({
           name: "storage",
           healthy: true,
-          detail: `Markdown (${markdownRoot}) + Dolt index (${config.storage.doltHost}:${config.storage.doltPort}/${config.storage.doltDatabase})`,
+          detail: `Markdown (${markdownRoot}) + Dolt index/events (${config.storage.doltHost}:${config.storage.doltPort}/${config.storage.doltDatabase})`,
         }));
 
         // Monitor Dolt health in the background, expose via status check
@@ -184,9 +194,6 @@ export async function createContainer(
     embeddingProvider = new StubEmbeddingProvider();
   }
 
-  // Wire up services with repos — repos are guaranteed to be set by this point
-  const knowledgeService = new KnowledgeService({ knowledgeRepo: knowledgeRepo!, logger });
-  const workService = new WorkService({ workRepo: workRepo!, logger });
   const searchService = new SearchService({
     searchRepo: searchRepo!,
     knowledgeRepo: knowledgeRepo!,
@@ -194,6 +201,23 @@ export async function createContainer(
     embeddingProvider,
     config: config.search,
     logger,
+    status,
+    runtimeState,
+    repoPath: config.repoPath,
+  });
+  // Wire up services with repos — repos are guaranteed to be set by this point
+  const knowledgeService = new KnowledgeService({
+    knowledgeRepo: knowledgeRepo!,
+    logger,
+    searchSync: searchService,
+    status,
+  });
+  const workService = new WorkService({
+    workRepo: workRepo!,
+    logger,
+    searchSync: searchService,
+    status,
+    orchestrationRepo: orchestrationRepo!,
   });
   const orchestrationService = new OrchestrationService({
     workRepo: workRepo!,
@@ -202,16 +226,60 @@ export async function createContainer(
     autoAdvance: config.orchestration.autoAdvance,
     pollIntervalMs: config.orchestration.pollIntervalMs,
   });
+  const structureService = new StructureService({
+    knowledgeRepo: knowledgeRepo!,
+    workRepo: workRepo!,
+    repoPath: config.repoPath,
+    logger,
+  });
+  const agentsService = new AgentService({
+    workRepo: workRepo!,
+    orchestrationRepo: orchestrationRepo!,
+    logger,
+  });
+  const ingestService = new IngestService({
+    knowledgeRepo: knowledgeRepo!,
+    repoPath: config.repoPath,
+    logger,
+    searchSync: searchService,
+    status,
+  });
 
   // Wire up migration service if a v2 reader is provided
   const migrationService = options?.v2Reader
-    ? new MigrationService({ v2Reader: options.v2Reader, workRepo: workRepo!, logger })
+    ? new MigrationService({
+        v2Reader: options.v2Reader,
+        knowledgeRepo: knowledgeRepo!,
+        workRepo: workRepo!,
+        logger,
+        status,
+        runtimeState,
+      })
     : undefined;
   if (options?.v2Reader) {
     stack.defer(() => options.v2Reader!.close());
   }
 
   // Register stat recording for observability
+  const knowledgeCountResult = await knowledgeRepo!.findMany();
+  if (knowledgeCountResult.ok) {
+    status.recordStat("knowledgeArticleCount", knowledgeCountResult.value.length);
+  }
+  const workCountResult = await workRepo!.findMany();
+  if (workCountResult.ok) {
+    status.recordStat("workArticleCount", workCountResult.value.length);
+  }
+  const persistedRuntimeState = await runtimeState.read();
+  if (persistedRuntimeState.searchIndexSize !== undefined) {
+    status.recordStat("searchIndexSize", persistedRuntimeState.searchIndexSize);
+  }
+  if (persistedRuntimeState.lastReindexAt) {
+    status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
+  }
+  if (persistedRuntimeState.lastMigrationAt) {
+    status.recordStat("lastMigrationAt", persistedRuntimeState.lastMigrationAt);
+  }
+
   status.register("knowledge", () => ({
     name: "knowledge",
     healthy: true,
@@ -226,6 +294,21 @@ export async function createContainer(
     name: "search",
     healthy: true,
     detail: "Search service",
+  }));
+  status.register("structure", () => ({
+    name: "structure",
+    healthy: true,
+    detail: "Structure service",
+  }));
+  status.register("agents", () => ({
+    name: "agents",
+    healthy: true,
+    detail: "Agent directory service",
+  }));
+  status.register("ingest", () => ({
+    name: "ingest",
+    healthy: true,
+    detail: "Local source import service",
   }));
 
   // Start auto-advance loop if configured
@@ -246,6 +329,9 @@ export async function createContainer(
     searchService,
     orchestrationRepo: orchestrationRepo!,
     orchestrationService,
+    structureService,
+    agentsService,
+    ingestService,
     migrationService,
     async dispose() {
       logger.info("Shutting down container");

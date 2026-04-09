@@ -55,21 +55,30 @@ async function seedAndIndex() {
 // ---------------------------------------------------------------------------
 
 describe("searchToolDefinitions", () => {
-  it("returns 4 tool definitions", () => {
+  it("returns 5 tool definitions", () => {
     const defs = searchToolDefinitions();
-    expect(defs).toHaveLength(4);
+    expect(defs).toHaveLength(5);
   });
 
-  it("includes search, index_article, remove_from_index, reindex_all", () => {
+  it("includes search, build_context_pack, index_article, remove_from_index, reindex_all", () => {
     const names = searchToolDefinitions().map((d) => d.name);
     expect(names).toEqual(
       expect.arrayContaining([
         "search",
+        "build_context_pack",
         "index_article",
         "remove_from_index",
         "reindex_all",
       ]),
     );
+  });
+
+  it("descriptions clarify that CRUD syncs search automatically", () => {
+    const defs = searchToolDefinitions();
+    expect(defs.find((def) => def.name === "search")?.description).toContain("sync search automatically");
+    expect(defs.find((def) => def.name === "build_context_pack")?.description).toContain("Recommended first step");
+    expect(defs.find((def) => def.name === "index_article")?.description).toContain("repair or backfill");
+    expect(defs.find((def) => def.name === "remove_from_index")?.description).toContain("repair flows");
   });
 });
 
@@ -92,6 +101,30 @@ describe("handleSearchTool", () => {
       expect(response.isError).toBe(true);
       const body = JSON.parse(response.content[0]!.text) as { error: string };
       expect(body.error).toBe("VALIDATION_FAILED");
+    });
+  });
+
+  describe("build_context_pack", () => {
+    it("returns a ranked pack with summaries", async () => {
+      const createResult = await knowledgeRepo.create({
+        title: "API Auth Guide",
+        category: "guide",
+        content: "Authentication walkthrough",
+        codeRefs: ["src/auth/service.ts"],
+      });
+      if (!createResult.ok) throw new Error("seed failed");
+      await service.indexKnowledgeArticle(createResult.value.id);
+
+      const response = await handleSearchTool("build_context_pack", { query: "auth", mode: "code" }, service);
+      expect(response.isError).toBeUndefined();
+      const body = JSON.parse(response.content[0]!.text) as {
+        mode: string;
+        summary: { itemCount: number };
+        items: Array<{ id: string; diagnostics: { quality: { score: number } } }>;
+      };
+      expect(body.mode).toBe("code");
+      expect(body.summary.itemCount).toBeGreaterThanOrEqual(1);
+      expect(body.items[0]?.diagnostics.quality.score).toBeGreaterThan(0);
     });
   });
 

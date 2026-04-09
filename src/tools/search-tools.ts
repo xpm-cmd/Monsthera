@@ -4,13 +4,13 @@ import { successResponse, errorResponse, requireString, isErrorResponse, require
 
 export type { ToolDefinition, ToolResponse };
 
-/** Returns the 4 search tool definitions for MCP ListTools */
+/** Returns the search tool definitions for MCP ListTools */
 export function searchToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "search",
       description:
-        "Search across knowledge and work articles with BM25 ranking. Returns scored results with snippets. Note: articles must be explicitly indexed via index_article or reindex_all before they appear in search results.",
+        "Quick discovery across knowledge and work articles with BM25 ranking. Use it when you already know the terms; for deep coding or investigation, prefer build_context_pack first so the next reads are ranked and smaller. Normal knowledge/work CRUD flows sync search automatically; use reindex_all only for bulk backfills or repair.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -27,8 +27,31 @@ export function searchToolDefinitions(): ToolDefinition[] {
       },
     },
     {
+      name: "build_context_pack",
+      description:
+        "Recommended first step before coding or investigation. Builds a ranked context pack using search plus freshness, quality, and code-link signals so agents can read less, plan faster, and then open only the top knowledge/work items.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          query: { type: "string", description: "Search query used to assemble the pack" },
+          mode: {
+            type: "string",
+            enum: ["general", "code", "research"],
+            description: "Optimize the pack for general planning, code generation, or investigation",
+          },
+          type: {
+            type: "string",
+            enum: ["knowledge", "work", "all"],
+            description: "Filter by article type",
+          },
+          limit: { type: "number", description: "Maximum context pack items (1-20, default 8)" },
+        },
+        required: ["query"],
+      },
+    },
+    {
       name: "index_article",
-      description: "Index or re-index a specific article for search. Call after creating or updating an article to make it searchable.",
+      description: "Index or re-index a specific article for search. This is mainly for repair or backfill flows; normal create/update flows already sync automatically.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -44,7 +67,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "remove_from_index",
-      description: "Remove an article from the search index. Call after deleting an article.",
+      description: "Remove an article from the search index. This is mainly for repair flows; normal delete flows already sync automatically.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -56,7 +79,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     {
       name: "reindex_all",
       description:
-        "Rebuild the entire search index from all knowledge and work articles.",
+        "Rebuild the entire search index from all knowledge and work articles. Use this only after migrations, bulk imports, or recovery work.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -80,6 +103,11 @@ export async function handleSearchTool(
   switch (name) {
     case "search": {
       const result = await service.search(args);
+      if (!result.ok) return errorResponse(result.error.code, result.error.message);
+      return successResponse(result.value);
+    }
+    case "build_context_pack": {
+      const result = await service.buildContextPack(args);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
     }

@@ -227,33 +227,36 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
 
   async create(input: CreateWorkArticleInput): Promise<Result<WorkArticle, ValidationError | StorageError>> {
     const id = generateWorkId();
-    const now = timestamp();
+    const createdAt = timestamp(input.createdAt);
+    const updatedAt = timestamp(input.updatedAt ?? input.createdAt);
+    const phase = input.phase ?? WorkPhase.PLANNING;
     const templateConfig = WORK_TEMPLATES[input.template];
 
     const article: WorkArticle = {
       id,
       title: input.title,
       template: input.template,
-      phase: WorkPhase.PLANNING,
+      phase,
       priority: input.priority,
       author: input.author,
       lead: input.lead,
-      assignee: undefined,
-      enrichmentRoles: templateConfig.defaultEnrichmentRoles.map((role) => ({
+      assignee: input.assignee,
+      enrichmentRoles: input.enrichmentRoles ?? templateConfig.defaultEnrichmentRoles.map((role) => ({
         role,
         agentId: input.author,
         status: "pending" as const,
       })),
-      reviewers: [],
-      phaseHistory: [{ phase: WorkPhase.PLANNING, enteredAt: now }],
+      reviewers: input.reviewers ?? [],
+      phaseHistory: input.phaseHistory ?? [{ phase, enteredAt: createdAt }],
       tags: input.tags ?? [],
-      references: [],
-      codeRefs: [],
-      dependencies: [],
-      blockedBy: [],
+      references: input.references ?? [],
+      codeRefs: input.codeRefs ?? [],
+      dependencies: input.dependencies ?? [],
+      blockedBy: input.blockedBy ?? [],
       content: input.content ?? generateInitialContent(input.template),
-      createdAt: now,
-      updatedAt: now,
+      createdAt,
+      updatedAt,
+      completedAt: input.completedAt,
     };
 
     return this.writeArticle(article);

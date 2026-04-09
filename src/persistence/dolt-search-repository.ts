@@ -99,13 +99,13 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
     try {
       await connection.beginTransaction();
 
-      // Remove from search_documents
-      await connection.query<ResultSetHeader>("DELETE FROM search_documents WHERE id = ?", [id]);
-
-      // Remove from inverted index
+      // Remove child rows before the parent document to satisfy FK constraints.
       await connection.query<ResultSetHeader>("DELETE FROM search_inverted_index WHERE doc_id = ?", [
         id,
       ]);
+
+      // Remove from search_documents
+      await connection.query<ResultSetHeader>("DELETE FROM search_documents WHERE id = ?", [id]);
 
       await connection.commit();
       return ok(undefined);

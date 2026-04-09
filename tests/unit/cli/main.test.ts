@@ -1,3 +1,5 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "node:crypto";
 import { main } from "../../../src/cli/main.js";
@@ -99,6 +101,7 @@ describe("CLI main()", () => {
     const output = await captureStdout(() => main(["--help"]));
     expect(output).toContain("knowledge");
     expect(output).toContain("work");
+    expect(output).toContain("ingest");
     expect(output).toContain("search");
     expect(output).toContain("reindex");
   });
@@ -187,6 +190,32 @@ describe("CLI main()", () => {
       const output = await captureStdout(() => main(withTempRepo(["search", "someterms"])));
       // May return "No results found." or actual results — either is fine
       expect(output).toBeDefined();
+    });
+  });
+
+  describe("ingest subcommand", () => {
+    it("ingest local imports a markdown file and prints a summary", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await fs.mkdir(path.join(repoPath, "docs"), { recursive: true });
+      await fs.writeFile(
+        path.join(repoPath, "docs", "cli-import.md"),
+        "# CLI Import\n\nImported from CLI.\n",
+        "utf-8",
+      );
+
+      const output = await captureStdout(() =>
+        main(["ingest", "local", "--path", "docs/cli-import.md", "--summary", "--repo", repoPath]),
+      );
+      expect(output).toContain("Mode:         summary");
+      expect(output).toContain("Imported:");
+      expect(output).toContain("CLI Import");
+      expect(output).toContain("docs/cli-import.md");
+    });
+
+    it("ingest with no subcommand prints error", async () => {
+      await main(["ingest"]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
 

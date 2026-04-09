@@ -45,4 +45,10 @@ export class AliasStore {
   get size(): number {
     return this.aliasToWork.size;
   }
+
+  /** Reset all registered aliases. */
+  clear(): void {
+    this.aliasToWork.clear();
+    this.workToAliases.clear();
+  }
 }

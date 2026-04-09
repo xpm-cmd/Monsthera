@@ -24,7 +24,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "create_article",
-      description: "Create a new knowledge article. Call index_article afterwards to make it searchable.",
+      description: "Create a reusable knowledge article when a decision, guide, imported source, or implementation pattern should remain available for later agents. Search sync happens automatically; use reindex_all only after bulk imports or recovery work.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -39,7 +39,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "get_article",
-      description: "Get a knowledge article by ID or slug.",
+      description: "Open a specific knowledge article by ID or slug after search, context-pack selection, or work references point to it.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -50,7 +50,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "update_article",
-      description: "Update an existing knowledge article. Call index_article afterwards to refresh search index.",
+      description: "Update an existing knowledge article as understanding improves. Add durable wording, code refs, and reusable conclusions instead of leaving them only in chat or work history. Search sync happens automatically; manual reindex is not needed for normal edits.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -66,7 +66,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "delete_article",
-      description: "Delete a knowledge article by ID. Call remove_from_index afterwards to clean search index.",
+      description: "Delete a knowledge article by ID. Search sync happens automatically; manual remove_from_index is only for repair flows.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -77,7 +77,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_articles",
-      description: "List knowledge articles, optionally filtered by category.",
+      description: "List knowledge articles, optionally filtered by category. Best when you want to browse a domain rather than run full-text discovery.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -87,7 +87,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "search_articles",
-      description: "Search knowledge articles by query string.",
+      description: "Search knowledge articles by query string. Use this for a knowledge-only lookup; use search or build_context_pack when the task may span both work and knowledge.",
       inputSchema: {
         type: "object" as const,
         properties: {

@@ -18,6 +18,7 @@ export function formatArticle(article: KnowledgeArticle): string {
     `Category:  ${article.category}`,
     `Tags:      ${article.tags.length > 0 ? article.tags.join(", ") : "(none)"}`,
     `Code refs: ${article.codeRefs.length > 0 ? article.codeRefs.join(", ") : "(none)"}`,
+    `Source:    ${article.sourcePath ?? "(manual)"}`,
     `Created:   ${article.createdAt}`,
     `Updated:   ${article.updatedAt}`,
     "",

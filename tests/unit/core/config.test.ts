@@ -22,6 +22,8 @@ describe("defaultConfig()", () => {
     expect(config.storage.doltHost).toBe("localhost");
     expect(config.storage.doltPort).toBe(3306);
     expect(config.storage.doltDatabase).toBe("monsthera");
+    expect(config.storage.doltUser).toBe("root");
+    expect(config.storage.doltPassword).toBe("");
     expect(config.search.semanticEnabled).toBe(true);
     expect(config.search.embeddingModel).toBe("nomic-embed-text");
     expect(config.search.embeddingProvider).toBe("ollama");
@@ -72,7 +74,15 @@ describe("validateConfig()", () => {
     const result = validateConfig({
       repoPath: "/repo",
       verbosity: "debug",
-      storage: { markdownRoot: "docs", doltEnabled: true, doltHost: "db", doltPort: 3306, doltDatabase: "test" },
+      storage: {
+        markdownRoot: "docs",
+        doltEnabled: true,
+        doltHost: "db",
+        doltPort: 3306,
+        doltDatabase: "test",
+        doltUser: "monsthera",
+        doltPassword: "secret",
+      },
       search: {
         semanticEnabled: false,
         embeddingModel: "custom-model",
@@ -101,6 +111,11 @@ describe("applyEnvOverrides()", () => {
     delete process.env["MONSTHERA_HOST"];
     delete process.env["MONSTHERA_DOLT_ENABLED"];
     delete process.env["MONSTHERA_MARKDOWN_ROOT"];
+    delete process.env["MONSTHERA_DOLT_HOST"];
+    delete process.env["MONSTHERA_DOLT_PORT"];
+    delete process.env["MONSTHERA_DOLT_DATABASE"];
+    delete process.env["MONSTHERA_DOLT_USER"];
+    delete process.env["MONSTHERA_DOLT_PASSWORD"];
     delete process.env["MONSTHERA_SEMANTIC_ENABLED"];
     delete process.env["MONSTHERA_EMBEDDING_MODEL"];
     delete process.env["MONSTHERA_OLLAMA_URL"];
@@ -113,6 +128,11 @@ describe("applyEnvOverrides()", () => {
     delete process.env["MONSTHERA_HOST"];
     delete process.env["MONSTHERA_DOLT_ENABLED"];
     delete process.env["MONSTHERA_MARKDOWN_ROOT"];
+    delete process.env["MONSTHERA_DOLT_HOST"];
+    delete process.env["MONSTHERA_DOLT_PORT"];
+    delete process.env["MONSTHERA_DOLT_DATABASE"];
+    delete process.env["MONSTHERA_DOLT_USER"];
+    delete process.env["MONSTHERA_DOLT_PASSWORD"];
     delete process.env["MONSTHERA_SEMANTIC_ENABLED"];
     delete process.env["MONSTHERA_EMBEDDING_MODEL"];
     delete process.env["MONSTHERA_OLLAMA_URL"];
@@ -149,6 +169,22 @@ describe("applyEnvOverrides()", () => {
     const server = result["server"] as Record<string, unknown>;
     expect(server["host"]).toBe("0.0.0.0");
     expect(server["port"]).toBe(9000);
+  });
+
+  it("merges Dolt connection settings", () => {
+    process.env["MONSTHERA_DOLT_HOST"] = "127.0.0.1";
+    process.env["MONSTHERA_DOLT_PORT"] = "3310";
+    process.env["MONSTHERA_DOLT_DATABASE"] = "monsthera_local";
+    process.env["MONSTHERA_DOLT_USER"] = "root";
+    process.env["MONSTHERA_DOLT_PASSWORD"] = "password";
+
+    const result = applyEnvOverrides({ repoPath: "/repo" });
+    const storage = result["storage"] as Record<string, unknown>;
+    expect(storage["doltHost"]).toBe("127.0.0.1");
+    expect(storage["doltPort"]).toBe(3310);
+    expect(storage["doltDatabase"]).toBe("monsthera_local");
+    expect(storage["doltUser"]).toBe("root");
+    expect(storage["doltPassword"]).toBe("password");
   });
 });
 

@@ -77,6 +77,15 @@ describe("workToolDefinitions", () => {
       ]),
     );
   });
+
+  it("descriptions reflect automatic search sync", () => {
+    const defs = workToolDefinitions();
+    expect(defs.find((def) => def.name === "create_work")?.description).toContain("Search sync happens automatically");
+    expect(defs.find((def) => def.name === "create_work")?.description).toContain("handoff contract");
+    expect(defs.find((def) => def.name === "advance_phase")?.description).toContain("guards pass");
+    expect(defs.find((def) => def.name === "update_work")?.description).toContain("manual reindex is not needed");
+    expect(defs.find((def) => def.name === "delete_work")?.description).toContain("manual remove_from_index");
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -53,11 +53,23 @@ export interface WorkArticle {
 export interface CreateWorkArticleInput {
   title: string;
   template: WorkTemplate;
+  phase?: WorkPhase;
   priority: Priority;
   author: AgentId;
   lead?: AgentId;
+  assignee?: AgentId;
   tags?: string[];
+  references?: string[];
+  codeRefs?: string[];
+  dependencies?: WorkId[];
+  blockedBy?: WorkId[];
   content?: string;
+  enrichmentRoles?: EnrichmentAssignment[];
+  reviewers?: ReviewAssignment[];
+  phaseHistory?: PhaseHistoryEntry[];
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+  completedAt?: Timestamp;
 }
 
 /** Input for updating a work article */
