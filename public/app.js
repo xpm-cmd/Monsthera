@@ -65,6 +65,7 @@ async function loadPage(modulePath, params = {}) {
 
 router
   .add("/", () => loadPage("./pages/overview.js"))
+  .add("/guide", () => loadPage("./pages/guide.js"))
   .add("/flow", () => loadPage("./pages/flow.js"))
   .add("/work", () => loadPage("./pages/work.js"))
   .add("/knowledge", () => loadPage("./pages/knowledge.js"))

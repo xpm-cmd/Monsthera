@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { mapTicketToArticle, computeMigrationHash } from "../../../src/migration/mapper.js";
-import type { V2Ticket, V2Verdict, V2CouncilAssignment } from "../../../src/migration/types.js";
+import { mapTicketToArticle, mapKnowledgeToArticle, mapNoteToArticle, computeMigrationHash } from "../../../src/migration/mapper.js";
+import type { V2Ticket, V2Verdict, V2CouncilAssignment, V2KnowledgeRecord, V2NoteRecord } from "../../../src/migration/types.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -15,9 +15,38 @@ function makeTicket(overrides?: Partial<V2Ticket>): V2Ticket {
     priority: "p1",
     assignee: "alice",
     tags: ["frontend", "ux"],
+    codeRefs: ["src/dashboard.ts"],
+    acceptance_criteria: "Dashboard shows user stats.",
     created_at: "2025-01-15T10:00:00Z",
     updated_at: "2025-01-16T12:00:00Z",
     resolved_at: null,
+    ...overrides,
+  };
+}
+
+function makeKnowledge(overrides?: Partial<V2KnowledgeRecord>): V2KnowledgeRecord {
+  return {
+    key: "context:architecture-overview",
+    type: "context",
+    scope: "repo",
+    title: "Architecture Overview",
+    content: "System architecture summary.",
+    tags: ["architecture"],
+    created_at: "2025-01-10T10:00:00Z",
+    updated_at: "2025-01-11T12:00:00Z",
+    ...overrides,
+  };
+}
+
+function makeNote(overrides?: Partial<V2NoteRecord>): V2NoteRecord {
+  return {
+    key: "runbook:def544c78b44",
+    type: "runbook",
+    content: "Post-Commit Agora Maintenance\n\nRun indexing after every commit.",
+    tags: ["topic:maintenance"],
+    codeRefs: ["src/index.ts"],
+    created_at: "2025-01-12T10:00:00Z",
+    updated_at: "2025-01-12T12:00:00Z",
     ...overrides,
   };
 }
@@ -57,6 +86,8 @@ describe("mapTicketToArticle", () => {
     expect(result.priority).toBe("high");
     expect(result.aliases).toEqual(["T-1001"]);
     expect(result.tags).toEqual(["frontend", "ux"]);
+    expect(result.codeRefs).toEqual(["src/dashboard.ts"]);
+    expect(result.phase).toBe("planning");
     expect(result.content).toContain("Build a dashboard");
   });
 
@@ -127,6 +158,38 @@ describe("mapTicketToArticle", () => {
     expect(result.content).toContain("## Verdict: security-bot");
     expect(result.content).toContain("## Verdict: perf-bot");
     expect(result.content).toContain("<!-- status: rejected -->");
+  });
+
+  it("maps implementation and terminal phases from the source status", () => {
+    expect(mapTicketToArticle(makeTicket({ status: "in-progress" }), [], []).phase).toBe("implementation");
+    expect(mapTicketToArticle(makeTicket({ status: "resolved" }), [], []).phase).toBe("done");
+    expect(mapTicketToArticle(makeTicket({ status: "wontfix" }), [], []).phase).toBe("cancelled");
+  });
+
+  it("includes acceptance criteria when present", () => {
+    const result = mapTicketToArticle(makeTicket(), [], []);
+    expect(result.content).toContain("## Acceptance Criteria");
+    expect(result.content).toContain("Dashboard shows user stats.");
+  });
+});
+
+describe("knowledge mapping", () => {
+  it("maps knowledge rows to v3 knowledge articles", () => {
+    const result = mapKnowledgeToArticle(makeKnowledge());
+    expect(result.scope).toBe("knowledge");
+    expect(result.sourceKind).toBe("knowledge");
+    expect(result.category).toBe("context");
+    expect(result.tags).toContain("scope:repo");
+    expect(result.tags).toContain("source-key:context:architecture-overview");
+  });
+
+  it("maps notes to runbook-style knowledge with code refs", () => {
+    const result = mapNoteToArticle(makeNote());
+    expect(result.scope).toBe("knowledge");
+    expect(result.sourceKind).toBe("note");
+    expect(result.title).toBe("Post-Commit Agora Maintenance");
+    expect(result.codeRefs).toEqual(["src/index.ts"]);
+    expect(result.tags).toContain("topic:maintenance");
   });
 });
 

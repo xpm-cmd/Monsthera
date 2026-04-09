@@ -1,3 +1,6 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import { createContainer, createTestContainer } from "../../../src/core/container.js";
 import { defaultConfig } from "../../../src/core/config.js";
@@ -18,6 +21,8 @@ describe("createContainer()", () => {
     expect(container).toHaveProperty("searchRepo");
     expect(container).toHaveProperty("searchService");
     expect(container).toHaveProperty("orchestrationRepo");
+    expect(container).toHaveProperty("agentsService");
+    expect(container).toHaveProperty("ingestService");
     expect(container).toHaveProperty("dispose");
     await container.dispose();
   });
@@ -57,8 +62,14 @@ describe("createContainer()", () => {
     const container = await createContainer(testConfig);
     const status = container.status.getStatus();
     const storageSubsystem = status.subsystems.find((s) => s.name === "storage");
+    const agentsSubsystem = status.subsystems.find((s) => s.name === "agents");
+    const ingestSubsystem = status.subsystems.find((s) => s.name === "ingest");
     expect(storageSubsystem).toBeDefined();
     expect(storageSubsystem?.healthy).toBe(true);
+    expect(agentsSubsystem).toBeDefined();
+    expect(agentsSubsystem?.healthy).toBe(true);
+    expect(ingestSubsystem).toBeDefined();
+    expect(ingestSubsystem?.healthy).toBe(true);
     await container.dispose();
   });
 
@@ -90,6 +101,24 @@ describe("createContainer()", () => {
     const container = await createContainer(testConfig);
     await container.dispose();
     await expect(container.dispose()).resolves.toBeUndefined();
+  });
+
+  it("hydrates persisted runtime-state stats on startup", async () => {
+    const repoPath = path.join("/tmp", `monsthera-runtime-${randomUUID()}`);
+    const config = defaultConfig(repoPath);
+    await fs.mkdir(path.join(repoPath, ".monsthera"), { recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, ".monsthera", "runtime-state.json"),
+      JSON.stringify({ lastReindexAt: "2026-04-09T00:00:00Z", searchIndexSize: 42 }, null, 2),
+      "utf-8",
+    );
+
+    const container = await createContainer(config);
+    const status = container.status.getStatus();
+    expect(status.stats?.lastReindexAt).toBe("2026-04-09T00:00:00Z");
+    expect(status.stats?.searchIndexSize).toBe(42);
+    await container.dispose();
+    await fs.rm(repoPath, { recursive: true, force: true });
   });
 });
 

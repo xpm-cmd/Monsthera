@@ -6,7 +6,7 @@ import { VERSION } from "../core/constants.js";
 import { startServer } from "../server.js";
 import { startDashboard } from "../dashboard/index.js";
 import { SqliteV2SourceReader } from "../migration/v2-reader.js";
-import type { MigrationMode } from "../migration/types.js";
+import type { MigrationMode, MigrationScope } from "../migration/types.js";
 import {
   formatSearchResults,
   formatError,
@@ -14,6 +14,7 @@ import {
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { handleKnowledge } from "./knowledge-commands.js";
 import { handleWork } from "./work-commands.js";
+import { handleIngest } from "./ingest-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -63,6 +64,7 @@ function handleHelp(): void {
       "  status                   Print system status as JSON and exit",
       "  knowledge <subcommand>   Manage knowledge articles",
       "  work <subcommand>        Manage work articles",
+      "  ingest <subcommand>      Import local sources into knowledge",
       "  search <query>           Search across all articles",
       "  reindex                  Rebuild the search index",
       "  migrate                  Run v2 -> v3 migration from SQLite",
@@ -84,8 +86,11 @@ function handleHelp(): void {
       "  work enrich   <id> --role <role> --status <contributed|skipped>",
       "  work review   <id> --reviewer <agent-id> --status <approved|changes-requested>",
       "",
+      "INGEST SUBCOMMANDS",
+      "  ingest local  --path <file-or-dir> [--category <c>] [--tags t1,t2] [--code-refs r1,r2] [--summary] [--no-recursive] [--no-replace]",
+      "",
       "MIGRATION",
-      "  migrate [--mode <dry-run|validate|execute>] [--source <sqlite-path>] [--force] [--json]",
+      "  migrate [--mode <dry-run|validate|execute>] [--scope <work|knowledge|all>] [--source <sqlite-path>] [--force] [--json]",
       "",
       "OPTIONS",
       "  --repo, -r <path>   Repository path (defaults to cwd)",
@@ -96,9 +101,10 @@ function handleHelp(): void {
       "  monsthera serve",
       "  monsthera knowledge create --title \"API Design\" --category architecture --content \"REST vs GraphQL...\"",
       "  monsthera work create --title \"Add auth\" --template feature --author agent-1 --priority high",
+      "  monsthera ingest local --path docs/claude-review/proposals --summary",
       "  monsthera search \"authentication\"",
       "  monsthera reindex",
-      "  monsthera migrate --mode dry-run --source .monsthera/monsthera.db --json",
+      "  monsthera migrate --mode dry-run --scope all --source .monsthera/monsthera.db --json",
       "",
     ].join("\n"),
   );
@@ -216,6 +222,7 @@ async function handleMigrate(args: string[]): Promise<void> {
   const config = configResult.ok ? configResult.value : defaultConfig(repoPath);
   const sourcePath = parseFlag(args, "--source") ?? path.join(repoPath, ".monsthera", "monsthera.db");
   const mode = parseMigrationMode(args);
+  const scope = (parseFlag(args, "--scope") as MigrationScope | undefined) ?? "all";
   const force = args.includes("--force");
   const asJson = args.includes("--json");
 
@@ -227,7 +234,7 @@ async function handleMigrate(args: string[]): Promise<void> {
       process.exit(1);
     }
 
-    const result = await container.migrationService.run(mode, { force });
+    const result = await container.migrationService.run(mode, { force, scope });
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
@@ -241,6 +248,7 @@ async function handleMigrate(args: string[]): Promise<void> {
     process.stdout.write(
       [
         `Mode: ${result.value.mode}`,
+        `Scope: ${result.value.scope}`,
         `Total: ${result.value.total}`,
         `Created: ${result.value.created}`,
         `Skipped: ${result.value.skipped}`,
@@ -251,7 +259,7 @@ async function handleMigrate(args: string[]): Promise<void> {
 
     for (const item of result.value.items) {
       const suffix = item.reason ? ` (${item.reason})` : "";
-      process.stdout.write(`- ${item.v2Id}: ${item.status}${suffix}\n`);
+      process.stdout.write(`- [${item.scope}] ${item.sourceId}: ${item.status}${suffix}\n`);
     }
   } finally {
     await container.dispose();
@@ -279,6 +287,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "work":
         await handleWork(args.slice(1));
+        break;
+      case "ingest":
+        await handleIngest(args.slice(1));
         break;
       case "search":
         await handleSearch(args.slice(1));

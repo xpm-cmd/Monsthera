@@ -8,6 +8,7 @@ import { navigate } from "./router.js";
 
 const NAV_ITEMS = [
   { icon: "layout-dashboard", label: "Overview", path: "/" },
+  { icon: "compass", label: "Guide", path: "/guide" },
   { icon: "activity", label: "Flow", path: "/flow" },
   { icon: "list-todo", label: "Work", path: "/work" },
   { icon: "book-open", label: "Knowledge", path: "/knowledge" },
@@ -54,7 +55,7 @@ export function renderSidebar(currentPath) {
       ${navHtml}
     </ul>
     <div class="sidebar-footer">
-      <div class="sidebar-footer-text">rewrite / v3<br>workspace active</div>
+      <div class="sidebar-footer-text">code · research · memory<br>workspace active</div>
       <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
         <i data-lucide="${themeIcon}"></i>
       </button>

@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import type { V2Ticket, V2Verdict, V2CouncilAssignment, MappedArticle } from "./types.js";
+import type {
+  V2Ticket,
+  V2Verdict,
+  V2CouncilAssignment,
+  V2KnowledgeRecord,
+  V2NoteRecord,
+  MappedArticle,
+  MappedKnowledgeArticle,
+} from "./types.js";
 
 // ─── Priority Mapping ────────────────────────────────────────────────────────
 
@@ -38,6 +46,10 @@ function buildContent(
     sections.push(ticket.body.trim());
   }
 
+  if (ticket.acceptance_criteria?.trim()) {
+    sections.push(`## Acceptance Criteria\n\n${ticket.acceptance_criteria.trim()}`);
+  }
+
   // Council assignments summary
   if (assignments.length > 0) {
     const lines = assignments.map(
@@ -62,6 +74,38 @@ export function computeMigrationHash(v2Id: string): string {
   return createHash("sha256").update(v2Id).digest("hex");
 }
 
+function inferPhase(ticket: V2Ticket): MappedArticle["phase"] {
+  switch (ticket.status) {
+    case "in-progress":
+      return "implementation";
+    case "resolved":
+    case "closed":
+      return "done";
+    case "wontfix":
+      return "cancelled";
+    case "open":
+    default:
+      return "planning";
+  }
+}
+
+function deriveKnowledgeTitle(note: V2NoteRecord): string {
+  const firstLine = note.content
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  if (firstLine) {
+    return firstLine.replace(/^#+\s*/, "").trim();
+  }
+
+  return note.key
+    .split(":")
+    .map((part) => part.replaceAll(/[-_]/g, " "))
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 // ─── Public Mapper ───────────────────────────────────────────────────────────
 
 /**
@@ -74,13 +118,52 @@ export function mapTicketToArticle(
   assignments: readonly V2CouncilAssignment[],
 ): MappedArticle {
   return {
+    scope: "work",
     v2Id: ticket.id,
     title: ticket.title,
     template: inferTemplate(ticket),
+    phase: inferPhase(ticket),
     priority: PRIORITY_MAP[ticket.priority] ?? "medium",
     content: buildContent(ticket, verdicts, assignments),
     tags: [...ticket.tags],
+    codeRefs: [...ticket.codeRefs],
+    assignee: ticket.assignee,
+    createdAt: ticket.created_at,
+    updatedAt: ticket.updated_at,
+    completedAt: ticket.resolved_at,
     aliases: [ticket.id],
     migrationHash: computeMigrationHash(ticket.id),
+  };
+}
+
+export function mapKnowledgeToArticle(record: V2KnowledgeRecord): MappedKnowledgeArticle {
+  return {
+    scope: "knowledge",
+    sourceKind: "knowledge",
+    sourceKey: record.key,
+    title: record.title,
+    category: record.type,
+    content: record.content,
+    tags: [...record.tags, `scope:${record.scope}`, `source-key:${record.key}`],
+    codeRefs: [],
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+    migrationHash: computeMigrationHash(`knowledge:${record.key}`),
+  };
+}
+
+export function mapNoteToArticle(record: V2NoteRecord): MappedKnowledgeArticle {
+  return {
+    scope: "knowledge",
+    sourceKind: "note",
+    sourceKey: record.key,
+    title: deriveKnowledgeTitle(record),
+    category: record.type,
+    content: record.content,
+    tags: [...record.tags, `source-key:${record.key}`],
+    codeRefs: [...record.codeRefs],
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+    migrationHash: computeMigrationHash(`note:${record.key}`),
   };
 }

@@ -12,17 +12,23 @@ export interface KnowledgeArticle {
   readonly content: string;
   readonly tags: readonly string[];
   readonly codeRefs: readonly string[];
+  readonly sourcePath?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
 
 /** Input for creating a knowledge article */
 export interface CreateKnowledgeArticleInput {
+  id?: ArticleId;
   title: string;
+  slug?: Slug;
   category: string;
   content: string;
   tags?: string[];
   codeRefs?: string[];
+  sourcePath?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /** Input for updating a knowledge article */
@@ -32,6 +38,7 @@ export interface UpdateKnowledgeArticleInput {
   content?: string;
   tags?: string[];
   codeRefs?: string[];
+  sourcePath?: string;
 }
 
 /** Knowledge article repository with domain-specific queries */

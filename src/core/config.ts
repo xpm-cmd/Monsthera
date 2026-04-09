@@ -14,6 +14,8 @@ const StorageConfigSchema = z.object({
   doltHost: z.string().default("localhost"),
   doltPort: z.number().default(3306),
   doltDatabase: z.string().default("monsthera"),
+  doltUser: z.string().default("root"),
+  doltPassword: z.string().default(""),
 });
 
 const SearchConfigSchema = z.object({
@@ -125,6 +127,54 @@ export function applyEnvOverrides(config: Record<string, unknown>): Record<strin
         ? (result["storage"] as Record<string, unknown>)
         : {}),
       markdownRoot: process.env["MONSTHERA_MARKDOWN_ROOT"],
+    };
+  }
+
+  if (process.env["MONSTHERA_DOLT_HOST"] !== undefined) {
+    result["storage"] = {
+      ...(typeof result["storage"] === "object" && result["storage"] !== null
+        ? (result["storage"] as Record<string, unknown>)
+        : {}),
+      doltHost: process.env["MONSTHERA_DOLT_HOST"],
+    };
+  }
+
+  if (process.env["MONSTHERA_DOLT_PORT"] !== undefined) {
+    const port = Number(process.env["MONSTHERA_DOLT_PORT"]);
+    if (!Number.isNaN(port)) {
+      result["storage"] = {
+        ...(typeof result["storage"] === "object" && result["storage"] !== null
+          ? (result["storage"] as Record<string, unknown>)
+          : {}),
+        doltPort: port,
+      };
+    }
+  }
+
+  if (process.env["MONSTHERA_DOLT_DATABASE"] !== undefined) {
+    result["storage"] = {
+      ...(typeof result["storage"] === "object" && result["storage"] !== null
+        ? (result["storage"] as Record<string, unknown>)
+        : {}),
+      doltDatabase: process.env["MONSTHERA_DOLT_DATABASE"],
+    };
+  }
+
+  if (process.env["MONSTHERA_DOLT_USER"] !== undefined) {
+    result["storage"] = {
+      ...(typeof result["storage"] === "object" && result["storage"] !== null
+        ? (result["storage"] as Record<string, unknown>)
+        : {}),
+      doltUser: process.env["MONSTHERA_DOLT_USER"],
+    };
+  }
+
+  if (process.env["MONSTHERA_DOLT_PASSWORD"] !== undefined) {
+    result["storage"] = {
+      ...(typeof result["storage"] === "object" && result["storage"] !== null
+        ? (result["storage"] as Record<string, unknown>)
+        : {}),
+      doltPassword: process.env["MONSTHERA_DOLT_PASSWORD"],
     };
   }
 

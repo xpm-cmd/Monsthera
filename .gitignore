@@ -34,3 +34,9 @@ docs/claude-review/
 *.bak
 *.png
 package-lock.json
+
+# Generated knowledge/article corpus
+knowledge/notes/*.md
+knowledge/work-articles/*.md
+!knowledge/notes/.gitkeep
+!knowledge/work-articles/.gitkeep

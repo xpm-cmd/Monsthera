@@ -16,7 +16,7 @@ interface OrchestrationEventRow extends RowDataPacket {
   work_id: string;
   event_type: string;
   agent_id?: string | null;
-  details: string;
+  details: string | Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -103,12 +103,16 @@ export class DoltOrchestrationRepository implements OrchestrationEventRepository
   }
 
   private parseEventRow(row: OrchestrationEventRow): OrchestrationEvent {
+    const details = typeof row.details === "string"
+      ? JSON.parse(row.details) as Record<string, unknown>
+      : (row.details ?? {});
+
     return {
       id: row.id,
       workId: workId(row.work_id),
       eventType: row.event_type as OrchestrationEventType,
       agentId: row.agent_id ? agentId(row.agent_id) : undefined,
-      details: JSON.parse(row.details) as Record<string, unknown>,
+      details,
       createdAt: timestamp(row.created_at),
     };
   }

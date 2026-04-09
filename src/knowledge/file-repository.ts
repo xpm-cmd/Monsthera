@@ -59,6 +59,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       category: frontmatter.value.category,
       tags: frontmatter.value.tags,
       codeRefs: frontmatter.value.codeRefs,
+      sourcePath: frontmatter.value.sourcePath,
       createdAt: timestamp(frontmatter.value.createdAt),
       updatedAt: timestamp(frontmatter.value.updatedAt),
       content: parsed.value.body,
@@ -99,6 +100,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       category: article.category,
       tags: [...article.tags],
       codeRefs: [...article.codeRefs],
+      ...(article.sourcePath ? { sourcePath: article.sourcePath } : {}),
       createdAt: article.createdAt,
       updatedAt: article.updatedAt,
     };
@@ -130,22 +132,25 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     const allResult = await this.loadAll();
     if (!allResult.ok) return allResult;
 
-    const articleSlug = uniqueSlug(
-      input.title,
-      new Set(allResult.value.map((article) => article.slug)),
-    );
-    const now = timestamp();
+    const existingSlugs = new Set(allResult.value.map((article) => article.slug));
+    const requestedSlug = input.slug;
+    const articleSlug = requestedSlug && !existingSlugs.has(requestedSlug)
+      ? requestedSlug
+      : uniqueSlug(input.title, existingSlugs);
+    const createdAt = timestamp(input.createdAt);
+    const updatedAt = timestamp(input.updatedAt ?? input.createdAt);
 
     const article: KnowledgeArticle = {
-      id: generateArticleId() as ArticleId,
+      id: (input.id ?? generateArticleId()) as ArticleId,
       title: input.title,
       slug: articleSlug,
       category: input.category,
       content: input.content,
       tags: input.tags ?? [],
       codeRefs: input.codeRefs ?? [],
-      createdAt: now,
-      updatedAt: now,
+      sourcePath: input.sourcePath,
+      createdAt,
+      updatedAt,
     };
 
     return this.writeArticle(article);
@@ -180,6 +185,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       content: input.content ?? existing.content,
       tags: input.tags ?? existing.tags,
       codeRefs: input.codeRefs ?? existing.codeRefs,
+      sourcePath: input.sourcePath ?? existing.sourcePath,
       updatedAt: timestamp(),
     };
 

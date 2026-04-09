@@ -34,6 +34,22 @@ export function renderAlert(title, body, actions) {
     </div>`;
 }
 
+export function renderHeroCallout({ eyebrow, title, body, meta = [], steps = [] }) {
+  return `
+    <section class="hero-callout">
+      ${eyebrow ? `<div class="hero-callout__eyebrow">${esc(eyebrow)}</div>` : ""}
+      <div class="hero-callout__title">${esc(title)}</div>
+      ${body ? `<div class="hero-callout__body">${esc(body)}</div>` : ""}
+      ${meta.length > 0 ? `<div class="hero-callout__meta">${meta.join("")}</div>` : ""}
+      ${steps.length > 0 ? `<div class="hero-callout__steps">${steps.map((step) => `
+        <div class="hero-callout__step">
+          <div class="hero-callout__step-title">${esc(step.title)}</div>
+          <div class="text-sm">${esc(step.detail)}</div>
+        </div>
+      `).join("")}</div>` : ""}
+    </section>`;
+}
+
 export function renderTable(columns, rows) {
   const ths = columns.map(c =>
     `<th${c.align === "right" ? ' class="text-right"' : ""}${c.width ? ` style="width:${c.width}"` : ""}>${esc(c.label)}</th>`

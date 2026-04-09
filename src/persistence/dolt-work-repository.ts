@@ -117,7 +117,7 @@ export class DoltWorkRepository implements WorkArticleRepository {
       // INSERT into work_articles
       const insertArticleSql = `
         INSERT INTO work_articles
-        (id, title, template, phase, priority, author, lead, assignee, tags, references, code_refs, dependencies, blocked_by, content, created_at, updated_at)
+        (id, title, template, phase, priority, author, \`lead\`, assignee, tags, \`references\`, code_refs, dependencies, blocked_by, content, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
@@ -184,10 +184,10 @@ export class DoltWorkRepository implements WorkArticleRepository {
       SET
         title = ?,
         priority = ?,
-        lead = ?,
+        \`lead\` = ?,
         assignee = ?,
         tags = ?,
-        references = ?,
+        \`references\` = ?,
         code_refs = ?,
         content = ?,
         updated_at = ?

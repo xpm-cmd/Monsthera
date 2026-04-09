@@ -280,7 +280,7 @@ Edges connect related nodes. Build the graph from `codeRefs`, `references`, `dep
 **Right drawer (on-demand):** Appears when a node is clicked. Shows: title, type badge, description/content preview, relationships list, "Open article" button. Dismiss with X.
 
 ### 5. Security (`/security`)
-**Data sources:** `GET /api/status` (for now, security config is not yet in API — use static placeholder data)
+**Data sources:** `GET /api/system/runtime`
 
 **Layout:** Header + tabs + tab content
 
@@ -293,7 +293,9 @@ Edges connect related nodes. Build the graph from `codeRefs`, `references`, `dep
 - Policy row: 3 cards (Tool policy: "Strict allowlist", Repo access: "Claim before write", Approval mode: "Auto inside policy").
 - Right column (320px): "Effective policy" card with checkmark items + "Runtime boundaries" card with sandbox posture and approval strategy.
 
-**Agent Permissions tab and Audit Trail tab:** Placeholder content for now.
+**Agent Permissions tab:** Render effective dashboard mutation capabilities from `runtime.capabilities`.
+
+**Audit Trail tab:** Render recent orchestration events from `runtime.recentEvents`.
 
 ### 6-12. Remaining screens (v1 design, lower priority)
 - **Work** (`/work`): Queue view with work article cards. Toggle: Queue | Board | List.

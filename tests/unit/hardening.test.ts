@@ -216,19 +216,21 @@ describe("MigrationService concurrency lock", () => {
       this.delayMs = delayMs;
     }
 
-    async readTickets() {
-      await new Promise((r) => setTimeout(r, this.delayMs));
-      const ticket: V2Ticket = {
-        id: "T-1",
-        title: "Slow ticket",
-        body: "Body content.",
-        status: "open",
-        priority: "p2",
-        assignee: "alice",
-        tags: ["slow"],
-        created_at: "2025-01-01T00:00:00Z",
-        updated_at: "2025-01-01T00:00:00Z",
-        resolved_at: null,
+      async readTickets() {
+        await new Promise((r) => setTimeout(r, this.delayMs));
+        const ticket: V2Ticket = {
+          id: "T-1",
+          title: "Slow ticket",
+          body: "Body content.",
+          status: "open",
+          priority: "p2",
+          assignee: "alice",
+          tags: ["slow"],
+          codeRefs: [],
+          acceptance_criteria: null,
+          created_at: "2025-01-01T00:00:00Z",
+          updated_at: "2025-01-01T00:00:00Z",
+          resolved_at: null,
       };
       return ok([ticket]);
     }
@@ -256,9 +258,11 @@ describe("MigrationService concurrency lock", () => {
   }
 
   it("rejects concurrent migration runs with ConcurrencyConflictError", async () => {
+    const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
     const workRepo = new InMemoryWorkArticleRepository();
     const svc = new MigrationService({
       v2Reader: new SlowV2Reader(100),
+      knowledgeRepo,
       workRepo,
       logger: silentLogger,
     });
@@ -279,9 +283,11 @@ describe("MigrationService concurrency lock", () => {
   });
 
   it("allows a new run after the previous one completes", async () => {
+    const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
     const workRepo = new InMemoryWorkArticleRepository();
     const svc = new MigrationService({
       v2Reader: new SlowV2Reader(10),
+      knowledgeRepo,
       workRepo,
       logger: silentLogger,
     });
@@ -309,9 +315,11 @@ describe("MigrationService concurrency lock", () => {
       async close() {},
     };
 
+    const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
     const workRepo = new InMemoryWorkArticleRepository();
     const svc = new MigrationService({
       v2Reader: failingReader,
+      knowledgeRepo,
       workRepo,
       logger: silentLogger,
     });

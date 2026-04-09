@@ -1,9 +1,10 @@
 import type { MigrationService } from "./service.js";
 import type { ToolDefinition, ToolResponse } from "../tools/knowledge-tools.js";
-import type { MigrationMode } from "./types.js";
+import type { MigrationMode, MigrationScope } from "./types.js";
 import { successResponse, errorResponse, requireString, isErrorResponse, requireEnum } from "../tools/validation.js";
 
 const VALID_MODES: Set<string> = new Set(["dry-run", "validate", "execute"]);
+const VALID_SCOPES: Set<string> = new Set(["work", "knowledge", "all"]);
 
 // ─── Tool Definitions ────────────────────────────────────────────────────────
 
@@ -12,7 +13,7 @@ export function migrationToolDefinitions(): ToolDefinition[] {
     {
       name: "migrate_v2",
       description:
-        "Run v2-to-v3 migration. Maps v2 tickets to v3 work articles. " +
+        "Run v2-to-v3 migration. Migrates tickets to v3 work articles and/or knowledge rows to v3 knowledge articles. " +
         "Use dry-run mode first to preview changes without writing.",
       inputSchema: {
         type: "object" as const,
@@ -25,6 +26,11 @@ export function migrationToolDefinitions(): ToolDefinition[] {
           force: {
             type: "boolean",
             description: "Re-migrate tickets that were already migrated (default: false)",
+          },
+          scope: {
+            type: "string",
+            enum: ["work", "knowledge", "all"],
+            description: "Migration scope: work tickets, knowledge/notes, or all (default: all)",
           },
         },
         required: ["mode"],
@@ -66,7 +72,10 @@ export async function handleMigrationTool(
       const modeErr = requireEnum(mode, VALID_MODES, "mode");
       if (modeErr) return modeErr;
       const force = typeof args.force === "boolean" ? args.force : false;
-      const result = await service.run(mode as MigrationMode, { force });
+      const scopeRaw = typeof args.scope === "string" ? args.scope : "all";
+      const scopeErr = requireEnum(scopeRaw, VALID_SCOPES, "scope");
+      if (scopeErr) return scopeErr;
+      const result = await service.run(mode as MigrationMode, { force, scope: scopeRaw as MigrationScope });
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
     }

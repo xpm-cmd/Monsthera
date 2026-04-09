@@ -78,6 +78,15 @@ describe("knowledgeToolDefinitions", () => {
       ]),
     );
   });
+
+  it("descriptions reflect automatic search sync", () => {
+    const defs = knowledgeToolDefinitions();
+    expect(defs.find((def) => def.name === "create_article")?.description).toContain("Search sync happens automatically");
+    expect(defs.find((def) => def.name === "update_article")?.description).toContain("durable wording");
+    expect(defs.find((def) => def.name === "search_articles")?.description).toContain("knowledge-only lookup");
+    expect(defs.find((def) => def.name === "create_article")?.description).not.toContain("Call index_article afterwards");
+    expect(defs.find((def) => def.name === "delete_article")?.description).toContain("manual remove_from_index");
+  });
 });
 
 // ---------------------------------------------------------------------------

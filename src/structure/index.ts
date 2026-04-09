@@ -1,1 +1,1 @@
-// Code-knowledge structure
+export * from "./service.js";

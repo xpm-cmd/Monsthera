@@ -34,9 +34,10 @@ export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepos
   }
 
   async create(input: CreateKnowledgeArticleInput): Promise<Result<KnowledgeArticle, ValidationError | StorageError>> {
-    const id: ArticleId = generateArticleId();
-    const articleSlug: Slug = uniqueSlug(input.title, this.existingSlugs());
-    const now = timestamp();
+    const id: ArticleId = input.id ?? generateArticleId();
+    const articleSlug: Slug = input.slug ?? uniqueSlug(input.title, this.existingSlugs());
+    const createdAt = timestamp(input.createdAt);
+    const updatedAt = timestamp(input.updatedAt ?? input.createdAt);
 
     const article: KnowledgeArticle = {
       id,
@@ -46,8 +47,9 @@ export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepos
       content: input.content,
       tags: input.tags ?? [],
       codeRefs: input.codeRefs ?? [],
-      createdAt: now,
-      updatedAt: now,
+      sourcePath: input.sourcePath,
+      createdAt,
+      updatedAt,
     };
 
     this.store.set(id, article);
@@ -76,6 +78,7 @@ export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepos
       content: input.content ?? existing.content,
       tags: input.tags ?? existing.tags,
       codeRefs: input.codeRefs ?? existing.codeRefs,
+      sourcePath: input.sourcePath ?? existing.sourcePath,
       updatedAt: timestamp(),
     };
 

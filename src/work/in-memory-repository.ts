@@ -46,11 +46,13 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
 
   async create(input: CreateWorkArticleInput): Promise<Result<WorkArticle, ValidationError | StorageError>> {
     const id: WorkId = generateWorkId();
-    const now = timestamp();
+    const createdAt = timestamp(input.createdAt);
+    const updatedAt = timestamp(input.updatedAt ?? input.createdAt);
+    const phase = input.phase ?? WorkPhase.PLANNING;
     const templateConfig = WORK_TEMPLATES[input.template];
 
     // Build initial enrichment assignments from template defaults
-    const enrichmentRoles: EnrichmentAssignment[] = templateConfig.defaultEnrichmentRoles.map((role) => ({
+    const enrichmentRoles: EnrichmentAssignment[] = input.enrichmentRoles ?? templateConfig.defaultEnrichmentRoles.map((role) => ({
       role,
       agentId: input.author,
       status: "pending" as const,
@@ -60,22 +62,23 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
       id,
       title: input.title,
       template: input.template,
-      phase: WorkPhase.PLANNING,
+      phase,
       priority: input.priority,
       author: input.author,
       lead: input.lead,
-      assignee: undefined,
+      assignee: input.assignee,
       enrichmentRoles,
-      reviewers: [],
-      phaseHistory: [{ phase: WorkPhase.PLANNING, enteredAt: now }],
+      reviewers: input.reviewers ?? [],
+      phaseHistory: input.phaseHistory ?? [{ phase, enteredAt: createdAt }],
       tags: input.tags ?? [],
-      references: [],
-      codeRefs: [],
-      dependencies: [],
-      blockedBy: [],
+      references: input.references ?? [],
+      codeRefs: input.codeRefs ?? [],
+      dependencies: input.dependencies ?? [],
+      blockedBy: input.blockedBy ?? [],
       content: input.content ?? generateInitialContent(input.template),
-      createdAt: now,
-      updatedAt: now,
+      createdAt,
+      updatedAt,
+      completedAt: input.completedAt,
     };
 
     this.store.set(id, article);

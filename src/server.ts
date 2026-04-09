@@ -10,6 +10,7 @@ import { workToolDefinitions, handleWorkTool } from "./tools/work-tools.js";
 import { searchToolDefinitions, handleSearchTool } from "./tools/search-tools.js";
 import { orchestrationToolDefinitions, handleOrchestrationTool } from "./tools/orchestration-tools.js";
 import { statusToolDefinitions, handleStatusTool } from "./tools/status-tools.js";
+import { ingestToolDefinitions, handleIngestTool } from "./tools/ingest-tools.js";
 import { migrationToolDefinitions, handleMigrationTool } from "./migration/tools.js";
 
 /**
@@ -44,6 +45,9 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const statusTools = statusToolDefinitions();
   const statusToolNames = new Set(statusTools.map((t) => t.name));
 
+  const ingestTools = ingestToolDefinitions();
+  const ingestToolNames = new Set(ingestTools.map((t) => t.name));
+
   const migrationTools = container.migrationService ? migrationToolDefinitions() : [];
   const migrationToolNames = new Set(migrationTools.map((t) => t.name));
 
@@ -56,6 +60,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
         ...searchTools,
         ...orchestrationTools,
         ...statusTools,
+        ...ingestTools,
         ...migrationTools,
       ],
     };
@@ -84,6 +89,10 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
 
     if (statusToolNames.has(name)) {
       return handleStatusTool(name, args, container.status);
+    }
+
+    if (ingestToolNames.has(name)) {
+      return handleIngestTool(name, args, container.ingestService);
     }
 
     if (migrationToolNames.has(name) && container.migrationService) {
