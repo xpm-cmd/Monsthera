@@ -91,6 +91,19 @@ export async function render(container) {
   let searchQuery = "";
   let showCreate = false;
   let flash = null;
+  let inputState = {
+    restore: false,
+    start: 0,
+    end: 0,
+  };
+
+  function captureInputState(input) {
+    inputState = {
+      restore: true,
+      start: input.selectionStart ?? searchQuery.length,
+      end: input.selectionEnd ?? searchQuery.length,
+    };
+  }
 
   async function refresh(preferredId = selectedId) {
     [articles, workArticles] = await Promise.all([
@@ -161,7 +174,7 @@ export async function render(container) {
     const selected = articles.find((article) => article.id === selectedId) ?? null;
     const backlinks = getBacklinks(selected);
 
-    let navHtml = renderSearchInput("Search articles...");
+    let navHtml = renderSearchInput("Search articles...", searchQuery);
     navHtml += '<ul class="nav-list" style="margin-top:8px">';
     for (const [category, items] of categories) {
       navHtml += `<li class="nav-list-group">${esc(category)}</li>`;
@@ -246,6 +259,15 @@ export async function render(container) {
   function rerender() {
     container.textContent = "";
     container.appendChild(buildDOM());
+    if (inputState.restore) {
+      const input = container.querySelector(".search-input");
+      if (input) {
+        input.focus();
+        const start = Math.min(inputState.start, input.value.length);
+        const end = Math.min(inputState.end, input.value.length);
+        input.setSelectionRange(start, end);
+      }
+    }
     if (typeof lucide !== "undefined") lucide.createIcons({ nodes: [container] });
   }
 
@@ -258,6 +280,7 @@ export async function render(container) {
 
     const toggleCreate = target.closest("[data-toggle-create]");
     if (toggleCreate) {
+      inputState.restore = false;
       showCreate = !showCreate;
       rerender();
       return;
@@ -266,6 +289,7 @@ export async function render(container) {
     const articleLink = target.closest("[data-article]");
     if (articleLink) {
       event.preventDefault();
+      inputState.restore = false;
       selectedId = articleLink.dataset.article;
       rerender();
       return;
@@ -287,6 +311,7 @@ export async function render(container) {
 
   container.addEventListener("input", (event) => {
     if (event.target.classList.contains("search-input")) {
+      captureInputState(event.target);
       searchQuery = event.target.value;
       rerender();
     }
