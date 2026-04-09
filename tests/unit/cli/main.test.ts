@@ -56,6 +56,7 @@ describe("CLI main()", () => {
     const output = await captureStdout(() => main(["--help"]));
     expect(output).toContain("monsthera");
     expect(output).toContain("serve");
+    expect(output).toContain("dashboard");
     expect(output).toContain("status");
   });
 
