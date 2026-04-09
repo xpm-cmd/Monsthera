@@ -1,0 +1,300 @@
+{
+  "designFilePath": "/pencil-new.pen",
+  "designFileNote": "Only screens with editable:true exist in this file. All other screen ids are from a lost Pencil source; review those via their exported webp assets only.",
+  "exportPdf": "assets/export.pdf",
+  "exportPdfNote": "Covers v1 screens only.",
+  "screens": [
+    {
+      "id": "IIaX8",
+      "name": "Monsthera Overview",
+      "theme": "light",
+      "area": "core-navigation",
+      "asset": "assets/IIaX8.webp",
+      "editable": false,
+      "supersededBy": "Igo7t"
+    },
+    {
+      "id": "K4Q4p",
+      "name": "Monsthera Flow",
+      "theme": "light",
+      "area": "core-navigation",
+      "asset": "assets/K4Q4p.webp",
+      "editable": false,
+      "supersededBy": "uaBjs"
+    },
+    {
+      "id": "NBTQ2",
+      "name": "Monsthera Work",
+      "theme": "light",
+      "area": "core-navigation",
+      "asset": "assets/NBTQ2.webp",
+      "editable": false
+    },
+    {
+      "id": "GIw7Y",
+      "name": "Monsthera Knowledge",
+      "theme": "light",
+      "area": "core-navigation",
+      "asset": "assets/GIw7Y.webp",
+      "editable": false,
+      "supersededBy": "2zPZc"
+    },
+    {
+      "id": "puTK6",
+      "name": "Monsthera Search",
+      "theme": "light",
+      "area": "core-navigation",
+      "asset": "assets/puTK6.webp",
+      "editable": false
+    },
+    {
+      "id": "0ZkSf",
+      "name": "Monsthera System",
+      "theme": "light",
+      "area": "core-navigation",
+      "asset": "assets/0ZkSf.webp",
+      "editable": false
+    },
+    {
+      "id": "ZxvhM",
+      "name": "Monsthera Overview Dark",
+      "theme": "dark",
+      "area": "core-navigation",
+      "asset": "assets/ZxvhM.webp",
+      "editable": false,
+      "supersededBy": "zs47R"
+    },
+    {
+      "id": "6DbTO",
+      "name": "Monsthera Flow Dark",
+      "theme": "dark",
+      "area": "core-navigation",
+      "asset": "assets/6DbTO.webp",
+      "editable": false,
+      "supersededBy": "PE1fZ"
+    },
+    {
+      "id": "ONV0P",
+      "name": "Monsthera Work Dark",
+      "theme": "dark",
+      "area": "core-navigation",
+      "asset": "assets/ONV0P.webp",
+      "editable": false
+    },
+    {
+      "id": "aHr9H",
+      "name": "Monsthera Knowledge Dark",
+      "theme": "dark",
+      "area": "core-navigation",
+      "asset": "assets/aHr9H.webp",
+      "editable": false,
+      "supersededBy": "byCV9"
+    },
+    {
+      "id": "kdupW",
+      "name": "Monsthera Search Dark",
+      "theme": "dark",
+      "area": "core-navigation",
+      "asset": "assets/kdupW.webp",
+      "editable": false
+    },
+    {
+      "id": "U5lof",
+      "name": "Monsthera System Dark",
+      "theme": "dark",
+      "area": "core-navigation",
+      "asset": "assets/U5lof.webp",
+      "editable": false
+    },
+    {
+      "id": "uvPUx",
+      "name": "Monsthera Knowledge Graph",
+      "theme": "light",
+      "area": "knowledge-graph",
+      "asset": "assets/uvPUx.webp",
+      "editable": false,
+      "supersededBy": "9rEyn"
+    },
+    {
+      "id": "4BmOU",
+      "name": "Monsthera Knowledge Graph Dark",
+      "theme": "dark",
+      "area": "knowledge-graph",
+      "asset": "assets/4BmOU.webp",
+      "editable": false,
+      "supersededBy": "JssNL"
+    },
+    {
+      "id": "MrNB1",
+      "name": "Monsthera Models & Runtime",
+      "theme": "light",
+      "area": "settings",
+      "asset": "assets/MrNB1.webp",
+      "editable": false
+    },
+    {
+      "id": "SOe7v",
+      "name": "Monsthera Models & Runtime Dark",
+      "theme": "dark",
+      "area": "settings",
+      "asset": "assets/SOe7v.webp",
+      "editable": false
+    },
+    {
+      "id": "FG9rK",
+      "name": "Monsthera Agent Profiles",
+      "theme": "light",
+      "area": "settings",
+      "asset": "assets/FG9rK.webp",
+      "editable": false
+    },
+    {
+      "id": "PCNzI",
+      "name": "Monsthera Agent Profiles Dark",
+      "theme": "dark",
+      "area": "settings",
+      "asset": "assets/PCNzI.webp",
+      "editable": false
+    },
+    {
+      "id": "C6DWw",
+      "name": "Monsthera Integrations",
+      "theme": "light",
+      "area": "settings",
+      "asset": "assets/C6DWw.webp",
+      "editable": false
+    },
+    {
+      "id": "gIhcP",
+      "name": "Monsthera Integrations Dark",
+      "theme": "dark",
+      "area": "settings",
+      "asset": "assets/gIhcP.webp",
+      "editable": false
+    },
+    {
+      "id": "edjPJ",
+      "name": "Monsthera Storage & Indexing",
+      "theme": "light",
+      "area": "settings",
+      "asset": "assets/edjPJ.webp",
+      "editable": false
+    },
+    {
+      "id": "pJW3g",
+      "name": "Monsthera Storage & Indexing Dark",
+      "theme": "dark",
+      "area": "settings",
+      "asset": "assets/pJW3g.webp",
+      "editable": false
+    },
+    {
+      "id": "7RkJG",
+      "name": "Monsthera Security & Permissions",
+      "theme": "light",
+      "area": "settings",
+      "asset": "assets/7RkJG.webp",
+      "editable": false,
+      "supersededBy": "7O2gs"
+    },
+    {
+      "id": "08EB4",
+      "name": "Monsthera Security & Permissions Dark",
+      "theme": "dark",
+      "area": "settings",
+      "asset": "assets/08EB4.webp",
+      "editable": false,
+      "supersededBy": "x79BN"
+    },
+    {
+      "id": "zs47R",
+      "name": "v2 Overview Dark",
+      "theme": "dark",
+      "area": "v2-redesign",
+      "asset": "assets/v2/zs47R.webp",
+      "editable": true,
+      "resolves": "MEDIUM-3"
+    },
+    {
+      "id": "PE1fZ",
+      "name": "v2 Flow Dark",
+      "theme": "dark",
+      "area": "v2-redesign",
+      "asset": "assets/v2/PE1fZ.webp",
+      "editable": true,
+      "resolves": "HIGH-1"
+    },
+    {
+      "id": "byCV9",
+      "name": "v2 Knowledge Dark",
+      "theme": "dark",
+      "area": "v2-redesign",
+      "asset": "assets/v2/byCV9.webp",
+      "editable": true,
+      "resolves": "HIGH-2"
+    },
+    {
+      "id": "JssNL",
+      "name": "v2 Knowledge Graph Dark",
+      "theme": "dark",
+      "area": "v2-redesign",
+      "asset": "assets/v2/JssNL.webp",
+      "editable": true,
+      "resolves": "HIGH-2"
+    },
+    {
+      "id": "x79BN",
+      "name": "v2 Security Dark",
+      "theme": "dark",
+      "area": "v2-redesign",
+      "asset": "assets/v2/x79BN.webp",
+      "editable": true,
+      "resolves": "MEDIUM-4, HIGH-3"
+    },
+    {
+      "id": "Igo7t",
+      "name": "v2 Overview Light",
+      "theme": "light",
+      "area": "v2-redesign",
+      "asset": "assets/v2/Igo7t.webp",
+      "editable": true,
+      "resolves": "MEDIUM-3"
+    },
+    {
+      "id": "uaBjs",
+      "name": "v2 Flow Light",
+      "theme": "light",
+      "area": "v2-redesign",
+      "asset": "assets/v2/uaBjs.webp",
+      "editable": true,
+      "resolves": "HIGH-1"
+    },
+    {
+      "id": "2zPZc",
+      "name": "v2 Knowledge Light",
+      "theme": "light",
+      "area": "v2-redesign",
+      "asset": "assets/v2/2zPZc.webp",
+      "editable": true,
+      "resolves": "HIGH-2"
+    },
+    {
+      "id": "9rEyn",
+      "name": "v2 Knowledge Graph Light",
+      "theme": "light",
+      "area": "v2-redesign",
+      "asset": "assets/v2/9rEyn.webp",
+      "editable": true,
+      "resolves": "HIGH-2"
+    },
+    {
+      "id": "7O2gs",
+      "name": "v2 Security Light",
+      "theme": "light",
+      "area": "v2-redesign",
+      "asset": "assets/v2/7O2gs.webp",
+      "editable": true,
+      "resolves": "MEDIUM-4, HIGH-3"
+    }
+  ]
+}
