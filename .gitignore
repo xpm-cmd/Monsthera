@@ -27,6 +27,9 @@ GEMINI.md
 CLAUDE.md
 AGENT-MEMORY-CONTEXT.md
 
+# Review assets
+docs/claude-review/
+
 # Misc
 *.bak
 *.png
