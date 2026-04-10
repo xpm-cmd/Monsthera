@@ -47,6 +47,7 @@ export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepos
       content: input.content,
       tags: input.tags ?? [],
       codeRefs: input.codeRefs ?? [],
+      references: input.references ?? [],
       sourcePath: input.sourcePath,
       createdAt,
       updatedAt,
@@ -78,6 +79,7 @@ export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepos
       content: input.content ?? existing.content,
       tags: input.tags ?? existing.tags,
       codeRefs: input.codeRefs ?? existing.codeRefs,
+      references: input.references ?? existing.references,
       sourcePath: input.sourcePath ?? existing.sourcePath,
       updatedAt: timestamp(),
     };

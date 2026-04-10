@@ -243,16 +243,28 @@ describe("list_articles", () => {
   it("returns all articles when no category provided", async () => {
     const response = await handleKnowledgeTool("list_articles", {}, service);
     expect(response.isError).toBeUndefined();
-    const articles = JSON.parse(response.content[0]!.text) as KnowledgeArticle[];
-    expect(articles).toHaveLength(3);
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string; title: string; category: string }[] };
+    expect(body.total).toBe(3);
+    expect(body.items).toHaveLength(3);
   });
 
   it("filters by category when provided", async () => {
     const response = await handleKnowledgeTool("list_articles", { category: "engineering" }, service);
     expect(response.isError).toBeUndefined();
-    const articles = JSON.parse(response.content[0]!.text) as KnowledgeArticle[];
-    expect(articles).toHaveLength(2);
-    expect(articles.every((a) => a.category === "engineering")).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string; title: string; category: string }[] };
+    expect(body.total).toBe(2);
+    expect(body.items).toHaveLength(2);
+    expect(body.items.every((a) => a.category === "engineering")).toBe(true);
+  });
+
+  it("respects limit and offset", async () => {
+    const response = await handleKnowledgeTool("list_articles", { limit: 1, offset: 1 }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; limit: number; offset: number; items: unknown[] };
+    expect(body.total).toBe(3);
+    expect(body.limit).toBe(1);
+    expect(body.offset).toBe(1);
+    expect(body.items).toHaveLength(1);
   });
 });
 
@@ -269,12 +281,32 @@ describe("search_articles", () => {
     await seedArticle(service, { title: "Python Basics", content: "Intro to Python." });
   });
 
-  it("returns matching articles for a valid query", async () => {
+  it("returns matching article summaries for a valid query", async () => {
     const response = await handleKnowledgeTool("search_articles", { query: "TypeScript" }, service);
     expect(response.isError).toBeUndefined();
-    const articles = JSON.parse(response.content[0]!.text) as KnowledgeArticle[];
+    const articles = JSON.parse(response.content[0]!.text) as Array<{ title: string; snippet: string }>;
     expect(articles).toHaveLength(1);
     expect(articles[0]!.title).toBe("TypeScript Patterns");
+    expect(articles[0]!.snippet).toBeDefined();
+    expect(articles[0]!).not.toHaveProperty("content");
+  });
+
+  it("respects limit parameter", async () => {
+    await seedArticle(service, { title: "TypeScript Advanced", content: "TypeScript deep dive." });
+    const response = await handleKnowledgeTool("search_articles", { query: "TypeScript", limit: 1 }, service);
+    expect(response.isError).toBeUndefined();
+    const articles = JSON.parse(response.content[0]!.text) as Array<{ title: string }>;
+    expect(articles).toHaveLength(1);
+  });
+
+  it("defaults to 10 results max", async () => {
+    for (let i = 0; i < 15; i++) {
+      await seedArticle(service, { title: `Article ${i}`, content: `Content for article ${i}.` });
+    }
+    const response = await handleKnowledgeTool("search_articles", { query: "Article" }, service);
+    expect(response.isError).toBeUndefined();
+    const articles = JSON.parse(response.content[0]!.text) as Array<{ title: string }>;
+    expect(articles.length).toBeLessThanOrEqual(10);
   });
 
   it("returns VALIDATION_FAILED for empty query", async () => {

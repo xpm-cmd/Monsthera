@@ -37,6 +37,7 @@ async function handleDashboard(args: string[]): Promise<void> {
   const port = portFlag ? Number(portFlag) : undefined;
   const dashboard = await startDashboard(container, port);
   process.stdout.write(`Dashboard running at http://localhost:${dashboard.port}\n`);
+  process.stdout.write(`Auth token: ${dashboard.authToken}\n`);
 }
 
 async function handleStatus(args: string[]): Promise<void> {

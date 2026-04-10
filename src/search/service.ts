@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { KnowledgeArticle } from "../knowledge/repository.js";
 import type { WorkArticle } from "../work/repository.js";
 import type { Result } from "../core/result.js";
@@ -28,6 +30,7 @@ export interface ContextPackItem {
   readonly phase?: string;
   readonly sourcePath?: string;
   readonly codeRefs: readonly string[];
+  readonly staleCodeRefs: readonly string[];
   readonly references?: readonly string[];
   readonly diagnostics: {
     readonly freshness: Awaited<ReturnType<typeof inspectKnowledgeArticle>>["freshness"];
@@ -80,6 +83,9 @@ export class SearchService {
   private readonly runtimeState?: RuntimeStateStore;
   private readonly repoPath?: string;
 
+  /** Cached result of the last canary query (null = never ran) */
+  private canaryHealthy: boolean | null = null;
+
   constructor(deps: SearchServiceDeps) {
     this.searchRepo = deps.searchRepo;
     this.knowledgeRepo = deps.knowledgeRepo;
@@ -92,6 +98,45 @@ export class SearchService {
     this.repoPath = deps.repoPath;
   }
 
+  // ─── health ────────────────────────────────────────────────────────────────
+
+  /**
+   * Returns subsystem health for the status reporter.
+   * When the index has documents, the cached canary result determines health.
+   * An empty index is considered healthy (nothing to query).
+   */
+  getHealthStatus(): { healthy: boolean; detail: string } {
+    const size = this.searchRepo.size;
+    const embeds = this.searchRepo.embeddingCount;
+    const semanticTag = embeds > 0 ? `, ${embeds} embeddings` : this.config.semanticEnabled ? ", semantic unavailable" : "";
+    if (size === 0) {
+      return { healthy: true, detail: `Search service (empty index${semanticTag})` };
+    }
+    if (this.canaryHealthy === null) {
+      return { healthy: true, detail: `Search service (${size} docs, canary pending${semanticTag})` };
+    }
+    if (this.canaryHealthy) {
+      return { healthy: true, detail: `Search service (${size} docs, canary ok${semanticTag})` };
+    }
+    return { healthy: false, detail: `Search service (${size} docs, canary FAILED — index may need reindex)` };
+  }
+
+  /**
+   * Run a canary query against the search repository to verify
+   * the index can actually return results.
+   */
+  async runCanary(): Promise<boolean> {
+    const healthy = await this.searchRepo.canary();
+    this.canaryHealthy = healthy;
+    if (!healthy) {
+      this.logger.warn("Search canary FAILED: index has documents but queries return empty", {
+        operation: "runCanary",
+        indexSize: this.searchRepo.size,
+      });
+    }
+    return healthy;
+  }
+
   // ─── search ────────────────────────────────────────────────────────────────
 
   async search(
@@ -100,13 +145,89 @@ export class SearchService {
     const validated = validateSearchInput(input);
     if (!validated.ok) return validated;
 
-    const options: SearchOptions = {
-      ...validated.value,
-      semanticEnabled: this.config.semanticEnabled,
-    };
+    const { query, type, limit = 20, offset = 0 } = validated.value;
+    this.logger.debug("Searching articles", { operation: "search", query, type });
 
-    this.logger.debug("Searching articles", { operation: "search", query: validated.value.query, type: validated.value.type });
-    return this.searchRepo.search(options);
+    // BM25 keyword search (always runs)
+    const bm25Result = await this.searchRepo.search({ query, type, limit: limit * 3, offset: 0 });
+    if (!bm25Result.ok) return bm25Result;
+
+    // If semantic search is not available, return BM25 only
+    if (!this.config.semanticEnabled || this.embeddingProvider.dimensions === 0 || this.searchRepo.embeddingCount === 0) {
+      const page = bm25Result.value.slice(offset, offset + limit);
+      return ok(page);
+    }
+
+    // Semantic search: embed the query and find similar docs
+    const queryEmbeddingResult = await this.embeddingProvider.embed(query);
+    if (!queryEmbeddingResult.ok) {
+      this.logger.warn("Semantic embedding failed, falling back to BM25", {
+        operation: "search",
+        error: queryEmbeddingResult.error.message,
+      });
+      const page = bm25Result.value.slice(offset, offset + limit);
+      return ok(page);
+    }
+
+    const semanticResult = await this.searchRepo.searchSemantic(queryEmbeddingResult.value, limit * 3, type);
+    if (!semanticResult.ok) {
+      const page = bm25Result.value.slice(offset, offset + limit);
+      return ok(page);
+    }
+
+    // Hybrid merge: normalize BM25 scores and combine with cosine similarity
+    const merged = this.mergeResults(bm25Result.value, semanticResult.value, this.config.alpha);
+
+    // Apply offset + limit
+    const page = merged.slice(offset, offset + limit);
+    return ok(page);
+  }
+
+  /**
+   * Merge BM25 and semantic results using weighted combination.
+   * BM25 scores are normalized to [0,1], cosine similarity is already [0,1].
+   * finalScore = alpha * norm_bm25 + (1 - alpha) * cosine
+   */
+  private mergeResults(
+    bm25Results: SearchResult[],
+    semanticResults: { id: string; score: number }[],
+    alpha: number,
+  ): SearchResult[] {
+    // Normalize BM25 scores to [0, 1]
+    const maxBm25 = bm25Results.reduce((max, r) => Math.max(max, r.score), 0);
+    const normFactor = maxBm25 > 0 ? maxBm25 : 1;
+
+    // Build a map of all candidates
+    const candidates = new Map<string, { bm25: SearchResult | null; normBm25: number; cosine: number }>();
+
+    for (const r of bm25Results) {
+      candidates.set(r.id, { bm25: r, normBm25: r.score / normFactor, cosine: 0 });
+    }
+
+    for (const s of semanticResults) {
+      const existing = candidates.get(s.id);
+      if (existing) {
+        existing.cosine = s.score;
+      } else {
+        // Semantic-only candidate — we need BM25 result data for snippet/title
+        // Skip if we don't have it (BM25 provides the display data)
+        candidates.set(s.id, { bm25: null, normBm25: 0, cosine: s.score });
+      }
+    }
+
+    // Score and sort
+    const merged: Array<{ result: SearchResult; hybridScore: number }> = [];
+    for (const [, entry] of candidates) {
+      if (entry.bm25 === null) continue; // can't display without BM25 data (title, snippet)
+      const hybridScore = alpha * entry.normBm25 + (1 - alpha) * entry.cosine;
+      merged.push({
+        result: { ...entry.bm25, score: hybridScore },
+        hybridScore,
+      });
+    }
+
+    merged.sort((a, b) => b.hybridScore - a.hybridScore);
+    return merged.map((m) => m.result);
   }
 
   // ─── indexKnowledgeArticle ─────────────────────────────────────────────────
@@ -121,7 +242,11 @@ export class SearchService {
     const indexContent = this.buildIndexContent(article.content, article.codeRefs);
 
     this.logger.info("Indexing knowledge article", { operation: "indexKnowledgeArticle", id });
-    return this.searchRepo.indexArticle(article.id, article.title, indexContent, "knowledge");
+    const indexResult = await this.searchRepo.indexArticle(article.id, article.title, indexContent, "knowledge");
+    if (!indexResult.ok) return indexResult;
+
+    await this.generateAndStoreEmbedding(article.id, article.title, indexContent);
+    return indexResult;
   }
 
   // ─── indexWorkArticle ──────────────────────────────────────────────────────
@@ -136,7 +261,11 @@ export class SearchService {
     const indexContent = this.buildIndexContent(article.content, article.codeRefs);
 
     this.logger.info("Indexing work article", { operation: "indexWorkArticle", id });
-    return this.searchRepo.indexArticle(article.id, article.title, indexContent, "work");
+    const indexResult = await this.searchRepo.indexArticle(article.id, article.title, indexContent, "work");
+    if (!indexResult.ok) return indexResult;
+
+    await this.generateAndStoreEmbedding(article.id, article.title, indexContent);
+    return indexResult;
   }
 
   // ─── removeArticle ─────────────────────────────────────────────────────────
@@ -181,6 +310,35 @@ export class SearchService {
     const reindexResult = await this.searchRepo.reindex();
     if (!reindexResult.ok) return reindexResult;
 
+    // Generate embeddings for semantic search (if enabled and provider is healthy)
+    if (this.config.semanticEnabled && this.embeddingProvider.dimensions > 0) {
+      const healthResult = await this.embeddingProvider.healthCheck();
+      if (healthResult.ok) {
+        const total = knowledgeArticles.length + workArticles.length;
+        this.logger.info("Generating embeddings for semantic search", {
+          operation: "fullReindex",
+          totalArticles: total,
+          model: this.embeddingProvider.modelName,
+        });
+        for (const article of knowledgeArticles) {
+          const indexContent = this.buildIndexContent(article.content, article.codeRefs);
+          await this.generateAndStoreEmbedding(article.id, article.title, indexContent);
+        }
+        for (const article of workArticles) {
+          const indexContent = this.buildIndexContent(article.content, article.codeRefs);
+          await this.generateAndStoreEmbedding(article.id, article.title, indexContent);
+        }
+        this.status?.recordStat("semanticSearchEnabled", true);
+        this.status?.recordStat("embeddingCount", this.searchRepo.embeddingCount);
+      } else {
+        this.logger.warn("Semantic search unavailable — embedding provider not ready, using BM25 only", {
+          operation: "fullReindex",
+          error: healthResult.error.message,
+        });
+        this.status?.recordStat("semanticSearchEnabled", false);
+      }
+    }
+
     const durationMs = Date.now() - startTime;
     this.status?.recordStat("knowledgeArticleCount", knowledgeArticles.length);
     this.status?.recordStat("workArticleCount", workArticles.length);
@@ -201,6 +359,8 @@ export class SearchService {
       workCount: workArticles.length,
       durationMs,
     });
+
+    await this.runCanary();
 
     return ok({ knowledgeCount: knowledgeArticles.length, workCount: workArticles.length });
   }
@@ -290,6 +450,40 @@ export class SearchService {
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 
+  /**
+   * Generate an embedding for a document and store it.
+   * Silently skips if semantic search is disabled or provider is a stub.
+   */
+  private async generateAndStoreEmbedding(id: string, title: string, content: string): Promise<void> {
+    if (!this.config.semanticEnabled || this.embeddingProvider.dimensions === 0) return;
+
+    // Embed a concise representation: title + first ~500 chars of content
+    const text = `${title}\n${content.slice(0, 500)}`;
+    const result = await this.embeddingProvider.embed(text);
+    if (!result.ok) {
+      this.logger.warn("Failed to generate embedding", { operation: "generateEmbedding", id, error: result.error.message });
+      return;
+    }
+    await this.searchRepo.storeEmbedding(id, result.value);
+  }
+
+  private validateCodeRefs(codeRefs: readonly string[]): { valid: readonly string[]; stale: readonly string[] } {
+    if (!this.repoPath || codeRefs.length === 0) {
+      return { valid: codeRefs, stale: [] };
+    }
+    const valid: string[] = [];
+    const stale: string[] = [];
+    for (const ref of codeRefs) {
+      const resolved = path.resolve(this.repoPath, ref);
+      if (fs.existsSync(resolved)) {
+        valid.push(ref);
+      } else {
+        stale.push(ref);
+      }
+    }
+    return { valid, stale };
+  }
+
   private buildIndexContent(content: string, codeRefs: readonly string[]): string {
     return codeRefs.length > 0 ? `${content}\n${codeRefs.join(" ")}` : content;
   }
@@ -300,13 +494,14 @@ export class SearchService {
     diagnostics: Awaited<ReturnType<typeof inspectKnowledgeArticle>>,
     mode: "general" | "code" | "research",
   ): ContextPackItem {
+    const { valid: codeRefs, stale: staleCodeRefs } = this.validateCodeRefs(article.codeRefs);
     const score = scoreContextPackItem({
       baseScore: hit.score,
       qualityScore: diagnostics.quality.score,
       freshness: diagnostics.freshness.state,
       mode,
       type: "knowledge",
-      codeRefCount: article.codeRefs.length,
+      codeRefCount: codeRefs.length,
       referenceCount: 0,
       sourcePath: article.sourcePath,
       category: article.category,
@@ -323,7 +518,7 @@ export class SearchService {
         mode,
         freshness: diagnostics.freshness,
         quality: diagnostics.quality,
-        codeRefCount: article.codeRefs.length,
+        codeRefCount: codeRefs.length,
         referenceCount: 0,
         sourcePath: article.sourcePath,
         type: "knowledge",
@@ -332,7 +527,8 @@ export class SearchService {
       updatedAt: article.updatedAt,
       category: article.category,
       sourcePath: article.sourcePath,
-      codeRefs: article.codeRefs,
+      codeRefs,
+      staleCodeRefs,
       diagnostics: {
         freshness: diagnostics.freshness,
         quality: diagnostics.quality,
@@ -346,13 +542,14 @@ export class SearchService {
     diagnostics: ReturnType<typeof inspectWorkArticle>,
     mode: "general" | "code" | "research",
   ): ContextPackItem {
+    const { valid: codeRefs, stale: staleCodeRefs } = this.validateCodeRefs(article.codeRefs);
     const score = scoreContextPackItem({
       baseScore: hit.score,
       qualityScore: diagnostics.quality.score,
       freshness: diagnostics.freshness.state,
       mode,
       type: "work",
-      codeRefCount: article.codeRefs.length,
+      codeRefCount: codeRefs.length,
       referenceCount: article.references.length,
       sourcePath: undefined,
       category: undefined,
@@ -369,7 +566,7 @@ export class SearchService {
         mode,
         freshness: diagnostics.freshness,
         quality: diagnostics.quality,
-        codeRefCount: article.codeRefs.length,
+        codeRefCount: codeRefs.length,
         referenceCount: article.references.length,
         sourcePath: undefined,
         type: "work",
@@ -378,7 +575,8 @@ export class SearchService {
       updatedAt: article.updatedAt,
       template: article.template,
       phase: article.phase,
-      codeRefs: article.codeRefs,
+      codeRefs,
+      staleCodeRefs,
       references: article.references,
       diagnostics: {
         freshness: diagnostics.freshness,

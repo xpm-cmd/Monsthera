@@ -85,6 +85,7 @@ export class DoltKnowledgeArticleRepository implements KnowledgeArticleRepositor
         content: input.content,
         tags: input.tags ?? [],
         codeRefs: input.codeRefs ?? [],
+        references: input.references ?? [],
         createdAt: now,
         updatedAt: now,
       };
@@ -139,6 +140,7 @@ export class DoltKnowledgeArticleRepository implements KnowledgeArticleRepositor
         content: updatedContent,
         tags: updatedTags,
         codeRefs: updatedCodeRefs,
+        references: input.references ?? existing.references,
         createdAt: existing.createdAt,
         updatedAt: updatedAt,
       };
@@ -261,6 +263,7 @@ export class DoltKnowledgeArticleRepository implements KnowledgeArticleRepositor
       content: row.content,
       tags: this.parseJsonArray(row.tags),
       codeRefs: this.parseJsonArray(row.codeRefs),
+      references: this.parseJsonArray(row.references ?? "[]"),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

@@ -1,5 +1,6 @@
 import type { KnowledgeService } from "../knowledge/service.js";
-import { successResponse, errorResponse, requireString, optionalString, isErrorResponse, MAX_QUERY_LENGTH } from "./validation.js";
+import type { StructureService, NeighborResult } from "../structure/service.js";
+import { successResponse, errorResponse, requireString, optionalString, optionalNumber, isErrorResponse, MAX_QUERY_LENGTH } from "./validation.js";
 
 /** MCP tool definition shape */
 export interface ToolDefinition {
@@ -33,6 +34,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           content: { type: "string", description: "Article content (markdown)" },
           tags: { type: "array", items: { type: "string" }, description: "Tags" },
           codeRefs: { type: "array", items: { type: "string" }, description: "Code references" },
+          references: { type: "array", items: { type: "string" }, description: "References to other articles (IDs or slugs)" },
         },
         required: ["title", "category", "content"],
       },
@@ -60,6 +62,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           content: { type: "string", description: "New content" },
           tags: { type: "array", items: { type: "string" }, description: "New tags" },
           codeRefs: { type: "array", items: { type: "string" }, description: "New code refs" },
+          references: { type: "array", items: { type: "string" }, description: "References to other articles (IDs or slugs)" },
         },
         required: ["id"],
       },
@@ -77,11 +80,13 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_articles",
-      description: "List knowledge articles, optionally filtered by category. Best when you want to browse a domain rather than run full-text discovery.",
+      description: "List knowledge articles, optionally filtered by category. Returns summaries (no content) with pagination. Use get_article to read full content.",
       inputSchema: {
         type: "object" as const,
         properties: {
           category: { type: "string", description: "Filter by category" },
+          limit: { type: "number", description: "Max results (1-100, default 20)" },
+          offset: { type: "number", description: "Skip N results (default 0)" },
         },
       },
     },
@@ -92,6 +97,8 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
         type: "object" as const,
         properties: {
           query: { type: "string", description: "Search query" },
+          limit: { type: "number", description: "Maximum results (1-50, default 10)" },
+          offset: { type: "number", description: "Skip N results (default 0)" },
         },
         required: ["query"],
       },
@@ -99,11 +106,43 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
   ];
 }
 
+function formatConnections(neighbors: NeighborResult): Record<string, unknown> {
+  const references: { id: string; title: string; kind: string }[] = [];
+  const referencedBy: { id: string; title: string; kind: string }[] = [];
+  const sharedTopics: { id: string; title: string; sharedTags: readonly string[] }[] = [];
+  const codeLinks: string[] = [];
+
+  for (const edge of neighbors.edges) {
+    if (edge.neighborKind === "code") {
+      codeLinks.push(edge.neighborId);
+      continue;
+    }
+    const entry = { id: edge.neighborId, title: edge.neighborLabel, kind: edge.neighborKind };
+    if (edge.kind === "reference" && edge.direction === "outgoing") {
+      references.push(entry);
+    } else if (edge.kind === "reference" && edge.direction === "incoming") {
+      referencedBy.push(entry);
+    } else if (edge.kind === "shared_tag") {
+      sharedTopics.push({ id: edge.neighborId, title: edge.neighborLabel, sharedTags: edge.tags ?? [] });
+    } else if (edge.kind === "dependency") {
+      referencedBy.push(entry);
+    }
+  }
+
+  return {
+    ...(references.length > 0 ? { references } : {}),
+    ...(referencedBy.length > 0 ? { referencedBy } : {}),
+    ...(sharedTopics.length > 0 ? { sharedTopics } : {}),
+    ...(codeLinks.length > 0 ? { codeLinks } : {}),
+  };
+}
+
 /** Handle a knowledge tool call */
 export async function handleKnowledgeTool(
   name: string,
   args: Record<string, unknown>,
   service: KnowledgeService,
+  structureService?: StructureService,
 ): Promise<ToolResponse> {
   switch (name) {
     case "create_article": {
@@ -124,6 +163,15 @@ export async function handleKnowledgeTool(
         ? await service.getArticle(id)
         : await service.getArticleBySlug(slug!);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
+      if (structureService) {
+        const neighbors = await structureService.getNeighbors(result.value.id, { limit: 10 });
+        if (neighbors.ok) {
+          const connections = formatConnections(neighbors.value);
+          if (Object.keys(connections).length > 0) {
+            return successResponse({ ...result.value, connections });
+          }
+        }
+      }
       return successResponse(result.value);
     }
     case "update_article": {
@@ -145,16 +193,49 @@ export async function handleKnowledgeTool(
     case "list_articles": {
       const category = optionalString(args, "category");
       if (isErrorResponse(category)) return category;
+      const rawLimit = typeof args.limit === "number" ? args.limit : 20;
+      const limit = Math.max(1, Math.min(rawLimit, 100));
+      const rawOffset = typeof args.offset === "number" ? args.offset : 0;
+      const offset = Math.max(0, rawOffset);
       const result = await service.listArticles(category);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
-      return successResponse(result.value);
+      const total = result.value.length;
+      const page = result.value.slice(offset, offset + limit);
+      const summaries = page.map((a) => ({
+        id: a.id,
+        title: a.title,
+        slug: a.slug,
+        category: a.category,
+        tags: a.tags,
+        updatedAt: a.updatedAt,
+      }));
+      return successResponse({ total, limit, offset, items: summaries });
     }
     case "search_articles": {
       const query = requireString(args, "query", MAX_QUERY_LENGTH);
       if (isErrorResponse(query)) return query;
+      const limitArg = optionalNumber(args, "limit", 1, 50);
+      if (isErrorResponse(limitArg)) return limitArg;
+      const offsetArg = optionalNumber(args, "offset", 0, 10000);
+      if (isErrorResponse(offsetArg)) return offsetArg;
+      const limit = limitArg ?? 10;
+      const offset = offsetArg ?? 0;
       const result = await service.searchArticles(query);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
-      return successResponse(result.value);
+      const page = result.value.slice(offset, offset + limit);
+      const summaries = page.map((a) => ({
+        id: a.id,
+        title: a.title,
+        slug: a.slug,
+        category: a.category,
+        tags: a.tags,
+        codeRefs: a.codeRefs,
+        references: a.references,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+        snippet: a.content.slice(0, 200),
+      }));
+      return successResponse(summaries);
     }
     default:
       return errorResponse("NOT_FOUND", `Unknown tool: ${name}`);

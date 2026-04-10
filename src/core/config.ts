@@ -32,6 +32,10 @@ const OrchestrationConfigSchema = z.object({
   maxConcurrentAgents: z.number().min(1).default(5),
 });
 
+const DashboardConfigSchema = z.object({
+  authToken: z.string().optional(),
+});
+
 const ServerConfigSchema = z.object({
   port: z.number().default(3000),
   host: z.string().default("localhost"),
@@ -43,6 +47,7 @@ export const MonstheraConfigSchema = z.object({
   search: SearchConfigSchema.default(() => SearchConfigSchema.parse({})),
   orchestration: OrchestrationConfigSchema.default(() => OrchestrationConfigSchema.parse({})),
   server: ServerConfigSchema.default(() => ServerConfigSchema.parse({})),
+  dashboard: DashboardConfigSchema.default(() => DashboardConfigSchema.parse({})),
   verbosity: z.enum(["quiet", "normal", "verbose", "debug"]).default("normal"),
 });
 
@@ -175,6 +180,16 @@ export function applyEnvOverrides(config: Record<string, unknown>): Record<strin
         ? (result["storage"] as Record<string, unknown>)
         : {}),
       doltPassword: process.env["MONSTHERA_DOLT_PASSWORD"],
+    };
+  }
+
+  // Dashboard overrides
+  if (process.env["MONSTHERA_DASHBOARD_TOKEN"] !== undefined) {
+    result["dashboard"] = {
+      ...(typeof result["dashboard"] === "object" && result["dashboard"] !== null
+        ? (result["dashboard"] as Record<string, unknown>)
+        : {}),
+      authToken: process.env["MONSTHERA_DASHBOARD_TOKEN"],
     };
   }
 

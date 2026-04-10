@@ -28,6 +28,7 @@ import { OrchestrationService } from "../orchestration/service.js";
 import { MigrationService } from "../migration/service.js";
 import type { V2SourceReader } from "../migration/types.js";
 import { StructureService } from "../structure/service.js";
+import { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import { AgentService } from "../agents/service.js";
 import { IngestService } from "../ingest/service.js";
 
@@ -205,12 +206,16 @@ export async function createContainer(
     runtimeState,
     repoPath: config.repoPath,
   });
+  // Wiki bookkeeper: maintains index.md + log.md (Karpathy second-brain style)
+  const bookkeeper = new WikiBookkeeper(markdownRoot, logger);
+
   // Wire up services with repos — repos are guaranteed to be set by this point
   const knowledgeService = new KnowledgeService({
     knowledgeRepo: knowledgeRepo!,
     logger,
     searchSync: searchService,
     status,
+    bookkeeper,
   });
   const workService = new WorkService({
     workRepo: workRepo!,
@@ -218,7 +223,11 @@ export async function createContainer(
     searchSync: searchService,
     status,
     orchestrationRepo: orchestrationRepo!,
+    bookkeeper,
   });
+  // Cross-wire: both services need the opposite repo to keep index.md in sync.
+  knowledgeService.setWorkRepo(workRepo!);
+  workService.setKnowledgeRepo(knowledgeRepo!);
   const orchestrationService = new OrchestrationService({
     workRepo: workRepo!,
     orchestrationRepo: orchestrationRepo!,
@@ -290,11 +299,10 @@ export async function createContainer(
     healthy: true,
     detail: "Work service",
   }));
-  status.register("search", () => ({
-    name: "search",
-    healthy: true,
-    detail: "Search service",
-  }));
+  status.register("search", () => {
+    const health = searchService.getHealthStatus();
+    return { name: "search", healthy: health.healthy, detail: health.detail };
+  });
   status.register("structure", () => ({
     name: "structure",
     healthy: true,
@@ -315,6 +323,20 @@ export async function createContainer(
   if (config.orchestration.autoAdvance) {
     orchestrationService.start();
     stack.defer(() => { orchestrationService.stop(); });
+  }
+
+  // Auto-reindex on startup to ensure BM25 + embeddings are fresh
+  const reindexResult = await searchService.fullReindex();
+  if (!reindexResult.ok) {
+    logger.warn("Startup reindex failed", { error: reindexResult.error.message });
+  }
+
+  // Rebuild index.md on startup
+  const knowledgeAll = await knowledgeRepo!.findMany();
+  const workAll = await workRepo!.findMany();
+  if (knowledgeAll.ok && workAll.ok) {
+    await bookkeeper.rebuildIndex(knowledgeAll.value, workAll.value);
+    await bookkeeper.appendLog("reindex", "knowledge", `Startup reindex: ${knowledgeAll.value.length} knowledge, ${workAll.value.length} work`);
   }
 
   return {

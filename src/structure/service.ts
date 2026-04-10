@@ -1,15 +1,19 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { ok } from "../core/result.js";
+import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import type { Logger } from "../core/logger.js";
+import { NotFoundError } from "../core/errors.js";
 import type { StorageError } from "../core/errors.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
 
-const MAX_SHARED_TAG_OCCURRENCES = 6;
+/** Tags shared by up to this many articles get full pairwise edges. */
+const SHARED_TAG_DIRECT_THRESHOLD = 15;
+/** Tags shared by up to this many articles get a hub node instead of pairwise edges. */
+const SHARED_TAG_HUB_THRESHOLD = 30;
 
-export type StructureNodeKind = "knowledge" | "work" | "code";
+export type StructureNodeKind = "knowledge" | "work" | "code" | "tag";
 export type StructureEdgeKind = "code_ref" | "reference" | "dependency" | "shared_tag";
 
 export interface StructureGraphNode {
@@ -44,6 +48,7 @@ export interface StructureGraphSummary {
   readonly workCount: number;
   readonly codeCount: number;
   readonly sharedTagEdgeCount: number;
+  readonly hubTagCount: number;
   readonly missingReferenceCount: number;
   readonly missingDependencyCount: number;
   readonly missingCodeRefCount: number;
@@ -62,6 +67,26 @@ export interface StructureGraph {
   readonly edges: readonly StructureGraphEdge[];
   readonly summary: StructureGraphSummary;
   readonly gaps: StructureGraphGaps;
+}
+
+export interface NeighborEdge {
+  readonly direction: "outgoing" | "incoming";
+  readonly kind: StructureEdgeKind;
+  readonly neighborId: string;
+  readonly neighborLabel: string;
+  readonly neighborKind: StructureNodeKind;
+  readonly neighborSlug?: string;
+  readonly label?: string;
+  readonly tags?: readonly string[];
+}
+
+export interface NeighborResult {
+  readonly node: StructureGraphNode;
+  readonly edges: readonly NeighborEdge[];
+  readonly summary: {
+    readonly totalEdges: number;
+    readonly byKind: Readonly<Record<string, number>>;
+  };
 }
 
 export interface StructureServiceDeps {
@@ -158,6 +183,34 @@ export class StructureService {
       });
       bucketTags(nodeId, article.tags);
       rememberCodeRef(nodeId, article.codeRefs);
+
+      // Resolve explicit references + wikilinks from content
+      const explicitRefs = article.references ?? [];
+      const wikilinks = this.extractWikilinks(article.content);
+      const allRefs = [...new Set([...explicitRefs, ...wikilinks])];
+      for (const ref of allRefs) {
+        const knowledgeTarget = knowledgeById.get(ref) ?? knowledgeBySlug.get(ref);
+        const workTarget = workById.get(ref);
+        if (knowledgeTarget) {
+          addEdge({
+            id: `reference:${nodeId}->k:${knowledgeTarget.id}`,
+            source: nodeId,
+            target: `k:${knowledgeTarget.id}`,
+            kind: "reference",
+            label: "references",
+          });
+        } else if (workTarget) {
+          addEdge({
+            id: `reference:${nodeId}->w:${workTarget.id}`,
+            source: nodeId,
+            target: `w:${workTarget.id}`,
+            kind: "reference",
+            label: "references",
+          });
+        } else {
+          missingReferences.add(`${article.id}:${ref}`);
+        }
+      }
     }
 
     for (const article of workArticles) {
@@ -209,7 +262,9 @@ export class StructureService {
     for (const article of workArticles) {
       const sourceId = `w:${article.id}`;
 
-      for (const ref of article.references) {
+      const workWikilinks = this.extractWikilinks(article.content);
+      const allWorkRefs = [...new Set([...article.references, ...workWikilinks])];
+      for (const ref of allWorkRefs) {
         const knowledgeTarget = knowledgeById.get(ref) ?? knowledgeBySlug.get(ref);
         const workTarget = workById.get(ref);
         if (knowledgeTarget) {
@@ -254,14 +309,41 @@ export class StructureService {
       }
     }
 
+    const hubTags = new Set<string>();
+
     for (const [tag, bucket] of tagBuckets) {
       const nodeIds = [...bucket];
       if (nodeIds.length < 2) continue;
-      if (nodeIds.length > MAX_SHARED_TAG_OCCURRENCES) {
+
+      if (nodeIds.length > SHARED_TAG_HUB_THRESHOLD) {
+        // Tier 3: truly ubiquitous — omit entirely
         omittedSharedTags.add(tag);
         continue;
       }
 
+      if (nodeIds.length > SHARED_TAG_DIRECT_THRESHOLD) {
+        // Tier 2: create a hub node and connect each article to it
+        hubTags.add(tag);
+        const hubId = `tag:${tag}`;
+        nodes.set(hubId, {
+          id: hubId,
+          kind: "tag",
+          label: tag,
+        });
+        for (const nodeId of nodeIds) {
+          addEdge({
+            id: `shared_tag:${nodeId}<->${hubId}`,
+            source: nodeId,
+            target: hubId,
+            kind: "shared_tag",
+            label: "shared tag",
+            tags: [tag],
+          });
+        }
+        continue;
+      }
+
+      // Tier 1: pairwise edges (≤ SHARED_TAG_DIRECT_THRESHOLD articles)
       nodeIds.sort();
       for (let index = 0; index < nodeIds.length; index += 1) {
         for (let inner = index + 1; inner < nodeIds.length; inner += 1) {
@@ -289,6 +371,7 @@ export class StructureService {
         workCount: workArticles.length,
         codeCount: [...nodes.values()].filter((node) => node.kind === "code").length,
         sharedTagEdgeCount: [...edges.values()].filter((edge) => edge.kind === "shared_tag").length,
+        hubTagCount: hubTags.size,
         missingReferenceCount: missingReferences.size,
         missingDependencyCount: missingDependencies.size,
         missingCodeRefCount: codeExistenceEntries.filter((entry) => !entry.exists).length,
@@ -309,6 +392,121 @@ export class StructureService {
     });
 
     return ok(graph);
+  }
+
+  async getNeighbors(
+    articleIdOrSlug: string,
+    options?: { edgeKinds?: StructureEdgeKind[]; limit?: number },
+  ): Promise<Result<NeighborResult, NotFoundError | StorageError>> {
+    const graphResult = await this.getGraph();
+    if (!graphResult.ok) return graphResult;
+    const graph = graphResult.value;
+
+    const limit = Math.min(Math.max(options?.limit ?? 20, 1), 50);
+    const edgeKindFilter = options?.edgeKinds
+      ? new Set(options.edgeKinds)
+      : undefined;
+
+    // Find the target node — try multiple resolution strategies
+    const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
+    let targetNode: StructureGraphNode | undefined;
+
+    // 1. Exact node ID
+    targetNode = nodeMap.get(articleIdOrSlug);
+    // 2. Prefixed article ID
+    if (!targetNode) targetNode = nodeMap.get(`k:${articleIdOrSlug}`);
+    if (!targetNode) targetNode = nodeMap.get(`w:${articleIdOrSlug}`);
+    // 3. Slug match
+    if (!targetNode) {
+      for (const node of graph.nodes) {
+        if (node.slug === articleIdOrSlug) {
+          targetNode = node;
+          break;
+        }
+      }
+    }
+
+    if (!targetNode) {
+      return err(new NotFoundError("StructureNode", articleIdOrSlug));
+    }
+
+    const nodeId = targetNode.id;
+    const edgePriority: Record<string, number> = {
+      reference: 0,
+      dependency: 1,
+      code_ref: 2,
+      shared_tag: 3,
+    };
+
+    const neighborEdges: NeighborEdge[] = [];
+
+    for (const edge of graph.edges) {
+      if (edgeKindFilter && !edgeKindFilter.has(edge.kind)) continue;
+
+      let direction: "outgoing" | "incoming" | undefined;
+      let neighborNodeId: string | undefined;
+
+      if (edge.source === nodeId) {
+        direction = "outgoing";
+        neighborNodeId = edge.target;
+      } else if (edge.target === nodeId) {
+        direction = "incoming";
+        neighborNodeId = edge.source;
+      }
+
+      if (!direction || !neighborNodeId) continue;
+
+      const neighbor = nodeMap.get(neighborNodeId);
+      if (!neighbor) continue;
+
+      neighborEdges.push({
+        direction,
+        kind: edge.kind,
+        neighborId: neighbor.articleId ?? neighbor.path ?? neighbor.id,
+        neighborLabel: neighbor.label,
+        neighborKind: neighbor.kind,
+        neighborSlug: neighbor.slug,
+        label: edge.label,
+        tags: edge.tags,
+      });
+    }
+
+    // Sort by edge kind priority, then alphabetically by label
+    neighborEdges.sort((a, b) => {
+      const pa = edgePriority[a.kind] ?? 99;
+      const pb = edgePriority[b.kind] ?? 99;
+      if (pa !== pb) return pa - pb;
+      return a.neighborLabel.localeCompare(b.neighborLabel);
+    });
+
+    // Count by kind before truncating
+    const byKind: Record<string, number> = {};
+    for (const edge of neighborEdges) {
+      byKind[edge.kind] = (byKind[edge.kind] ?? 0) + 1;
+    }
+
+    return ok({
+      node: targetNode,
+      edges: neighborEdges.slice(0, limit),
+      summary: {
+        totalEdges: neighborEdges.length,
+        byKind,
+      },
+    });
+  }
+
+  async getGraphSummary(): Promise<Result<StructureGraphSummary & { gaps: StructureGraphGaps }, StorageError>> {
+    const graphResult = await this.getGraph();
+    if (!graphResult.ok) return graphResult;
+    return ok({
+      ...graphResult.value.summary,
+      gaps: graphResult.value.gaps,
+    });
+  }
+
+  private extractWikilinks(content: string): string[] {
+    const matches = content.matchAll(/\[\[([^\]]+)\]\]/g);
+    return [...new Set([...matches].map((m) => m[1]!.trim()))];
   }
 
   private async codeRefExists(codeRef: string): Promise<boolean> {

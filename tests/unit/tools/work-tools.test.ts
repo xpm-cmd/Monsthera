@@ -250,24 +250,37 @@ describe("list_work", () => {
   it("returns all work articles when no phase provided", async () => {
     const response = await handleWorkTool("list_work", {}, service);
     expect(response.isError).toBeUndefined();
-    const articles = JSON.parse(response.content[0]!.text) as WorkArticle[];
-    expect(articles).toHaveLength(3);
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string; title: string; phase: string }[] };
+    expect(body.total).toBe(3);
+    expect(body.items).toHaveLength(3);
   });
 
   it("filters by phase when provided", async () => {
     // All seeded articles are in PLANNING phase
     const response = await handleWorkTool("list_work", { phase: WorkPhase.PLANNING }, service);
     expect(response.isError).toBeUndefined();
-    const articles = JSON.parse(response.content[0]!.text) as WorkArticle[];
-    expect(articles).toHaveLength(3);
-    expect(articles.every((a) => a.phase === WorkPhase.PLANNING)).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string; title: string; phase: string }[] };
+    expect(body.total).toBe(3);
+    expect(body.items).toHaveLength(3);
+    expect(body.items.every((a) => a.phase === WorkPhase.PLANNING)).toBe(true);
   });
 
-  it("returns empty array for a phase with no articles", async () => {
+  it("returns empty list for a phase with no articles", async () => {
     const response = await handleWorkTool("list_work", { phase: WorkPhase.DONE }, service);
     expect(response.isError).toBeUndefined();
-    const articles = JSON.parse(response.content[0]!.text) as WorkArticle[];
-    expect(articles).toEqual([]);
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: unknown[] };
+    expect(body.total).toBe(0);
+    expect(body.items).toEqual([]);
+  });
+
+  it("respects limit and offset", async () => {
+    const response = await handleWorkTool("list_work", { limit: 2, offset: 1 }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; limit: number; offset: number; items: unknown[] };
+    expect(body.total).toBe(3);
+    expect(body.limit).toBe(2);
+    expect(body.offset).toBe(1);
+    expect(body.items).toHaveLength(2);
   });
 
   it("returns VALIDATION_FAILED for invalid phase string", async () => {

@@ -13,6 +13,7 @@ export const ArticleFrontmatterSchema = z.object({
   category: z.string().min(1).max(100),
   tags: z.array(z.string()).default([]),
   codeRefs: z.array(z.string()).default([]),
+  references: z.array(z.string()).default([]),
   sourcePath: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -25,6 +26,7 @@ export const CreateArticleInputSchema = z.object({
   content: z.string().min(1),
   tags: z.array(z.string()).default([]),
   codeRefs: z.array(z.string()).default([]),
+  references: z.array(z.string()).default([]),
 });
 
 /** Schema for update input — all fields optional */
@@ -34,6 +36,7 @@ export const UpdateArticleInputSchema = z.object({
   content: z.string().min(1).optional(),
   tags: z.array(z.string()).optional(),
   codeRefs: z.array(z.string()).optional(),
+  references: z.array(z.string()).optional(),
 });
 
 // ─── Inferred types ───────────────────────────────────────────────────────────
