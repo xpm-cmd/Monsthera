@@ -12,6 +12,7 @@ export interface KnowledgeArticle {
   readonly content: string;
   readonly tags: readonly string[];
   readonly codeRefs: readonly string[];
+  readonly references: readonly string[];
   readonly sourcePath?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -26,6 +27,7 @@ export interface CreateKnowledgeArticleInput {
   content: string;
   tags?: string[];
   codeRefs?: string[];
+  references?: string[];
   sourcePath?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -38,6 +40,7 @@ export interface UpdateKnowledgeArticleInput {
   content?: string;
   tags?: string[];
   codeRefs?: string[];
+  references?: string[];
   sourcePath?: string;
 }
 

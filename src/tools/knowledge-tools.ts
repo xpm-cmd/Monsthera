@@ -1,4 +1,5 @@
 import type { KnowledgeService } from "../knowledge/service.js";
+import type { StructureService, NeighborResult } from "../structure/service.js";
 import { successResponse, errorResponse, requireString, optionalString, isErrorResponse, MAX_QUERY_LENGTH } from "./validation.js";
 
 /** MCP tool definition shape */
@@ -33,6 +34,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           content: { type: "string", description: "Article content (markdown)" },
           tags: { type: "array", items: { type: "string" }, description: "Tags" },
           codeRefs: { type: "array", items: { type: "string" }, description: "Code references" },
+          references: { type: "array", items: { type: "string" }, description: "References to other articles (IDs or slugs)" },
         },
         required: ["title", "category", "content"],
       },
@@ -60,6 +62,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           content: { type: "string", description: "New content" },
           tags: { type: "array", items: { type: "string" }, description: "New tags" },
           codeRefs: { type: "array", items: { type: "string" }, description: "New code refs" },
+          references: { type: "array", items: { type: "string" }, description: "References to other articles (IDs or slugs)" },
         },
         required: ["id"],
       },
@@ -101,11 +104,43 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
   ];
 }
 
+function formatConnections(neighbors: NeighborResult): Record<string, unknown> {
+  const references: { id: string; title: string; kind: string }[] = [];
+  const referencedBy: { id: string; title: string; kind: string }[] = [];
+  const sharedTopics: { id: string; title: string; sharedTags: readonly string[] }[] = [];
+  const codeLinks: string[] = [];
+
+  for (const edge of neighbors.edges) {
+    if (edge.neighborKind === "code") {
+      codeLinks.push(edge.neighborId);
+      continue;
+    }
+    const entry = { id: edge.neighborId, title: edge.neighborLabel, kind: edge.neighborKind };
+    if (edge.kind === "reference" && edge.direction === "outgoing") {
+      references.push(entry);
+    } else if (edge.kind === "reference" && edge.direction === "incoming") {
+      referencedBy.push(entry);
+    } else if (edge.kind === "shared_tag") {
+      sharedTopics.push({ id: edge.neighborId, title: edge.neighborLabel, sharedTags: edge.tags ?? [] });
+    } else if (edge.kind === "dependency") {
+      referencedBy.push(entry);
+    }
+  }
+
+  return {
+    ...(references.length > 0 ? { references } : {}),
+    ...(referencedBy.length > 0 ? { referencedBy } : {}),
+    ...(sharedTopics.length > 0 ? { sharedTopics } : {}),
+    ...(codeLinks.length > 0 ? { codeLinks } : {}),
+  };
+}
+
 /** Handle a knowledge tool call */
 export async function handleKnowledgeTool(
   name: string,
   args: Record<string, unknown>,
   service: KnowledgeService,
+  structureService?: StructureService,
 ): Promise<ToolResponse> {
   switch (name) {
     case "create_article": {
@@ -126,6 +161,15 @@ export async function handleKnowledgeTool(
         ? await service.getArticle(id)
         : await service.getArticleBySlug(slug!);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
+      if (structureService) {
+        const neighbors = await structureService.getNeighbors(result.value.id, { limit: 10 });
+        if (neighbors.ok) {
+          const connections = formatConnections(neighbors.value);
+          if (Object.keys(connections).length > 0) {
+            return successResponse({ ...result.value, connections });
+          }
+        }
+      }
       return successResponse(result.value);
     }
     case "update_article": {

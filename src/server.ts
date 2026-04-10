@@ -11,6 +11,7 @@ import { searchToolDefinitions, handleSearchTool } from "./tools/search-tools.js
 import { orchestrationToolDefinitions, handleOrchestrationTool } from "./tools/orchestration-tools.js";
 import { statusToolDefinitions, handleStatusTool } from "./tools/status-tools.js";
 import { ingestToolDefinitions, handleIngestTool } from "./tools/ingest-tools.js";
+import { structureToolDefinitions, handleStructureTool } from "./tools/structure-tools.js";
 import { migrationToolDefinitions, handleMigrationTool } from "./migration/tools.js";
 
 /**
@@ -48,6 +49,9 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const ingestTools = ingestToolDefinitions();
   const ingestToolNames = new Set(ingestTools.map((t) => t.name));
 
+  const structureTools = structureToolDefinitions();
+  const structureToolNames = new Set(structureTools.map((t) => t.name));
+
   const migrationTools = container.migrationService ? migrationToolDefinitions() : [];
   const migrationToolNames = new Set(migrationTools.map((t) => t.name));
 
@@ -61,6 +65,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
         ...orchestrationTools,
         ...statusTools,
         ...ingestTools,
+        ...structureTools,
         ...migrationTools,
       ],
     };
@@ -72,11 +77,11 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
 
     if (knowledgeToolNames.has(name)) {
-      return handleKnowledgeTool(name, args, container.knowledgeService);
+      return handleKnowledgeTool(name, args, container.knowledgeService, container.structureService);
     }
 
     if (workToolNames.has(name)) {
-      return handleWorkTool(name, args, container.workService);
+      return handleWorkTool(name, args, container.workService, container.structureService);
     }
 
     if (searchToolNames.has(name)) {
@@ -93,6 +98,10 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
 
     if (ingestToolNames.has(name)) {
       return handleIngestTool(name, args, container.ingestService);
+    }
+
+    if (structureToolNames.has(name)) {
+      return handleStructureTool(name, args, container.structureService);
     }
 
     if (migrationToolNames.has(name) && container.migrationService) {

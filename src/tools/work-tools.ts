@@ -1,4 +1,5 @@
 import type { WorkService } from "../work/service.js";
+import type { StructureService, NeighborResult } from "../structure/service.js";
 import { VALID_PHASES } from "../core/types.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import type { ToolDefinition, ToolResponse } from "./knowledge-tools.js";
@@ -170,10 +171,43 @@ export function workToolDefinitions(): ToolDefinition[] {
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 /** Handle a work tool call */
+function formatWorkConnections(neighbors: NeighborResult): Record<string, unknown> {
+  const references: { id: string; title: string; kind: string }[] = [];
+  const referencedBy: { id: string; title: string; kind: string }[] = [];
+  const dependencies: { id: string; title: string; direction: string }[] = [];
+  const sharedTopics: { id: string; title: string; sharedTags: readonly string[] }[] = [];
+  const codeLinks: string[] = [];
+
+  for (const edge of neighbors.edges) {
+    if (edge.neighborKind === "code") {
+      codeLinks.push(edge.neighborId);
+      continue;
+    }
+    if (edge.kind === "reference" && edge.direction === "outgoing") {
+      references.push({ id: edge.neighborId, title: edge.neighborLabel, kind: edge.neighborKind });
+    } else if (edge.kind === "reference" && edge.direction === "incoming") {
+      referencedBy.push({ id: edge.neighborId, title: edge.neighborLabel, kind: edge.neighborKind });
+    } else if (edge.kind === "dependency") {
+      dependencies.push({ id: edge.neighborId, title: edge.neighborLabel, direction: edge.direction });
+    } else if (edge.kind === "shared_tag") {
+      sharedTopics.push({ id: edge.neighborId, title: edge.neighborLabel, sharedTags: edge.tags ?? [] });
+    }
+  }
+
+  return {
+    ...(references.length > 0 ? { references } : {}),
+    ...(referencedBy.length > 0 ? { referencedBy } : {}),
+    ...(dependencies.length > 0 ? { dependencies } : {}),
+    ...(sharedTopics.length > 0 ? { sharedTopics } : {}),
+    ...(codeLinks.length > 0 ? { codeLinks } : {}),
+  };
+}
+
 export async function handleWorkTool(
   name: string,
   args: Record<string, unknown>,
   service: WorkService,
+  structureService?: StructureService,
 ): Promise<ToolResponse> {
   switch (name) {
     case "create_work": {
@@ -186,6 +220,15 @@ export async function handleWorkTool(
       if (isErrorResponse(id)) return id;
       const result = await service.getWork(id);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
+      if (structureService) {
+        const neighbors = await structureService.getNeighbors(result.value.id, { limit: 10 });
+        if (neighbors.ok) {
+          const connections = formatWorkConnections(neighbors.value);
+          if (Object.keys(connections).length > 0) {
+            return successResponse({ ...result.value, connections });
+          }
+        }
+      }
       return successResponse(result.value);
     }
     case "update_work": {
