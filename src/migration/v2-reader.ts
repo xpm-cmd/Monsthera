@@ -1,7 +1,8 @@
-import { DatabaseSync } from "node:sqlite";
+import { createRequire } from "node:module";
 import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import { StorageError } from "../core/errors.js";
+import type { DatabaseSync } from "node:sqlite";
 import type {
   V2SourceReader,
   V2Ticket,
@@ -10,6 +11,12 @@ import type {
   V2KnowledgeRecord,
   V2NoteRecord,
 } from "./types.js";
+
+const require = createRequire(import.meta.url);
+
+function loadNodeSqlite(): typeof import("node:sqlite") {
+  return require("node:sqlite") as typeof import("node:sqlite");
+}
 
 interface TicketRow {
   id: string;
@@ -185,6 +192,7 @@ export class SqliteV2SourceReader implements V2SourceReader {
   private readonly dialect: "legacy" | "current";
 
   constructor(private readonly dbPath: string) {
+    const { DatabaseSync } = loadNodeSqlite();
     this.db = new DatabaseSync(dbPath, { readOnly: true });
     this.dialect = this.hasTable("review_verdicts") ? "current" : "legacy";
   }
