@@ -6,6 +6,7 @@ import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import { workId, agentId } from "../core/types.js";
 import type { OrchestrationEventRepository, OrchestrationEventType } from "../orchestration/repository.js";
 import type { WorkArticle, WorkArticleRepository, CreateWorkArticleInput, UpdateWorkArticleInput } from "./repository.js";
+import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { SearchMutationSync } from "../search/sync.js";
 import type { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import { validateCreateWorkInput, validateUpdateWorkInput } from "./schemas.js";
@@ -49,6 +50,7 @@ export class WorkService {
       await this.syncIndexedArticle(result.value.id);
       await this.refreshCounts();
       await this.bookkeeper?.appendLog("create", "work", result.value.title, result.value.id);
+      await this.rebuildIndex();
     }
     return result;
   }
@@ -71,6 +73,7 @@ export class WorkService {
     if (result.ok) {
       await this.syncIndexedArticle(result.value.id);
       await this.bookkeeper?.appendLog("update", "work", result.value.title, result.value.id);
+      await this.rebuildIndex();
     }
     return result;
   }
@@ -86,6 +89,7 @@ export class WorkService {
       await this.removeIndexedArticle(id);
       await this.refreshCounts();
       await this.bookkeeper?.appendLog("delete", "work", title, id);
+      await this.rebuildIndex();
     }
     return result;
   }
@@ -114,6 +118,7 @@ export class WorkService {
         phaseHistory: result.value.phaseHistory,
       });
       await this.bookkeeper?.appendLog("advance", "work", `${result.value.title} → ${result.value.phase}`, result.value.id);
+      await this.rebuildIndex();
     }
     return result;
   }
@@ -218,6 +223,15 @@ export class WorkService {
     }
   }
 
+  private async rebuildIndex(): Promise<void> {
+    if (!this.bookkeeper || !this._knowledgeRepoRef) return;
+    const knowledge = await this._knowledgeRepoRef.findMany();
+    if (!knowledge.ok) return;
+    const work = await this.repo.findMany();
+    if (!work.ok) return;
+    await this.bookkeeper.rebuildIndex(knowledge.value, work.value);
+  }
+
   private async logEvent(
     id: string,
     eventType: OrchestrationEventType,
@@ -237,5 +251,10 @@ export class WorkService {
         error: eventResult.error.message,
       });
     }
+  }
+
+  private _knowledgeRepoRef?: Pick<KnowledgeArticleRepository, "findMany">;
+  setKnowledgeRepo(knowledgeRepo: typeof this._knowledgeRepoRef): void {
+    this._knowledgeRepoRef = knowledgeRepo;
   }
 }

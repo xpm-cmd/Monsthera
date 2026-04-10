@@ -225,8 +225,9 @@ export async function createContainer(
     orchestrationRepo: orchestrationRepo!,
     bookkeeper,
   });
-  // Cross-wire: knowledge service needs work repo for index.md rebuilds
+  // Cross-wire: both services need the opposite repo to keep index.md in sync.
   knowledgeService.setWorkRepo(workRepo!);
+  workService.setKnowledgeRepo(knowledgeRepo!);
   const orchestrationService = new OrchestrationService({
     workRepo: workRepo!,
     orchestrationRepo: orchestrationRepo!,

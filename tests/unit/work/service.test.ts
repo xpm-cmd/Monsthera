@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { WorkService } from "../../../src/work/service.js";
 import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
+import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
 import { InMemoryOrchestrationEventRepository } from "../../../src/orchestration/in-memory-repository.js";
 import { ErrorCode } from "../../../src/core/errors.js";
 import { createLogger } from "../../../src/core/logger.js";
 import { WorkPhase, WorkTemplate, Priority } from "../../../src/core/types.js";
 import type { WorkArticle } from "../../../src/work/repository.js";
+import type { WikiBookkeeper } from "../../../src/knowledge/wiki-bookkeeper.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -13,10 +15,19 @@ import type { WorkArticle } from "../../../src/work/repository.js";
 
 function createService() {
   const workRepo = new InMemoryWorkArticleRepository();
+  const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
   const orchestrationRepo = new InMemoryOrchestrationEventRepository();
   const logger = createLogger({ level: "warn", domain: "test" });
-  const service = new WorkService({ workRepo, logger, orchestrationRepo });
-  return { service, workRepo, orchestrationRepo, logger };
+  const bookkeeper = {
+    appendLog: vi.fn().mockResolvedValue(undefined),
+    rebuildIndex: vi.fn().mockResolvedValue(undefined),
+  } as unknown as WikiBookkeeper & {
+    appendLog: ReturnType<typeof vi.fn>;
+    rebuildIndex: ReturnType<typeof vi.fn>;
+  };
+  const service = new WorkService({ workRepo, logger, orchestrationRepo, bookkeeper });
+  service.setKnowledgeRepo(knowledgeRepo);
+  return { service, workRepo, knowledgeRepo, orchestrationRepo, logger, bookkeeper };
 }
 
 const validCreateInput = {
@@ -423,5 +434,48 @@ describe("removeDependency", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.blockedBy).not.toContain(b.value.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// index rebuilds
+// ---------------------------------------------------------------------------
+
+describe("index rebuilds", () => {
+  it("rebuilds index.md after creating work", async () => {
+    const { service, bookkeeper } = createService();
+
+    const result = await service.createWork(validCreateInput);
+    expect(result.ok).toBe(true);
+    expect(bookkeeper.rebuildIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it("rebuilds index.md after updating work", async () => {
+    const { service, bookkeeper } = createService();
+    const article = await seedWork(service);
+
+    const result = await service.updateWork(article.id, { title: "Updated Title" });
+    expect(result.ok).toBe(true);
+    expect(bookkeeper.rebuildIndex).toHaveBeenCalledTimes(2);
+  });
+
+  it("rebuilds index.md after deleting work", async () => {
+    const { service, bookkeeper } = createService();
+    const article = await seedWork(service);
+
+    const result = await service.deleteWork(article.id);
+    expect(result.ok).toBe(true);
+    expect(bookkeeper.rebuildIndex).toHaveBeenCalledTimes(2);
+  });
+
+  it("rebuilds index.md after advancing phase", async () => {
+    const { service, bookkeeper } = createService();
+    const article = await seedWork(service, {
+      content: "## Objective\nDo the thing.\n\n## Acceptance Criteria\n- [ ] Works.",
+    });
+
+    const result = await service.advancePhase(article.id, WorkPhase.ENRICHMENT);
+    expect(result.ok).toBe(true);
+    expect(bookkeeper.rebuildIndex).toHaveBeenCalledTimes(2);
   });
 });
