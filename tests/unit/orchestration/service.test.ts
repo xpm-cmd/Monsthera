@@ -11,7 +11,7 @@ import type { WorkArticle } from "../../../src/work/repository.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createTestService(opts?: { autoAdvance?: boolean; pollIntervalMs?: number }) {
+function createTestService(opts?: { autoAdvance?: boolean; pollIntervalMs?: number; maxConcurrentAgents?: number }) {
   const workRepo = new InMemoryWorkArticleRepository();
   const orchestrationRepo = new InMemoryOrchestrationEventRepository();
   const logger = createLogger({ level: "warn", domain: "test" });
@@ -21,6 +21,7 @@ function createTestService(opts?: { autoAdvance?: boolean; pollIntervalMs?: numb
     logger,
     autoAdvance: opts?.autoAdvance,
     pollIntervalMs: opts?.pollIntervalMs,
+    maxConcurrentAgents: opts?.maxConcurrentAgents,
   });
   return { service, workRepo, orchestrationRepo, logger };
 }
@@ -533,6 +534,53 @@ describe("executeWave", () => {
     expect(waveResult.value.advanced[0]!.workId).toBe(ready.id);
     expect(waveResult.value.failed).toHaveLength(1);
     expect(waveResult.value.failed[0]!.workId).toBe(notReady.id);
+  });
+
+  it("respects maxConcurrentAgents when executing a wave", async () => {
+    const { service, workRepo } = createTestService({ maxConcurrentAgents: 2 });
+    const articles = await Promise.all([
+      seedWork(workRepo, {
+        title: "A1",
+        content: "## Objective\nDo A1\n\n## Acceptance Criteria\nDone\n",
+      }),
+      seedWork(workRepo, {
+        title: "A2",
+        content: "## Objective\nDo A2\n\n## Acceptance Criteria\nDone\n",
+      }),
+      seedWork(workRepo, {
+        title: "A3",
+        content: "## Objective\nDo A3\n\n## Acceptance Criteria\nDone\n",
+      }),
+    ]);
+
+    let inFlight = 0;
+    let maxObserved = 0;
+    const originalTryAdvance = service.tryAdvance.bind(service);
+    const spy = vi.spyOn(service, "tryAdvance").mockImplementation(async (id: string) => {
+      inFlight += 1;
+      maxObserved = Math.max(maxObserved, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      try {
+        return await originalTryAdvance(id);
+      } finally {
+        inFlight -= 1;
+      }
+    });
+
+    const waveResult = await service.executeWave({
+      items: articles.map((article) => ({
+        workId: article.id as string,
+        from: WorkPhase.PLANNING,
+        to: WorkPhase.ENRICHMENT,
+      })),
+      blockedItems: [],
+    });
+
+    expect(waveResult.ok).toBe(true);
+    if (!waveResult.ok) return;
+    expect(waveResult.value.advanced).toHaveLength(3);
+    expect(maxObserved).toBeLessThanOrEqual(2);
+    expect(spy).toHaveBeenCalledTimes(3);
   });
 });
 

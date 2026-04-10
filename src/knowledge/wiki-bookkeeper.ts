@@ -17,7 +17,7 @@ export class WikiBookkeeper {
   private readonly logPath: string;
 
   constructor(
-    private readonly markdownRoot: string,
+    markdownRoot: string,
     private readonly logger: Logger,
   ) {
     this.indexPath = path.join(markdownRoot, "index.md");
@@ -27,7 +27,7 @@ export class WikiBookkeeper {
   // ─── Log (append-only) ──────────────────────────────────────────────────
 
   async appendLog(
-    action: "create" | "update" | "delete" | "advance" | "reindex",
+    action: "create" | "update" | "delete" | "advance" | "reindex" | "archive",
     type: "knowledge" | "work",
     title: string,
     id?: string,

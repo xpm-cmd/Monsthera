@@ -19,6 +19,7 @@ export interface OrchestrationServiceDeps {
   logger: Logger;
   autoAdvance?: boolean;
   pollIntervalMs?: number;
+  maxConcurrentAgents?: number;
 }
 
 // ─── OrchestrationService ───────────────────────────────────────────────────
@@ -29,6 +30,7 @@ export class OrchestrationService {
   private readonly logger: Logger;
   private readonly autoAdvance: boolean;
   private readonly pollIntervalMs: number;
+  private readonly maxConcurrentAgents: number;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private running = false;
 
@@ -38,6 +40,7 @@ export class OrchestrationService {
     this.logger = deps.logger.child({ domain: "orchestration" });
     this.autoAdvance = deps.autoAdvance ?? false;
     this.pollIntervalMs = deps.pollIntervalMs ?? 30000;
+    this.maxConcurrentAgents = Math.max(1, deps.maxConcurrentAgents ?? 5);
   }
 
   // ─── Scanning ─────────────────────────────────────────────────────────────
@@ -227,19 +230,19 @@ export class OrchestrationService {
     const advanced: AdvanceResult[] = [];
     const failed: Array<{ workId: string; error: string }> = [];
 
-    for (const item of plan.items) {
+    const processItem = async (item: WavePlan["items"][number]): Promise<void> => {
       // Verify the article is still in the expected phase (guard against stale plans)
       const currentResult = await this.workRepo.findById(item.workId);
       if (!currentResult.ok) {
         failed.push({ workId: item.workId, error: currentResult.error.message });
-        continue;
+        return;
       }
       if (currentResult.value.phase !== item.from) {
         failed.push({
           workId: item.workId,
           error: `Phase changed since planning: expected "${item.from}", found "${currentResult.value.phase}"`,
         });
-        continue;
+        return;
       }
 
       const result = await this.tryAdvance(item.workId);
@@ -248,12 +251,34 @@ export class OrchestrationService {
       } else {
         failed.push({ workId: item.workId, error: result.error.message });
       }
+    };
+
+    const workerCount = Math.min(this.maxConcurrentAgents, plan.items.length);
+    let nextIndex = 0;
+    const runWorker = async (): Promise<void> => {
+      while (nextIndex < plan.items.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        const item = plan.items[currentIndex];
+        if (!item) return;
+        await processItem(item);
+      }
+    };
+
+    await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+
+    if (plan.items.length === 0) {
+      this.logger.debug("Wave executed with no ready items", {
+        operation: "executeWave",
+        maxConcurrentAgents: this.maxConcurrentAgents,
+      });
     }
 
     this.logger.info("Wave executed", {
       operation: "executeWave",
       advancedCount: advanced.length,
       failedCount: failed.length,
+      maxConcurrentAgents: this.maxConcurrentAgents,
     });
 
     return ok({ advanced, failed });
