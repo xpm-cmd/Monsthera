@@ -45,6 +45,14 @@ function url(path: string): string {
   return `http://localhost:${dashboard.port}${path}`;
 }
 
+/** Headers for authenticated mutating requests. */
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  return {
+    Authorization: `Bearer ${dashboard?.authToken ?? ""}`,
+    ...extra,
+  };
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("Dashboard JSON API", () => {
@@ -189,6 +197,7 @@ describe("Dashboard JSON API", () => {
 
       const res = await fetch(url("/api/orchestration/wave/execute"), {
         method: "POST",
+        headers: authHeaders(),
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
@@ -330,7 +339,7 @@ describe("Dashboard JSON API", () => {
 
       const res = await fetch(url("/api/ingest/local"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           sourcePath: "docs/dashboard-ingest.md",
           category: "docs",
@@ -396,7 +405,7 @@ describe("Dashboard JSON API", () => {
 
       const createRes = await fetch(url("/api/knowledge"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           title: "Dashboard Created Article",
           category: "engineering",
@@ -459,7 +468,7 @@ describe("Dashboard JSON API", () => {
 
       const res = await fetch(url(`/api/knowledge/${created.value.id}`), {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ content: "Updated by dashboard" }),
       });
       expect(res.status).toBe(200);
@@ -481,6 +490,7 @@ describe("Dashboard JSON API", () => {
 
       const deleteRes = await fetch(url(`/api/knowledge/${created.value.id}`), {
         method: "DELETE",
+        headers: authHeaders(),
       });
       expect(deleteRes.status).toBe(200);
 
@@ -507,7 +517,7 @@ describe("Dashboard JSON API", () => {
 
       const res = await fetch(url("/api/work"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           title: "Dashboard Work Create",
           template: "feature",
@@ -568,7 +578,7 @@ describe("Dashboard JSON API", () => {
 
       const res = await fetch(url(`/api/work/${created.value.id}`), {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ assignee: "agent-owner" }),
       });
       expect(res.status).toBe(200);
@@ -592,7 +602,7 @@ describe("Dashboard JSON API", () => {
 
       const res = await fetch(url(`/api/work/${created.value.id}/advance`), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ phase: "enrichment" }),
       });
       expect(res.status).toBe(200);
@@ -625,7 +635,7 @@ describe("Dashboard JSON API", () => {
 
       const addRes = await fetch(url(`/api/work/${dependent.value.id}/dependencies`), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ blockedById: blocker.value.id }),
       });
       expect(addRes.status).toBe(200);
@@ -634,6 +644,7 @@ describe("Dashboard JSON API", () => {
 
       const removeRes = await fetch(url(`/api/work/${dependent.value.id}/dependencies?blockedById=${encodeURIComponent(blocker.value.id)}`), {
         method: "DELETE",
+        headers: authHeaders(),
       });
       expect(removeRes.status).toBe(200);
       const removed = (await removeRes.json()) as { blockedBy: string[] };
@@ -713,7 +724,7 @@ describe("Dashboard JSON API", () => {
   describe("POST /api/search/reindex", () => {
     it("rebuilds the index and records freshness stats", async () => {
       if (dashboardError) return;
-      const res = await fetch(url("/api/search/reindex"), { method: "POST" });
+      const res = await fetch(url("/api/search/reindex"), { method: "POST", headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { knowledgeCount: number; workCount: number };
       expect(body.knowledgeCount).toBeGreaterThanOrEqual(0);

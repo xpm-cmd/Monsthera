@@ -8,9 +8,12 @@ import type { StorageError } from "../core/errors.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
 
-const MAX_SHARED_TAG_OCCURRENCES = 6;
+/** Tags shared by up to this many articles get full pairwise edges. */
+const SHARED_TAG_DIRECT_THRESHOLD = 15;
+/** Tags shared by up to this many articles get a hub node instead of pairwise edges. */
+const SHARED_TAG_HUB_THRESHOLD = 30;
 
-export type StructureNodeKind = "knowledge" | "work" | "code";
+export type StructureNodeKind = "knowledge" | "work" | "code" | "tag";
 export type StructureEdgeKind = "code_ref" | "reference" | "dependency" | "shared_tag";
 
 export interface StructureGraphNode {
@@ -45,6 +48,7 @@ export interface StructureGraphSummary {
   readonly workCount: number;
   readonly codeCount: number;
   readonly sharedTagEdgeCount: number;
+  readonly hubTagCount: number;
   readonly missingReferenceCount: number;
   readonly missingDependencyCount: number;
   readonly missingCodeRefCount: number;
@@ -305,14 +309,41 @@ export class StructureService {
       }
     }
 
+    const hubTags = new Set<string>();
+
     for (const [tag, bucket] of tagBuckets) {
       const nodeIds = [...bucket];
       if (nodeIds.length < 2) continue;
-      if (nodeIds.length > MAX_SHARED_TAG_OCCURRENCES) {
+
+      if (nodeIds.length > SHARED_TAG_HUB_THRESHOLD) {
+        // Tier 3: truly ubiquitous — omit entirely
         omittedSharedTags.add(tag);
         continue;
       }
 
+      if (nodeIds.length > SHARED_TAG_DIRECT_THRESHOLD) {
+        // Tier 2: create a hub node and connect each article to it
+        hubTags.add(tag);
+        const hubId = `tag:${tag}`;
+        nodes.set(hubId, {
+          id: hubId,
+          kind: "tag",
+          label: tag,
+        });
+        for (const nodeId of nodeIds) {
+          addEdge({
+            id: `shared_tag:${nodeId}<->${hubId}`,
+            source: nodeId,
+            target: hubId,
+            kind: "shared_tag",
+            label: "shared tag",
+            tags: [tag],
+          });
+        }
+        continue;
+      }
+
+      // Tier 1: pairwise edges (≤ SHARED_TAG_DIRECT_THRESHOLD articles)
       nodeIds.sort();
       for (let index = 0; index < nodeIds.length; index += 1) {
         for (let inner = index + 1; inner < nodeIds.length; inner += 1) {
@@ -340,6 +371,7 @@ export class StructureService {
         workCount: workArticles.length,
         codeCount: [...nodes.values()].filter((node) => node.kind === "code").length,
         sharedTagEdgeCount: [...edges.values()].filter((edge) => edge.kind === "shared_tag").length,
+        hubTagCount: hubTags.size,
         missingReferenceCount: missingReferences.size,
         missingDependencyCount: missingDependencies.size,
         missingCodeRefCount: codeExistenceEntries.filter((entry) => !entry.exists).length,

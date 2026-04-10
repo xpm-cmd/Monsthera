@@ -36,6 +36,8 @@ const DEFAULT_OFFSET = 0;
 export class DoltSearchIndexRepository implements SearchIndexRepository {
   /** In-memory embedding cache (Dolt has no native vector column type). */
   private readonly embeddings = new Map<string, number[]>();
+  /** In-memory doc type cache to avoid N+1 queries during semantic search. */
+  private readonly docTypes = new Map<string, "knowledge" | "work">();
 
   constructor(private readonly pool: Pool) {}
 
@@ -88,6 +90,7 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
       }
 
       await connection.commit();
+      this.docTypes.set(id, type);
       return ok(undefined);
     } catch (error) {
       await connection.rollback();
@@ -111,6 +114,8 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
       await connection.query<ResultSetHeader>("DELETE FROM search_documents WHERE id = ?", [id]);
 
       await connection.commit();
+      this.docTypes.delete(id);
+      this.embeddings.delete(id);
       return ok(undefined);
     } catch (error) {
       await connection.rollback();
@@ -270,12 +275,8 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
 
       for (const [id, docEmbedding] of this.embeddings) {
         if (type !== undefined && type !== "all") {
-          // Check doc type via SQL
-          const [rows] = await this.pool.query<RowDataPacket[]>(
-            "SELECT type FROM search_documents WHERE id = ?",
-            [id],
-          );
-          if (rows.length === 0 || (rows[0] as RowDataPacket & { type: string }).type !== type) continue;
+          const docType = this.docTypes.get(id);
+          if (docType !== type) continue;
         }
         const score = cosineSimilarity(queryEmbedding, docEmbedding);
         scored.push({ id, score });

@@ -42,6 +42,9 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
   /** id → embedding vector for semantic search */
   private readonly embeddings = new Map<string, number[]>();
 
+  /** IDs modified since last reindex — enables incremental rebuilds. */
+  private readonly dirtyIds = new Set<string>();
+
   // -------------------------------------------------------------------------
   // indexArticle
   // -------------------------------------------------------------------------
@@ -75,6 +78,7 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
       postings.add(id);
     }
 
+    this.dirtyIds.delete(id); // freshly indexed — not dirty
     return ok(undefined);
   }
 
@@ -88,6 +92,7 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
       this.removeFromIndex(id);
       this.documents.delete(id);
       this.embeddings.delete(id);
+      this.dirtyIds.delete(id); // removed — no longer needs reindex
     }
     return ok(undefined);
   }
@@ -165,7 +170,42 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
   // -------------------------------------------------------------------------
 
   async reindex(): Promise<Result<void, StorageError>> {
-    // Rebuild derived index structures from stored documents
+    // No documents or no dirty entries with a populated index → no-op
+    if (this.documents.size === 0) {
+      this.invertedIndex.clear();
+      this.titleTerms.clear();
+      this.dirtyIds.clear();
+      return ok(undefined);
+    }
+
+    if (this.dirtyIds.size === 0 && this.invertedIndex.size > 0) {
+      return ok(undefined);
+    }
+
+    // Incremental path: only rebuild dirty documents when less than half are dirty
+    if (this.dirtyIds.size > 0 && this.dirtyIds.size < this.documents.size * 0.5) {
+      for (const id of this.dirtyIds) {
+        this.removeFromIndex(id);
+        const doc = this.documents.get(id);
+        if (doc) {
+          const titleTokens = tokenize(doc.title);
+          this.titleTerms.set(id, new Set(titleTokens));
+          const allTokens = [...titleTokens, ...tokenize(doc.content)];
+          for (const term of allTokens) {
+            let postings = this.invertedIndex.get(term);
+            if (postings === undefined) {
+              postings = new Set<string>();
+              this.invertedIndex.set(term, postings);
+            }
+            postings.add(id);
+          }
+        }
+      }
+      this.dirtyIds.clear();
+      return ok(undefined);
+    }
+
+    // Full rebuild: clear everything and re-tokenize all documents
     this.invertedIndex.clear();
     this.titleTerms.clear();
 
@@ -184,6 +224,7 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
       }
     }
 
+    this.dirtyIds.clear();
     return ok(undefined);
   }
 

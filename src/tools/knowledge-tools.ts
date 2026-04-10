@@ -1,6 +1,6 @@
 import type { KnowledgeService } from "../knowledge/service.js";
 import type { StructureService, NeighborResult } from "../structure/service.js";
-import { successResponse, errorResponse, requireString, optionalString, isErrorResponse, MAX_QUERY_LENGTH } from "./validation.js";
+import { successResponse, errorResponse, requireString, optionalString, optionalNumber, isErrorResponse, MAX_QUERY_LENGTH } from "./validation.js";
 
 /** MCP tool definition shape */
 export interface ToolDefinition {
@@ -97,6 +97,8 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
         type: "object" as const,
         properties: {
           query: { type: "string", description: "Search query" },
+          limit: { type: "number", description: "Maximum results (1-50, default 10)" },
+          offset: { type: "number", description: "Skip N results (default 0)" },
         },
         required: ["query"],
       },
@@ -212,9 +214,28 @@ export async function handleKnowledgeTool(
     case "search_articles": {
       const query = requireString(args, "query", MAX_QUERY_LENGTH);
       if (isErrorResponse(query)) return query;
+      const limitArg = optionalNumber(args, "limit", 1, 50);
+      if (isErrorResponse(limitArg)) return limitArg;
+      const offsetArg = optionalNumber(args, "offset", 0, 10000);
+      if (isErrorResponse(offsetArg)) return offsetArg;
+      const limit = limitArg ?? 10;
+      const offset = offsetArg ?? 0;
       const result = await service.searchArticles(query);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
-      return successResponse(result.value);
+      const page = result.value.slice(offset, offset + limit);
+      const summaries = page.map((a) => ({
+        id: a.id,
+        title: a.title,
+        slug: a.slug,
+        category: a.category,
+        tags: a.tags,
+        codeRefs: a.codeRefs,
+        references: a.references,
+        createdAt: a.createdAt,
+        updatedAt: a.updatedAt,
+        snippet: a.content.slice(0, 200),
+      }));
+      return successResponse(summaries);
     }
     default:
       return errorResponse("NOT_FOUND", `Unknown tool: ${name}`);

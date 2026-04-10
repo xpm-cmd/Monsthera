@@ -9,6 +9,7 @@ import type { MonstheraError } from "../core/errors.js";
 import { ErrorCode } from "../core/errors.js";
 import { deriveAgentExperience } from "./agent-experience.js";
 import { inspectKnowledgeArticle, inspectWorkArticle } from "../context/insights.js";
+import { requireAuth, generateToken } from "./auth.js";
 import type { KnowledgeArticle } from "../knowledge/repository.js";
 import type { WorkArticle } from "../work/repository.js";
 
@@ -80,6 +81,7 @@ async function serveStatic(
 
 export interface DashboardServer {
   readonly port: number;
+  readonly authToken: string;
   close(): Promise<void>;
 }
 
@@ -101,7 +103,7 @@ function corsHeaders(res: ServerResponse): void {
   res.writeHead(204, {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
   });
   res.end();
@@ -211,6 +213,7 @@ function mapErrorToHttp(error: MonstheraError): { status: number; code: string }
 async function handleRequest(
   container: MonstheraContainer,
   publicDir: string | null,
+  authToken: string,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -221,6 +224,12 @@ async function handleRequest(
   }
 
   const url = new URL(req.url!, `http://${req.headers.host}`);
+
+  // ── Auth gate: mutating API requests require a valid Bearer token ─────
+  if (url.pathname.startsWith("/api/") && !requireAuth(req, authToken, url.pathname)) {
+    errorResponse(res, 401, "UNAUTHORIZED", "Valid Bearer token required");
+    return;
+  }
   const { pathname, searchParams } = url;
   const knowledgeMatch = pathname.match(/^\/api\/knowledge\/([^/]+)$/);
   const workMatch = pathname.match(/^\/api\/work\/([^/]+)$/);
@@ -1065,8 +1074,14 @@ export async function startDashboard(
     container.logger.info("Static file serving enabled", { publicDir });
   }
 
+  // Resolve auth token: config > auto-generated
+  const authToken = container.config.dashboard.authToken ?? generateToken();
+  if (!container.config.dashboard.authToken) {
+    container.logger.info("Dashboard auth token auto-generated (set MONSTHERA_DASHBOARD_TOKEN to configure)");
+  }
+
   const server = createServer((req, res) => {
-    handleRequest(container, publicDir, req, res).catch((error) => {
+    handleRequest(container, publicDir, authToken, req, res).catch((error) => {
       container.logger.error("Unhandled request error", { error: String(error) });
       if (!res.headersSent) {
         errorResponse(res, 500, "INTERNAL_ERROR", "Internal server error");
@@ -1085,6 +1100,7 @@ export async function startDashboard(
 
       resolve({
         port: actualPort,
+        authToken,
         close() {
           return new Promise<void>((resolveClose, rejectClose) => {
             server.close((err) => {
