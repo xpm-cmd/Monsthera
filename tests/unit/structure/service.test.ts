@@ -85,4 +85,41 @@ describe("StructureService", () => {
 
     await fs.rm(repoPath, { recursive: true, force: true });
   });
+
+  it("treats anchored code refs as existing paths", async () => {
+    const repoPath = path.join("/tmp", `monsthera-structure-${randomUUID()}`);
+    await fs.mkdir(path.join(repoPath, "src"), { recursive: true });
+    await fs.writeFile(path.join(repoPath, "src", "existing.ts"), "export const existing = true;\n", "utf-8");
+
+    const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
+    const workRepo = new InMemoryWorkArticleRepository();
+    const logger = createLogger({ level: "error", domain: "test" });
+
+    const knowledge = await knowledgeRepo.create({
+      title: "Anchored notes",
+      slug: slug("anchored-notes"),
+      category: "architecture",
+      content: "Anchored reference.",
+      codeRefs: ["src/existing.ts#L1"],
+    });
+    expect(knowledge.ok).toBe(true);
+    if (!knowledge.ok) return;
+
+    const service = new StructureService({
+      knowledgeRepo,
+      workRepo,
+      repoPath,
+      logger,
+    });
+
+    const result = await service.getGraph();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.summary.missingCodeRefCount).toBe(0);
+    const codeNode = result.value.nodes.find((node) => node.kind === "code" && node.path === "src/existing.ts#L1");
+    expect(codeNode?.exists).toBe(true);
+
+    await fs.rm(repoPath, { recursive: true, force: true });
+  });
 });

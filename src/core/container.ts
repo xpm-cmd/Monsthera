@@ -234,6 +234,7 @@ export async function createContainer(
     logger,
     autoAdvance: config.orchestration.autoAdvance,
     pollIntervalMs: config.orchestration.pollIntervalMs,
+    maxConcurrentAgents: config.orchestration.maxConcurrentAgents,
   });
   const structureService = new StructureService({
     knowledgeRepo: knowledgeRepo!,

@@ -15,6 +15,7 @@ import { parseFlag, withContainer } from "./arg-helpers.js";
 import { handleKnowledge } from "./knowledge-commands.js";
 import { handleWork } from "./work-commands.js";
 import { handleIngest } from "./ingest-commands.js";
+import { handleDoctor } from "./doctor-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -161,50 +162,6 @@ async function handleReindex(args: string[]): Promise<void> {
     process.stdout.write(
       `Reindex complete: ${knowledgeCount} knowledge article(s), ${workCount} work article(s).\n`,
     );
-  });
-}
-
-// ─── Doctor ─────────────────────────────────────────────────────────────────
-
-async function handleDoctor(args: string[]): Promise<void> {
-  await withContainer(args, async (container) => {
-    process.stdout.write("Monsthera Doctor\n");
-    process.stdout.write("================\n\n");
-
-    const status = container.status.getStatus();
-
-    // Version & uptime
-    process.stdout.write(`Version: ${status.version}\n`);
-    process.stdout.write(`Uptime: ${Math.round(status.uptime / 1000)}s\n\n`);
-
-    // Subsystem health
-    process.stdout.write("Subsystems:\n");
-    let allHealthy = true;
-    for (const sub of status.subsystems) {
-      const icon = sub.healthy ? "[OK]" : "[FAIL]";
-      if (!sub.healthy) allHealthy = false;
-      process.stdout.write(`  ${icon} ${sub.name}${sub.detail ? ` — ${sub.detail}` : ""}\n`);
-    }
-    process.stdout.write("\n");
-
-    // Article counts
-    const knowledgeResult = await container.knowledgeService.listArticles();
-    const workResult = await container.workService.listWork();
-    if (knowledgeResult.ok) {
-      process.stdout.write(`Knowledge articles: ${knowledgeResult.value.length}\n`);
-    }
-    if (workResult.ok) {
-      process.stdout.write(`Work articles: ${workResult.value.length}\n`);
-    }
-    process.stdout.write("\n");
-
-    // Overall verdict
-    if (allHealthy) {
-      process.stdout.write("All systems healthy.\n");
-    } else {
-      process.stdout.write("Some subsystems are unhealthy. Check configuration.\n");
-      process.exit(1);
-    }
   });
 }
 

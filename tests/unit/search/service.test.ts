@@ -6,6 +6,9 @@ import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repos
 import { StubEmbeddingProvider } from "../../../src/search/embedding.js";
 import { createLogger } from "../../../src/core/logger.js";
 import type { RuntimeStateSnapshot, RuntimeStateStore } from "../../../src/core/runtime-state.js";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
@@ -162,6 +165,121 @@ describe("SearchService", () => {
       expect(result.value.items.some((item) => item.id === knowledge.id)).toBe(true);
       expect(result.value.items.some((item) => item.diagnostics.quality.score > 0)).toBe(true);
       expect(result.value.guidance.length).toBeGreaterThan(0);
+    });
+
+    it("treats anchored code refs as valid file links", async () => {
+      const repoPath = path.join("/tmp", `monsthera-search-${randomUUID()}`);
+      await fs.mkdir(path.join(repoPath, "src", "auth"), { recursive: true });
+      await fs.writeFile(path.join(repoPath, "src", "auth", "service.ts"), "export const auth = true;\n", "utf-8");
+
+      const searchRepo = new InMemorySearchIndexRepository();
+      const embeddingProvider = new StubEmbeddingProvider();
+      const logger = createLogger({ level: "warn", domain: "test" });
+      const config = {
+        semanticEnabled: false,
+        embeddingModel: "stub",
+        embeddingProvider: "ollama" as const,
+        alpha: 0.5,
+        ollamaUrl: "http://localhost:11434",
+      };
+      const repoAwareService = new SearchService({
+        searchRepo,
+        knowledgeRepo,
+        workRepo,
+        embeddingProvider,
+        config,
+        logger,
+        runtimeState,
+        repoPath,
+      });
+
+      const article = await seedKnowledgeArticle({
+        title: "Anchored Ref",
+        category: "architecture",
+        content: "Auth service notes",
+        codeRefs: ["src/auth/service.ts#L1"],
+      });
+      await repoAwareService.indexKnowledgeArticle(article.id);
+
+      const result = await repoAwareService.buildContextPack({ query: "auth", mode: "code", limit: 5 });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const item = result.value.items.find((entry) => entry.id === article.id);
+      expect(item).toBeDefined();
+      expect(item?.codeRefs).toEqual(["src/auth/service.ts#L1"]);
+      expect(item?.staleCodeRefs).toEqual([]);
+
+      await fs.rm(repoPath, { recursive: true, force: true });
+    });
+
+    it("deprioritizes migrated legacy knowledge when current source-linked context exists", async () => {
+      const repoPath = path.join("/tmp", `monsthera-search-${randomUUID()}`);
+      await fs.mkdir(path.join(repoPath, "docs"), { recursive: true });
+      await fs.writeFile(path.join(repoPath, "docs", "current.md"), "# Current orchestration model\n", "utf-8");
+
+      const searchRepo = new InMemorySearchIndexRepository();
+      const embeddingProvider = new StubEmbeddingProvider();
+      const logger = createLogger({ level: "warn", domain: "test" });
+      const config = {
+        semanticEnabled: false,
+        embeddingModel: "stub",
+        embeddingProvider: "ollama" as const,
+        alpha: 0.5,
+        ollamaUrl: "http://localhost:11434",
+      };
+      const repoAwareService = new SearchService({
+        searchRepo,
+        knowledgeRepo,
+        workRepo,
+        embeddingProvider,
+        config,
+        logger,
+        runtimeState,
+        repoPath,
+      });
+
+      const legacy = await seedKnowledgeArticle({
+        title: "Agora orchestration notes",
+        category: "architecture",
+        content: "Agora orchestration model and repository trust.",
+        tags: ["v2-source:knowledge:architecture:legacy"],
+      });
+      const current = await seedKnowledgeArticle({
+        title: "Monsthera orchestration model",
+        category: "architecture",
+        content: "Current orchestration model and repository trust.",
+        tags: ["current-docs"],
+        sourcePath: "docs/current.md",
+      });
+
+      await repoAwareService.indexKnowledgeArticle(legacy.id);
+      await repoAwareService.indexKnowledgeArticle(current.id);
+
+      const result = await repoAwareService.search({ query: "orchestration model repository trust", limit: 5 });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.value[0]?.id).toBe(current.id);
+      expect(result.value.some((item) => item.id === legacy.id)).toBe(true);
+
+      await fs.rm(repoPath, { recursive: true, force: true });
+    });
+
+    it("keeps legacy knowledge discoverable for explicit Agora queries", async () => {
+      const legacy = await seedKnowledgeArticle({
+        title: "Agora orchestration notes",
+        category: "architecture",
+        content: "Agora orchestration model and repository trust.",
+        tags: ["v2-source:knowledge:architecture:legacy"],
+      });
+
+      await service.indexKnowledgeArticle(legacy.id);
+
+      const result = await service.search({ query: "Agora orchestration", limit: 5 });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value[0]?.id).toBe(legacy.id);
     });
   });
 

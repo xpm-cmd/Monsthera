@@ -7,6 +7,7 @@ import { NotFoundError } from "../core/errors.js";
 import type { StorageError } from "../core/errors.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
+import { resolveCodeRef } from "../core/code-refs.js";
 
 /** Tags shared by up to this many articles get full pairwise edges. */
 const SHARED_TAG_DIRECT_THRESHOLD = 15;
@@ -510,9 +511,7 @@ export class StructureService {
   }
 
   private async codeRefExists(codeRef: string): Promise<boolean> {
-    const resolved = path.isAbsolute(codeRef)
-      ? codeRef
-      : path.resolve(this.repoPath, codeRef);
+    const resolved = resolveCodeRef(this.repoPath, codeRef);
 
     try {
       await fs.access(resolved);

@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 import type { KnowledgeArticle } from "../knowledge/repository.js";
 import type { WorkArticle } from "../work/repository.js";
 import type { Result } from "../core/result.js";
@@ -9,12 +8,18 @@ import type { MonstheraConfig } from "../core/config.js";
 import type { Logger } from "../core/logger.js";
 import type { StatusReporter } from "../core/status.js";
 import type { RuntimeStateStore } from "../core/runtime-state.js";
-import type { SearchIndexRepository, SearchResult, SearchOptions } from "./repository.js";
+import type { SearchIndexRepository, SearchResult } from "./repository.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
 import type { EmbeddingProvider } from "./embedding.js";
 import { validateSearchInput } from "./schemas.js";
 import { inspectKnowledgeArticle, inspectWorkArticle } from "../context/insights.js";
+import { resolveCodeRef } from "../core/code-refs.js";
+import {
+  isLegacyKnowledgeArticle,
+  isLegacyQuery,
+  isLegacyWorkArticle,
+} from "../core/article-trust.js";
 
 export interface ContextPackItem {
   readonly id: string;
@@ -177,9 +182,10 @@ export class SearchService {
 
     // Hybrid merge: normalize BM25 scores and combine with cosine similarity
     const merged = this.mergeResults(bm25Result.value, semanticResult.value, this.config.alpha);
+    const reranked = await this.rerankForTrust(query, merged);
 
     // Apply offset + limit
-    const page = merged.slice(offset, offset + limit);
+    const page = reranked.slice(offset, offset + limit);
     return ok(page);
   }
 
@@ -228,6 +234,53 @@ export class SearchService {
 
     merged.sort((a, b) => b.hybridScore - a.hybridScore);
     return merged.map((m) => m.result);
+  }
+
+  private async rerankForTrust(query: string, results: SearchResult[]): Promise<SearchResult[]> {
+    if (results.length === 0 || isLegacyQuery(query)) {
+      return results;
+    }
+
+    const reranked = await Promise.all(results.map(async (result) => {
+      const trustScore = await this.computeTrustAdjustedScore(result);
+      return {
+        result,
+        trustScore,
+      };
+    }));
+
+    reranked.sort((left, right) => right.trustScore - left.trustScore);
+    const finalResults = reranked.map(({ result, trustScore }) => ({
+      ...result,
+      score: Number(Math.max(trustScore, 0).toFixed(3)),
+    }));
+    const hasPositiveScore = finalResults.some((result) => result.score > 0);
+    return hasPositiveScore
+      ? finalResults.filter((result) => result.score > 0)
+      : finalResults;
+  }
+
+  private async computeTrustAdjustedScore(result: SearchResult): Promise<number> {
+    let score = result.score;
+    if (result.type === "knowledge") {
+      const article = await this.knowledgeRepo.findById(result.id);
+      if (!article.ok) return score;
+
+      if (isLegacyKnowledgeArticle(article.value)) score -= 1.2;
+      if (article.value.sourcePath) score += 0.45;
+      const category = article.value.category.toLowerCase();
+      if (["architecture", "decision", "guide", "runbook"].includes(category)) score += 0.15;
+      return score;
+    }
+
+    const article = await this.workRepo.findById(result.id);
+    if (!article.ok) return score;
+
+    if (isLegacyWorkArticle(article.value)) score -= 1.1;
+    if (article.value.phase === "planning" || article.value.phase === "implementation" || article.value.phase === "review") {
+      score += 0.2;
+    }
+    return score;
   }
 
   // ─── indexKnowledgeArticle ─────────────────────────────────────────────────
@@ -474,7 +527,7 @@ export class SearchService {
     const valid: string[] = [];
     const stale: string[] = [];
     for (const ref of codeRefs) {
-      const resolved = path.resolve(this.repoPath, ref);
+      const resolved = resolveCodeRef(this.repoPath, ref);
       if (fs.existsSync(resolved)) {
         valid.push(ref);
       } else {
@@ -522,6 +575,7 @@ export class SearchService {
         referenceCount: 0,
         sourcePath: article.sourcePath,
         type: "knowledge",
+        legacy: isLegacyKnowledgeArticle(article),
       }),
       snippet: hit.snippet,
       updatedAt: article.updatedAt,
@@ -570,6 +624,7 @@ export class SearchService {
         referenceCount: article.references.length,
         sourcePath: undefined,
         type: "work",
+        legacy: isLegacyWorkArticle(article),
       }),
       snippet: hit.snippet,
       updatedAt: article.updatedAt,
@@ -633,12 +688,14 @@ function buildReason(input: {
   referenceCount: number;
   sourcePath?: string;
   type: "knowledge" | "work";
+  legacy: boolean;
 }): string {
   const reasons: string[] = [];
   reasons.push(`${input.quality.label} quality`);
   if (input.codeRefCount > 0) reasons.push(`${input.codeRefCount} code ref(s)`);
   if (input.referenceCount > 0) reasons.push(`${input.referenceCount} linked reference(s)`);
   if (input.sourcePath) reasons.push("linked source path");
+  if (input.legacy) reasons.push("legacy migration context");
   if (input.mode === "code" && input.codeRefCount === 0) reasons.push("useful contract even without direct code refs");
   if (input.mode === "research" && !input.sourcePath && input.referenceCount === 0) reasons.push("good conceptual context");
   reasons.push(input.freshness.state === "fresh" ? "fresh context" : input.freshness.state === "stale" ? "needs refresh review" : "usable context");
