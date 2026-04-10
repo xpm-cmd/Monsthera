@@ -28,6 +28,7 @@ import { OrchestrationService } from "../orchestration/service.js";
 import { MigrationService } from "../migration/service.js";
 import type { V2SourceReader } from "../migration/types.js";
 import { StructureService } from "../structure/service.js";
+import { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import { AgentService } from "../agents/service.js";
 import { IngestService } from "../ingest/service.js";
 
@@ -205,12 +206,16 @@ export async function createContainer(
     runtimeState,
     repoPath: config.repoPath,
   });
+  // Wiki bookkeeper: maintains index.md + log.md (Karpathy second-brain style)
+  const bookkeeper = new WikiBookkeeper(markdownRoot, logger);
+
   // Wire up services with repos — repos are guaranteed to be set by this point
   const knowledgeService = new KnowledgeService({
     knowledgeRepo: knowledgeRepo!,
     logger,
     searchSync: searchService,
     status,
+    bookkeeper,
   });
   const workService = new WorkService({
     workRepo: workRepo!,
@@ -218,7 +223,10 @@ export async function createContainer(
     searchSync: searchService,
     status,
     orchestrationRepo: orchestrationRepo!,
+    bookkeeper,
   });
+  // Cross-wire: knowledge service needs work repo for index.md rebuilds
+  knowledgeService.setWorkRepo(workRepo!);
   const orchestrationService = new OrchestrationService({
     workRepo: workRepo!,
     orchestrationRepo: orchestrationRepo!,
@@ -320,6 +328,14 @@ export async function createContainer(
   const reindexResult = await searchService.fullReindex();
   if (!reindexResult.ok) {
     logger.warn("Startup reindex failed", { error: reindexResult.error.message });
+  }
+
+  // Rebuild index.md on startup
+  const knowledgeAll = await knowledgeRepo!.findMany();
+  const workAll = await workRepo!.findMany();
+  if (knowledgeAll.ok && workAll.ok) {
+    await bookkeeper.rebuildIndex(knowledgeAll.value, workAll.value);
+    await bookkeeper.appendLog("reindex", "knowledge", `Startup reindex: ${knowledgeAll.value.length} knowledge, ${workAll.value.length} work`);
   }
 
   return {

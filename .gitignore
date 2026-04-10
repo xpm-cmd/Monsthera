@@ -13,6 +13,10 @@ MonstheraV3/
 coverage/
 .env
 .env.*
+
+# Auto-generated wiki files (rebuilt on every startup)
+knowledge/index.md
+knowledge/log.md
 .env.local
 *.log
 tmp/

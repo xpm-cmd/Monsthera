@@ -7,6 +7,7 @@ import type { Logger } from "../core/logger.js";
 import type { StatusReporter } from "../core/status.js";
 import type { KnowledgeArticle, KnowledgeArticleRepository } from "./repository.js";
 import type { SearchMutationSync } from "../search/sync.js";
+import type { WikiBookkeeper } from "./wiki-bookkeeper.js";
 import { validateCreateInput, validateUpdateInput } from "./schemas.js";
 
 export interface KnowledgeServiceDeps {
@@ -14,6 +15,7 @@ export interface KnowledgeServiceDeps {
   logger: Logger;
   searchSync?: SearchMutationSync;
   status?: StatusReporter;
+  bookkeeper?: WikiBookkeeper;
 }
 
 export class KnowledgeService {
@@ -21,12 +23,14 @@ export class KnowledgeService {
   private readonly logger: Logger;
   private readonly searchSync?: SearchMutationSync;
   private readonly status?: StatusReporter;
+  readonly bookkeeper?: WikiBookkeeper;
 
   constructor(deps: KnowledgeServiceDeps) {
     this.repo = deps.knowledgeRepo;
     this.logger = deps.logger.child({ domain: "knowledge" });
     this.searchSync = deps.searchSync;
     this.status = deps.status;
+    this.bookkeeper = deps.bookkeeper;
   }
 
   async createArticle(
@@ -39,6 +43,8 @@ export class KnowledgeService {
     if (result.ok) {
       await this.syncIndexedArticle(result.value.id);
       await this.refreshCounts();
+      await this.bookkeeper?.appendLog("create", "knowledge", result.value.title, result.value.id);
+      await this.rebuildIndex();
     }
     return result;
   }
@@ -67,6 +73,8 @@ export class KnowledgeService {
     const result = await this.repo.update(id, validated.value);
     if (result.ok) {
       await this.syncIndexedArticle(result.value.id);
+      await this.bookkeeper?.appendLog("update", "knowledge", result.value.title, result.value.id);
+      await this.rebuildIndex();
     }
     return result;
   }
@@ -75,10 +83,15 @@ export class KnowledgeService {
     id: string,
   ): Promise<Result<void, NotFoundError | StorageError>> {
     this.logger.info("Deleting knowledge article", { operation: "deleteArticle", id });
+    // Capture title before deletion for log
+    const existing = await this.repo.findById(id);
+    const title = existing.ok ? existing.value.title : id;
     const result = await this.repo.delete(id);
     if (result.ok) {
       await this.removeIndexedArticle(id);
       await this.refreshCounts();
+      await this.bookkeeper?.appendLog("delete", "knowledge", title, id);
+      await this.rebuildIndex();
     }
     return result;
   }
@@ -134,5 +147,21 @@ export class KnowledgeService {
     if (countResult.ok) {
       this.status.recordStat("knowledgeArticleCount", countResult.value.length);
     }
+  }
+
+  /** Rebuild index.md from current articles. Requires workRepo via bookkeeper. */
+  private async rebuildIndex(): Promise<void> {
+    if (!this.bookkeeper || !this._workRepoRef) return;
+    const knowledge = await this.repo.findMany();
+    if (!knowledge.ok) return;
+    const work = await this._workRepoRef.findMany();
+    if (!work.ok) return;
+    await this.bookkeeper.rebuildIndex(knowledge.value, work.value);
+  }
+
+  /** Set by container after both services are created. */
+  private _workRepoRef?: { findMany(): Promise<import("../core/result.js").Result<import("../work/repository.js").WorkArticle[], import("../core/errors.js").StorageError>> };
+  setWorkRepo(workRepo: typeof this._workRepoRef): void {
+    this._workRepoRef = workRepo;
   }
 }

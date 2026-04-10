@@ -7,6 +7,7 @@ import { workId, agentId } from "../core/types.js";
 import type { OrchestrationEventRepository, OrchestrationEventType } from "../orchestration/repository.js";
 import type { WorkArticle, WorkArticleRepository, CreateWorkArticleInput, UpdateWorkArticleInput } from "./repository.js";
 import type { SearchMutationSync } from "../search/sync.js";
+import type { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import { validateCreateWorkInput, validateUpdateWorkInput } from "./schemas.js";
 
 // ─── WorkService ─────────────────────────────────────────────────────────────
@@ -17,6 +18,7 @@ export interface WorkServiceDeps {
   searchSync?: SearchMutationSync;
   status?: StatusReporter;
   orchestrationRepo?: OrchestrationEventRepository;
+  bookkeeper?: WikiBookkeeper;
 }
 
 export class WorkService {
@@ -25,6 +27,7 @@ export class WorkService {
   private readonly searchSync?: SearchMutationSync;
   private readonly status?: StatusReporter;
   private readonly orchestrationRepo?: OrchestrationEventRepository;
+  private readonly bookkeeper?: WikiBookkeeper;
 
   constructor(deps: WorkServiceDeps) {
     this.repo = deps.workRepo;
@@ -32,6 +35,7 @@ export class WorkService {
     this.searchSync = deps.searchSync;
     this.status = deps.status;
     this.orchestrationRepo = deps.orchestrationRepo;
+    this.bookkeeper = deps.bookkeeper;
   }
 
   async createWork(
@@ -44,6 +48,7 @@ export class WorkService {
     if (result.ok) {
       await this.syncIndexedArticle(result.value.id);
       await this.refreshCounts();
+      await this.bookkeeper?.appendLog("create", "work", result.value.title, result.value.id);
     }
     return result;
   }
@@ -65,6 +70,7 @@ export class WorkService {
     const result = await this.repo.update(id, validated.value as unknown as UpdateWorkArticleInput);
     if (result.ok) {
       await this.syncIndexedArticle(result.value.id);
+      await this.bookkeeper?.appendLog("update", "work", result.value.title, result.value.id);
     }
     return result;
   }
@@ -73,10 +79,13 @@ export class WorkService {
     id: string,
   ): Promise<Result<void, NotFoundError | StateTransitionError | StorageError>> {
     this.logger.info("Deleting work article", { operation: "deleteWork", id });
+    const existing = await this.repo.findById(id);
+    const title = existing.ok ? existing.value.title : id;
     const result = await this.repo.delete(id);
     if (result.ok) {
       await this.removeIndexedArticle(id);
       await this.refreshCounts();
+      await this.bookkeeper?.appendLog("delete", "work", title, id);
     }
     return result;
   }
@@ -104,6 +113,7 @@ export class WorkService {
         to: result.value.phase,
         phaseHistory: result.value.phaseHistory,
       });
+      await this.bookkeeper?.appendLog("advance", "work", `${result.value.title} → ${result.value.phase}`, result.value.id);
     }
     return result;
   }
