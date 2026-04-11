@@ -6,6 +6,7 @@ import { VERSION } from "../core/constants.js";
 import { startServer } from "../server.js";
 import { startDashboard } from "../dashboard/index.js";
 import { SqliteV2SourceReader } from "../migration/v2-reader.js";
+import { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import type { MigrationMode, MigrationScope } from "../migration/types.js";
 import {
   formatSearchResults,
@@ -159,6 +160,17 @@ async function handleReindex(args: string[]): Promise<void> {
       process.exit(1);
     }
     const { knowledgeCount, workCount } = result.value;
+
+    // Rebuild wiki index.md alongside the search index
+    const markdownRoot = path.resolve(container.config.repoPath, container.config.storage.markdownRoot);
+    const bookkeeper = new WikiBookkeeper(markdownRoot, container.logger);
+    const knowledgeAll = await container.knowledgeRepo.findMany();
+    const workAll = await container.workRepo.findMany();
+    if (knowledgeAll.ok && workAll.ok) {
+      await bookkeeper.rebuildIndex(knowledgeAll.value, workAll.value);
+      await bookkeeper.appendLog("reindex", "knowledge", `Reindex: ${knowledgeCount} knowledge, ${workCount} work`);
+    }
+
     process.stdout.write(
       `Reindex complete: ${knowledgeCount} knowledge article(s), ${workCount} work article(s).\n`,
     );
