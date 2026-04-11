@@ -28,10 +28,10 @@ Monsthera v3 is built around these core concepts:
 - **Knowledge articles** — Markdown-native documents that form the shared knowledge base
 - **Work articles** — The canonical work unit, replacing tickets with enriched documentation
 - **Phase state machine** — 5-phase lifecycle (planning → enrichment → implementation → review → done)
-- **Guard-driven orchestration** — Deterministic boolean guards enable automated phase transitions
-- **Dual storage** — Markdown files for humans, Dolt database for structured queries
+- **Guard-driven orchestration** — Deterministic boolean guards enable automated phase transitions. Currently ships wave planning and autoadvance; dispatch and convoy features described in the architecture ADR are not yet implemented.
+- **Dual storage** — Markdown files are the source of truth for knowledge and work articles. Dolt (optional) stores derived data: the search index and orchestration events.
 
-See [Architecture Docs](MonstheraV3/monsthera-architecture-v6-final.md) for the full design.
+See [Architecture Docs](MonstheraV3/monsthera-architecture-v6-final.md) for the full design vision. The ADR describes the target architecture; not all features are shipped yet.
 
 ## Development
 
@@ -42,7 +42,7 @@ pnpm build        # Build for production
 pnpm test         # Run tests
 pnpm typecheck    # Type check
 pnpm lint         # Lint
-pnpm exec tsx src/bin.ts ingest local --path docs/claude-review/proposals --summary
+pnpm exec tsx src/bin.ts ingest local --path docs/adrs --summary
 ```
 
 ## Local Dolt
@@ -79,7 +79,7 @@ pnpm demo:smoke
 The script will:
 
 - install/start local Dolt if needed
-- migrate `.monsthera/monsthera.db` into Markdown when the knowledge base is still empty
+- start with an empty corpus (run `monsthera migrate` manually to import v2 data)
 - reindex search against Dolt
 - launch the dashboard on `http://localhost:4123`
 
@@ -110,7 +110,7 @@ Inside the dashboard you can now:
 ```bash
 pnpm exec tsx src/bin.ts knowledge create --title "API Design" --category architecture --content "REST vs GraphQL..."
 pnpm exec tsx src/bin.ts work create --title "Add auth" --template feature --author agent-1 --priority high
-pnpm exec tsx src/bin.ts ingest local --path docs/claude-review/proposals --category docs --summary
+pnpm exec tsx src/bin.ts ingest local --path docs/adrs --category docs --summary
 pnpm exec tsx src/bin.ts reindex
 ```
 

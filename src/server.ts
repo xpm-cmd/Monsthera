@@ -4,10 +4,12 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import * as path from "node:path";
 import type { MonstheraContainer } from "./core/container.js";
 import { knowledgeToolDefinitions, handleKnowledgeTool } from "./tools/knowledge-tools.js";
 import { workToolDefinitions, handleWorkTool } from "./tools/work-tools.js";
 import { searchToolDefinitions, handleSearchTool } from "./tools/search-tools.js";
+import { WikiBookkeeper } from "./knowledge/wiki-bookkeeper.js";
 import { orchestrationToolDefinitions, handleOrchestrationTool } from "./tools/orchestration-tools.js";
 import { statusToolDefinitions, handleStatusTool } from "./tools/status-tools.js";
 import { ingestToolDefinitions, handleIngestTool } from "./tools/ingest-tools.js";
@@ -85,7 +87,18 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
     }
 
     if (searchToolNames.has(name)) {
-      return handleSearchTool(name, args, container.searchService);
+      const result = await handleSearchTool(name, args, container.searchService);
+      // Rebuild wiki index after full reindex so index.md stays in sync
+      if (name === "reindex_all" && result.content[0]?.type === "text" && !result.isError) {
+        const markdownRoot = path.resolve(container.config.repoPath, container.config.storage.markdownRoot);
+        const bookkeeper = new WikiBookkeeper(markdownRoot, container.logger);
+        const knowledgeAll = await container.knowledgeRepo.findMany();
+        const workAll = await container.workRepo.findMany();
+        if (knowledgeAll.ok && workAll.ok) {
+          await bookkeeper.rebuildIndex(knowledgeAll.value, workAll.value);
+        }
+      }
+      return result;
     }
 
     if (orchestrationToolNames.has(name)) {

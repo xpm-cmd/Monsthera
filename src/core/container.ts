@@ -326,20 +326,6 @@ export async function createContainer(
     stack.defer(() => { orchestrationService.stop(); });
   }
 
-  // Auto-reindex on startup to ensure BM25 + embeddings are fresh
-  const reindexResult = await searchService.fullReindex();
-  if (!reindexResult.ok) {
-    logger.warn("Startup reindex failed", { error: reindexResult.error.message });
-  }
-
-  // Rebuild index.md on startup
-  const knowledgeAll = await knowledgeRepo!.findMany();
-  const workAll = await workRepo!.findMany();
-  if (knowledgeAll.ok && workAll.ok) {
-    await bookkeeper.rebuildIndex(knowledgeAll.value, workAll.value);
-    await bookkeeper.appendLog("reindex", "knowledge", `Startup reindex: ${knowledgeAll.value.length} knowledge, ${workAll.value.length} work`);
-  }
-
   return {
     config,
     logger,

@@ -40,6 +40,9 @@ export async function handleWork(args: string[]): Promise<void> {
     case "review":
       await handleWorkReview(subArgs);
       break;
+    case "delete":
+      await handleWorkDelete(subArgs);
+      break;
     default:
       console.error(`Unknown work subcommand: ${subcommand ?? "(none)"}`);
       console.error('Run "monsthera --help" for usage.');
@@ -219,5 +222,22 @@ async function handleWorkReview(args: string[]): Promise<void> {
       process.exit(1);
     }
     process.stdout.write(formatWorkArticle(result.value) + "\n");
+  });
+}
+
+async function handleWorkDelete(args: string[]): Promise<void> {
+  await withContainer(args, async (container) => {
+    const id = parsePositional(args, 0);
+    if (!id) {
+      console.error("Missing required argument: <id>");
+      process.exit(1);
+    }
+
+    const result = await container.workService.deleteWork(id);
+    if (!result.ok) {
+      console.error(formatError(result.error));
+      process.exit(1);
+    }
+    process.stdout.write(`Deleted work article: ${id}\n`);
   });
 }

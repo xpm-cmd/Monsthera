@@ -6,6 +6,7 @@ import { VERSION } from "../core/constants.js";
 import { startServer } from "../server.js";
 import { startDashboard } from "../dashboard/index.js";
 import { SqliteV2SourceReader } from "../migration/v2-reader.js";
+import { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import type { MigrationMode, MigrationScope } from "../migration/types.js";
 import {
   formatSearchResults,
@@ -84,6 +85,7 @@ function handleHelp(): void {
       "  work get      <id>",
       "  work list     [--phase <p>]",
       "  work update   <id> [--title <t>] [--assignee <a>] [--priority <p>]",
+      "  work delete   <id>",
       "  work advance  <id> --phase <target>",
       "  work enrich   <id> --role <role> --status <contributed|skipped>",
       "  work review   <id> --reviewer <agent-id> --status <approved|changes-requested>",
@@ -103,7 +105,7 @@ function handleHelp(): void {
       "  monsthera serve",
       "  monsthera knowledge create --title \"API Design\" --category architecture --content \"REST vs GraphQL...\"",
       "  monsthera work create --title \"Add auth\" --template feature --author agent-1 --priority high",
-      "  monsthera ingest local --path docs/claude-review/proposals --summary",
+      "  monsthera ingest local --path docs/adrs --summary",
       "  monsthera search \"authentication\"",
       "  monsthera reindex",
       "  monsthera migrate --mode dry-run --scope all --source .monsthera/monsthera.db --json",
@@ -159,6 +161,17 @@ async function handleReindex(args: string[]): Promise<void> {
       process.exit(1);
     }
     const { knowledgeCount, workCount } = result.value;
+
+    // Rebuild wiki index.md alongside the search index
+    const markdownRoot = path.resolve(container.config.repoPath, container.config.storage.markdownRoot);
+    const bookkeeper = new WikiBookkeeper(markdownRoot, container.logger);
+    const knowledgeAll = await container.knowledgeRepo.findMany();
+    const workAll = await container.workRepo.findMany();
+    if (knowledgeAll.ok && workAll.ok) {
+      await bookkeeper.rebuildIndex(knowledgeAll.value, workAll.value);
+      await bookkeeper.appendLog("reindex", "knowledge", `Reindex: ${knowledgeCount} knowledge, ${workCount} work`);
+    }
+
     process.stdout.write(
       `Reindex complete: ${knowledgeCount} knowledge article(s), ${workCount} work article(s).\n`,
     );

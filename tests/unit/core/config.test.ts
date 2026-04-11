@@ -86,7 +86,7 @@ describe("validateConfig()", () => {
       search: {
         semanticEnabled: false,
         embeddingModel: "custom-model",
-        embeddingProvider: "huggingface",
+        embeddingProvider: "ollama",
         alpha: 0.7,
         ollamaUrl: "http://remote:11434",
       },
@@ -97,6 +97,17 @@ describe("validateConfig()", () => {
     if (result.ok) {
       expect(result.value.verbosity).toBe("debug");
       expect(result.value.server.port).toBe(8080);
+    }
+  });
+
+  it("rejects invalid embedding provider", () => {
+    const result = validateConfig({
+      repoPath: "/test",
+      search: { embeddingProvider: "huggingface" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("ConfigurationError");
     }
   });
 });

@@ -21,7 +21,7 @@ const StorageConfigSchema = z.object({
 const SearchConfigSchema = z.object({
   semanticEnabled: z.boolean().default(true),
   embeddingModel: z.string().default("nomic-embed-text"),
-  embeddingProvider: z.enum(["ollama", "huggingface"]).default("ollama"),
+  embeddingProvider: z.enum(["ollama"]).default("ollama"),
   alpha: z.number().min(0).max(1).default(0.5),
   ollamaUrl: z.string().default("http://localhost:11434"),
 });

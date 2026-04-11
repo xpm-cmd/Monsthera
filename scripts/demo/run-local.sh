@@ -8,7 +8,6 @@ PORT="${PORT:-4123}"
 DOLT_HOST="${MONSTHERA_DOLT_HOST:-127.0.0.1}"
 DOLT_PORT="${MONSTHERA_DOLT_PORT:-3306}"
 DOLT_DB="${MONSTHERA_DOLT_DATABASE:-monsthera}"
-SQLITE_PATH="${MONSTHERA_V2_SOURCE:-$ROOT_DIR/.monsthera/monsthera.db}"
 WORK_DIR="$ROOT_DIR/knowledge/work-articles"
 KNOWLEDGE_DIR="$ROOT_DIR/knowledge/notes"
 
@@ -32,9 +31,9 @@ pnpm dolt:start:daemon
 work_count="$(count_markdown_files "$WORK_DIR")"
 knowledge_count="$(count_markdown_files "$KNOWLEDGE_DIR")"
 
-if [[ "$work_count" == "0" && "$knowledge_count" == "0" && -f "$SQLITE_PATH" ]]; then
-  echo "==> No Markdown corpus found. Running migration from $SQLITE_PATH"
-  pnpm exec tsx src/bin.ts migrate --mode execute --scope all --source "$SQLITE_PATH"
+if [[ "$work_count" == "0" && "$knowledge_count" == "0" ]]; then
+  echo "==> No Markdown corpus found. Starting with empty knowledge base."
+  echo "    To import from v2: pnpm exec tsx src/bin.ts migrate --mode execute --scope all --source .monsthera/monsthera.db"
 fi
 
 echo "==> Reindexing search"

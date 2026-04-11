@@ -45,6 +45,13 @@ function parseJsonArray<T>(raw: unknown, fallback: T[]): T[] {
   }
 }
 
+// Migration compatibility tags — intentional design decision.
+// v2: tags carry aliases from the legacy system so articles migrated from SQLite
+// remain linkable by their old IDs. migration-hash: tags enable idempotent re-runs.
+// These live in the tags array rather than as explicit schema fields because they
+// are transitional metadata that will eventually age out when v2 references are
+// no longer active. See migration/service.ts for the write side.
+
 function aliasesFromTags(tags: readonly string[]): string[] {
   return tags
     .filter((tag) => tag.startsWith("v2:"))
