@@ -28,10 +28,10 @@ Monsthera v3 is built around these core concepts:
 - **Knowledge articles** — Markdown-native documents that form the shared knowledge base
 - **Work articles** — The canonical work unit, replacing tickets with enriched documentation
 - **Phase state machine** — 5-phase lifecycle (planning → enrichment → implementation → review → done)
-- **Guard-driven orchestration** — Deterministic boolean guards enable automated phase transitions
-- **Dual storage** — Markdown files for humans, Dolt database for structured queries
+- **Guard-driven orchestration** — Deterministic boolean guards enable automated phase transitions. Currently ships wave planning and autoadvance; dispatch and convoy features described in the architecture ADR are not yet implemented.
+- **Dual storage** — Markdown files are the source of truth for knowledge and work articles. Dolt (optional) stores derived data: the search index and orchestration events.
 
-See [Architecture Docs](MonstheraV3/monsthera-architecture-v6-final.md) for the full design.
+See [Architecture Docs](MonstheraV3/monsthera-architecture-v6-final.md) for the full design vision. The ADR describes the target architecture; not all features are shipped yet.
 
 ## Development
 
