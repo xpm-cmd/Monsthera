@@ -85,6 +85,7 @@ function handleHelp(): void {
       "  work get      <id>",
       "  work list     [--phase <p>]",
       "  work update   <id> [--title <t>] [--assignee <a>] [--priority <p>]",
+      "  work delete   <id>",
       "  work advance  <id> --phase <target>",
       "  work enrich   <id> --role <role> --status <contributed|skipped>",
       "  work review   <id> --reviewer <agent-id> --status <approved|changes-requested>",
