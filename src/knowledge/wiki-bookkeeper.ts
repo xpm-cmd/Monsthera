@@ -113,7 +113,7 @@ export class WikiBookkeeper {
         bucket.push(article);
       }
 
-      const phaseOrder = ["planning", "enrichment", "review", "complete", "done", "cancelled"];
+      const phaseOrder = ["planning", "enrichment", "implementation", "review", "done", "cancelled"];
       const sortedPhases = [...workByPhase.keys()].sort(
         (a, b) => (phaseOrder.indexOf(a) === -1 ? 99 : phaseOrder.indexOf(a)) -
                   (phaseOrder.indexOf(b) === -1 ? 99 : phaseOrder.indexOf(b)),

@@ -103,7 +103,7 @@ describe("createContainer()", () => {
     await expect(container.dispose()).resolves.toBeUndefined();
   });
 
-  it("auto-reindex on startup overwrites persisted runtime-state stats", async () => {
+  it("boot preserves persisted runtime-state stats without auto-reindex", async () => {
     const repoPath = path.join("/tmp", `monsthera-runtime-${randomUUID()}`);
     const config = defaultConfig(repoPath);
     await fs.mkdir(path.join(repoPath, ".monsthera"), { recursive: true });
@@ -115,10 +115,9 @@ describe("createContainer()", () => {
 
     const container = await createContainer(config);
     const status = container.status.getStatus();
-    // Auto-reindex on startup overwrites persisted stats with fresh values
-    expect(status.stats?.lastReindexAt).toBeDefined();
-    expect(status.stats?.lastReindexAt).not.toBe("2026-04-09T00:00:00Z");
-    expect(status.stats?.searchIndexSize).toBe(0); // empty repo has no articles
+    // Boot no longer auto-reindexes — persisted stats are loaded as-is
+    expect(status.stats?.lastReindexAt).toBe("2026-04-09T00:00:00Z");
+    expect(status.stats?.searchIndexSize).toBe(42);
     await container.dispose();
     await fs.rm(repoPath, { recursive: true, force: true });
   });

@@ -44,7 +44,7 @@ function buildImportForm() {
   return [
     '<form class="card form-stack" data-knowledge-import>',
     '<div class="card-title">Import local sources</div>',
-    '<label class="field"><span class="text-label">Path</span><input class="input" name="sourcePath" placeholder="docs/claude-review/proposals" required></label>',
+    '<label class="field"><span class="text-label">Path</span><input class="input" name="sourcePath" placeholder="docs/adrs" required></label>',
     '<div class="form-grid form-grid--two">',
     '<label class="field"><span class="text-label">Category override</span><input class="input" name="category" placeholder="docs"></label>',
     '<label class="field"><span class="text-label">Tags</span><input class="input" name="tags" placeholder="imported, architecture"></label>',

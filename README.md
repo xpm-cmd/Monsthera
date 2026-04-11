@@ -42,7 +42,7 @@ pnpm build        # Build for production
 pnpm test         # Run tests
 pnpm typecheck    # Type check
 pnpm lint         # Lint
-pnpm exec tsx src/bin.ts ingest local --path docs/claude-review/proposals --summary
+pnpm exec tsx src/bin.ts ingest local --path docs/adrs --summary
 ```
 
 ## Local Dolt
@@ -79,7 +79,7 @@ pnpm demo:smoke
 The script will:
 
 - install/start local Dolt if needed
-- migrate `.monsthera/monsthera.db` into Markdown when the knowledge base is still empty
+- start with an empty corpus (run `monsthera migrate` manually to import v2 data)
 - reindex search against Dolt
 - launch the dashboard on `http://localhost:4123`
 
@@ -110,7 +110,7 @@ Inside the dashboard you can now:
 ```bash
 pnpm exec tsx src/bin.ts knowledge create --title "API Design" --category architecture --content "REST vs GraphQL..."
 pnpm exec tsx src/bin.ts work create --title "Add auth" --template feature --author agent-1 --priority high
-pnpm exec tsx src/bin.ts ingest local --path docs/claude-review/proposals --category docs --summary
+pnpm exec tsx src/bin.ts ingest local --path docs/adrs --category docs --summary
 pnpm exec tsx src/bin.ts reindex
 ```
 

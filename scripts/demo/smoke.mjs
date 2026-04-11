@@ -12,7 +12,6 @@ const port = Number(process.env.PORT ?? 4124);
 const doltHost = process.env.MONSTHERA_DOLT_HOST ?? "127.0.0.1";
 const doltPort = process.env.MONSTHERA_DOLT_PORT ?? "3306";
 const doltDatabase = process.env.MONSTHERA_DOLT_DATABASE ?? "monsthera";
-const sqlitePath = process.env.MONSTHERA_V2_SOURCE ?? path.join(rootDir, ".monsthera", "monsthera.db");
 const workDir = path.join(rootDir, "knowledge", "work-articles");
 const knowledgeDir = path.join(rootDir, "knowledge", "notes");
 const dashboardEnv = {
@@ -144,9 +143,8 @@ try {
 
   const workCount = await countMarkdownFiles(workDir);
   const knowledgeCount = await countMarkdownFiles(knowledgeDir);
-  if (workCount === 0 && knowledgeCount === 0 && await pathExists(sqlitePath)) {
-    step("Migrating Markdown corpus from the local v2 SQLite database");
-    await runCommand("pnpm", ["exec", "tsx", "src/bin.ts", "migrate", "--mode", "execute", "--scope", "all", "--source", sqlitePath]);
+  if (workCount === 0 && knowledgeCount === 0) {
+    step("No Markdown corpus found — starting with empty knowledge base");
   }
 
   step("Reindexing search");

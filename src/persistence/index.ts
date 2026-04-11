@@ -21,8 +21,6 @@ export { initializeSchema, SCHEMA_STATEMENTS } from "./schema.js";
 export { checkDoltHealth, monitorDoltHealth } from "./health.js";
 export type { DoltHealthStatus } from "./health.js";
 
-// Repository implementations
-export { DoltKnowledgeArticleRepository } from "./dolt-knowledge-repository.js";
-export { DoltWorkRepository } from "./dolt-work-repository.js";
+// Repository implementations (only actively used repos are exported)
 export { DoltSearchIndexRepository } from "./dolt-search-repository.js";
 export { DoltOrchestrationRepository } from "./dolt-orchestration-repository.js";

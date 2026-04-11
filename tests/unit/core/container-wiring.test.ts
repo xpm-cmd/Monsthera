@@ -14,7 +14,7 @@ function makeConfig(overrides: {
   doltHost?: string;
   doltPort?: number;
   semanticEnabled?: boolean;
-  embeddingProvider?: "ollama" | "huggingface";
+  embeddingProvider?: "ollama";
 }): MonstheraConfig {
   const base = defaultConfig("/tmp/monsthera-wiring-test");
   return {
@@ -54,10 +54,10 @@ describe("container wiring: embedding provider", () => {
     await container.dispose();
   });
 
-  it("uses StubEmbeddingProvider when semanticEnabled but provider is huggingface (not yet implemented)", async () => {
+  it("uses StubEmbeddingProvider when semanticEnabled is false regardless of provider", async () => {
     const config = makeConfig({
-      semanticEnabled: true,
-      embeddingProvider: "huggingface",
+      semanticEnabled: false,
+      embeddingProvider: "ollama",
     });
     const container = await createContainer(config);
     expect(container.searchService).toBeDefined();

@@ -103,7 +103,7 @@ function handleHelp(): void {
       "  monsthera serve",
       "  monsthera knowledge create --title \"API Design\" --category architecture --content \"REST vs GraphQL...\"",
       "  monsthera work create --title \"Add auth\" --template feature --author agent-1 --priority high",
-      "  monsthera ingest local --path docs/claude-review/proposals --summary",
+      "  monsthera ingest local --path docs/adrs --summary",
       "  monsthera search \"authentication\"",
       "  monsthera reindex",
       "  monsthera migrate --mode dry-run --scope all --source .monsthera/monsthera.db --json",
