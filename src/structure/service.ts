@@ -8,6 +8,7 @@ import type { StorageError } from "../core/errors.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
 import { resolveCodeRef } from "../core/code-refs.js";
+import { extractWikilinks } from "./wikilink.js";
 
 /** Tags shared by up to this many articles get full pairwise edges. */
 const SHARED_TAG_DIRECT_THRESHOLD = 15;
@@ -187,8 +188,9 @@ export class StructureService {
 
       // Resolve explicit references + wikilinks from content
       const explicitRefs = article.references ?? [];
-      const wikilinks = this.extractWikilinks(article.content);
-      const allRefs = [...new Set([...explicitRefs, ...wikilinks])];
+      const wikilinks = extractWikilinks(article.content);
+      const wikilinkSlugs = wikilinks.map((l) => l.slug);
+      const allRefs = [...new Set([...explicitRefs, ...wikilinkSlugs])];
       for (const ref of allRefs) {
         const knowledgeTarget = knowledgeById.get(ref) ?? knowledgeBySlug.get(ref);
         const workTarget = workById.get(ref);
@@ -263,8 +265,9 @@ export class StructureService {
     for (const article of workArticles) {
       const sourceId = `w:${article.id}`;
 
-      const workWikilinks = this.extractWikilinks(article.content);
-      const allWorkRefs = [...new Set([...article.references, ...workWikilinks])];
+      const workWikilinks = extractWikilinks(article.content);
+      const workWikilinkSlugs = workWikilinks.map((l) => l.slug);
+      const allWorkRefs = [...new Set([...article.references, ...workWikilinkSlugs])];
       for (const ref of allWorkRefs) {
         const knowledgeTarget = knowledgeById.get(ref) ?? knowledgeBySlug.get(ref);
         const workTarget = workById.get(ref);
@@ -503,11 +506,6 @@ export class StructureService {
       ...graphResult.value.summary,
       gaps: graphResult.value.gaps,
     });
-  }
-
-  private extractWikilinks(content: string): string[] {
-    const matches = content.matchAll(/\[\[([^\]]+)\]\]/g);
-    return [...new Set([...matches].map((m) => m[1]!.trim()))];
   }
 
   private async codeRefExists(codeRef: string): Promise<boolean> {

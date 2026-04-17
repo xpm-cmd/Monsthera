@@ -4,6 +4,10 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Wikilink parser**: strip display text (`[[slug|display]]`) and anchor suffixes (`[[slug#section]]`) when extracting slugs for reference resolution. Eliminates 56 false-positive missing references against typical Obsidian-style wikis. [Tier 1.1]
+
 ### Changed
 
 - **Rebrand: Agora → Monsthera** — Renamed all references in root-level markdown files (README, AGENT-MEMORY-CONTEXT, AGENTS, CONTRIBUTING, SECURITY, CHANGELOG). Updated product name, CLI commands, npm package (`monsthera-mcp`), directory paths (`.monsthera/`), database name (`monsthera.db`), HTTP headers (`x-monsthera-`), and GitHub URLs (`xpm-cmd/Monsthera`).
