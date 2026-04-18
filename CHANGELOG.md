@@ -4,6 +4,11 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **`preview_slug` tool**: returns the slug that would be generated for a given title, whether it already exists, and any near-miss conflicts (Jaccard similarity ≥ 0.7 on hyphen tokens). Call before `create_article` for nontrivial titles to avoid silent cross-link drift. [Tier 1.3]
+- **`create_article` optional `slug` param**: accept an explicit slug to override auto-generation. Collisions and invalid format return clear errors instead of silent behavior. [Tier 1.3]
+
 ### Fixed
 
 - **Wikilink parser**: strip display text (`[[slug|display]]`) and anchor suffixes (`[[slug#section]]`) when extracting slugs for reference resolution. Eliminates 56 false-positive missing references against typical Obsidian-style wikis. [Tier 1.1]
