@@ -47,9 +47,9 @@ async function seedArticle(
 // ---------------------------------------------------------------------------
 
 describe("knowledgeToolDefinitions", () => {
-  it("returns exactly 7 tools", () => {
+  it("returns exactly 9 tools", () => {
     const defs = knowledgeToolDefinitions();
-    expect(defs).toHaveLength(7);
+    expect(defs).toHaveLength(9);
   });
 
   it("each tool has name, description, and inputSchema", () => {
@@ -76,8 +76,26 @@ describe("knowledgeToolDefinitions", () => {
         "list_articles",
         "search_articles",
         "preview_slug",
+        "batch_create_articles",
+        "batch_update_articles",
       ]),
     );
+  });
+
+  it("batch_create_articles requires an articles array", () => {
+    const defs = knowledgeToolDefinitions();
+    const def = defs.find((d) => d.name === "batch_create_articles");
+    expect(def).toBeDefined();
+    expect(def!.inputSchema.properties).toHaveProperty("articles");
+    expect(def!.inputSchema.required).toContain("articles");
+  });
+
+  it("batch_update_articles requires an updates array", () => {
+    const defs = knowledgeToolDefinitions();
+    const def = defs.find((d) => d.name === "batch_update_articles");
+    expect(def).toBeDefined();
+    expect(def!.inputSchema.properties).toHaveProperty("updates");
+    expect(def!.inputSchema.required).toContain("updates");
   });
 
   it("descriptions reflect automatic search sync", () => {
@@ -261,6 +279,244 @@ describe("update_article", () => {
     expect(response.isError).toBe(true);
     const body = JSON.parse(response.content[0]!.text) as { error: string };
     expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch_create_articles
+// ---------------------------------------------------------------------------
+
+interface BatchItem {
+  index: number;
+  ok: boolean;
+  article?: KnowledgeArticle;
+  error?: { code: string; message: string };
+}
+interface BatchResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  items: BatchItem[];
+}
+
+describe("batch_create_articles", () => {
+  let service: KnowledgeService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("creates multiple articles and returns per-item results", async () => {
+    const response = await handleKnowledgeTool(
+      "batch_create_articles",
+      {
+        articles: [
+          { title: "First", category: "engineering", content: "one" },
+          { title: "Second", category: "engineering", content: "two" },
+          { title: "Third", category: "engineering", content: "three" },
+        ],
+      },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.total).toBe(3);
+    expect(body.succeeded).toBe(3);
+    expect(body.failed).toBe(0);
+    expect(body.items).toHaveLength(3);
+    for (const item of body.items) {
+      expect(item.ok).toBe(true);
+      expect(item.article?.id).toBeTruthy();
+    }
+  });
+
+  it("reports per-item failures without aborting the batch", async () => {
+    const response = await handleKnowledgeTool(
+      "batch_create_articles",
+      {
+        articles: [
+          { title: "Good", category: "engineering", content: "ok" },
+          { title: "", category: "engineering", content: "empty title" }, // invalid
+          { title: "Also Good", category: "engineering", content: "ok too" },
+        ],
+      },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.total).toBe(3);
+    expect(body.succeeded).toBe(2);
+    expect(body.failed).toBe(1);
+    expect(body.items[0]!.ok).toBe(true);
+    expect(body.items[1]!.ok).toBe(false);
+    expect(body.items[1]!.error?.code).toBe("VALIDATION_FAILED");
+    expect(body.items[2]!.ok).toBe(true);
+  });
+
+  it("rejects missing or non-array articles", async () => {
+    const response = await handleKnowledgeTool("batch_create_articles", {}, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects empty articles array", async () => {
+    const response = await handleKnowledgeTool(
+      "batch_create_articles",
+      { articles: [] },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects batches larger than 100", async () => {
+    const articles = Array.from({ length: 101 }, (_, i) => ({
+      title: `Article ${i}`,
+      category: "engineering",
+      content: `content ${i}`,
+    }));
+    const response = await handleKnowledgeTool("batch_create_articles", { articles }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("reports ALREADY_EXISTS for duplicate explicit slugs within the batch", async () => {
+    const response = await handleKnowledgeTool(
+      "batch_create_articles",
+      {
+        articles: [
+          { title: "First", category: "engineering", content: "one", slug: "shared" },
+          { title: "Second", category: "engineering", content: "two", slug: "shared" },
+        ],
+      },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.succeeded).toBe(1);
+    expect(body.failed).toBe(1);
+    expect(body.items[1]!.error?.code).toBe("ALREADY_EXISTS");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// batch_update_articles
+// ---------------------------------------------------------------------------
+
+describe("batch_update_articles", () => {
+  let service: KnowledgeService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("updates multiple articles and returns per-item results", async () => {
+    const a = await seedArticle(service, { title: "Alpha" });
+    const b = await seedArticle(service, { title: "Beta" });
+    const response = await handleKnowledgeTool(
+      "batch_update_articles",
+      {
+        updates: [
+          { id: a.id, content: "alpha updated" },
+          { id: b.id, content: "beta updated" },
+        ],
+      },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.total).toBe(2);
+    expect(body.succeeded).toBe(2);
+    expect(body.failed).toBe(0);
+    expect(body.items[0]!.article?.content).toBe("alpha updated");
+    expect(body.items[1]!.article?.content).toBe("beta updated");
+  });
+
+  it("reports per-item NOT_FOUND without aborting the batch", async () => {
+    const a = await seedArticle(service, { title: "Alpha" });
+    const response = await handleKnowledgeTool(
+      "batch_update_articles",
+      {
+        updates: [
+          { id: a.id, content: "alpha updated" },
+          { id: "nonexistent", content: "will fail" },
+        ],
+      },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.succeeded).toBe(1);
+    expect(body.failed).toBe(1);
+    expect(body.items[0]!.ok).toBe(true);
+    expect(body.items[1]!.ok).toBe(false);
+    expect(body.items[1]!.error?.code).toBe("NOT_FOUND");
+  });
+
+  it("supports new_slug renames inside the batch", async () => {
+    const a = await seedArticle(service, { title: "Old Topic" });
+    const response = await handleKnowledgeTool(
+      "batch_update_articles",
+      {
+        updates: [{ id: a.id, new_slug: "new-topic" }],
+      },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.succeeded).toBe(1);
+    expect(body.items[0]!.article?.slug).toBe("new-topic");
+  });
+
+  it("rejects missing or non-array updates", async () => {
+    const response = await handleKnowledgeTool("batch_update_articles", {}, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects empty updates array", async () => {
+    const response = await handleKnowledgeTool(
+      "batch_update_articles",
+      { updates: [] },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects batches larger than 100", async () => {
+    const updates = Array.from({ length: 101 }, (_, i) => ({
+      id: `ghost-${i}`,
+      content: "x",
+    }));
+    const response = await handleKnowledgeTool("batch_update_articles", { updates }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("flags items with missing id as VALIDATION_FAILED", async () => {
+    const a = await seedArticle(service, { title: "Alpha" });
+    const response = await handleKnowledgeTool(
+      "batch_update_articles",
+      {
+        updates: [
+          { id: a.id, content: "ok" },
+          { content: "no id" }, // invalid
+        ],
+      },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.succeeded).toBe(1);
+    expect(body.failed).toBe(1);
+    expect(body.items[1]!.error?.code).toBe("VALIDATION_FAILED");
   });
 });
 

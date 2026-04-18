@@ -21,6 +21,39 @@ export interface KnowledgeServiceDeps {
   bookkeeper?: WikiBookkeeper;
 }
 
+/** Per-item result for batch article operations. */
+export type BatchArticleItem =
+  | { index: number; ok: true; article: KnowledgeArticle }
+  | { index: number; ok: false; error: { code: string; message: string } };
+
+/** Aggregate result for batch article operations. */
+export interface BatchArticleResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  items: BatchArticleItem[];
+}
+
+/**
+ * Extract the required string `id` from a batch_update entry and return the
+ * remaining fields as update input. Keeps the dispatcher small and the
+ * service code readable.
+ */
+function extractBatchUpdateId(
+  raw: unknown,
+): Result<{ id: string; rest: Record<string, unknown> }, ValidationError> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return err(new ValidationErrorClass("Batch update entry must be an object"));
+  }
+  const entry = raw as Record<string, unknown>;
+  const id = entry.id;
+  if (typeof id !== "string" || id.length === 0) {
+    return err(new ValidationErrorClass('Batch update entry requires a non-empty "id" string'));
+  }
+  const { id: _discard, ...rest } = entry;
+  return ok({ id, rest });
+}
+
 export class KnowledgeService {
   private readonly repo: KnowledgeArticleRepository;
   private readonly logger: Logger;
@@ -39,6 +72,20 @@ export class KnowledgeService {
   async createArticle(
     input: unknown,
   ): Promise<Result<KnowledgeArticle, ValidationError | AlreadyExistsError | StorageError>> {
+    const result = await this.createOneWithoutRebuild(input);
+    if (result.ok) await this.rebuildIndex();
+    return result;
+  }
+
+  /**
+   * Per-item create that skips the global `index.md` rebuild. Used both by
+   * the public `createArticle` (which rebuilds once after) and by
+   * `batchCreateArticles` (which defers the rebuild until the whole batch
+   * finishes, so a 100-article import does one rebuild instead of 100).
+   */
+  private async createOneWithoutRebuild(
+    input: unknown,
+  ): Promise<Result<KnowledgeArticle, ValidationError | AlreadyExistsError | StorageError>> {
     const validated = validateCreateInput(input);
     if (!validated.ok) return validated;
 
@@ -54,14 +101,12 @@ export class KnowledgeService {
           ),
         );
       }
-      // Any non-ok result other than NOT_FOUND surfaces as a storage error below.
       if (existing.error.code !== "NOT_FOUND") {
         return err(existing.error);
       }
     }
 
     this.logger.info("Creating knowledge article", { operation: "createArticle", title: validated.value.title });
-    // Pass slug through to repo (branded) when supplied; otherwise repo auto-generates.
     const repoInput = {
       ...validated.value,
       slug: validated.value.slug !== undefined ? brandSlug(validated.value.slug) : undefined,
@@ -71,7 +116,6 @@ export class KnowledgeService {
       await this.syncIndexedArticle(result.value.id);
       await this.refreshCounts();
       await this.bookkeeper?.appendLog("create", "knowledge", result.value.title, result.value.id);
-      await this.rebuildIndex();
     }
     return result;
   }
@@ -117,25 +161,113 @@ export class KnowledgeService {
     id: string,
     input: unknown,
   ): Promise<Result<KnowledgeArticle, NotFoundError | ValidationError | AlreadyExistsError | StorageError>> {
+    const result = await this.updateOneWithoutRebuild(id, input);
+    if (result.ok) await this.rebuildIndex();
+    return result;
+  }
+
+  /**
+   * Per-item update that skips the global `index.md` rebuild. The rename path
+   * (`renameAndUpdate`) already rebuilds the index itself on success, so when
+   * this method returns ok from a rename it is safe for callers to skip the
+   * extra rebuild. Callers doing many updates in sequence (batch) should
+   * perform a single rebuild after the loop completes.
+   */
+  private async updateOneWithoutRebuild(
+    id: string,
+    input: unknown,
+  ): Promise<Result<KnowledgeArticle, NotFoundError | ValidationError | AlreadyExistsError | StorageError>> {
     const validated = validateUpdateInput(input);
     if (!validated.ok) return validated;
 
     const { new_slug, rewrite_inline_wikilinks, ...rest } = validated.value;
 
-    // If no rename requested, the path is unchanged from the original implementation.
     if (new_slug === undefined) {
       this.logger.info("Updating knowledge article", { operation: "updateArticle", id });
       const result = await this.repo.update(id, rest);
       if (result.ok) {
         await this.syncIndexedArticle(result.value.id);
         await this.bookkeeper?.appendLog("update", "knowledge", result.value.title, result.value.id);
-        await this.rebuildIndex();
       }
       return result;
     }
 
-    // Rename path — orchestrated here. See doc comment on renameAndUpdate.
     return this.renameAndUpdate(id, new_slug, rewrite_inline_wikilinks === true, rest);
+  }
+
+  /**
+   * Best-effort bulk create. Iterates `inputs` in order and captures per-item
+   * successes and failures in the response. A single `rebuildIndex()` runs at
+   * the end if at least one article was created, keeping `index.md` O(1)
+   * regardless of batch size. Per-item errors (validation, slug collision,
+   * storage) are surfaced alongside the index so callers can retry only the
+   * offenders without replaying the successes.
+   */
+  async batchCreateArticles(
+    inputs: readonly unknown[],
+  ): Promise<BatchArticleResult> {
+    const items: BatchArticleItem[] = [];
+    let succeeded = 0;
+    let failed = 0;
+    for (let i = 0; i < inputs.length; i++) {
+      const result = await this.createOneWithoutRebuild(inputs[i]);
+      if (result.ok) {
+        items.push({ index: i, ok: true, article: result.value });
+        succeeded++;
+      } else {
+        items.push({
+          index: i,
+          ok: false,
+          error: { code: result.error.code, message: result.error.message },
+        });
+        failed++;
+      }
+    }
+    if (succeeded > 0) await this.rebuildIndex();
+    return { total: inputs.length, succeeded, failed, items };
+  }
+
+  /**
+   * Best-effort bulk update. Each entry must have a string `id` and an
+   * optional subset of update fields (including `new_slug` /
+   * `rewrite_inline_wikilinks` for atomic renames). The shape is validated
+   * per-item; entries missing `id` are reported as VALIDATION_FAILED without
+   * aborting the batch.
+   */
+  async batchUpdateArticles(
+    updates: readonly unknown[],
+  ): Promise<BatchArticleResult> {
+    const items: BatchArticleItem[] = [];
+    let succeeded = 0;
+    let failed = 0;
+    for (let i = 0; i < updates.length; i++) {
+      const raw = updates[i];
+      const idResult = extractBatchUpdateId(raw);
+      if (!idResult.ok) {
+        items.push({
+          index: i,
+          ok: false,
+          error: { code: idResult.error.code, message: idResult.error.message },
+        });
+        failed++;
+        continue;
+      }
+      const { id, rest } = idResult.value;
+      const result = await this.updateOneWithoutRebuild(id, rest);
+      if (result.ok) {
+        items.push({ index: i, ok: true, article: result.value });
+        succeeded++;
+      } else {
+        items.push({
+          index: i,
+          ok: false,
+          error: { code: result.error.code, message: result.error.message },
+        });
+        failed++;
+      }
+    }
+    if (succeeded > 0) await this.rebuildIndex();
+    return { total: updates.length, succeeded, failed, items };
   }
 
   /**
