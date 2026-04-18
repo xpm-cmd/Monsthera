@@ -182,13 +182,22 @@ function buildEnrichmentPanel(article) {
 function buildExpandedActions(article, readySet) {
   const actions = [];
   const nextPhase = NEXT_PHASE[article.phase];
+  const terminal = article.phase === "done" || article.phase === "cancelled";
   if (nextPhase) {
     actions.push(
       `<button class="btn btn--outline btn--sm" type="button" data-advance-work="${esc(article.id)}" data-phase="${nextPhase}">Move to ${esc(nextPhase)}</button>`,
     );
+    actions.push(
+      `<button class="btn btn--ghost btn--sm" type="button" data-override-guard="${esc(article.id)}" data-phase="${nextPhase}" title="Bypass failing guards with an auditable reason">Override guards</button>`,
+    );
   }
   if (readySet.has(article.id) && nextPhase) {
     actions.push(renderBadge("ready to advance", "success"));
+  }
+  if (!terminal) {
+    actions.push(
+      `<button class="btn btn--ghost btn--sm" type="button" data-cancel-work="${esc(article.id)}" title="Cancel this work article (requires reason)">Cancel</button>`,
+    );
   }
   actions.push(
     `<button class="btn btn--ghost btn--sm" type="button" data-delete-work="${esc(article.id)}">Delete</button>`,
@@ -473,10 +482,54 @@ export async function render(container) {
 
     const advanceButton = target.closest("[data-advance-work]");
     if (advanceButton) {
+      const id = advanceButton.dataset.advanceWork;
+      const phase = advanceButton.dataset.phase;
       await runMutation(
-        () => advanceWork(advanceButton.dataset.advanceWork, advanceButton.dataset.phase),
-        `Moved article to ${advanceButton.dataset.phase}.`,
-        advanceButton.dataset.advanceWork,
+        async () => {
+          try {
+            return await advanceWork(id, phase);
+          } catch (error) {
+            if (error?.code === "GUARD_FAILED") {
+              const reason = window.prompt(
+                `Guards failed: ${error.message}\n\nProvide a justification to bypass (logged in phase history), or Cancel:`,
+              );
+              if (!reason || !reason.trim()) throw error;
+              return advanceWork(id, phase, { skipGuard: { reason: reason.trim() } });
+            }
+            throw error;
+          }
+        },
+        `Moved article to ${phase}.`,
+        id,
+      );
+      return;
+    }
+
+    const overrideButton = target.closest("[data-override-guard]");
+    if (overrideButton) {
+      const id = overrideButton.dataset.overrideGuard;
+      const phase = overrideButton.dataset.phase;
+      const reason = window.prompt(
+        `Override guards and advance to "${phase}". Provide a justification (recorded in phase history):`,
+      );
+      if (!reason || !reason.trim()) return;
+      await runMutation(
+        () => advanceWork(id, phase, { skipGuard: { reason: reason.trim() } }),
+        `Advanced to ${phase} with guard override.`,
+        id,
+      );
+      return;
+    }
+
+    const cancelButton = target.closest("[data-cancel-work]");
+    if (cancelButton) {
+      const id = cancelButton.dataset.cancelWork;
+      const reason = window.prompt("Cancel this work article. Provide a reason (recorded in phase history):");
+      if (!reason || !reason.trim()) return;
+      await runMutation(
+        () => advanceWork(id, "cancelled", { reason: reason.trim() }),
+        "Cancelled work article.",
+        id,
       );
       return;
     }

@@ -201,6 +201,16 @@ function mapErrorToHttp(error: MonstheraError): { status: number; code: string }
       return { status: 404, code: error.code };
     case ErrorCode.VALIDATION_FAILED:
       return { status: 400, code: error.code };
+    case ErrorCode.ALREADY_EXISTS:
+      return { status: 409, code: error.code };
+    case ErrorCode.STATE_TRANSITION_INVALID:
+      return { status: 409, code: error.code };
+    case ErrorCode.GUARD_FAILED:
+      return { status: 422, code: error.code };
+    case ErrorCode.PERMISSION_DENIED:
+      return { status: 403, code: error.code };
+    case ErrorCode.CONCURRENCY_CONFLICT:
+      return { status: 409, code: error.code };
     case ErrorCode.STORAGE_ERROR:
       return { status: 500, code: error.code };
     default:
@@ -720,15 +730,53 @@ async function handleRequest(
       return;
     }
 
-    const phase = typeof (body.value as { phase?: unknown }).phase === "string"
-      ? (body.value as { phase: string }).phase
-      : "";
+    const payload = body.value as { phase?: unknown; reason?: unknown; skipGuard?: unknown };
+    const phase = typeof payload.phase === "string" ? payload.phase : "";
     if (!VALID_PHASES.has(phase as WorkPhaseType)) {
       errorResponse(res, 400, "VALIDATION_FAILED", `Invalid phase "${phase}". Must be one of: ${[...VALID_PHASES].join(", ")}`);
       return;
     }
 
-    const result = await container.workService.advancePhase(id, phase as WorkPhaseType);
+    let reason: string | undefined;
+    if (payload.reason !== undefined) {
+      if (typeof payload.reason !== "string" || payload.reason.trim().length === 0) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"reason" must be a non-empty string`);
+        return;
+      }
+      if (payload.reason.length > 1000) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"reason" exceeds maximum length of 1000`);
+        return;
+      }
+      reason = payload.reason;
+    }
+
+    let skipGuard: { reason: string } | undefined;
+    if (payload.skipGuard !== undefined) {
+      if (typeof payload.skipGuard !== "object" || payload.skipGuard === null || Array.isArray(payload.skipGuard)) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"skipGuard" must be an object with a "reason" field`);
+        return;
+      }
+      const sg = payload.skipGuard as Record<string, unknown>;
+      const extraKeys = Object.keys(sg).filter((k) => k !== "reason");
+      if (extraKeys.length > 0) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"skipGuard" contains unknown keys: ${extraKeys.join(", ")}. Only "reason" is allowed.`);
+        return;
+      }
+      if (typeof sg.reason !== "string" || sg.reason.trim().length === 0) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"skipGuard.reason" is required and must be a non-empty string`);
+        return;
+      }
+      if (sg.reason.length > 1000) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"skipGuard.reason" exceeds maximum length of 1000`);
+        return;
+      }
+      skipGuard = { reason: sg.reason };
+    }
+
+    const options = reason !== undefined || skipGuard !== undefined
+      ? { ...(reason !== undefined ? { reason } : {}), ...(skipGuard ? { skipGuard } : {}) }
+      : undefined;
+    const result = await container.workService.advancePhase(id, phase as WorkPhaseType, options);
     if (result.ok) {
       jsonResponse(res, 200, result.value);
     } else {

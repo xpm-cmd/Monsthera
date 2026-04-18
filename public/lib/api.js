@@ -78,7 +78,12 @@ export function getWorkById(id) { return get(`/api/work/${encodeURIComponent(id)
 export function createWork(input) { return post("/api/work", input); }
 export function updateWork(id, input) { return patch(`/api/work/${encodeURIComponent(id)}`, input); }
 export function deleteWork(id) { return del(`/api/work/${encodeURIComponent(id)}`); }
-export function advanceWork(id, phase) { return post(`/api/work/${encodeURIComponent(id)}/advance`, { phase }); }
+export function advanceWork(id, phase, options = {}) {
+  const body = { phase };
+  if (options.reason !== undefined) body.reason = options.reason;
+  if (options.skipGuard !== undefined) body.skipGuard = options.skipGuard;
+  return post(`/api/work/${encodeURIComponent(id)}/advance`, body);
+}
 export function contributeEnrichment(id, role, status) { return post(`/api/work/${encodeURIComponent(id)}/enrichment`, { role, status }); }
 export function assignReviewer(id, reviewerAgentId) { return post(`/api/work/${encodeURIComponent(id)}/reviewers`, { reviewerAgentId }); }
 export function submitReview(id, reviewerAgentId, status) { return post(`/api/work/${encodeURIComponent(id)}/review`, { reviewerAgentId, status }); }
