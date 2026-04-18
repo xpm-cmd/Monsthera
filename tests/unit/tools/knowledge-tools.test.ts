@@ -47,9 +47,9 @@ async function seedArticle(
 // ---------------------------------------------------------------------------
 
 describe("knowledgeToolDefinitions", () => {
-  it("returns exactly 6 tools", () => {
+  it("returns exactly 7 tools", () => {
     const defs = knowledgeToolDefinitions();
-    expect(defs).toHaveLength(6);
+    expect(defs).toHaveLength(7);
   });
 
   it("each tool has name, description, and inputSchema", () => {
@@ -75,6 +75,7 @@ describe("knowledgeToolDefinitions", () => {
         "delete_article",
         "list_articles",
         "search_articles",
+        "preview_slug",
       ]),
     );
   });
@@ -86,6 +87,30 @@ describe("knowledgeToolDefinitions", () => {
     expect(defs.find((def) => def.name === "search_articles")?.description).toContain("knowledge-only lookup");
     expect(defs.find((def) => def.name === "create_article")?.description).not.toContain("Call index_article afterwards");
     expect(defs.find((def) => def.name === "delete_article")?.description).toContain("manual remove_from_index");
+  });
+
+  it("create_article description mentions preview_slug and explicit slug", () => {
+    const defs = knowledgeToolDefinitions();
+    const createDesc = defs.find((def) => def.name === "create_article")?.description ?? "";
+    expect(createDesc).toContain("preview_slug");
+    expect(createDesc).toContain("slug");
+  });
+
+  it("create_article schema has optional slug property", () => {
+    const defs = knowledgeToolDefinitions();
+    const createDef = defs.find((def) => def.name === "create_article");
+    expect(createDef).toBeDefined();
+    expect(createDef!.inputSchema.properties).toHaveProperty("slug");
+    // slug must NOT be in required
+    expect(createDef!.inputSchema.required ?? []).not.toContain("slug");
+  });
+
+  it("preview_slug tool has title as required input", () => {
+    const defs = knowledgeToolDefinitions();
+    const previewDef = defs.find((def) => def.name === "preview_slug");
+    expect(previewDef).toBeDefined();
+    expect(previewDef!.inputSchema.properties).toHaveProperty("title");
+    expect(previewDef!.inputSchema.required).toContain("title");
   });
 });
 
@@ -313,6 +338,124 @@ describe("search_articles", () => {
     const response = await handleKnowledgeTool("search_articles", { query: "   " }, service);
     expect(response.isError).toBe(true);
     const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// preview_slug
+// ---------------------------------------------------------------------------
+
+describe("preview_slug", () => {
+  let service: KnowledgeService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("returns slug, already_exists, and conflicts for a fresh title", async () => {
+    const response = await handleKnowledgeTool("preview_slug", { title: "Hello World" }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as {
+      slug: string;
+      already_exists: boolean;
+      conflicts: string[];
+    };
+    expect(body.slug).toBe("hello-world");
+    expect(body.already_exists).toBe(false);
+    expect(body.conflicts).toEqual([]);
+  });
+
+  it("reports already_exists=true when slug is taken", async () => {
+    await seedArticle(service, { title: "Taken Title" });
+    const response = await handleKnowledgeTool("preview_slug", { title: "Taken Title" }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as {
+      slug: string;
+      already_exists: boolean;
+      conflicts: string[];
+    };
+    expect(body.slug).toBe("taken-title");
+    expect(body.already_exists).toBe(true);
+  });
+
+  it("reports near-miss conflicts for HRV Aloea case", async () => {
+    await seedArticle(service, { title: "HRV and Autonomic Nervous System" });
+    const response = await handleKnowledgeTool(
+      "preview_slug",
+      { title: "HRV and the Autonomic Nervous System" },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as {
+      slug: string;
+      already_exists: boolean;
+      conflicts: string[];
+    };
+    expect(body.slug).toBe("hrv-and-the-autonomic-nervous-system");
+    expect(body.already_exists).toBe(false);
+    expect(body.conflicts).toContain("hrv-and-autonomic-nervous-system");
+  });
+
+  it("rejects missing title", async () => {
+    const response = await handleKnowledgeTool("preview_slug", {}, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects non-string title", async () => {
+    const response = await handleKnowledgeTool("preview_slug", { title: 42 }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// create_article with explicit slug (dispatcher)
+// ---------------------------------------------------------------------------
+
+describe("create_article with explicit slug (dispatcher)", () => {
+  let service: KnowledgeService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("uses explicit slug when provided and unique", async () => {
+    const response = await handleKnowledgeTool(
+      "create_article",
+      { ...validInput, slug: "my-explicit-slug" },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const article = JSON.parse(response.content[0]!.text) as KnowledgeArticle;
+    expect(article.slug).toBe("my-explicit-slug");
+  });
+
+  it("returns ALREADY_EXISTS when explicit slug collides", async () => {
+    await seedArticle(service, { title: "Seed" });
+    // Auto-generated seed slug is "seed"
+    const response = await handleKnowledgeTool(
+      "create_article",
+      { ...validInput, title: "Different", slug: "seed" },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
+    expect(body.error).toBe("ALREADY_EXISTS");
+    expect(body.message.toLowerCase()).toContain("preview_slug");
+  });
+
+  it("returns VALIDATION_FAILED when explicit slug has invalid format", async () => {
+    const response = await handleKnowledgeTool(
+      "create_article",
+      { ...validInput, slug: "Has Spaces" },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
     expect(body.error).toBe("VALIDATION_FAILED");
   });
 });

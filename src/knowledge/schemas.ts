@@ -19,6 +19,9 @@ export const ArticleFrontmatterSchema = z.object({
   updatedAt: z.string(),
 });
 
+/** Pattern for URL-safe slugs: lowercase alphanumerics and hyphens only. */
+export const SLUG_PATTERN = /^[a-z0-9-]+$/;
+
 /** Schema for create input (from MCP tool / service caller) */
 export const CreateArticleInputSchema = z.object({
   title: z.string().min(1).max(200),
@@ -27,6 +30,12 @@ export const CreateArticleInputSchema = z.object({
   tags: z.array(z.string()).default([]),
   codeRefs: z.array(z.string()).default([]),
   references: z.array(z.string()).default([]),
+  slug: z
+    .string()
+    .min(1)
+    .max(200)
+    .regex(SLUG_PATTERN, "slug must match ^[a-z0-9-]+$ (lowercase alphanumerics and hyphens only)")
+    .optional(),
 });
 
 /** Schema for update input — all fields optional */

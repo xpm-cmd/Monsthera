@@ -1,7 +1,7 @@
 import type { Result } from "../core/result.js";
-import { err } from "../core/result.js";
-import type { NotFoundError, StorageError, ValidationError } from "../core/errors.js";
-import { ValidationError as ValidationErrorClass } from "../core/errors.js";
+import { err, ok } from "../core/result.js";
+import type { NotFoundError, StorageError, ValidationError, AlreadyExistsError } from "../core/errors.js";
+import { AlreadyExistsError as AlreadyExistsErrorClass, ValidationError as ValidationErrorClass } from "../core/errors.js";
 import { slug as brandSlug } from "../core/types.js";
 import type { Logger } from "../core/logger.js";
 import type { StatusReporter } from "../core/status.js";
@@ -9,6 +9,8 @@ import type { KnowledgeArticle, KnowledgeArticleRepository } from "./repository.
 import type { SearchMutationSync } from "../search/sync.js";
 import type { WikiBookkeeper } from "./wiki-bookkeeper.js";
 import { validateCreateInput, validateUpdateInput } from "./schemas.js";
+import { toSlug } from "./slug.js";
+import { nearMissConflicts } from "./slug-conflict.js";
 
 export interface KnowledgeServiceDeps {
   knowledgeRepo: KnowledgeArticleRepository;
@@ -35,11 +37,35 @@ export class KnowledgeService {
 
   async createArticle(
     input: unknown,
-  ): Promise<Result<KnowledgeArticle, ValidationError | StorageError>> {
+  ): Promise<Result<KnowledgeArticle, ValidationError | AlreadyExistsError | StorageError>> {
     const validated = validateCreateInput(input);
     if (!validated.ok) return validated;
+
+    // If an explicit slug was supplied, verify it does not collide with an existing article.
+    // The schema has already enforced ^[a-z0-9-]+$, so we only need to check uniqueness here.
+    if (validated.value.slug !== undefined) {
+      const existing = await this.repo.findBySlug(brandSlug(validated.value.slug));
+      if (existing.ok) {
+        return err(
+          new AlreadyExistsErrorClass(
+            "KnowledgeArticle",
+            `slug:${validated.value.slug} — call preview_slug first to pick an available slug`,
+          ),
+        );
+      }
+      // Any non-ok result other than NOT_FOUND surfaces as a storage error below.
+      if (existing.error.code !== "NOT_FOUND") {
+        return err(existing.error);
+      }
+    }
+
     this.logger.info("Creating knowledge article", { operation: "createArticle", title: validated.value.title });
-    const result = await this.repo.create(validated.value);
+    // Pass slug through to repo (branded) when supplied; otherwise repo auto-generates.
+    const repoInput = {
+      ...validated.value,
+      slug: validated.value.slug !== undefined ? brandSlug(validated.value.slug) : undefined,
+    };
+    const result = await this.repo.create(repoInput);
     if (result.ok) {
       await this.syncIndexedArticle(result.value.id);
       await this.refreshCounts();
@@ -47,6 +73,29 @@ export class KnowledgeService {
       await this.rebuildIndex();
     }
     return result;
+  }
+
+  /**
+   * Preview the slug that would be generated for a given title.
+   * Read-only — does not mutate state.
+   *
+   * Returns `{ slug, alreadyExists, conflicts }` where `conflicts` is a list of
+   * near-miss slugs (Jaccard similarity >= 0.7 on hyphen-split tokens) that
+   * sibling articles may have authored inline wikilinks against. An empty
+   * array means no near-miss was found and the caller may proceed with
+   * confidence.
+   */
+  async previewSlug(
+    title: string,
+  ): Promise<Result<{ slug: string; alreadyExists: boolean; conflicts: string[] }, StorageError>> {
+    this.logger.debug("Previewing slug", { operation: "previewSlug", title });
+    const target = toSlug(title);
+    const all = await this.repo.findMany();
+    if (!all.ok) return err(all.error);
+    const existingSlugs = all.value.map((a) => a.slug as string);
+    const alreadyExists = existingSlugs.includes(target);
+    const conflicts = nearMissConflicts(target, existingSlugs);
+    return ok({ slug: target as string, alreadyExists, conflicts });
   }
 
   async getArticle(

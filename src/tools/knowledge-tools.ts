@@ -1,6 +1,6 @@
 import type { KnowledgeService } from "../knowledge/service.js";
 import type { StructureService, NeighborResult } from "../structure/service.js";
-import { successResponse, errorResponse, requireString, optionalString, optionalNumber, isErrorResponse, MAX_QUERY_LENGTH } from "./validation.js";
+import { successResponse, errorResponse, requireString, optionalString, optionalNumber, isErrorResponse, MAX_QUERY_LENGTH, MAX_TITLE_LENGTH } from "./validation.js";
 
 /** MCP tool definition shape */
 export interface ToolDefinition {
@@ -20,12 +20,12 @@ export interface ToolResponse {
   [key: string]: unknown;
 }
 
-/** Returns the 6 knowledge tool definitions for MCP ListTools */
+/** Returns the 7 knowledge tool definitions for MCP ListTools */
 export function knowledgeToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "create_article",
-      description: "Create a reusable knowledge article when a decision, guide, imported source, or implementation pattern should remain available for later agents. Search sync happens automatically; use reindex_all only after bulk imports or recovery work.",
+      description: "Create a reusable knowledge article when a decision, guide, imported source, or implementation pattern should remain available for later agents. Search sync happens automatically; use reindex_all only after bulk imports or recovery work. Slug is auto-generated from title by default; call `preview_slug` first and/or pass an explicit `slug` for nontrivial titles to avoid cross-link drift.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -35,8 +35,20 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           tags: { type: "array", items: { type: "string" }, description: "Tags" },
           codeRefs: { type: "array", items: { type: "string" }, description: "Code references" },
           references: { type: "array", items: { type: "string" }, description: "References to other articles (IDs or slugs)" },
+          slug: { type: "string", description: "Optional explicit slug. If omitted, auto-generated from title. Call preview_slug first for nontrivial titles." },
         },
         required: ["title", "category", "content"],
+      },
+    },
+    {
+      name: "preview_slug",
+      description: "Preview the slug that would be auto-generated for a given article title. Read-only: reports the deterministic slug, whether that slug already exists, and any near-miss conflicts (Jaccard similarity >= 0.7 on hyphen-split tokens) that sibling articles may have authored wikilinks against. Call before create_article for nontrivial titles so cross-links do not silently drift.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          title: { type: "string", description: "Article title to evaluate" },
+        },
+        required: ["title"],
       },
     },
     {
@@ -210,6 +222,17 @@ export async function handleKnowledgeTool(
         updatedAt: a.updatedAt,
       }));
       return successResponse({ total, limit, offset, items: summaries });
+    }
+    case "preview_slug": {
+      const title = requireString(args, "title", MAX_TITLE_LENGTH);
+      if (isErrorResponse(title)) return title;
+      const result = await service.previewSlug(title);
+      if (!result.ok) return errorResponse(result.error.code, result.error.message);
+      return successResponse({
+        slug: result.value.slug,
+        already_exists: result.value.alreadyExists,
+        conflicts: result.value.conflicts,
+      });
     }
     case "search_articles": {
       const query = requireString(args, "query", MAX_QUERY_LENGTH);
