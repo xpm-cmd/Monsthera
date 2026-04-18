@@ -609,6 +609,110 @@ describe("Dashboard JSON API", () => {
       const body = (await res.json()) as { phase: string };
       expect(body.phase).toBe("enrichment");
     });
+
+    it("rejects cancellation without reason with 400", async () => {
+      if (dashboardError) return;
+      const created = await container.workService.createWork({
+        title: "Cancel Without Reason",
+        template: "feature",
+        priority: "medium",
+        author: "agent-1",
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const res = await fetch(url(`/api/work/${created.value.id}/advance`), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ phase: "cancelled" }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; message: string };
+      expect(body.error).toBe("VALIDATION_FAILED");
+      expect(body.message).toMatch(/reason/i);
+    });
+
+    it("accepts cancellation with reason and records it on the new phase history entry", async () => {
+      if (dashboardError) return;
+      const created = await container.workService.createWork({
+        title: "Cancel With Reason",
+        template: "feature",
+        priority: "medium",
+        author: "agent-1",
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const res = await fetch(url(`/api/work/${created.value.id}/advance`), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ phase: "cancelled", reason: "Scope pulled by product" }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { phase: string; phaseHistory: Array<{ phase: string; reason?: string }> };
+      expect(body.phase).toBe("cancelled");
+      const cancelEntry = body.phaseHistory.find((entry) => entry.phase === "cancelled");
+      expect(cancelEntry?.reason).toBe("Scope pulled by product");
+    });
+
+    it("accepts skipGuard with reason and bypasses failing guards", async () => {
+      if (dashboardError) return;
+      const created = await container.workService.createWork({
+        title: "Advance Without Acceptance Criteria",
+        template: "feature",
+        priority: "medium",
+        author: "agent-1",
+        content: "No structured sections — guard should fail.",
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const blocked = await fetch(url(`/api/work/${created.value.id}/advance`), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ phase: "enrichment" }),
+      });
+      expect(blocked.status).toBe(422);
+      const blockedBody = (await blocked.json()) as { error: string };
+      expect(blockedBody.error).toBe("GUARD_FAILED");
+
+      const res = await fetch(url(`/api/work/${created.value.id}/advance`), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          phase: "enrichment",
+          skipGuard: { reason: "Emergency hotfix tracked in INC-4821" },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { phase: string; phaseHistory: Array<{ phase: string; skippedGuards?: string[]; reason?: string }> };
+      expect(body.phase).toBe("enrichment");
+      const enrichEntry = body.phaseHistory.find((entry) => entry.phase === "enrichment");
+      expect(enrichEntry?.skippedGuards?.length).toBeGreaterThan(0);
+      expect(enrichEntry?.reason).toBe("Emergency hotfix tracked in INC-4821");
+    });
+
+    it("rejects skipGuard without reason with 400", async () => {
+      if (dashboardError) return;
+      const created = await container.workService.createWork({
+        title: "SkipGuard Missing Reason",
+        template: "feature",
+        priority: "medium",
+        author: "agent-1",
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const res = await fetch(url(`/api/work/${created.value.id}/advance`), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ phase: "enrichment", skipGuard: {} }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; message: string };
+      expect(body.error).toBe("VALIDATION_FAILED");
+      expect(body.message).toMatch(/skipGuard/i);
+    });
   });
 
   describe("/api/work/:id/dependencies", () => {
