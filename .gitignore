@@ -24,11 +24,16 @@ tmp/
 .idea/
 .mcp.json
 
-# Tool / AI config
+# Tool / AI config (personal instructions)
 .claude/
 .gemini/
+.copilot/
+.cursorrules
+.cursorignore
 GEMINI.md
 CLAUDE.md
+*.local.md
+settings.local.json
 AGENT-MEMORY-CONTEXT.md
 
 # Review assets

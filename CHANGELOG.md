@@ -4,6 +4,25 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+**Tier 2.4 — Dashboard ↔ MCP parity.** Three focused PRs that close
+the UI drift accumulated during Tier 1/2: every feature that shipped
+as an MCP tool now has a dashboard surface, and every feature exposed
+in the dashboard now has a corresponding MCP tool. The service layer
+did not change.
+
+### Added
+
+- **`POST /api/work/:id/advance` accepts `reason` and `skipGuard: { reason }`** (#47 — Tier 2.4 A.1). Mirrors the `advance_phase` MCP contract from Tier 2.1. The dashboard now shows "Override guards" (always visible) and "Cancel" actions next to "Move to X" on every work card; both collect a justification via prompt and record it in phase history. When a normal advance hits `GUARD_FAILED`, the UI offers an inline override retry. `mapErrorToHttp` now maps `GUARD_FAILED` → 422, `STATE_TRANSITION_INVALID` / `ALREADY_EXISTS` / `CONCURRENCY_CONFLICT` → 409, and `PERMISSION_DENIED` → 403, so the UI can distinguish recoverable policy failures from 500s.
+- **`POST /api/knowledge/preview-slug`** (#48 — Tier 2.4 A.2). Exposes the `preview_slug` tool shipped in Tier 1.3. The dashboard create form now shows a debounced (300 ms) slug preview under the title input with warnings for existing slugs and near-miss conflicts. The editor gains a "Rename slug" form with a confirm prompt and an opt-in checkbox to rewrite inline `[[old-slug]]` wikilinks in other articles' bodies — mirroring the atomic rename semantics from Tier 2.2.
+- **`POST /api/knowledge/batch` + `PATCH /api/knowledge/batch`** (#49 — Tier 2.4 A.3). Exposes `batch_create_articles` / `batch_update_articles` shipped in Tier 2.3. New "Bulk import (JSON)" card in the knowledge page: mode toggle (Create / Update), textarea, client-side "Validate" button that runs JSON parse + shape check before hitting the backend, per-item results panel so callers can retry only the offenders.
+- **`plan_wave`, `execute_wave`, `evaluate_readiness` MCP tools** (#50 — Tier 3.1 B.1). The dashboard has had wave planning / execution endpoints since the first v3 promotion; MCP only exposed `log_event` / `get_events`. Autonomous agents can now triage ready work and advance waves without going through the HTTP surface. `plan_wave` items are enriched with title, template, priority, assignee so agents do not need an extra `get_work` per row. `evaluate_readiness` is a dry-run for a single article that returns per-guard pass/fail — use before `advance_phase` to decide whether `skip_guard` is legitimate.
+- **`list_agents`, `get_agent`, `get_agent_experience` MCP tools** (#51 — Tier 3.2 B.2). The derived agent directory and the operator-cockpit snapshot (contract / context / ownership / review scores, coverage metrics, automation posture, ranked recommendations) were dashboard-only. Autonomous agents can now self-assess and discover owners without hitting HTTP. `get_agent_experience` reuses the same `deriveAgentExperience` scoring function the dashboard uses — no duplicated logic.
+
+### Changed
+
+- **`create_work` MCP tool now documents `assignee`, `references`, and `codeRefs`** (#51 — Tier 3.2 B.2). The underlying Zod schema has accepted all three since v3 shipped; only the tool's JSON schema hid them from the LLM, forcing a `create + update` dance whenever owner or refs were known upfront. Behavior is unchanged for callers that already included the fields.
+- **`.gitignore` extended** for personal AI tool configs (`.copilot/`, `.cursorrules`, `.cursorignore`, `*.local.md`, `settings.local.json`). The v2-era phase execution prompts (`phase-6-prompt.md`..`phase-9-prompt.md`) have been moved from the repo root to `docs/history/` to stop crowding the top level — they remain available for reference but are no longer part of the active working set.
+
 ## [3.0.0-alpha.2] — 2026-04-18
 
 **Tier 2 — Orchestration and bulk ergonomics.** Three features that close the Tier 2 section of the v3 roadmap: template-specific phase flows with auditable escape hatches (2.1), atomic slug rename with cross-article reference updates (2.2), and bulk article operations for imports and backfills (2.3).
