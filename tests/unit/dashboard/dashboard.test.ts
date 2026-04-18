@@ -568,6 +568,108 @@ describe("Dashboard JSON API", () => {
     });
   });
 
+  describe("/api/knowledge/batch", () => {
+    it("POST creates multiple articles and reports per-item outcomes", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/knowledge/batch"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          articles: [
+            { title: "Batch Alpha", category: "architecture", content: "Alpha body" },
+            { title: "Batch Beta", category: "operations", content: "Beta body", tags: ["ops"] },
+            { title: "", category: "architecture", content: "Missing title" },
+          ],
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        total: number;
+        succeeded: number;
+        failed: number;
+        items: Array<{ index: number; ok: boolean; article?: { id: string }; error?: { code: string } }>;
+      };
+      expect(body.total).toBe(3);
+      expect(body.succeeded).toBe(2);
+      expect(body.failed).toBe(1);
+      expect(body.items[0]?.ok).toBe(true);
+      expect(body.items[1]?.ok).toBe(true);
+      expect(body.items[2]?.ok).toBe(false);
+      expect(body.items[2]?.error?.code).toBe("VALIDATION_FAILED");
+    });
+
+    it("POST rejects a payload without the `articles` array with 400", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/knowledge/batch"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ notArticles: [] }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; message: string };
+      expect(body.error).toBe("VALIDATION_FAILED");
+      expect(body.message).toMatch(/articles/);
+    });
+
+    it("POST rejects batches exceeding the 100-entry cap with 400", async () => {
+      if (dashboardError) return;
+      const articles = Array.from({ length: 101 }, (_, i) => ({
+        title: `Over Cap ${i}`,
+        category: "architecture",
+        content: "body",
+      }));
+      const res = await fetch(url("/api/knowledge/batch"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ articles }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; message: string };
+      expect(body.error).toBe("VALIDATION_FAILED");
+      expect(body.message).toMatch(/100/);
+    });
+
+    it("PATCH updates multiple articles and reports per-item outcomes", async () => {
+      if (dashboardError) return;
+      const a = await container.knowledgeService.createArticle({
+        title: "Batch Update A",
+        category: "architecture",
+        content: "A body",
+      });
+      const b = await container.knowledgeService.createArticle({
+        title: "Batch Update B",
+        category: "architecture",
+        content: "B body",
+      });
+      expect(a.ok).toBe(true);
+      expect(b.ok).toBe(true);
+      if (!a.ok || !b.ok) return;
+
+      const res = await fetch(url("/api/knowledge/batch"), {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          updates: [
+            { id: a.value.id, content: "A body — updated" },
+            { id: b.value.id, tags: ["batched"] },
+            { content: "Missing id" },
+          ],
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        total: number;
+        succeeded: number;
+        failed: number;
+        items: Array<{ ok: boolean; error?: { code: string } }>;
+      };
+      expect(body.total).toBe(3);
+      expect(body.succeeded).toBe(2);
+      expect(body.failed).toBe(1);
+      expect(body.items[2]?.ok).toBe(false);
+    });
+  });
+
   describe("DELETE /api/knowledge/:id", () => {
     it("deletes an article through the dashboard API", async () => {
       if (dashboardError) return;
