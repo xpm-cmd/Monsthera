@@ -24,7 +24,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const server = new Server(
     {
       name: "monsthera",
-      version: "3.0.0-alpha.1",
+      version: "3.0.0-alpha.2",
     },
     {
       capabilities: {

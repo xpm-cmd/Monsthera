@@ -4,8 +4,14 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+## [3.0.0-alpha.2] — 2026-04-18
+
+**Tier 2 — Orchestration and bulk ergonomics.** Three features that close the Tier 2 section of the v3 roadmap: template-specific phase flows with auditable escape hatches (2.1), atomic slug rename with cross-article reference updates (2.2), and bulk article operations for imports and backfills (2.3).
+
 ### Added
 
+- **`batch_create_articles` MCP tool**: create 1–100 knowledge articles in a single call. Same per-item schema as `create_article`. Best-effort: each entry is validated and applied independently; per-item `{ ok, article | error: { code, message } }` surfaced in the response so callers can retry offenders without replaying successes. `index.md` rebuild deferred to once per batch. [Tier 2.3]
+- **`batch_update_articles` MCP tool**: update 1–100 knowledge articles in a single call. Each entry requires `id` plus any subset of `update_article` fields (including `new_slug` / `rewrite_inline_wikilinks`). Rename semantics match `update_article` — per-item collision check and referrer updates still apply. [Tier 2.3]
 - **Atomic slug rename via `update_article({ new_slug })`**: renames the article and updates every other article's `references` array in a single operation. Collision-checked, audit-logged. Opt in to inline wikilink rewriting across other articles' bodies via `rewrite_inline_wikilinks: true` (default false because bodies are content). Transactional-ish: staged writes with pre-image rollback on failure. [Tier 2.2]
 - **Per-template phase flows**: `spike` template now advances `planning → enrichment → done` (skips implementation + review). Feature/bugfix/refactor flows unchanged. [Tier 2.1]
 - **Mandatory cancellation reason**: `advance_phase` now requires a `reason` parameter when transitioning to `cancelled`. Recorded in phase history for audit. [Tier 2.1]
@@ -13,6 +19,7 @@ All notable changes to Monsthera are documented here.
 
 ### Changed
 
+- **`KnowledgeService`** exposes `createOneWithoutRebuild` / `updateOneWithoutRebuild` internally; the public `createArticle` / `updateArticle` are now thin wrappers that trigger the wiki `index.md` rebuild. Behavior for single-article callers is unchanged. [Tier 2.3]
 - **`update_article` schema** gained `new_slug` and `rewrite_inline_wikilinks` optional fields. Existing update calls without these fields behave identically. [Tier 2.2]
 - **`PhaseHistoryEntry`** gained optional `reason` and `skippedGuards: string[]` fields. Existing persisted history without these fields reads back unchanged. [Tier 2.1]
 
