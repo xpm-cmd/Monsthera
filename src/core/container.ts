@@ -273,22 +273,50 @@ export async function createContainer(
 
   // Register stat recording for observability
   const knowledgeCountResult = await knowledgeRepo!.findMany();
+  const knowledgeArticleCount = knowledgeCountResult.ok ? knowledgeCountResult.value.length : 0;
   if (knowledgeCountResult.ok) {
-    status.recordStat("knowledgeArticleCount", knowledgeCountResult.value.length);
+    status.recordStat("knowledgeArticleCount", knowledgeArticleCount);
   }
   const workCountResult = await workRepo!.findMany();
+  const workArticleCount = workCountResult.ok ? workCountResult.value.length : 0;
   if (workCountResult.ok) {
-    status.recordStat("workArticleCount", workCountResult.value.length);
+    status.recordStat("workArticleCount", workArticleCount);
   }
   const persistedRuntimeState = await runtimeState.read();
-  if (persistedRuntimeState.searchIndexSize !== undefined) {
-    status.recordStat("searchIndexSize", persistedRuntimeState.searchIndexSize);
-  }
-  if (persistedRuntimeState.lastReindexAt) {
-    status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
-  }
   if (persistedRuntimeState.lastMigrationAt) {
     status.recordStat("lastMigrationAt", persistedRuntimeState.lastMigrationAt);
+  }
+
+  // Search repositories can be ephemeral. Probe the live index on boot and
+  // rebuild it when source articles exist but the queryable index is empty or stale.
+  const sourceArticleCount = knowledgeArticleCount + workArticleCount;
+  const canaryHealthy = await searchService.runCanary();
+  const shouldBootstrapSearchIndex = sourceArticleCount > 0 && (searchRepo!.size === 0 || !canaryHealthy);
+
+  if (shouldBootstrapSearchIndex) {
+    logger.info("Bootstrapping search index from Markdown source articles", {
+      sourceArticleCount,
+      existingIndexSize: searchRepo!.size,
+      canaryHealthy,
+    });
+
+    const bootstrapResult = await searchService.fullReindex();
+    if (!bootstrapResult.ok) {
+      logger.warn("Failed to bootstrap search index on startup; exposing live index state instead", {
+        error: bootstrapResult.error.message,
+        sourceArticleCount,
+        existingIndexSize: searchRepo!.size,
+      });
+      status.recordStat("searchIndexSize", searchRepo!.size);
+      if (persistedRuntimeState.lastReindexAt) {
+        status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
+      }
+    }
+  } else {
+    status.recordStat("searchIndexSize", searchRepo!.size);
+    if (persistedRuntimeState.lastReindexAt) {
+      status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
+    }
   }
 
   status.register("knowledge", () => ({

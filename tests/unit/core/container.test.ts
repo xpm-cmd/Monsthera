@@ -103,9 +103,10 @@ describe("createContainer()", () => {
     await expect(container.dispose()).resolves.toBeUndefined();
   });
 
-  it("boot preserves persisted runtime-state stats without auto-reindex", async () => {
+  it("boot reports the live search index size instead of stale persisted size", async () => {
     const repoPath = path.join("/tmp", `monsthera-runtime-${randomUUID()}`);
     const config = defaultConfig(repoPath);
+    config.search.semanticEnabled = false;
     await fs.mkdir(path.join(repoPath, ".monsthera"), { recursive: true });
     await fs.writeFile(
       path.join(repoPath, ".monsthera", "runtime-state.json"),
@@ -115,10 +116,45 @@ describe("createContainer()", () => {
 
     const container = await createContainer(config);
     const status = container.status.getStatus();
-    // Boot no longer auto-reindexes — persisted stats are loaded as-is
     expect(status.stats?.lastReindexAt).toBe("2026-04-09T00:00:00Z");
-    expect(status.stats?.searchIndexSize).toBe(42);
+    expect(status.stats?.searchIndexSize).toBe(0);
     await container.dispose();
+    await fs.rm(repoPath, { recursive: true, force: true });
+  });
+
+  it("boot rehydrates the in-memory search index from source articles", async () => {
+    const repoPath = path.join("/tmp", `monsthera-runtime-${randomUUID()}`);
+    const config = defaultConfig(repoPath);
+    config.search.semanticEnabled = false;
+
+    const firstBoot = await createContainer(config);
+    const articleResult = await firstBoot.knowledgeRepo.create({
+      title: "Context Pack Builder",
+      category: "context",
+      content: "How build_context_pack scores and ranks knowledge items.",
+    });
+    expect(articleResult.ok).toBe(true);
+    await firstBoot.dispose();
+
+    await fs.mkdir(path.join(repoPath, ".monsthera"), { recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, ".monsthera", "runtime-state.json"),
+      JSON.stringify({ lastReindexAt: "2026-04-09T00:00:00Z", searchIndexSize: 42 }, null, 2),
+      "utf-8",
+    );
+
+    const secondBoot = await createContainer(config);
+    const status = secondBoot.status.getStatus();
+    expect(status.stats?.searchIndexSize).toBe(1);
+    expect(status.stats?.lastReindexAt).toBeTruthy();
+
+    const searchResult = await secondBoot.searchService.search({ query: "context pack builder" });
+    expect(searchResult.ok).toBe(true);
+    if (searchResult.ok) {
+      expect(searchResult.value.some((item) => item.title === "Context Pack Builder")).toBe(true);
+    }
+
+    await secondBoot.dispose();
     await fs.rm(repoPath, { recursive: true, force: true });
   });
 });
