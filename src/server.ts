@@ -7,6 +7,7 @@ import {
 import * as path from "node:path";
 import type { MonstheraContainer } from "./core/container.js";
 import { knowledgeToolDefinitions, handleKnowledgeTool } from "./tools/knowledge-tools.js";
+import type { ToolDefinition, ToolResponse } from "./tools/knowledge-tools.js";
 import { workToolDefinitions, handleWorkTool } from "./tools/work-tools.js";
 import { searchToolDefinitions, handleSearchTool } from "./tools/search-tools.js";
 import { WikiBookkeeper } from "./knowledge/wiki-bookkeeper.js";
@@ -20,165 +21,181 @@ import { wikiToolDefinitions, handleWikiTool } from "./tools/wiki-tools.js";
 import { migrationToolDefinitions, handleMigrationTool } from "./migration/tools.js";
 
 /**
+ * Per-group tool registry. Exposed for tests and for the dispatch function
+ * below — startServer re-uses the same registry so ListTools and CallTool
+ * always stay in sync.
+ */
+export interface ToolRegistry {
+  readonly definitions: readonly ToolDefinition[];
+  readonly names: {
+    readonly knowledge: ReadonlySet<string>;
+    readonly work: ReadonlySet<string>;
+    readonly search: ReadonlySet<string>;
+    readonly orchestration: ReadonlySet<string>;
+    readonly wave: ReadonlySet<string>;
+    readonly agent: ReadonlySet<string>;
+    readonly status: ReadonlySet<string>;
+    readonly ingest: ReadonlySet<string>;
+    readonly structure: ReadonlySet<string>;
+    readonly wiki: ReadonlySet<string>;
+    readonly migration: ReadonlySet<string>;
+  };
+}
+
+/**
+ * Build the full MCP tool registry from a container. Migration tools are
+ * only included when the container wires a migration service (v2 import
+ * flows).
+ */
+export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
+  const knowledgeTools = knowledgeToolDefinitions();
+  const workTools = workToolDefinitions();
+  const searchTools = searchToolDefinitions();
+  const orchestrationTools = orchestrationToolDefinitions();
+  const waveTools = waveToolDefinitions();
+  const agentTools = agentToolDefinitions();
+  const statusTools = statusToolDefinitions();
+  const ingestTools = ingestToolDefinitions();
+  const structureTools = structureToolDefinitions();
+  const wikiTools = wikiToolDefinitions();
+  const migrationTools = container.migrationService ? migrationToolDefinitions() : [];
+
+  return {
+    definitions: [
+      ...knowledgeTools,
+      ...workTools,
+      ...searchTools,
+      ...orchestrationTools,
+      ...waveTools,
+      ...agentTools,
+      ...statusTools,
+      ...ingestTools,
+      ...structureTools,
+      ...wikiTools,
+      ...migrationTools,
+    ],
+    names: {
+      knowledge: new Set(knowledgeTools.map((t) => t.name)),
+      work: new Set(workTools.map((t) => t.name)),
+      search: new Set(searchTools.map((t) => t.name)),
+      orchestration: new Set(orchestrationTools.map((t) => t.name)),
+      wave: new Set(waveTools.map((t) => t.name)),
+      agent: new Set(agentTools.map((t) => t.name)),
+      status: new Set(statusTools.map((t) => t.name)),
+      ingest: new Set(ingestTools.map((t) => t.name)),
+      structure: new Set(structureTools.map((t) => t.name)),
+      wiki: new Set(wikiTools.map((t) => t.name)),
+      migration: new Set(migrationTools.map((t) => t.name)),
+    },
+  };
+}
+
+/**
+ * Dispatch a tools/call by name to the appropriate handler. Pure w.r.t. the
+ * MCP transport — safe to call directly from tests without spinning up stdio.
+ * Unknown names return an error ToolResponse (not a thrown exception) so the
+ * MCP client sees a structured failure.
+ */
+export async function dispatchToolCall(
+  name: string,
+  args: Record<string, unknown>,
+  container: MonstheraContainer,
+  registry: ToolRegistry = buildToolRegistry(container),
+): Promise<ToolResponse> {
+  const { names } = registry;
+
+  if (names.knowledge.has(name)) {
+    return handleKnowledgeTool(name, args, container.knowledgeService, container.structureService);
+  }
+  if (names.work.has(name)) {
+    return handleWorkTool(name, args, container.workService, container.structureService);
+  }
+  if (names.search.has(name)) {
+    const result = await handleSearchTool(name, args, container.searchService, {
+      knowledgeRepo: container.knowledgeRepo,
+      workRepo: container.workRepo,
+    });
+    // Rebuild wiki index after a full reindex so index.md stays in sync.
+    if (name === "reindex_all" && result.content[0]?.type === "text" && !result.isError) {
+      const markdownRoot = path.resolve(
+        container.config.repoPath,
+        container.config.storage.markdownRoot,
+      );
+      const bookkeeper = new WikiBookkeeper(markdownRoot, container.logger);
+      const knowledgeAll = await container.knowledgeRepo.findMany();
+      const workAll = await container.workRepo.findMany();
+      if (knowledgeAll.ok && workAll.ok) {
+        await bookkeeper.rebuildIndex(knowledgeAll.value, workAll.value);
+      }
+    }
+    return result;
+  }
+  if (names.orchestration.has(name)) {
+    return handleOrchestrationTool(name, args, container.orchestrationRepo);
+  }
+  if (names.wave.has(name)) {
+    return handleWaveTool(name, args, container.orchestrationService, container.workService);
+  }
+  if (names.agent.has(name)) {
+    return handleAgentTool(name, args, {
+      agentsService: container.agentsService,
+      workService: container.workService,
+      knowledgeService: container.knowledgeService,
+      orchestrationService: container.orchestrationService,
+      status: container.status,
+      autoAdvanceEnabled: container.config.orchestration.autoAdvance,
+    });
+  }
+  if (names.status.has(name)) {
+    return handleStatusTool(name, args, container.status);
+  }
+  if (names.ingest.has(name)) {
+    return handleIngestTool(name, args, container.ingestService);
+  }
+  if (names.structure.has(name)) {
+    return handleStructureTool(name, args, container.structureService);
+  }
+  if (names.wiki.has(name)) {
+    return handleWikiTool(name, args, container.bookkeeper);
+  }
+  if (names.migration.has(name) && container.migrationService) {
+    return handleMigrationTool(name, args, container.migrationService);
+  }
+
+  return {
+    content: [{ type: "text" as const, text: `Unknown tool: ${name}` }],
+    isError: true,
+  };
+}
+
+/**
  * Start the MCP server with a Monsthera container.
- * Registers a `status` tool that returns the current system status as JSON.
  */
 export async function startServer(container: MonstheraContainer): Promise<void> {
   const server = new Server(
-    {
-      name: "monsthera",
-      version: "3.0.0-alpha.3",
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
-    },
+    { name: "monsthera", version: "3.0.0-alpha.3" },
+    { capabilities: { tools: {} } },
   );
 
-  const knowledgeTools = knowledgeToolDefinitions();
-  const knowledgeToolNames = new Set(knowledgeTools.map((t) => t.name));
+  const registry = buildToolRegistry(container);
 
-  const workTools = workToolDefinitions();
-  const workToolNames = new Set(workTools.map((t) => t.name));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [...registry.definitions],
+  }));
 
-  const searchTools = searchToolDefinitions();
-  const searchToolNames = new Set(searchTools.map((t) => t.name));
-
-  const orchestrationTools = orchestrationToolDefinitions();
-  const orchestrationToolNames = new Set(orchestrationTools.map((t) => t.name));
-
-  const waveTools = waveToolDefinitions();
-  const waveToolNames = new Set(waveTools.map((t) => t.name));
-
-  const agentTools = agentToolDefinitions();
-  const agentToolNames = new Set(agentTools.map((t) => t.name));
-
-  const statusTools = statusToolDefinitions();
-  const statusToolNames = new Set(statusTools.map((t) => t.name));
-
-  const ingestTools = ingestToolDefinitions();
-  const ingestToolNames = new Set(ingestTools.map((t) => t.name));
-
-  const structureTools = structureToolDefinitions();
-  const structureToolNames = new Set(structureTools.map((t) => t.name));
-
-  const wikiTools = wikiToolDefinitions();
-  const wikiToolNames = new Set(wikiTools.map((t) => t.name));
-
-  const migrationTools = container.migrationService ? migrationToolDefinitions() : [];
-  const migrationToolNames = new Set(migrationTools.map((t) => t.name));
-
-  // Register tools/list handler
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
-        ...knowledgeTools,
-        ...workTools,
-        ...searchTools,
-        ...orchestrationTools,
-        ...waveTools,
-        ...agentTools,
-        ...statusTools,
-        ...ingestTools,
-        ...structureTools,
-        ...wikiTools,
-        ...migrationTools,
-      ],
-    };
-  });
-
-  // Register tools/call handler
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name } = request.params;
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
-
-    if (knowledgeToolNames.has(name)) {
-      return handleKnowledgeTool(name, args, container.knowledgeService, container.structureService);
-    }
-
-    if (workToolNames.has(name)) {
-      return handleWorkTool(name, args, container.workService, container.structureService);
-    }
-
-    if (searchToolNames.has(name)) {
-      const result = await handleSearchTool(name, args, container.searchService, {
-        knowledgeRepo: container.knowledgeRepo,
-        workRepo: container.workRepo,
-      });
-      // Rebuild wiki index after full reindex so index.md stays in sync
-      if (name === "reindex_all" && result.content[0]?.type === "text" && !result.isError) {
-        const markdownRoot = path.resolve(container.config.repoPath, container.config.storage.markdownRoot);
-        const bookkeeper = new WikiBookkeeper(markdownRoot, container.logger);
-        const knowledgeAll = await container.knowledgeRepo.findMany();
-        const workAll = await container.workRepo.findMany();
-        if (knowledgeAll.ok && workAll.ok) {
-          await bookkeeper.rebuildIndex(knowledgeAll.value, workAll.value);
-        }
-      }
-      return result;
-    }
-
-    if (orchestrationToolNames.has(name)) {
-      return handleOrchestrationTool(name, args, container.orchestrationRepo);
-    }
-
-    if (waveToolNames.has(name)) {
-      return handleWaveTool(name, args, container.orchestrationService, container.workService);
-    }
-
-    if (agentToolNames.has(name)) {
-      return handleAgentTool(name, args, {
-        agentsService: container.agentsService,
-        workService: container.workService,
-        knowledgeService: container.knowledgeService,
-        orchestrationService: container.orchestrationService,
-        status: container.status,
-        autoAdvanceEnabled: container.config.orchestration.autoAdvance,
-      });
-    }
-
-    if (statusToolNames.has(name)) {
-      return handleStatusTool(name, args, container.status);
-    }
-
-    if (ingestToolNames.has(name)) {
-      return handleIngestTool(name, args, container.ingestService);
-    }
-
-    if (structureToolNames.has(name)) {
-      return handleStructureTool(name, args, container.structureService);
-    }
-
-    if (wikiToolNames.has(name)) {
-      return handleWikiTool(name, args, container.bookkeeper);
-    }
-
-    if (migrationToolNames.has(name) && container.migrationService) {
-      return handleMigrationTool(name, args, container.migrationService);
-    }
-
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: `Unknown tool: ${name}`,
-        },
-      ],
-      isError: true,
-    };
+    return dispatchToolCall(name, args, container, registry);
   });
 
-  // Connect via stdio transport
   const transport = new StdioServerTransport();
 
-  // Handle clean shutdown
   const shutdown = async () => {
     container.logger.info("Received shutdown signal, disposing container");
     await container.dispose();
     process.exit(0);
   };
-
   process.on("SIGTERM", () => void shutdown());
   process.on("SIGINT", () => void shutdown());
 
