@@ -75,6 +75,12 @@ export function renameKnowledgeSlug(id, newSlug, { rewriteInlineWikilinks = fals
     rewrite_inline_wikilinks: rewriteInlineWikilinks,
   });
 }
+export function batchCreateKnowledge(articles) {
+  return post("/api/knowledge/batch", { articles });
+}
+export function batchUpdateKnowledge(updates) {
+  return patch("/api/knowledge/batch", { updates });
+}
 export function updateKnowledge(id, input) { return patch(`/api/knowledge/${encodeURIComponent(id)}`, input); }
 export function deleteKnowledge(id) { return del(`/api/knowledge/${encodeURIComponent(id)}`); }
 export function getWork(phase) {

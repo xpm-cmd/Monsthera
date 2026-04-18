@@ -12,6 +12,7 @@ import { inspectKnowledgeArticle, inspectWorkArticle } from "../context/insights
 import { requireAuth, generateToken } from "./auth.js";
 import type { KnowledgeArticle } from "../knowledge/repository.js";
 import type { WorkArticle } from "../work/repository.js";
+import { MAX_BATCH_ARTICLES } from "../tools/knowledge-tools.js";
 
 // ─── Static file serving ────────────────────────────────────────────────────
 
@@ -621,6 +622,58 @@ async function handleRequest(
         const { status, code } = mapErrorToHttp(result.error);
         errorResponse(res, status, code, result.error.message);
       }
+      return;
+    }
+
+    errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+    return;
+  }
+
+  // ── /api/knowledge/batch ─────────────────────────────────────────────────
+  // Must match BEFORE the /api/knowledge/:id regex, which would otherwise
+  // capture "batch" as an article ID.
+  if (pathname === "/api/knowledge/batch") {
+    const body = await parseJsonBody(req);
+    if (!body.ok) {
+      errorResponse(res, 400, "VALIDATION_FAILED", body.message);
+      return;
+    }
+
+    if (req.method === "POST") {
+      const arr = (body.value as { articles?: unknown }).articles;
+      if (!Array.isArray(arr)) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"articles" is required and must be an array`);
+        return;
+      }
+      if (arr.length === 0) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"articles" must not be empty`);
+        return;
+      }
+      if (arr.length > MAX_BATCH_ARTICLES) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"articles" accepts at most ${MAX_BATCH_ARTICLES} entries per call (received ${arr.length})`);
+        return;
+      }
+      const result = await container.knowledgeService.batchCreateArticles(arr);
+      jsonResponse(res, 200, result);
+      return;
+    }
+
+    if (req.method === "PATCH") {
+      const arr = (body.value as { updates?: unknown }).updates;
+      if (!Array.isArray(arr)) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"updates" is required and must be an array`);
+        return;
+      }
+      if (arr.length === 0) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"updates" must not be empty`);
+        return;
+      }
+      if (arr.length > MAX_BATCH_ARTICLES) {
+        errorResponse(res, 400, "VALIDATION_FAILED", `"updates" accepts at most ${MAX_BATCH_ARTICLES} entries per call (received ${arr.length})`);
+        return;
+      }
+      const result = await container.knowledgeService.batchUpdateArticles(arr);
+      jsonResponse(res, 200, result);
       return;
     }
 

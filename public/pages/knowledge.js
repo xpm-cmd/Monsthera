@@ -8,6 +8,8 @@ import {
   ingestLocalKnowledge,
   previewSlug,
   renameKnowledgeSlug,
+  batchCreateKnowledge,
+  batchUpdateKnowledge,
 } from "../lib/api.js";
 import {
   renderSearchInput,
@@ -40,6 +42,102 @@ function buildCreateForm() {
     '<label class="field"><span class="text-label">Content</span><textarea class="textarea textarea--dense" name="content" placeholder="# Summary&#10;&#10;Explain the decision and the important code paths." required></textarea></label>',
     '<div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">Create article</button></div>',
     '</form>',
+  ].join("");
+}
+
+const BATCH_CREATE_EXAMPLE = JSON.stringify(
+  [
+    { title: "First Article", category: "architecture", content: "# Summary\n\nBody.", tags: ["ops"] },
+    { title: "Second Article", category: "operations", content: "Another body." },
+  ],
+  null,
+  2,
+);
+
+const BATCH_UPDATE_EXAMPLE = JSON.stringify(
+  [
+    { id: "k-abc123", content: "Revised body." },
+    { id: "k-def456", tags: ["renamed"], new_slug: "second-article-renamed" },
+  ],
+  null,
+  2,
+);
+
+const MAX_BATCH_ARTICLES = 100;
+
+function validateBatchPayload(mode, raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return { ok: false, errors: [`Invalid JSON: ${err.message}`] };
+  }
+  if (!Array.isArray(parsed)) {
+    return { ok: false, errors: ["Payload must be a JSON array of objects."] };
+  }
+  if (parsed.length === 0) {
+    return { ok: false, errors: ["Array must contain at least one entry."] };
+  }
+  if (parsed.length > MAX_BATCH_ARTICLES) {
+    return { ok: false, errors: [`At most ${MAX_BATCH_ARTICLES} entries per batch (got ${parsed.length}).`] };
+  }
+  const errors = [];
+  parsed.forEach((entry, idx) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      errors.push(`Entry ${idx}: must be an object.`);
+      return;
+    }
+    if (mode === "create") {
+      if (typeof entry.title !== "string" || entry.title.trim().length === 0) {
+        errors.push(`Entry ${idx}: "title" is required and must be a non-empty string.`);
+      }
+      if (typeof entry.category !== "string" || entry.category.trim().length === 0) {
+        errors.push(`Entry ${idx}: "category" is required and must be a non-empty string.`);
+      }
+      if (typeof entry.content !== "string" || entry.content.trim().length === 0) {
+        errors.push(`Entry ${idx}: "content" is required and must be a non-empty string.`);
+      }
+    } else {
+      if (typeof entry.id !== "string" || entry.id.trim().length === 0) {
+        errors.push(`Entry ${idx}: "id" is required and must be a non-empty string.`);
+      }
+    }
+  });
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, entries: parsed };
+}
+
+function buildBatchForm(state) {
+  const placeholder = state.mode === "update" ? BATCH_UPDATE_EXAMPLE : BATCH_CREATE_EXAMPLE;
+  return [
+    '<form class="card form-stack" data-knowledge-batch>',
+    '<div class="card-title">Bulk import (JSON)</div>',
+    `<p class="text-xs text-muted">Paste a JSON array of up to ${MAX_BATCH_ARTICLES} entries. Each entry is validated and applied independently — partial failures do not abort the batch.</p>`,
+    '<div class="form-actions" style="gap:16px">',
+    `<label class="checkbox"><input type="radio" name="batchMode" value="create"${state.mode === "create" ? " checked" : ""}> <span>Create</span></label>`,
+    `<label class="checkbox"><input type="radio" name="batchMode" value="update"${state.mode === "update" ? " checked" : ""}> <span>Update</span></label>`,
+    '</div>',
+    `<label class="field"><span class="text-label">JSON payload</span><textarea class="textarea mono" name="payload" rows="12" placeholder="${esc(placeholder)}">${esc(state.payload || "")}</textarea></label>`,
+    '<div class="form-actions">',
+    '<button class="btn btn--outline btn--sm" type="button" data-batch-validate>Validate</button>',
+    `<button class="btn btn--primary btn--sm" type="submit">${state.mode === "update" ? "Submit updates" : "Submit create"}</button>`,
+    '</div>',
+    '</form>',
+  ].join("");
+}
+
+function buildBatchResult(result) {
+  const rows = (result.items || []).map((item) => {
+    if (item.ok) {
+      return `<li class="text-sm">#${item.index} · <strong>ok</strong> · <span class="mono">${esc(item.article?.id || "")}</span> ${esc(item.article?.title || "")}</li>`;
+    }
+    return `<li class="text-sm text-error">#${item.index} · <strong>${esc(item.error?.code || "ERROR")}</strong> · ${esc(item.error?.message || "unknown")}</li>`;
+  });
+  return [
+    '<div class="card">',
+    `<div class="card-title">Batch result — ${result.succeeded}/${result.total} succeeded, ${result.failed} failed</div>`,
+    `<ul style="list-style:none;padding-left:0;margin:0">${rows.join("")}</ul>`,
+    '</div>',
   ].join("");
 }
 
@@ -106,6 +204,8 @@ export async function render(container) {
     start: 0,
     end: 0,
   };
+  let batchState = { mode: "create", payload: "" };
+  let batchResult = null;
 
   function captureInputState(input) {
     inputState = {
@@ -197,6 +297,8 @@ export async function render(container) {
     const centerParts = [];
     if (showCreate) centerParts.push(buildCreateForm());
     if (showCreate) centerParts.push(buildImportForm());
+    if (showCreate) centerParts.push(buildBatchForm(batchState));
+    if (showCreate && batchResult) centerParts.push(buildBatchResult(batchResult));
     if (selected) {
       centerParts.push(
         `<div class="page-section"><h2 style="font-size:20px;font-weight:600">${esc(selected.title)}</h2><div class="flex gap-8 items-center mt-4" style="flex-wrap:wrap">${renderBadge(selected.category, "secondary")}${selected.diagnostics?.freshness ? renderBadge(selected.diagnostics.freshness.label, selected.diagnostics.freshness.state === "fresh" ? "success" : selected.diagnostics.freshness.state === "attention" ? "warning" : selected.diagnostics.freshness.state === "stale" ? "error" : "outline") : ""}${selected.diagnostics?.quality ? renderBadge(`${selected.diagnostics.quality.score}/100`, "outline") : ""}<span class="text-xs text-muted">Updated ${timeAgo(selected.updatedAt)}</span></div></div>`,
@@ -316,6 +418,35 @@ export async function render(container) {
         "Deleted knowledge article.",
         null,
       );
+      return;
+    }
+
+    const validateButton = target.closest("[data-batch-validate]");
+    if (validateButton) {
+      const form = validateButton.closest("form");
+      const textarea = form?.querySelector('[name="payload"]');
+      const mode = form?.querySelector('input[name="batchMode"]:checked')?.value || batchState.mode;
+      const payload = textarea?.value || "";
+      batchState = { mode, payload };
+      const v = validateBatchPayload(mode, payload);
+      if (v.ok) {
+        flash = { kind: "success", message: `Payload valid — ${v.entries.length} entry(ies) ready to submit.` };
+        batchResult = null;
+      } else {
+        flash = { kind: "error", message: v.errors.join(" · ") };
+      }
+      rerender();
+      return;
+    }
+  }, { signal: ac.signal });
+
+  container.addEventListener("change", (event) => {
+    const radio = event.target.closest('input[name="batchMode"]');
+    if (radio) {
+      const form = radio.closest("form");
+      const textarea = form?.querySelector('[name="payload"]');
+      batchState = { mode: radio.value, payload: textarea?.value || "" };
+      rerender();
     }
   }, { signal: ac.signal });
 
@@ -431,6 +562,35 @@ export async function render(container) {
         "Saved knowledge article.",
         id,
       );
+      return;
+    }
+
+    if (form.matches("[data-knowledge-batch]")) {
+      const data = new FormData(form);
+      const mode = String(data.get("batchMode") || "create");
+      const payload = String(data.get("payload") || "");
+      batchState = { mode, payload };
+      const v = validateBatchPayload(mode, payload);
+      if (!v.ok) {
+        flash = { kind: "error", message: v.errors.join(" · ") };
+        rerender();
+        return;
+      }
+      try {
+        const result = mode === "update"
+          ? await batchUpdateKnowledge(v.entries)
+          : await batchCreateKnowledge(v.entries);
+        batchResult = result;
+        flash = {
+          kind: result.failed === 0 ? "success" : "error",
+          message: `${result.succeeded}/${result.total} entries ${mode === "update" ? "updated" : "created"}. ${result.failed} failed.`,
+        };
+        await refresh(selectedId);
+        rerender();
+      } catch (error) {
+        flash = { kind: "error", message: error?.message || "Batch request failed." };
+        rerender();
+      }
       return;
     }
 
