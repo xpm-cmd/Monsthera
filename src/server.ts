@@ -16,6 +16,7 @@ import { agentToolDefinitions, handleAgentTool } from "./tools/agent-tools.js";
 import { statusToolDefinitions, handleStatusTool } from "./tools/status-tools.js";
 import { ingestToolDefinitions, handleIngestTool } from "./tools/ingest-tools.js";
 import { structureToolDefinitions, handleStructureTool } from "./tools/structure-tools.js";
+import { wikiToolDefinitions, handleWikiTool } from "./tools/wiki-tools.js";
 import { migrationToolDefinitions, handleMigrationTool } from "./migration/tools.js";
 
 /**
@@ -62,6 +63,9 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const structureTools = structureToolDefinitions();
   const structureToolNames = new Set(structureTools.map((t) => t.name));
 
+  const wikiTools = wikiToolDefinitions();
+  const wikiToolNames = new Set(wikiTools.map((t) => t.name));
+
   const migrationTools = container.migrationService ? migrationToolDefinitions() : [];
   const migrationToolNames = new Set(migrationTools.map((t) => t.name));
 
@@ -78,6 +82,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
         ...statusTools,
         ...ingestTools,
         ...structureTools,
+        ...wikiTools,
         ...migrationTools,
       ],
     };
@@ -97,7 +102,10 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
     }
 
     if (searchToolNames.has(name)) {
-      const result = await handleSearchTool(name, args, container.searchService);
+      const result = await handleSearchTool(name, args, container.searchService, {
+        knowledgeRepo: container.knowledgeRepo,
+        workRepo: container.workRepo,
+      });
       // Rebuild wiki index after full reindex so index.md stays in sync
       if (name === "reindex_all" && result.content[0]?.type === "text" && !result.isError) {
         const markdownRoot = path.resolve(container.config.repoPath, container.config.storage.markdownRoot);
@@ -140,6 +148,10 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
 
     if (structureToolNames.has(name)) {
       return handleStructureTool(name, args, container.structureService);
+    }
+
+    if (wikiToolNames.has(name)) {
+      return handleWikiTool(name, args, container.bookkeeper);
     }
 
     if (migrationToolNames.has(name) && container.migrationService) {

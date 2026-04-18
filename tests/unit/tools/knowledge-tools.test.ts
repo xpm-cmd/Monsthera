@@ -47,9 +47,9 @@ async function seedArticle(
 // ---------------------------------------------------------------------------
 
 describe("knowledgeToolDefinitions", () => {
-  it("returns exactly 9 tools", () => {
+  it("returns exactly 10 tools", () => {
     const defs = knowledgeToolDefinitions();
-    expect(defs).toHaveLength(9);
+    expect(defs).toHaveLength(10);
   });
 
   it("each tool has name, description, and inputSchema", () => {
@@ -78,8 +78,17 @@ describe("knowledgeToolDefinitions", () => {
         "preview_slug",
         "batch_create_articles",
         "batch_update_articles",
+        "batch_get_articles",
       ]),
     );
+  });
+
+  it("batch_get_articles requires an ids array", () => {
+    const defs = knowledgeToolDefinitions();
+    const def = defs.find((d) => d.name === "batch_get_articles");
+    expect(def).toBeDefined();
+    expect(def!.inputSchema.properties).toHaveProperty("ids");
+    expect(def!.inputSchema.required).toContain("ids");
   });
 
   it("batch_create_articles requires an articles array", () => {
@@ -521,6 +530,89 @@ describe("batch_update_articles", () => {
 });
 
 // ---------------------------------------------------------------------------
+// batch_get_articles
+// ---------------------------------------------------------------------------
+
+describe("batch_get_articles", () => {
+  let service: KnowledgeService;
+
+  beforeEach(() => {
+    service = createService();
+  });
+
+  it("returns multiple articles by id in the requested order", async () => {
+    const a = await seedArticle(service, { title: "Alpha" });
+    const b = await seedArticle(service, { title: "Beta" });
+    const c = await seedArticle(service, { title: "Gamma" });
+    const response = await handleKnowledgeTool(
+      "batch_get_articles",
+      { ids: [c.id, a.id, b.id] },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.total).toBe(3);
+    expect(body.succeeded).toBe(3);
+    expect(body.failed).toBe(0);
+    expect(body.items.map((i) => i.article?.title)).toEqual(["Gamma", "Alpha", "Beta"]);
+  });
+
+  it("reports per-item NOT_FOUND without aborting the batch", async () => {
+    const a = await seedArticle(service, { title: "Alpha" });
+    const response = await handleKnowledgeTool(
+      "batch_get_articles",
+      { ids: [a.id, "ghost-id"] },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.total).toBe(2);
+    expect(body.succeeded).toBe(1);
+    expect(body.failed).toBe(1);
+    expect(body.items[0]!.ok).toBe(true);
+    expect(body.items[1]!.ok).toBe(false);
+    expect(body.items[1]!.error?.code).toBe("NOT_FOUND");
+  });
+
+  it("rejects missing or non-array ids", async () => {
+    const response = await handleKnowledgeTool("batch_get_articles", {}, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects empty ids array", async () => {
+    const response = await handleKnowledgeTool("batch_get_articles", { ids: [] }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects batches larger than 100", async () => {
+    const ids = Array.from({ length: 101 }, (_, i) => `id-${i}`);
+    const response = await handleKnowledgeTool("batch_get_articles", { ids }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects entries that are not strings", async () => {
+    const a = await seedArticle(service, { title: "Alpha" });
+    const response = await handleKnowledgeTool(
+      "batch_get_articles",
+      { ids: [a.id, 42, null] },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as BatchResult;
+    expect(body.succeeded).toBe(1);
+    expect(body.failed).toBe(2);
+    expect(body.items[1]!.error?.code).toBe("VALIDATION_FAILED");
+    expect(body.items[2]!.error?.code).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // delete_article
 // ---------------------------------------------------------------------------
 
@@ -586,6 +678,91 @@ describe("list_articles", () => {
     expect(body.limit).toBe(1);
     expect(body.offset).toBe(1);
     expect(body.items).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// list_articles — combinable filters
+// ---------------------------------------------------------------------------
+
+describe("list_articles combinable filters", () => {
+  let service: KnowledgeService;
+  let a: KnowledgeArticle;
+  let b: KnowledgeArticle;
+  let c: KnowledgeArticle;
+  let d: KnowledgeArticle;
+
+  beforeEach(async () => {
+    service = createService();
+    a = await seedArticle(service, {
+      title: "Alpha",
+      category: "engineering",
+      tags: ["backend", "db"],
+      codeRefs: ["src/a.ts"],
+    });
+    b = await seedArticle(service, {
+      title: "Beta",
+      category: "engineering",
+      tags: ["frontend"],
+    });
+    c = await seedArticle(service, {
+      title: "Gamma",
+      category: "design",
+      tags: ["backend", "ui"],
+      codeRefs: ["src/c.ts"],
+    });
+    d = await seedArticle(service, {
+      title: "Delta",
+      category: "design",
+      tags: ["docs"],
+    });
+  });
+
+  it("filters by tag", async () => {
+    const response = await handleKnowledgeTool("list_articles", { tag: "backend" }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(2);
+    const ids = body.items.map((i) => i.id).sort();
+    expect(ids).toEqual([a.id, c.id].sort());
+  });
+
+  it("filters by hasCodeRefs=true", async () => {
+    const response = await handleKnowledgeTool(
+      "list_articles",
+      { hasCodeRefs: true },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(2);
+    const ids = body.items.map((i) => i.id).sort();
+    expect(ids).toEqual([a.id, c.id].sort());
+  });
+
+  it("filters by hasCodeRefs=false", async () => {
+    const response = await handleKnowledgeTool(
+      "list_articles",
+      { hasCodeRefs: false },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(2);
+    const ids = body.items.map((i) => i.id).sort();
+    expect(ids).toEqual([b.id, d.id].sort());
+  });
+
+  it("combines category + tag + hasCodeRefs", async () => {
+    const response = await handleKnowledgeTool(
+      "list_articles",
+      { category: "engineering", tag: "backend", hasCodeRefs: true },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(1);
+    expect(body.items[0]!.id).toBe(a.id);
   });
 });
 

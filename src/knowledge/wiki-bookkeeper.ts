@@ -24,6 +24,49 @@ export class WikiBookkeeper {
     this.logPath = path.join(markdownRoot, "log.md");
   }
 
+  // ─── Read access (for MCP tools) ────────────────────────────────────────
+
+  /** Read index.md content, or null if it does not exist yet. */
+  async readIndex(): Promise<{ content: string; path: string } | null> {
+    try {
+      const content = await fs.readFile(this.indexPath, "utf-8");
+      return { content, path: this.indexPath };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Read log.md content, or null if it does not exist yet. When `tail` is
+   * provided, only the last N non-empty lines are returned, preserving the
+   * file header so the response is still self-describing.
+   */
+  async readLog(options?: { tail?: number }): Promise<{ content: string; path: string; totalLines: number } | null> {
+    try {
+      const content = await fs.readFile(this.logPath, "utf-8");
+      const allLines = content.split("\n");
+      if (options?.tail === undefined) {
+        return { content, path: this.logPath, totalLines: allLines.length };
+      }
+      // Preserve the header (non-entry lines at top) plus the last `tail`
+      // entry lines. Entry lines start with "- **[" per appendLog().
+      const headerLines: string[] = [];
+      const entryLines: string[] = [];
+      for (const line of allLines) {
+        if (line.startsWith("- **[")) {
+          entryLines.push(line);
+        } else if (entryLines.length === 0) {
+          headerLines.push(line);
+        }
+      }
+      const tailedEntries = entryLines.slice(-options.tail);
+      const tailedContent = [...headerLines, ...tailedEntries].join("\n");
+      return { content: tailedContent, path: this.logPath, totalLines: allLines.length };
+    } catch {
+      return null;
+    }
+  }
+
   // ─── Log (append-only) ──────────────────────────────────────────────────
 
   async appendLog(

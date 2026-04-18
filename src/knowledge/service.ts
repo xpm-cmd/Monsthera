@@ -196,6 +196,47 @@ export class KnowledgeService {
   }
 
   /**
+   * Best-effort bulk read. Resolves each id independently and preserves the
+   * input order in the response — designed as the natural follow-up to
+   * `build_context_pack` / `search`, where agents would otherwise call
+   * `get_article` N times. Non-string entries fail per-item as
+   * VALIDATION_FAILED rather than aborting the batch.
+   */
+  async batchGetArticles(ids: readonly unknown[]): Promise<BatchArticleResult> {
+    const items: BatchArticleItem[] = [];
+    let succeeded = 0;
+    let failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const raw = ids[i];
+      if (typeof raw !== "string" || raw.length === 0) {
+        items.push({
+          index: i,
+          ok: false,
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "Batch get entry must be a non-empty string id",
+          },
+        });
+        failed++;
+        continue;
+      }
+      const result = await this.repo.findById(raw);
+      if (result.ok) {
+        items.push({ index: i, ok: true, article: result.value });
+        succeeded++;
+      } else {
+        items.push({
+          index: i,
+          ok: false,
+          error: { code: result.error.code, message: result.error.message },
+        });
+        failed++;
+      }
+    }
+    return { total: ids.length, succeeded, failed, items };
+  }
+
+  /**
    * Best-effort bulk create. Iterates `inputs` in order and captures per-item
    * successes and failures in the response. A single `rebuildIndex()` runs at
    * the end if at least one article was created, keeping `index.md` O(1)

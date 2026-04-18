@@ -115,17 +115,18 @@ describe("handleSearchTool", () => {
       if (!createResult.ok) throw new Error("seed failed");
       await service.indexKnowledgeArticle(createResult.value.id);
 
-      // Non-verbose (default): no diagnostics
+      // Non-verbose (default): no diagnostics, no full content
       const slimResponse = await handleSearchTool("build_context_pack", { query: "auth", mode: "code" }, service);
       expect(slimResponse.isError).toBeUndefined();
       const slim = JSON.parse(slimResponse.content[0]!.text) as {
         mode: string;
         summary: { itemCount: number };
-        items: Array<{ id: string; diagnostics?: unknown }>;
+        items: Array<{ id: string; diagnostics?: unknown; content?: unknown }>;
       };
       expect(slim.mode).toBe("code");
       expect(slim.summary.itemCount).toBeGreaterThanOrEqual(1);
       expect(slim.items[0]?.diagnostics).toBeUndefined();
+      expect(slim.items[0]?.content).toBeUndefined();
 
       // Verbose: includes diagnostics
       const verboseResponse = await handleSearchTool("build_context_pack", { query: "auth", mode: "code", verbose: true }, service);
@@ -135,6 +136,88 @@ describe("handleSearchTool", () => {
         items: Array<{ id: string; diagnostics: { quality: { score: number } } }>;
       };
       expect(verbose.items[0]?.diagnostics.quality.score).toBeGreaterThan(0);
+    });
+
+    it("includes full article content when include_content: true", async () => {
+      const createResult = await knowledgeRepo.create({
+        title: "Payments Deep Dive",
+        category: "guide",
+        content: "The full body of the payments article, longer than the snippet.",
+        codeRefs: ["src/payments/service.ts"],
+      });
+      if (!createResult.ok) throw new Error("seed failed");
+      await service.indexKnowledgeArticle(createResult.value.id);
+
+      const response = await handleSearchTool(
+        "build_context_pack",
+        { query: "payments", mode: "code", include_content: true },
+        service,
+        { knowledgeRepo, workRepo },
+      );
+      expect(response.isError).toBeUndefined();
+      const body = JSON.parse(response.content[0]!.text) as {
+        items: Array<{ id: string; content?: string }>;
+      };
+      expect(body.items.length).toBeGreaterThanOrEqual(1);
+      expect(body.items[0]?.content).toBe(
+        "The full body of the payments article, longer than the snippet.",
+      );
+    });
+
+    it("include_content: true also works with verbose mode", async () => {
+      const createResult = await knowledgeRepo.create({
+        title: "Verbose Content Article",
+        category: "guide",
+        content: "Verbose full body content.",
+      });
+      if (!createResult.ok) throw new Error("seed failed");
+      await service.indexKnowledgeArticle(createResult.value.id);
+
+      const response = await handleSearchTool(
+        "build_context_pack",
+        { query: "verbose", mode: "code", verbose: true, include_content: true },
+        service,
+        { knowledgeRepo, workRepo },
+      );
+      expect(response.isError).toBeUndefined();
+      const body = JSON.parse(response.content[0]!.text) as {
+        items: Array<{ id: string; content?: string; diagnostics: { quality: { score: number } } }>;
+      };
+      expect(body.items[0]?.content).toBe("Verbose full body content.");
+      expect(body.items[0]?.diagnostics.quality.score).toBeGreaterThan(0);
+    });
+
+    it("rejects non-boolean include_content", async () => {
+      const response = await handleSearchTool(
+        "build_context_pack",
+        { query: "auth", include_content: "yes" },
+        service,
+      );
+      expect(response.isError).toBe(true);
+      const body = JSON.parse(response.content[0]!.text) as { error: string };
+      expect(body.error).toBe("VALIDATION_FAILED");
+    });
+
+    it("include_content without content-deps falls back to slim (no content field)", async () => {
+      const createResult = await knowledgeRepo.create({
+        title: "Fallback Article",
+        category: "guide",
+        content: "Should not appear without deps.",
+      });
+      if (!createResult.ok) throw new Error("seed failed");
+      await service.indexKnowledgeArticle(createResult.value.id);
+
+      // No knowledgeRepo/workRepo passed — handler cannot fetch content
+      const response = await handleSearchTool(
+        "build_context_pack",
+        { query: "fallback", include_content: true },
+        service,
+      );
+      expect(response.isError).toBeUndefined();
+      const body = JSON.parse(response.content[0]!.text) as {
+        items: Array<{ id: string; content?: string }>;
+      };
+      expect(body.items[0]?.content).toBeUndefined();
     });
   });
 

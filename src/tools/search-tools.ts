@@ -1,8 +1,16 @@
 import type { SearchService } from "../search/service.js";
+import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
+import type { WorkArticleRepository } from "../work/repository.js";
 import type { ToolDefinition, ToolResponse } from "./knowledge-tools.js";
 import { successResponse, errorResponse, requireString, isErrorResponse, requireEnum } from "./validation.js";
 
 export type { ToolDefinition, ToolResponse };
+
+/** Optional deps needed to enrich build_context_pack with full article content. */
+export interface SearchToolDeps {
+  readonly knowledgeRepo: Pick<KnowledgeArticleRepository, "findById">;
+  readonly workRepo: Pick<WorkArticleRepository, "findById">;
+}
 
 /** Returns the search tool definitions for MCP ListTools */
 export function searchToolDefinitions(): ToolDefinition[] {
@@ -29,7 +37,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     {
       name: "build_context_pack",
       description:
-        "Recommended first step before coding or investigation. Builds a ranked context pack using search plus freshness, quality, and code-link signals so agents can read less, plan faster, and then open only the top knowledge/work items.",
+        "Recommended first step before coding or investigation. Builds a ranked context pack using search plus freshness, quality, and code-link signals so agents can read less, plan faster, and then open only the top knowledge/work items. Pass `include_content: true` to inline the full body of each ranked item (skips the per-result get_article / get_work round-trip).",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -46,6 +54,10 @@ export function searchToolDefinitions(): ToolDefinition[] {
           },
           limit: { type: "number", description: "Maximum context pack items (1-20, default 8)" },
           verbose: { type: "boolean", description: "Include full diagnostics and metadata (default false)" },
+          include_content: {
+            type: "boolean",
+            description: "Inline the full `content` of each ranked article alongside the snippet, so agents can skip follow-up get_article / get_work calls (default false — slim response is the default).",
+          },
         },
         required: ["query"],
       },
@@ -93,6 +105,32 @@ export function searchToolDefinitions(): ToolDefinition[] {
 
 const VALID_SOURCES = new Set(["knowledge", "work"]);
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the full body of every ranked pack item in parallel. Missing
+ * articles (e.g. deleted after indexing) are skipped silently rather than
+ * failing the whole request — the caller still gets the rank plus whatever
+ * content survives.
+ */
+async function loadContentForPack(
+  items: readonly { id: string; type: "knowledge" | "work" }[],
+  deps: SearchToolDeps,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const results = await Promise.all(
+    items.map(async (item) => {
+      const repo = item.type === "knowledge" ? deps.knowledgeRepo : deps.workRepo;
+      const res = await repo.findById(item.id);
+      return res.ok ? ([item.id, res.value.content] as const) : null;
+    }),
+  );
+  for (const entry of results) {
+    if (entry !== null) out.set(entry[0], entry[1]);
+  }
+  return out;
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 /** Handle a search tool call */
@@ -100,6 +138,7 @@ export async function handleSearchTool(
   name: string,
   args: Record<string, unknown>,
   service: SearchService,
+  deps?: SearchToolDeps,
 ): Promise<ToolResponse> {
   switch (name) {
     case "search": {
@@ -108,14 +147,36 @@ export async function handleSearchTool(
       return successResponse(result.value);
     }
     case "build_context_pack": {
+      if (args.include_content !== undefined && typeof args.include_content !== "boolean") {
+        return errorResponse("VALIDATION_FAILED", `"include_content" must be a boolean`);
+      }
+      const includeContent = args.include_content === true;
       const result = await service.buildContextPack(args);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       const verbose = args.verbose === true;
+
+      // When include_content is requested AND we have repo access, resolve
+      // each item to its full body in parallel. Without deps we silently
+      // fall back to the snippet-only shape — the tool stays usable in
+      // test contexts or reduced wiring without surprising the caller.
+      const contentById = includeContent && deps
+        ? await loadContentForPack(result.value.items, deps)
+        : new Map<string, string>();
+
+      const withContent = <T extends { id: string }>(item: T): T & { content?: string } => {
+        if (!includeContent) return item;
+        const content = contentById.get(item.id);
+        return content !== undefined ? { ...item, content } : item;
+      };
+
       if (verbose) {
-        return successResponse(result.value);
+        return successResponse({
+          ...result.value,
+          items: result.value.items.map(withContent),
+        });
       }
       // Slim response: strip diagnostics, reason, searchScore, sourcePath, references
-      const slimItems = result.value.items.map((item) => ({
+      const slimItems = result.value.items.map((item) => withContent({
         id: item.id,
         title: item.title,
         type: item.type,
