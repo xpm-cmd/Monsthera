@@ -219,6 +219,7 @@ function buildQueueCard(article, expandedId, workArticles, readySet) {
 
   return [
     `<div class="card work-card${expanded ? " is-expanded" : ""}" data-work-id="${esc(article.id)}">`,
+    `<button class="work-card__toggle" type="button" data-toggle-work="${esc(article.id)}" aria-expanded="${String(expanded)}" aria-controls="work-detail-${esc(article.id)}">`,
     '<div class="flex items-center justify-between gap-12">',
     '<div class="flex items-center gap-8">',
     `<strong class="text-sm">${esc(article.title)}</strong>`,
@@ -226,11 +227,12 @@ function buildQueueCard(article, expandedId, workArticles, readySet) {
     '</div>',
     `<span class="text-xs text-muted">${timeAgo(article.updatedAt)}</span>`,
     '</div>',
+    '</button>',
     `<p class="text-xs text-muted mt-4">Template: ${esc(article.template)} · Author: ${esc(article.author)} · ${article.assignee ? `Assigned to ${esc(article.assignee)}` : "Unassigned"}</p>`,
     article.content ? `<p class="text-sm mt-8">${esc(article.content.slice(0, 220))}</p>` : "",
     expanded
       ? [
-          '<div class="work-card__expanded">',
+          `<div class="work-card__expanded" id="work-detail-${esc(article.id)}">`,
           `<div class="work-card__actions">${buildExpandedActions(article, readySet)}</div>`,
           '<form class="form-stack mt-8" data-work-edit="' + esc(article.id) + '">',
           '<div class="form-grid form-grid--three">',
@@ -302,6 +304,12 @@ export async function render(container) {
 
   function getAgentOptions() {
     return collectAgentOptions(workArticles, directory);
+  }
+
+  function openArticleInQueue(id) {
+    viewMode = "queue";
+    expandedId = id;
+    rerender();
   }
 
   function getFilteredArticles() {
@@ -376,11 +384,11 @@ export async function render(container) {
         const items = filteredArticles.filter((article) => article.phase === phase);
         bodyHtml += `<div class="board-column"><div class="board-column-header">${esc(phase)} (${items.length})</div>`;
         for (const article of items) {
-          bodyHtml += '<div class="board-card">'
+          bodyHtml += `<button type="button" class="board-card" data-open-work="${esc(article.id)}">`
             + `<strong class="text-sm">${esc(article.title)}</strong>`
             + `<p class="text-xs text-muted mt-4">${article.assignee ? esc(article.assignee) : "Unassigned"}</p>`
             + `<div class="mt-8">${renderBadge(article.priority, priorityVariant(article.priority))}${readySet.has(article.id) ? ` ${renderBadge("ready", "success")}` : ""}</div>`
-            + "</div>";
+            + "</button>";
         }
         bodyHtml += "</div>";
       }
@@ -391,7 +399,11 @@ export async function render(container) {
     return renderTable(
       [
         { key: "id", label: "ID", width: "84px" },
-        { key: "title", label: "Title" },
+        {
+          key: "title",
+          label: "Title",
+          render: (row) => `<button type="button" class="table-link" data-open-work="${esc(row.id)}">${esc(row.title)}</button>`,
+        },
         { key: "phase", label: "Phase", width: "120px", render: (row) => renderBadge(row.phase, phaseVariant(row.phase)) },
         { key: "priority", label: "Priority", width: "100px", render: (row) => renderBadge(row.priority, priorityVariant(row.priority)) },
         { key: "assignee", label: "Assignee", width: "140px", render: (row) => esc(row.assignee || "—") },
@@ -477,6 +489,19 @@ export async function render(container) {
       viewMode = tab.dataset.tab;
       expandedId = null;
       rerender();
+      return;
+    }
+
+    const toggleCardButton = target.closest("[data-toggle-work]");
+    if (toggleCardButton) {
+      expandedId = expandedId === toggleCardButton.dataset.toggleWork ? null : toggleCardButton.dataset.toggleWork;
+      rerender();
+      return;
+    }
+
+    const openWorkButton = target.closest("[data-open-work]");
+    if (openWorkButton) {
+      openArticleInQueue(openWorkButton.dataset.openWork);
       return;
     }
 

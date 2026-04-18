@@ -206,6 +206,7 @@ export async function render(container) {
   };
   let batchState = { mode: "create", payload: "" };
   let batchResult = null;
+  let slugPreviewRequestId = 0;
 
   function captureInputState(input) {
     inputState = {
@@ -393,6 +394,7 @@ export async function render(container) {
     const toggleCreate = target.closest("[data-toggle-create]");
     if (toggleCreate) {
       inputState.restore = false;
+      slugPreviewRequestId += 1;
       showCreate = !showCreate;
       rerender();
       return;
@@ -494,15 +496,20 @@ export async function render(container) {
       if (!preview) return;
       const title = titleInput.value.trim();
       if (!title) {
+        slugPreviewRequestId += 1;
         preview.textContent = "Slug will be auto-generated from the title.";
         return;
       }
       preview.textContent = "Checking slug…";
+      const titleAtRequest = title;
       slugPreviewTimer = setTimeout(async () => {
+        const requestId = ++slugPreviewRequestId;
         try {
-          const res = await previewSlug(title);
+          const res = await previewSlug(titleAtRequest);
+          if (requestId !== slugPreviewRequestId || ac.signal.aborted || titleInput.value.trim() !== titleAtRequest) return;
           renderSlugPreview(preview, res);
         } catch (_err) {
+          if (requestId !== slugPreviewRequestId || ac.signal.aborted || titleInput.value.trim() !== titleAtRequest) return;
           preview.textContent = "Slug preview unavailable.";
         }
       }, 300);

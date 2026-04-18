@@ -66,6 +66,7 @@ function buildModeGuide(mode, filterType) {
 export async function render(container) {
   let pack = null;
   let selectedResult = null;
+  let selectedResultId = null;
   let filterType = "all";
   let mode = "code";
   let query = "";
@@ -73,6 +74,7 @@ export async function render(container) {
   let isLoading = false;
   let errorMessage = null;
   let loadRequestId = 0;
+  let previewRequestId = 0;
   let inputState = {
     restore: false,
     start: 0,
@@ -91,6 +93,31 @@ export async function render(container) {
     const items = pack?.items || [];
     if (filterType === "all") return items;
     return items.filter((item) => item.type === filterType);
+  }
+
+  function clearSelection() {
+    previewRequestId += 1;
+    selectedResult = null;
+    selectedResultId = null;
+  }
+
+  async function selectResult(id, type) {
+    const requestId = ++previewRequestId;
+    selectedResultId = id;
+    selectedResult = null;
+    rerender();
+    try {
+      const nextResult = type === "knowledge"
+        ? await api.getKnowledgeById(id)
+        : await api.getWorkById(id);
+      if (requestId !== previewRequestId || ac.signal.aborted || selectedResultId !== id) return;
+      selectedResult = nextResult;
+      rerender();
+    } catch {
+      if (requestId !== previewRequestId || ac.signal.aborted || selectedResultId !== id) return;
+      selectedResult = null;
+      rerender();
+    }
   }
 
   function buildSummary() {
@@ -132,7 +159,7 @@ export async function render(container) {
     const hasQuery = query.trim().length > 0;
     const resultListHtml = filtered.length > 0
       ? filtered.map((item) =>
-        '<div class="card card--interactive' + (selectedResult?.id === item.id ? ' card--selected' : '') + '" style="cursor:pointer;padding:14px 16px" data-result-id="' + esc(item.id) + '" data-result-type="' + esc(item.type) + '">'
+        '<button type="button" class="card card--interactive search-result-card' + (selectedResultId === item.id ? ' card--selected' : '') + '" style="padding:14px 16px" data-result-id="' + esc(item.id) + '" data-result-type="' + esc(item.type) + '" aria-pressed="' + String(selectedResultId === item.id) + '">'
           + '<div class="flex items-center gap-8" style="flex-wrap:wrap">' + renderBadge(item.type, typeVariant(item.type))
           + renderBadge(item.diagnostics?.freshness?.label || "unknown", freshnessVariant(item.diagnostics?.freshness?.state))
           + renderBadge(item.diagnostics?.quality?.label || "quality", "outline")
@@ -145,7 +172,7 @@ export async function render(container) {
           + (item.phase ? renderBadge(item.phase, "outline") : "")
           + (item.codeRefs?.length ? renderBadge(`${item.codeRefs.length} code refs`, "primary") : "")
           + (item.references?.length ? renderBadge(`${item.references.length} refs`, "outline") : "")
-          + "</div></div>"
+          + "</div></button>"
       ).join("\n")
       : isLoading
         ? '<div class="empty-state">Searching and ranking context...</div>'
@@ -168,6 +195,11 @@ export async function render(container) {
           + (selectedResult.sourcePath ? `<p class="text-xs text-muted mt-8">Source: <span class="mono">${esc(selectedResult.sourcePath)}</span></p>` : "")
           + '<p class="text-sm mt-8">' + esc((selectedResult.content || "").slice(0, 800)) + "</p>",
       )
+      : selectedResultId
+        ? renderCard(
+          null,
+          '<p class="text-sm text-muted">Loading preview…</p>',
+        )
       : '<p class="text-sm text-muted">Select a result to preview.</p>';
 
     const temp = document.createElement("template");
@@ -212,7 +244,7 @@ export async function render(container) {
     const trimmed = query.trim();
     if (!trimmed) {
       pack = null;
-      selectedResult = null;
+      clearSelection();
       errorMessage = null;
       isLoading = false;
       rerender();
@@ -222,20 +254,19 @@ export async function render(container) {
     const requestId = ++loadRequestId;
     isLoading = true;
     errorMessage = null;
+    clearSelection();
     rerender();
 
     try {
       const nextPack = await api.getContextPack(trimmed, mode, 10, filterType === "all" ? "all" : filterType);
       if (requestId !== loadRequestId || ac.signal.aborted) return;
       pack = nextPack;
-      selectedResult = null;
       isLoading = false;
       errorMessage = null;
       rerender();
     } catch (error) {
       if (requestId !== loadRequestId || ac.signal.aborted) return;
       pack = null;
-      selectedResult = null;
       isLoading = false;
       errorMessage = error?.message || "Unknown search error";
       rerender();
@@ -277,14 +308,7 @@ export async function render(container) {
     const card = event.target.closest("[data-result-id]");
     if (card) {
       inputState.restore = false;
-      try {
-        selectedResult = card.dataset.resultType === "knowledge"
-          ? await api.getKnowledgeById(card.dataset.resultId)
-          : await api.getWorkById(card.dataset.resultId);
-        if (!ac.signal.aborted) rerender();
-      } catch {
-        /* ignore */
-      }
+      await selectResult(card.dataset.resultId, card.dataset.resultType);
     }
   }, { signal: ac.signal });
 

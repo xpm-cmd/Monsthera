@@ -271,6 +271,16 @@ a:hover { text-decoration: underline; }
   backdrop-filter: blur(12px);
 }
 
+button.card,
+button.board-card {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  appearance: none;
+  cursor: pointer;
+}
+
 .card-title {
   font-size: 14px;
   font-weight: 700;
@@ -591,6 +601,22 @@ a:hover { text-decoration: underline; }
 
 .table .text-right { text-align: right; }
 
+.table-link {
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.table-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
 /* ─── Search input ───────────────────────────────────────────────────────── */
 
 .search-input {
@@ -830,6 +856,17 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow-hover);
 }
 
+.work-card__toggle {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
 .card--interactive {
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
@@ -888,6 +925,49 @@ a:hover { text-decoration: underline; }
 .markdown-preview {
   font-size: 14px;
   line-height: 1.7;
+}
+
+.markdown-preview > * + * {
+  margin-top: 12px;
+}
+
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4 {
+  font-family: 'Space Grotesk', 'Manrope', sans-serif;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.markdown-preview h2 { font-size: 20px; }
+.markdown-preview h3 { font-size: 17px; }
+.markdown-preview h4 { font-size: 15px; }
+
+.markdown-preview ul {
+  padding-left: 18px;
+}
+
+.markdown-preview li + li {
+  margin-top: 6px;
+}
+
+.markdown-preview pre {
+  overflow-x: auto;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--tile);
+  border: 1px solid var(--border);
+}
+
+.markdown-preview code {
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.92em;
+}
+
+.markdown-preview :not(pre) > code {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--tile);
 }
 
 /* ─── Nav list (sidebar article lists) ───────────────────────────────────── */

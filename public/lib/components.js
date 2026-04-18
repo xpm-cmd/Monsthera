@@ -88,6 +88,49 @@ export function renderSearchInput(placeholder = "Search...", value = "") {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+function escapeHtml(str) {
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function renderInlineMarkdown(text) {
+  if (!text) return "";
+
+  const codeTokens = [];
+  const linkTokens = [];
+  let html = String(text);
+
+  html = html.replace(/`([^`]+)`/g, (_match, code) => {
+    const token = `\uE000CODE${codeTokens.length}\uE001`;
+    codeTokens.push(`<code>${escapeHtml(code)}</code>`);
+    return token;
+  });
+
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
+    const token = `\uE000LINK${linkTokens.length}\uE001`;
+    const normalized = String(url).replace(/[\x00-\x20]+/g, "");
+    if (/^(javascript|data|vbscript):/i.test(normalized)) {
+      linkTokens.push(escapeHtml(label));
+      return token;
+    }
+    linkTokens.push(`<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`);
+    return token;
+  });
+
+  html = escapeHtml(html)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>");
+
+  html = html.replace(/\uE000CODE(\d+)\uE001/g, (_match, index) => codeTokens[Number(index)] ?? "");
+  html = html.replace(/\uE000LINK(\d+)\uE001/g, (_match, index) => linkTokens[Number(index)] ?? "");
+
+  return html;
+}
+
 export function timeAgo(iso) {
   if (!iso) return "";
   const diff = Date.now() - new Date(iso).getTime();
@@ -102,34 +145,91 @@ export function timeAgo(iso) {
 
 export function renderMarkdown(text) {
   if (!text) return "";
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
-      // Browsers ignore tabs (\x09), newlines (\x0a), CR (\x0d), and other control
-      // chars both before AND within a URI scheme. Strip them all before testing so
-      // obfuscated variants like "java\tscript:" or "\x01javascript:" are caught.
-      const normalized = url.replace(/[\x00-\x20]+/g, '');
-      if (/^(javascript|data|vbscript):/i.test(normalized)) {
-        return label; // Strip unsafe link, keep text
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  const blocks = [];
+  let paragraphLines = [];
+  let listItems = [];
+  let inCodeBlock = false;
+  let codeFence = "";
+  let codeLines = [];
+
+  function flushParagraph() {
+    if (paragraphLines.length === 0) return;
+    blocks.push(`<p>${renderInlineMarkdown(paragraphLines.join(" "))}</p>`);
+    paragraphLines = [];
+  }
+
+  function flushList() {
+    if (listItems.length === 0) return;
+    blocks.push(`<ul>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ul>`);
+    listItems = [];
+  }
+
+  function flushCodeBlock() {
+    if (!inCodeBlock) return;
+    blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    inCodeBlock = false;
+    codeFence = "";
+    codeLines = [];
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\t/g, "  ");
+    const fenceMatch = line.match(/^(```+|~~~+)/);
+
+    if (inCodeBlock) {
+      if (fenceMatch && fenceMatch[1][0] === codeFence[0] && fenceMatch[1].length >= codeFence.length) {
+        flushCodeBlock();
+      } else {
+        codeLines.push(rawLine);
       }
-      return '<a href="' + url.replace(/"/g, '&quot;') + '">' + label + '</a>';
-    })
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/^/, '<p>')
-    .replace(/$/, '</p>');
+      continue;
+    }
+
+    if (fenceMatch) {
+      flushParagraph();
+      flushList();
+      inCodeBlock = true;
+      codeFence = fenceMatch[1];
+      codeLines = [];
+      continue;
+    }
+
+    if (/^\s*$/.test(line)) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const level = Math.min(headingMatch[1].length + 1, 6);
+      blocks.push(`<h${level}>${renderInlineMarkdown(headingMatch[2].trim())}</h${level}>`);
+      continue;
+    }
+
+    const listMatch = line.match(/^\s*[-*]\s+(.+)$/);
+    if (listMatch) {
+      flushParagraph();
+      listItems.push(listMatch[1].trim());
+      continue;
+    }
+
+    flushList();
+    paragraphLines.push(line.trim());
+  }
+
+  flushCodeBlock();
+  flushParagraph();
+  flushList();
+
+  return blocks.join("");
 }
 
 export function esc(str) {
-  if (str == null) return "";
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return escapeHtml(str);
 }
 
 export function priorityVariant(priority) {
