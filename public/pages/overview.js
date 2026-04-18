@@ -34,6 +34,18 @@ function renderStartHere() {
   ].join("")).join("")}</div>`;
 }
 
+function renderAgentDirectoryEmptyState() {
+  return [
+    '<p class="text-sm text-muted">The agent directory is empty — no agents have registered yet. This is expected on a fresh corpus.</p>',
+    '<p class="text-sm text-muted mt-8">Agents appear here once they register via <code>register_agent</code> or are seeded from a v2 import.</p>',
+    '<div class="mt-16" style="display:flex;gap:8px;flex-wrap:wrap;">',
+    '<a href="/work" data-link class="btn btn--primary btn--sm">Create your first work article</a>',
+    '<a href="/system" data-link class="btn btn--outline btn--sm">Open system settings</a>',
+    '<a href="/guide" data-link class="btn btn--outline btn--sm">How agents register</a>',
+    "</div>",
+  ].join("");
+}
+
 export async function render(container) {
   let [health, workArticles, knowledgeArticles, wave, runtime, directory] = await Promise.all([
     getHealth().catch(() => null),
@@ -109,6 +121,7 @@ export async function render(container) {
     const autoAdvance = runtime?.orchestration?.autoAdvance;
     const activeAgents = directory?.summary?.activeAgents ?? 0;
     const totalAgents = directory?.summary?.totalAgents ?? 0;
+    const agentDirectoryEmpty = totalAgents === 0;
     const nextAction = readyItems.length > 0
       ? {
           eyebrow: "Next best action",
@@ -179,6 +192,9 @@ export async function render(container) {
         ].filter(Boolean).join(" "),
       ),
       renderCard("Start here", renderStartHere()),
+      agentDirectoryEmpty
+        ? renderCard("No agents yet", renderAgentDirectoryEmptyState())
+        : "",
       renderCard("Needs attention", renderBulletList(attentionItems)),
       renderCard(
         "Latest knowledge",
