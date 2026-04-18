@@ -4,6 +4,27 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+## [3.0.0-alpha.4] — 2026-04-18
+
+**Tier 3.3 + 4.x — Agent UX, server coverage, and dashboard hardening.** Three PRs that cut agent token usage, close the server test gap, and fix the fresh-corpus dashboard experience.
+
+### Added
+
+- **`batch_get_articles` MCP tool** (#55 — Tier 3.3). One call fetches many knowledge articles by id, with per-item `{ ok, article | error }` shape and the same 100-entry cap as `batch_create_articles` / `batch_update_articles`. Natural follow-up to `build_context_pack` / `search` — replaces N× `get_article` round-trips.
+- **Combinable filters on `list_work` / `list_articles`** (#55 — Tier 3.3). `list_work` now accepts `phase` + `priority` + `assignee` + `tag` + `blocked`; `list_articles` accepts `category` + `tag` + `hasCodeRefs`. Filters combine AND-wise. Summaries-only response shape is unchanged.
+- **`get_wiki_index` / `get_wiki_log` MCP tools** (#55 — Tier 3.3). First-class reads for `knowledge/index.md` and `knowledge/log.md`; agents no longer need to know to `Read` the files directly. `get_wiki_log` accepts `tail: N` and preserves header lines when truncating.
+- **`include_content: true` opt-in in `build_context_pack`** (#55 — Tier 3.3). Inlines each ranked item's full body via parallel `findById`, removing a round-trip per top-result. Default stays slim (content omitted) so non-verbose responses keep their existing shape.
+- **Server test coverage** (#56 — Tier 4.1). The MCP server had zero tests. Extracted `buildToolRegistry(container)` and `dispatchToolCall(name, args, container)` as pure functions — `startServer` is now a thin wrapper that reuses the same registry. 15 new tests in `tests/unit/server.test.ts` cover registry shape (all groups, no duplicates, migration toggle) and dispatch paths (knowledge, work, status, wiki, search with `include_content`, unknown-tool error shape, `reindex_all` → wiki rebuild).
+- **Dashboard overview-flow contract tests** (#57 — Tier 4.2). New `tests/unit/dashboard/overview-flows.test.ts` with an isolated container covers the empty-agent-directory contract (`totalAgents: 0`, `agents: []`), the pinned-lucide HTML contract, and smoke parity for advance+cancel, rename-slug, and batch-import flows.
+
+### Changed
+
+- **Dashboard overview empty state** (#57 — Tier 4.2). When `/api/agents` returns `totalAgents === 0`, the overview now renders a "No agents yet" CTA card with three concrete next actions (create work, open system, read the guide). Previously the overview looked near-blank on a fresh corpus.
+
+### Fixed
+
+- **Pin `lucide` to `0.469.0`** in `public/index.html` (#57 — Tier 4.2). Was `https://unpkg.com/lucide@latest` — supply-chain risk and silent-breakage risk if upstream ships a breaking change. No SRI hash intentionally: the honest failure mode on a version mismatch is "icons don't render" (detectable), and a fabricated hash would block loading entirely.
+
 ## [3.0.0-alpha.3] — 2026-04-18
 
 **Tier 2.4 — Dashboard ↔ MCP parity.** Three focused PRs that close
