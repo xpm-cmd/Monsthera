@@ -28,9 +28,24 @@ const MIME_TYPES: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
+/**
+ * Inject the auth token as a <meta> tag inside <head> so the SPA can read it
+ * and attach it to every mutating fetch. The token is only meaningful on
+ * localhost (the same trust boundary as reading it from stdout), so exposing
+ * it inside the HTML we serve to the same origin is acceptable.
+ */
+function injectAuthToken(html: string, authToken: string): string {
+  const meta = `<meta name="monsthera-auth-token" content="${authToken}">`;
+  if (html.includes("</head>")) {
+    return html.replace("</head>", `  ${meta}\n</head>`);
+  }
+  return html;
+}
+
 async function serveStatic(
   publicDir: string,
   pathname: string,
+  authToken: string,
   res: ServerResponse,
 ): Promise<boolean> {
   // Reject directory-traversal attempts
@@ -50,8 +65,14 @@ async function serveStatic(
       const ext = path.extname(filePath).toLowerCase();
       const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
       const data = await readFile(filePath);
-      res.writeHead(200, { "Content-Type": contentType });
-      res.end(data);
+      if (ext === ".html") {
+        const html = injectAuthToken(data.toString("utf8"), authToken);
+        res.writeHead(200, { "Content-Type": contentType });
+        res.end(html);
+      } else {
+        res.writeHead(200, { "Content-Type": contentType });
+        res.end(data);
+      }
       return true;
     }
   } catch {
@@ -69,8 +90,9 @@ async function serveStatic(
   try {
     const indexPath = path.join(publicDir, "index.html");
     const data = await readFile(indexPath);
+    const html = injectAuthToken(data.toString("utf8"), authToken);
     res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(data);
+    res.end(html);
     return true;
   } catch {
     // No index.html exists — let the 404 fallback handle it
@@ -1170,7 +1192,7 @@ async function handleRequest(
 
   // ── Static file serving (non-API routes) ─────────────────────────────────
   if (publicDir && !pathname.startsWith("/api/")) {
-    const served = await serveStatic(publicDir, pathname, res);
+    const served = await serveStatic(publicDir, pathname, authToken, res);
     if (served) return;
   }
 

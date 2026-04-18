@@ -8,12 +8,28 @@ class ApiError extends Error {
   }
 }
 
+// The dashboard server injects the auth token as a <meta> tag into index.html
+// (see injectAuthToken in src/dashboard/index.ts). Reading it here lets the SPA
+// attach Authorization: Bearer <token> to every request so mutating endpoints
+// (POST/PATCH/DELETE) — which the server requires to be authenticated — work
+// from the browser without any additional setup.
+function getAuthToken() {
+  const meta = document.querySelector('meta[name="monsthera-auth-token"]');
+  return meta ? meta.getAttribute("content") : null;
+}
+
 async function request(path, options = {}) {
   const init = { ...options };
+  const headers = { ...(init.headers || {}) };
   if (init.body !== undefined) {
-    init.headers = { "Content-Type": "application/json", ...(init.headers || {}) };
+    headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(init.body);
   }
+  const token = getAuthToken();
+  if (token && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  init.headers = headers;
 
   const res = await fetch(path, init);
   if (!res.ok) {

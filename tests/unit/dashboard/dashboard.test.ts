@@ -55,6 +55,35 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
+describe("Dashboard static file serving", () => {
+  it("injects the auth token as a meta tag into index.html", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/html");
+    const html = await res.text();
+    expect(html).toContain('<meta name="monsthera-auth-token" content="');
+    expect(html).toContain(dashboard!.authToken);
+  });
+
+  it("also injects the token when serving /index.html directly", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/index.html"));
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<meta name="monsthera-auth-token"');
+    expect(html).toContain(dashboard!.authToken);
+  });
+
+  it("does not inject the token into non-HTML static assets", async () => {
+    if (dashboardError) return;
+    const res = await fetch(url("/test.js"));
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).not.toContain("monsthera-auth-token");
+  });
+});
+
 describe("Dashboard JSON API", () => {
   // ── GET /api/status ───────────────────────────────────────────────────────
 
