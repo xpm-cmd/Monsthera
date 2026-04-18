@@ -27,7 +27,7 @@ export class WikiBookkeeper {
   // ─── Log (append-only) ──────────────────────────────────────────────────
 
   async appendLog(
-    action: "create" | "update" | "delete" | "advance" | "reindex" | "archive",
+    action: "create" | "update" | "delete" | "advance" | "reindex" | "archive" | "rename",
     type: "knowledge" | "work",
     title: string,
     id?: string,

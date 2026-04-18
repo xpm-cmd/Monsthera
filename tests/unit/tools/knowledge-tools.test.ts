@@ -222,6 +222,46 @@ describe("update_article", () => {
     const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
     expect(body.error).toBe("NOT_FOUND");
   });
+
+  it("returns renamed article when new_slug is supplied", async () => {
+    const article = await seedArticle(service, { title: "Epigenetic Clocks" });
+    const response = await handleKnowledgeTool(
+      "update_article",
+      { id: article.id, new_slug: "dna-methylation-clocks" },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const updated = JSON.parse(response.content[0]!.text) as KnowledgeArticle;
+    expect(updated.slug).toBe("dna-methylation-clocks");
+  });
+
+  it("threads new_slug + rewrite_inline_wikilinks through to the service", async () => {
+    const target = await seedArticle(service, { title: "Old Topic" });
+    await seedArticle(service, {
+      title: "Referrer",
+      content: `see [[${target.slug}]] here`,
+    });
+    const response = await handleKnowledgeTool(
+      "update_article",
+      { id: target.id, new_slug: "new-topic", rewrite_inline_wikilinks: true },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const renamed = JSON.parse(response.content[0]!.text) as KnowledgeArticle;
+    expect(renamed.slug).toBe("new-topic");
+  });
+
+  it("rejects invalid new_slug format as VALIDATION_FAILED", async () => {
+    const article = await seedArticle(service);
+    const response = await handleKnowledgeTool(
+      "update_article",
+      { id: article.id, new_slug: "Has Spaces And Caps" },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
 });
 
 // ---------------------------------------------------------------------------

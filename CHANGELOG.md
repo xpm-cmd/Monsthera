@@ -6,12 +6,14 @@ All notable changes to Monsthera are documented here.
 
 ### Added
 
+- **Atomic slug rename via `update_article({ new_slug })`**: renames the article and updates every other article's `references` array in a single operation. Collision-checked, audit-logged. Opt in to inline wikilink rewriting across other articles' bodies via `rewrite_inline_wikilinks: true` (default false because bodies are content). Transactional-ish: staged writes with pre-image rollback on failure. [Tier 2.2]
 - **Per-template phase flows**: `spike` template now advances `planning → enrichment → done` (skips implementation + review). Feature/bugfix/refactor flows unchanged. [Tier 2.1]
 - **Mandatory cancellation reason**: `advance_phase` now requires a `reason` parameter when transitioning to `cancelled`. Recorded in phase history for audit. [Tier 2.1]
 - **`skip_guard` escape hatch**: `advance_phase` accepts optional `skip_guard: { reason }` to bypass a failing guard with an auditable justification. Skipped guards and reason are recorded in the new phase-history entry. Structural transition validity is NOT bypassed. [Tier 2.1]
 
 ### Changed
 
+- **`update_article` schema** gained `new_slug` and `rewrite_inline_wikilinks` optional fields. Existing update calls without these fields behave identically. [Tier 2.2]
 - **`PhaseHistoryEntry`** gained optional `reason` and `skippedGuards: string[]` fields. Existing persisted history without these fields reads back unchanged. [Tier 2.1]
 
 ## [3.0.0-alpha.1] — 2026-04-18

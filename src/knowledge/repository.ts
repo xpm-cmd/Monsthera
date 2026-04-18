@@ -51,4 +51,28 @@ export interface KnowledgeArticleRepository
   findByCategory(category: string): Promise<Result<KnowledgeArticle[], StorageError>>;
   findByTag(tag: string): Promise<Result<KnowledgeArticle[], StorageError>>;
   search(query: string): Promise<Result<KnowledgeArticle[], StorageError>>;
+  /**
+   * Write an article with a specific new slug (and optional content/references/etc. overrides),
+   * removing any prior file at the old slug if the slug is changing.
+   *
+   * This bypasses the title→slug auto-regeneration that `update` does. It is
+   * the primitive used by the service-layer rename orchestration. Content +
+   * references overrides make it usable for referrer rewrites in the same
+   * staged-write loop (where the slug does NOT change but body/references do).
+   */
+  writeWithSlug(
+    id: string,
+    input: WriteWithSlugInput,
+  ): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>>;
+}
+
+/** Input for writeWithSlug — all fields optional; identity is id. */
+export interface WriteWithSlugInput {
+  slug?: Slug;
+  content?: string;
+  references?: string[];
+  title?: string;
+  category?: string;
+  tags?: string[];
+  codeRefs?: string[];
 }

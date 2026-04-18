@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractWikilinks, parseWikilink, stripCodeRegions } from "../../../src/structure/wikilink.js";
+import { extractWikilinks, parseWikilink, rewriteWikilinkSlug, stripCodeRegions } from "../../../src/structure/wikilink.js";
 
 describe("parseWikilink", () => {
   it("parses a plain slug", () => {
@@ -126,5 +126,78 @@ Real link: [[aloea-project-overview]]`;
     const content = "Use \`[[foo]]\` placeholder, real ref [[bar]].";
     const slugs = extractWikilinks(content).map((l) => l.slug);
     expect(slugs).toEqual(["bar"]);
+  });
+});
+
+describe("rewriteWikilinkSlug", () => {
+  it("rewrites a plain [[foo]] to [[bar]]", () => {
+    const result = rewriteWikilinkSlug("see [[foo]] here", "foo", "bar");
+    expect(result.content).toBe("see [[bar]] here");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  it("preserves display text with pipe syntax", () => {
+    const result = rewriteWikilinkSlug("see [[foo|Display Text]] here", "foo", "bar");
+    expect(result.content).toBe("see [[bar|Display Text]] here");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  it("preserves anchor after hash", () => {
+    const result = rewriteWikilinkSlug("see [[foo#section]] here", "foo", "bar");
+    expect(result.content).toBe("see [[bar#section]] here");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  it("preserves both anchor and display text", () => {
+    const result = rewriteWikilinkSlug("see [[foo#sec|D]] here", "foo", "bar");
+    expect(result.content).toBe("see [[bar#sec|D]] here");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  it("does NOT rewrite [[foobar]] when old slug is foo", () => {
+    const result = rewriteWikilinkSlug("see [[foobar]] and [[foo-extended]]", "foo", "bar");
+    expect(result.content).toBe("see [[foobar]] and [[foo-extended]]");
+    expect(result.replacementCount).toBe(0);
+  });
+
+  it("does NOT rewrite wikilinks inside fenced code blocks", () => {
+    const input = "before\n```\n[[foo]] example\n```\nafter [[foo]]";
+    const result = rewriteWikilinkSlug(input, "foo", "bar");
+    expect(result.content).toBe("before\n```\n[[foo]] example\n```\nafter [[bar]]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  it("does NOT rewrite wikilinks inside inline code", () => {
+    const input = "placeholder \`[[foo]]\` and real [[foo]]";
+    const result = rewriteWikilinkSlug(input, "foo", "bar");
+    expect(result.content).toBe("placeholder \`[[foo]]\` and real [[bar]]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  it("does NOT rewrite wikilinks inside HTML comments", () => {
+    const input = "<!-- [[foo]] example --> real [[foo]]";
+    const result = rewriteWikilinkSlug(input, "foo", "bar");
+    expect(result.content).toBe("<!-- [[foo]] example --> real [[bar]]");
+    expect(result.replacementCount).toBe(1);
+  });
+
+  it("returns accurate replacementCount when multiple matches present", () => {
+    const input = "[[foo]] and [[foo|A]] and [[foo#x]] and [[other]]";
+    const result = rewriteWikilinkSlug(input, "foo", "bar");
+    expect(result.content).toBe("[[bar]] and [[bar|A]] and [[bar#x]] and [[other]]");
+    expect(result.replacementCount).toBe(3);
+  });
+
+  it("is a no-op when oldSlug equals newSlug", () => {
+    const input = "see [[foo]] here";
+    const result = rewriteWikilinkSlug(input, "foo", "foo");
+    expect(result.content).toBe(input);
+    expect(result.replacementCount).toBe(0);
+  });
+
+  it("handles content with no wikilinks without error", () => {
+    const result = rewriteWikilinkSlug("no wikilinks at all", "foo", "bar");
+    expect(result.content).toBe("no wikilinks at all");
+    expect(result.replacementCount).toBe(0);
   });
 });
