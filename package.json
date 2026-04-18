@@ -1,6 +1,6 @@
 {
   "name": "monsthera",
-  "version": "3.0.0-alpha.0",
+  "version": "3.0.0-alpha.1",
   "description": "Knowledge-native development platform for AI coding agents",
   "type": "module",
   "bin": { "monsthera": "dist/bin.js" },

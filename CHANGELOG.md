@@ -4,15 +4,19 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+## [3.0.0-alpha.1] — 2026-04-18
+
+**Tier 1 — Credibility of the gap report.** Three focused fixes that turn `get_graph_summary` from "mostly noise" into "mostly signal" for the Aloea wiki use case, validated live: `missingReferenceCount` dropped from 135 → 74 (−45%), all remaining entries are legitimate gaps.
+
 ### Added
 
-- **`preview_slug` tool**: returns the slug that would be generated for a given title, whether it already exists, and any near-miss conflicts (Jaccard similarity ≥ 0.7 on hyphen tokens). Call before `create_article` for nontrivial titles to avoid silent cross-link drift. [Tier 1.3]
-- **`create_article` optional `slug` param**: accept an explicit slug to override auto-generation. Collisions and invalid format return clear errors instead of silent behavior. [Tier 1.3]
+- **`preview_slug` tool**: returns the slug that would be generated for a given title, whether it already exists, and any near-miss conflicts (Jaccard similarity ≥ 0.7 on hyphen-split tokens). Read-only; call before `create_article` for nontrivial titles to avoid silent cross-link drift. [Tier 1.3]
+- **`create_article` optional `slug` param**: accept an explicit slug to override auto-generation. Format validated (`^[a-z0-9-]+$`) via Zod; collisions return `ALREADY_EXISTS` errors recommending `preview_slug` first, instead of silent behavior. [Tier 1.3]
 
 ### Fixed
 
-- **Wikilink parser**: strip display text (`[[slug|display]]`) and anchor suffixes (`[[slug#section]]`) when extracting slugs for reference resolution. Eliminates 56 false-positive missing references against typical Obsidian-style wikis. [Tier 1.1]
-- **Wikilink parser**: skip content inside fenced code blocks (```` ``` ```` / `~~~`), inline code (`` ` ``..`` ` ``), and HTML comments (`<!-- ... -->`) when extracting wikilinks. Eliminates the last 4 false-positive missing references from template placeholders and example snippets in protocol/log articles. [Tier 1.2]
+- **Wikilink parser — Obsidian pipe-syntax and anchors**: strip display text (`[[slug|display]]`) and anchor suffixes (`[[slug#section]]`) when extracting slugs for reference resolution. Extraction now lives in `src/structure/wikilink.ts` as pure helpers (`parseWikilink`, `extractWikilinks`) returning `{ slug, display, anchor }`. Eliminates 54 false-positive missing references against the Aloea wiki (135 → 81 live). [Tier 1.1]
+- **Wikilink parser — code regions**: new `stripCodeRegions` helper skips content inside fenced code blocks (```` ``` ```` / `~~~`), inline backtick spans (1–3 backticks), and HTML comments (`<!-- ... -->`) before wikilink extraction. Processing order: HTML comments → fenced blocks → inline code, to avoid triple-backtick inline being mistaken for a fence opener. Zero new dependencies. Eliminates the last 7 false-positive missing references from template placeholders and example snippets (81 → 74 live). [Tier 1.2]
 
 ### Changed
 
