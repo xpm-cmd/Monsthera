@@ -354,26 +354,21 @@ describe("findActive", () => {
   });
 
   it("excludes done articles", async () => {
-    // Use spike template (minEnrichment=0) and advance all the way
-    const spikeContent = "## Objective\n\nDo spike\n\n## Implementation\n\nDone in PR\n\n## Acceptance Criteria\n\n- Done";
+    // Tier 2.1: spike flow is planning → enrichment → done (skips implementation + review).
+    // Use a feature article (needs enrichment contribution + implementation + review)
+    // to verify findActive() still treats non-terminal articles as active.
+    const featureContent = "## Objective\n\nDo feature\n\n## Acceptance Criteria\n\n- Done\n\n## Implementation\n\nPR #1";
     const created = await createArticle(repo, {
-      title: "Done Work",
-      template: WorkTemplate.SPIKE,
-      content: spikeContent,
+      title: "Not Done Yet",
+      template: WorkTemplate.FEATURE,
+      content: featureContent,
     });
 
-    // Advance through full lifecycle: planning → enrichment → implementation → review → done
     await repo.advancePhase(created.id, WorkPhase.ENRICHMENT);
-    await repo.advancePhase(created.id, WorkPhase.IMPLEMENTATION);
-    await repo.advancePhase(created.id, WorkPhase.REVIEW);
 
-    // Manually set a reviewer to approved via internal access — not possible via public API.
-    // Instead, verify that the article in planning is found, and a manually-done article is not.
-    // For this test, just verify the planning article is returned:
     const result = await repo.findActive();
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // All articles are still active (in review) since we can't easily complete without a reviewer
     expect(result.value.every((a) => a.phase !== WorkPhase.DONE)).toBe(true);
   });
 
@@ -468,24 +463,31 @@ describe("advancePhase", () => {
     expect(result.value.phaseHistory[0]!.exitedAt).toBeTruthy();
   });
 
-  it("sets completedAt when transitioning to done (spike full lifecycle)", async () => {
-    // Spike has minEnrichmentCount=0, so enrichment→implementation passes immediately
-    const spikeContent = "## Objective\n\nSpike goal\n\n## Acceptance Criteria\n\n- Done\n\n## Implementation\n\nPR #42";
+  it("sets completedAt when transitioning to done (spike: enrichment → done per Tier 2.1 phase graph)", async () => {
+    // Tier 2.1: spike goes planning → enrichment → done directly, no reviewer needed.
+    const spikeContent = "## Objective\n\nSpike goal\n\n## Research Questions\n\n- Q1";
     const created = await createArticle(repo, {
       template: WorkTemplate.SPIKE,
       content: spikeContent,
     });
 
     await repo.advancePhase(created.id, WorkPhase.ENRICHMENT);
-    await repo.advancePhase(created.id, WorkPhase.IMPLEMENTATION);
-    await repo.advancePhase(created.id, WorkPhase.REVIEW);
-
-    // Need at least one approved reviewer to transition to done.
-    // Since we can't set reviewers through the public API, verify the guard failure instead.
     const doneResult = await repo.advancePhase(created.id, WorkPhase.DONE);
-    expect(doneResult.ok).toBe(false);
-    if (doneResult.ok) return;
-    expect(doneResult.error.code).toBe(ErrorCode.GUARD_FAILED);
+    expect(doneResult.ok).toBe(true);
+    if (!doneResult.ok) return;
+    expect(doneResult.value.phase).toBe(WorkPhase.DONE);
+    expect(doneResult.value.completedAt).toBeDefined();
+  });
+
+  it("spike: cannot transition planning → implementation (not in spike phaseGraph)", async () => {
+    const created = await createArticle(repo, {
+      template: WorkTemplate.SPIKE,
+      content: "## Objective\n\nX\n\n## Research Questions\n\n- Q",
+    });
+    const result = await repo.advancePhase(created.id, WorkPhase.IMPLEMENTATION);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.STATE_TRANSITION_INVALID);
   });
 
   it("returns StateTransitionError for invalid transition", async () => {
@@ -538,18 +540,18 @@ describe("advancePhase", () => {
     expect(result.value.phase).toBe(WorkPhase.CANCELLED);
   });
 
-  it("spike template: enrichment → implementation succeeds (minEnrichment=0)", async () => {
-    const spikeContent = "## Objective\n\nResearch topic\n\n## Acceptance Criteria\n\n- Findings documented";
+  it("spike template: enrichment → done succeeds directly (Tier 2.1 per-template phase graph)", async () => {
+    const spikeContent = "## Objective\n\nResearch topic\n\n## Research Questions\n\n- Q1";
     const created = await createArticle(repo, {
       template: WorkTemplate.SPIKE,
       content: spikeContent,
     });
 
     await repo.advancePhase(created.id, WorkPhase.ENRICHMENT);
-    const result = await repo.advancePhase(created.id, WorkPhase.IMPLEMENTATION);
+    const result = await repo.advancePhase(created.id, WorkPhase.DONE);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.phase).toBe(WorkPhase.IMPLEMENTATION);
+    expect(result.value.phase).toBe(WorkPhase.DONE);
   });
 
   it("returns StateTransitionError when attempting to transition from terminal phase", async () => {
@@ -557,6 +559,63 @@ describe("advancePhase", () => {
     await repo.advancePhase(created.id, WorkPhase.CANCELLED);
 
     const result = await repo.advancePhase(created.id, WorkPhase.PLANNING);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.STATE_TRANSITION_INVALID);
+  });
+
+  // ─── Tier 2.1 ───
+
+  it("cancellation with reason round-trips through phase history (in-memory)", async () => {
+    const created = await createArticle(repo);
+    const result = await repo.advancePhase(created.id, WorkPhase.CANCELLED, {
+      reason: "abandoned: superseded",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Read back via findById to make sure the repo stored it (not just returned it)
+    const reloaded = await repo.findById(created.id);
+    expect(reloaded.ok).toBe(true);
+    if (!reloaded.ok) return;
+    const latest = reloaded.value.phaseHistory.at(-1);
+    expect(latest?.phase).toBe(WorkPhase.CANCELLED);
+    expect(latest?.reason).toBe("abandoned: superseded");
+    expect(latest?.skippedGuards).toBeUndefined();
+  });
+
+  it("skipGuard on implementation → review records reason + skippedGuards (in-memory)", async () => {
+    // feature article with no '## Implementation' section
+    const created = await createArticle(repo, {
+      content: "## Objective\n\nX\n\n## Acceptance Criteria\n\n- Y",
+    });
+    await repo.advancePhase(created.id, WorkPhase.ENRICHMENT);
+    await repo.contributeEnrichment(created.id, "architecture", "contributed");
+    await repo.advancePhase(created.id, WorkPhase.IMPLEMENTATION);
+    const result = await repo.advancePhase(created.id, WorkPhase.REVIEW, {
+      skipGuard: { reason: "no implementation needed" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const reloaded = await repo.findById(created.id);
+    expect(reloaded.ok).toBe(true);
+    if (!reloaded.ok) return;
+    const latest = reloaded.value.phaseHistory.at(-1);
+    expect(latest?.phase).toBe(WorkPhase.REVIEW);
+    expect(latest?.reason).toBe("no implementation needed");
+    expect(latest?.skippedGuards).toEqual(["implementation_linked"]);
+  });
+
+  it("skipGuard does NOT bypass structural invalidity (in-memory)", async () => {
+    const created = await createArticle(repo, {
+      template: WorkTemplate.SPIKE,
+      content: "## Objective\n\nX\n\n## Research Questions\n\n- Q",
+    });
+    // spike: planning → review not in phase graph
+    const result = await repo.advancePhase(created.id, WorkPhase.REVIEW, {
+      skipGuard: { reason: "nope" },
+    });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe(ErrorCode.STATE_TRANSITION_INVALID);
@@ -671,16 +730,20 @@ describe("assignReviewer", () => {
 // submitReview
 // ---------------------------------------------------------------------------
 
-/** Helper to create an article already in review phase (spike template, minEnrichment=0) */
+/** Helper to create an article already in review phase.
+ * Tier 2.1: spike now skips implementation + review, so we use a feature article
+ * and satisfy the enrichment + implementation guards along the way. */
 async function createReviewArticle(repo: InMemoryWorkArticleRepository): Promise<WorkArticle> {
   const article = await createArticle(repo, {
-    template: WorkTemplate.SPIKE,
-    content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1",
+    template: WorkTemplate.FEATURE,
+    content: "## Objective\n\nShip it\n\n## Acceptance Criteria\n\n- Works",
   });
   await repo.advancePhase(article.id, WorkPhase.ENRICHMENT);
+  // Feature template needs at least 1 enrichment contribution before implementation.
+  await repo.contributeEnrichment(article.id, "architecture", "contributed");
   await repo.advancePhase(article.id, WorkPhase.IMPLEMENTATION);
   await repo.update(article.id, {
-    content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1\n\n## Implementation\n\nDone",
+    content: "## Objective\n\nShip it\n\n## Acceptance Criteria\n\n- Works\n\n## Implementation\n\nPR #1",
   });
   await repo.advancePhase(article.id, WorkPhase.REVIEW);
   const result = await repo.findById(article.id);

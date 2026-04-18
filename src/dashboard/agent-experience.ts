@@ -113,7 +113,7 @@ function hasReviewAssignment(article: WorkArticle): boolean {
 }
 
 function nextPhaseReady(article: WorkArticle): boolean {
-  const nextPhase = getNextPhase(article.phase);
+  const nextPhase = getNextPhase(article);
   if (!nextPhase) return false;
   return getGuardSet(article, article.phase, nextPhase).every((guard) => guard.check(article));
 }

@@ -59,7 +59,7 @@ export class OrchestrationService {
     if (!articleResult.ok) return articleResult;
 
     const article = articleResult.value;
-    const nextPhase = getNextPhase(article.phase);
+    const nextPhase = getNextPhase(article);
 
     if (nextPhase === null) {
       const report: ReadinessReport = {
@@ -191,7 +191,7 @@ export class OrchestrationService {
         if (!templateConfig.autoAdvance) continue;
       }
 
-      const nextPhase = getNextPhase(article.phase);
+      const nextPhase = getNextPhase(article);
       if (nextPhase === null) continue;
 
       const guards = getGuardSet(article, article.phase, nextPhase);

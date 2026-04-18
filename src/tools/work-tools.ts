@@ -89,7 +89,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "advance_phase",
-      description: "Advance a work article to the next phase only when the guards pass and the next owner or review gate is explicit.",
+      description: "Advance a work article to the next phase only when the guards pass and the next owner or review gate is explicit. Pass `reason` when cancelling; use `skip_guard: { reason }` for auditable guard bypass in legitimate edge cases.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -98,6 +98,19 @@ export function workToolDefinitions(): ToolDefinition[] {
             type: "string",
             enum: ["planning", "enrichment", "implementation", "review", "done", "cancelled"],
             description: "Target phase",
+          },
+          reason: {
+            type: "string",
+            description: "Required when targetPhase is 'cancelled'. Recorded on the new phase-history entry.",
+          },
+          skip_guard: {
+            type: "object",
+            description: "Auditable escape hatch that bypasses failing guards (not structural transition validity). The reason is recorded on the new phase-history entry alongside the names of the skipped guards.",
+            properties: {
+              reason: { type: "string", description: "Required justification for bypassing the guard(s)." },
+            },
+            required: ["reason"],
+            additionalProperties: false,
           },
         },
         required: ["id", "targetPhase"],
@@ -279,7 +292,57 @@ export async function handleWorkTool(
       if (isErrorResponse(targetPhase)) return targetPhase;
       const phaseErr = requireEnum(targetPhase, VALID_PHASES, "targetPhase");
       if (phaseErr) return phaseErr;
-      const result = await service.advancePhase(id, targetPhase as WorkPhaseType);
+
+      // Tier 2.1 — optional cancellation reason + skip_guard escape hatch.
+      // `reason` is required when targetPhase === "cancelled" (validated here
+      // at the tool boundary; also enforced at the service boundary for
+      // internal callers).
+      let reason: string | undefined;
+      if (args.reason !== undefined) {
+        if (typeof args.reason !== "string" || args.reason.trim().length === 0) {
+          return errorResponse("VALIDATION_FAILED", `"reason" must be a non-empty string`);
+        }
+        if (args.reason.length > 1000) {
+          return errorResponse("VALIDATION_FAILED", `"reason" exceeds maximum length of 1000`);
+        }
+        reason = args.reason;
+      }
+      if (targetPhase === "cancelled" && reason === undefined) {
+        return errorResponse(
+          "VALIDATION_FAILED",
+          `"reason" is required when targetPhase is "cancelled"`,
+        );
+      }
+
+      let skipGuard: { reason: string } | undefined;
+      if (args.skip_guard !== undefined) {
+        if (typeof args.skip_guard !== "object" || args.skip_guard === null || Array.isArray(args.skip_guard)) {
+          return errorResponse("VALIDATION_FAILED", `"skip_guard" must be an object with a "reason" field`);
+        }
+        const sg = args.skip_guard as Record<string, unknown>;
+        const extraKeys = Object.keys(sg).filter((k) => k !== "reason");
+        if (extraKeys.length > 0) {
+          return errorResponse(
+            "VALIDATION_FAILED",
+            `"skip_guard" contains unknown keys: ${extraKeys.join(", ")}. Only "reason" is allowed.`,
+          );
+        }
+        if (typeof sg.reason !== "string" || sg.reason.trim().length === 0) {
+          return errorResponse(
+            "VALIDATION_FAILED",
+            `"skip_guard.reason" is required and must be a non-empty string`,
+          );
+        }
+        if (sg.reason.length > 1000) {
+          return errorResponse("VALIDATION_FAILED", `"skip_guard.reason" exceeds maximum length of 1000`);
+        }
+        skipGuard = { reason: sg.reason };
+      }
+
+      const options = reason !== undefined || skipGuard !== undefined
+        ? { ...(reason !== undefined ? { reason } : {}), ...(skipGuard ? { skipGuard } : {}) }
+        : undefined;
+      const result = await service.advancePhase(id, targetPhase as WorkPhaseType, options);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
     }

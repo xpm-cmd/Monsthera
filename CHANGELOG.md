@@ -4,6 +4,16 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Per-template phase flows**: `spike` template now advances `planning → enrichment → done` (skips implementation + review). Feature/bugfix/refactor flows unchanged. [Tier 2.1]
+- **Mandatory cancellation reason**: `advance_phase` now requires a `reason` parameter when transitioning to `cancelled`. Recorded in phase history for audit. [Tier 2.1]
+- **`skip_guard` escape hatch**: `advance_phase` accepts optional `skip_guard: { reason }` to bypass a failing guard with an auditable justification. Skipped guards and reason are recorded in the new phase-history entry. Structural transition validity is NOT bypassed. [Tier 2.1]
+
+### Changed
+
+- **`PhaseHistoryEntry`** gained optional `reason` and `skippedGuards: string[]` fields. Existing persisted history without these fields reads back unchanged. [Tier 2.1]
+
 ## [3.0.0-alpha.1] — 2026-04-18
 
 **Tier 1 — Credibility of the gap report.** Three focused fixes that turn `get_graph_summary` from "mostly noise" into "mostly signal" for the Aloea wiki use case, validated live: `missingReferenceCount` dropped from 135 → 74 (−45%), all remaining entries are legitimate gaps.
