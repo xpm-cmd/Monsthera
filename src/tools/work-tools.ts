@@ -15,7 +15,7 @@ export function workToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "create_work",
-      description: "Create the work article that will act as the handoff contract for execution. Add objective, acceptance criteria, owners, references, and code refs as early as possible. Search sync happens automatically; use reindex_all only after bulk imports or recovery work.",
+      description: "Create the work article that will act as the handoff contract for execution. Add objective, acceptance criteria, owners, references, and code refs as early as possible so the contract is ready for pickup — fewer round-trips than create + update. Search sync happens automatically; use reindex_all only after bulk imports or recovery work.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -24,8 +24,11 @@ export function workToolDefinitions(): ToolDefinition[] {
           priority: { type: "string", enum: ["critical", "high", "medium", "low"], description: "Priority level" },
           author: { type: "string", description: "Author agent ID" },
           lead: { type: "string", description: "Lead agent ID" },
+          assignee: { type: "string", description: "Assignee agent ID (who will implement or own execution)" },
           tags: { type: "array", items: { type: "string" }, description: "Tags" },
-          content: { type: "string", description: "Initial content (markdown)" },
+          references: { type: "array", items: { type: "string" }, description: "Knowledge article IDs or slugs this work builds on" },
+          codeRefs: { type: "array", items: { type: "string" }, description: "Code references (file paths, optionally with line ranges)" },
+          content: { type: "string", description: "Initial content (markdown). Include ## Objective and ## Acceptance Criteria so guards pass." },
         },
         required: ["title", "template", "priority", "author"],
       },
