@@ -7,6 +7,7 @@ All notable changes to Monsthera are documented here.
 ### Fixed
 
 - **Wikilink parser**: strip display text (`[[slug|display]]`) and anchor suffixes (`[[slug#section]]`) when extracting slugs for reference resolution. Eliminates 56 false-positive missing references against typical Obsidian-style wikis. [Tier 1.1]
+- **Wikilink parser**: skip content inside fenced code blocks (```` ``` ```` / `~~~`), inline code (`` ` ``..`` ` ``), and HTML comments (`<!-- ... -->`) when extracting wikilinks. Eliminates the last 4 false-positive missing references from template placeholders and example snippets in protocol/log articles. [Tier 1.2]
 
 ### Changed
 
