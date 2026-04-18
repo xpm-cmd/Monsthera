@@ -4,6 +4,8 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+## [3.0.0-alpha.3] — 2026-04-18
+
 **Tier 2.4 — Dashboard ↔ MCP parity.** Three focused PRs that close
 the UI drift accumulated during Tier 1/2: every feature that shipped
 as an MCP tool now has a dashboard surface, and every feature exposed
@@ -22,6 +24,10 @@ did not change.
 
 - **`create_work` MCP tool now documents `assignee`, `references`, and `codeRefs`** (#51 — Tier 3.2 B.2). The underlying Zod schema has accepted all three since v3 shipped; only the tool's JSON schema hid them from the LLM, forcing a `create + update` dance whenever owner or refs were known upfront. Behavior is unchanged for callers that already included the fields.
 - **`.gitignore` extended** for personal AI tool configs (`.copilot/`, `.cursorrules`, `.cursorignore`, `*.local.md`, `settings.local.json`). The v2-era phase execution prompts (`phase-6-prompt.md`..`phase-9-prompt.md`) have been moved from the repo root to `docs/history/` to stop crowding the top level — they remain available for reference but are no longer part of the active working set.
+
+### Fixed
+
+- **Dashboard SPA auth wiring** (#52). The dashboard HTTP layer has required a Bearer token on every mutating request since v3 shipped, but the SPA never attached one — every UI-driven mutation silently 401'd. `serveStatic` now injects `<meta name="monsthera-auth-token" content="...">` into every HTML response, and `public/lib/api.js::request` reads it and attaches `Authorization: Bearer <token>` automatically. Same-origin trust boundary; no wider exposure.
 
 ## [3.0.0-alpha.2] — 2026-04-18
 
