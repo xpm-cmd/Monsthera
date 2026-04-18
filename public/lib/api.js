@@ -68,6 +68,13 @@ export function getKnowledge(category) {
 }
 export function getKnowledgeById(id) { return get(`/api/knowledge/${encodeURIComponent(id)}`); }
 export function createKnowledge(input) { return post("/api/knowledge", input); }
+export function previewSlug(title) { return post("/api/knowledge/preview-slug", { title }); }
+export function renameKnowledgeSlug(id, newSlug, { rewriteInlineWikilinks = false } = {}) {
+  return patch(`/api/knowledge/${encodeURIComponent(id)}`, {
+    new_slug: newSlug,
+    rewrite_inline_wikilinks: rewriteInlineWikilinks,
+  });
+}
 export function updateKnowledge(id, input) { return patch(`/api/knowledge/${encodeURIComponent(id)}`, input); }
 export function deleteKnowledge(id) { return del(`/api/knowledge/${encodeURIComponent(id)}`); }
 export function getWork(phase) {
