@@ -20,7 +20,10 @@ export interface ToolResponse {
   [key: string]: unknown;
 }
 
-/** Returns the 7 knowledge tool definitions for MCP ListTools */
+/** Maximum number of articles accepted by batch_create_articles / batch_update_articles. */
+export const MAX_BATCH_ARTICLES = 100;
+
+/** Returns the 9 knowledge tool definitions for MCP ListTools */
 export function knowledgeToolDefinitions(): ToolDefinition[] {
   return [
     {
@@ -115,6 +118,62 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           offset: { type: "number", description: "Skip N results (default 0)" },
         },
         required: ["query"],
+      },
+    },
+    {
+      name: "batch_create_articles",
+      description: `Create many knowledge articles in a single call. Best-effort: each entry is validated and created independently, and the response reports per-item success or failure without aborting the batch. Accepts 1-${MAX_BATCH_ARTICLES} entries using the same schema as create_article. Search sync runs per-item; wiki index.md is rebuilt once at the end. Use for bulk imports or migrations; for a single article, prefer create_article.`,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          articles: {
+            type: "array",
+            description: `Array of 1-${MAX_BATCH_ARTICLES} article create inputs (same shape as create_article).`,
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Article title" },
+                category: { type: "string", description: "Article category" },
+                content: { type: "string", description: "Article content (markdown)" },
+                tags: { type: "array", items: { type: "string" } },
+                codeRefs: { type: "array", items: { type: "string" } },
+                references: { type: "array", items: { type: "string" } },
+                slug: { type: "string", description: "Optional explicit slug" },
+              },
+              required: ["title", "category", "content"],
+            },
+          },
+        },
+        required: ["articles"],
+      },
+    },
+    {
+      name: "batch_update_articles",
+      description: `Update many knowledge articles in a single call. Best-effort: each entry is validated and applied independently, and the response reports per-item success or failure. Accepts 1-${MAX_BATCH_ARTICLES} entries; each requires \`id\` plus any subset of update_article fields (including \`new_slug\` and \`rewrite_inline_wikilinks\`). Rename semantics match update_article — per-item collision checks and referrer updates still apply. Use for bulk edits, migrations, or citation backfills; for a single article, prefer update_article.`,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          updates: {
+            type: "array",
+            description: `Array of 1-${MAX_BATCH_ARTICLES} update entries. Each entry requires \`id\` and accepts the same optional fields as update_article.`,
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string", description: "Article ID (required)" },
+                title: { type: "string" },
+                category: { type: "string" },
+                content: { type: "string" },
+                tags: { type: "array", items: { type: "string" } },
+                codeRefs: { type: "array", items: { type: "string" } },
+                references: { type: "array", items: { type: "string" } },
+                new_slug: { type: "string" },
+                rewrite_inline_wikilinks: { type: "boolean" },
+              },
+              required: ["id"],
+            },
+          },
+        },
+        required: ["updates"],
       },
     },
   ];
@@ -235,6 +294,40 @@ export async function handleKnowledgeTool(
         already_exists: result.value.alreadyExists,
         conflicts: result.value.conflicts,
       });
+    }
+    case "batch_create_articles": {
+      const arr = args.articles;
+      if (!Array.isArray(arr)) {
+        return errorResponse("VALIDATION_FAILED", '"articles" is required and must be an array');
+      }
+      if (arr.length === 0) {
+        return errorResponse("VALIDATION_FAILED", '"articles" must not be empty');
+      }
+      if (arr.length > MAX_BATCH_ARTICLES) {
+        return errorResponse(
+          "VALIDATION_FAILED",
+          `"articles" accepts at most ${MAX_BATCH_ARTICLES} entries per call (received ${arr.length})`,
+        );
+      }
+      const result = await service.batchCreateArticles(arr);
+      return successResponse(result);
+    }
+    case "batch_update_articles": {
+      const arr = args.updates;
+      if (!Array.isArray(arr)) {
+        return errorResponse("VALIDATION_FAILED", '"updates" is required and must be an array');
+      }
+      if (arr.length === 0) {
+        return errorResponse("VALIDATION_FAILED", '"updates" must not be empty');
+      }
+      if (arr.length > MAX_BATCH_ARTICLES) {
+        return errorResponse(
+          "VALIDATION_FAILED",
+          `"updates" accepts at most ${MAX_BATCH_ARTICLES} entries per call (received ${arr.length})`,
+        );
+      }
+      const result = await service.batchUpdateArticles(arr);
+      return successResponse(result);
     }
     case "search_articles": {
       const query = requireString(args, "query", MAX_QUERY_LENGTH);
