@@ -12,6 +12,7 @@ import { searchToolDefinitions, handleSearchTool } from "./tools/search-tools.js
 import { WikiBookkeeper } from "./knowledge/wiki-bookkeeper.js";
 import { orchestrationToolDefinitions, handleOrchestrationTool } from "./tools/orchestration-tools.js";
 import { waveToolDefinitions, handleWaveTool } from "./tools/wave-tools.js";
+import { agentToolDefinitions, handleAgentTool } from "./tools/agent-tools.js";
 import { statusToolDefinitions, handleStatusTool } from "./tools/status-tools.js";
 import { ingestToolDefinitions, handleIngestTool } from "./tools/ingest-tools.js";
 import { structureToolDefinitions, handleStructureTool } from "./tools/structure-tools.js";
@@ -49,6 +50,9 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const waveTools = waveToolDefinitions();
   const waveToolNames = new Set(waveTools.map((t) => t.name));
 
+  const agentTools = agentToolDefinitions();
+  const agentToolNames = new Set(agentTools.map((t) => t.name));
+
   const statusTools = statusToolDefinitions();
   const statusToolNames = new Set(statusTools.map((t) => t.name));
 
@@ -70,6 +74,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
         ...searchTools,
         ...orchestrationTools,
         ...waveTools,
+        ...agentTools,
         ...statusTools,
         ...ingestTools,
         ...structureTools,
@@ -112,6 +117,17 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
 
     if (waveToolNames.has(name)) {
       return handleWaveTool(name, args, container.orchestrationService, container.workService);
+    }
+
+    if (agentToolNames.has(name)) {
+      return handleAgentTool(name, args, {
+        agentsService: container.agentsService,
+        workService: container.workService,
+        knowledgeService: container.knowledgeService,
+        orchestrationService: container.orchestrationService,
+        status: container.status,
+        autoAdvanceEnabled: container.config.orchestration.autoAdvance,
+      });
     }
 
     if (statusToolNames.has(name)) {

@@ -126,6 +126,34 @@ describe("create_work", () => {
     const body = JSON.parse(response.content[0]!.text) as { error: string };
     expect(body.error).toBe("VALIDATION_FAILED");
   });
+
+  it("accepts and persists assignee, references, and codeRefs at creation time", async () => {
+    const response = await handleWorkTool(
+      "create_work",
+      {
+        ...validInput,
+        assignee: "agent-builder",
+        references: ["architecture-overview", "k-abc123"],
+        codeRefs: ["src/dashboard/index.ts", "src/tools/work-tools.ts"],
+      },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const article = JSON.parse(response.content[0]!.text) as WorkArticle;
+    expect(article.assignee).toBe("agent-builder");
+    expect(article.references).toEqual(["architecture-overview", "k-abc123"]);
+    expect(article.codeRefs).toEqual(["src/dashboard/index.ts", "src/tools/work-tools.ts"]);
+  });
+
+  it("exposes assignee, references, and codeRefs in the create_work input schema", () => {
+    const defs = workToolDefinitions();
+    const createWork = defs.find((d) => d.name === "create_work");
+    expect(createWork).toBeDefined();
+    const props = createWork!.inputSchema.properties as Record<string, unknown>;
+    expect(props).toHaveProperty("assignee");
+    expect(props).toHaveProperty("references");
+    expect(props).toHaveProperty("codeRefs");
+  });
 });
 
 // ---------------------------------------------------------------------------
