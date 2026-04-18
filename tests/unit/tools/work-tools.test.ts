@@ -351,6 +351,89 @@ describe("advance_phase", () => {
     const body = JSON.parse(response.content[0]!.text) as { error: string };
     expect(body.error).toBe("VALIDATION_FAILED");
   });
+
+  // ─── Tier 2.1 ───
+
+  it("cancellation without reason returns VALIDATION_FAILED (Tier 2.1)", async () => {
+    const article = await seedWork(service);
+    const response = await handleWorkTool(
+      "advance_phase",
+      { id: article.id, targetPhase: WorkPhase.CANCELLED },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+    expect(body.message.toLowerCase()).toContain("reason");
+  });
+
+  it("cancellation with reason succeeds and records it in phase history (Tier 2.1)", async () => {
+    const article = await seedWork(service);
+    const response = await handleWorkTool(
+      "advance_phase",
+      { id: article.id, targetPhase: WorkPhase.CANCELLED, reason: "superseded by w-other" },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const updated = JSON.parse(response.content[0]!.text) as WorkArticle;
+    expect(updated.phase).toBe(WorkPhase.CANCELLED);
+    const latest = updated.phaseHistory.at(-1);
+    expect(latest?.reason).toBe("superseded by w-other");
+  });
+
+  it("skip_guard threads to service, bypasses failing guard, records entry (Tier 2.1)", async () => {
+    // Build a feature article stuck in implementation without '## Implementation'
+    const article = await seedWork(service, {
+      content: "## Objective\nDo thing.\n\n## Acceptance Criteria\n- Works.",
+    });
+    await handleWorkTool("advance_phase", { id: article.id, targetPhase: WorkPhase.ENRICHMENT }, service);
+    await handleWorkTool("contribute_enrichment", { id: article.id, role: "architecture", status: "contributed" }, service);
+    await handleWorkTool("advance_phase", { id: article.id, targetPhase: WorkPhase.IMPLEMENTATION }, service);
+
+    const response = await handleWorkTool(
+      "advance_phase",
+      {
+        id: article.id,
+        targetPhase: WorkPhase.REVIEW,
+        skip_guard: { reason: "docs-only feature, no implementation section" },
+      },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const updated = JSON.parse(response.content[0]!.text) as WorkArticle;
+    expect(updated.phase).toBe(WorkPhase.REVIEW);
+    const latest = updated.phaseHistory.at(-1);
+    expect(latest?.skippedGuards).toEqual(["implementation_linked"]);
+    expect(latest?.reason).toBe("docs-only feature, no implementation section");
+  });
+
+  it("skip_guard rejects unknown keys (strict) (Tier 2.1)", async () => {
+    const article = await seedWork(service);
+    const response = await handleWorkTool(
+      "advance_phase",
+      {
+        id: article.id,
+        targetPhase: WorkPhase.ENRICHMENT,
+        skip_guard: { reason: "hm", extraneous: "field" },
+      },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("skip_guard requires a non-empty reason (Tier 2.1)", async () => {
+    const article = await seedWork(service);
+    const response = await handleWorkTool(
+      "advance_phase",
+      { id: article.id, targetPhase: WorkPhase.ENRICHMENT, skip_guard: { reason: "" } },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -414,28 +497,29 @@ describe("assign_reviewer", () => {
 // ---------------------------------------------------------------------------
 
 describe("submit_review", () => {
+  async function advanceToReview(service: WorkService, id: string): Promise<void> {
+    // Tier 2.1: spike skips implementation + review. Use feature flow with a
+    // contributed enrichment role to drive the article to review phase.
+    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.ENRICHMENT }, service);
+    await handleWorkTool("contribute_enrichment", { id, role: "architecture", status: "contributed" }, service);
+    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.IMPLEMENTATION }, service);
+    await handleWorkTool("update_work", {
+      id,
+      content: "## Objective\n\nShip it\n\n## Acceptance Criteria\n\n- Works\n\n## Implementation\n\nPR #1",
+    }, service);
+    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.REVIEW }, service);
+    await handleWorkTool("assign_reviewer", { id, agentId: "reviewer-1" }, service);
+  }
+
   it("records review outcome", async () => {
     const service = createService();
-    // Use spike template (minEnrichmentCount=0) to simplify advancing to review phase
     const create = await handleWorkTool("create_work", {
-      title: "Test", template: WorkTemplate.SPIKE, priority: "medium", author: "agent-1",
-      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1",
+      title: "Test", template: WorkTemplate.FEATURE, priority: "medium", author: "agent-1",
+      content: "## Objective\n\nShip it\n\n## Acceptance Criteria\n\n- Works",
     }, service);
     const article = JSON.parse(create.content[0]!.text) as WorkArticle;
     const id = article.id;
-    // planning → enrichment
-    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.ENRICHMENT }, service);
-    // enrichment → implementation
-    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.IMPLEMENTATION }, service);
-    // add implementation section
-    await handleWorkTool("update_work", {
-      id,
-      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1\n\n## Implementation\n\nDone",
-    }, service);
-    // implementation → review
-    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.REVIEW }, service);
-    // assign reviewer after reaching review phase
-    await handleWorkTool("assign_reviewer", { id, agentId: "reviewer-1" }, service);
+    await advanceToReview(service, id);
     const result = await handleWorkTool("submit_review", {
       id, agentId: "reviewer-1", status: "approved",
     }, service);
@@ -444,21 +528,13 @@ describe("submit_review", () => {
 
   it("rejects invalid review status", async () => {
     const service = createService();
-    // Use spike template to advance to review phase
     const create = await handleWorkTool("create_work", {
-      title: "Test", template: WorkTemplate.SPIKE, priority: "medium", author: "agent-1",
-      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1",
+      title: "Test", template: WorkTemplate.FEATURE, priority: "medium", author: "agent-1",
+      content: "## Objective\n\nShip it\n\n## Acceptance Criteria\n\n- Works",
     }, service);
     const article = JSON.parse(create.content[0]!.text) as WorkArticle;
     const id = article.id;
-    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.ENRICHMENT }, service);
-    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.IMPLEMENTATION }, service);
-    await handleWorkTool("update_work", {
-      id,
-      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1\n\n## Implementation\n\nDone",
-    }, service);
-    await handleWorkTool("advance_phase", { id, targetPhase: WorkPhase.REVIEW }, service);
-    await handleWorkTool("assign_reviewer", { id, agentId: "reviewer-1" }, service);
+    await advanceToReview(service, id);
     const result = await handleWorkTool("submit_review", {
       id, agentId: "reviewer-1", status: "invalid",
     }, service);

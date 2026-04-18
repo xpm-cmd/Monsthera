@@ -13,7 +13,10 @@ import type {
   UpdateWorkArticleInput,
   EnrichmentAssignment,
   ReviewAssignment,
+  AdvancePhaseOptions,
+  PhaseHistoryEntry,
 } from "./repository.js";
+import { buildCancellationHistoryEntry, buildAdvanceHistoryEntry } from "./phase-history.js";
 
 // ─── InMemoryWorkArticleRepository ───────────────────────────────────────────
 
@@ -167,13 +170,17 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
   async advancePhase(
     id: WorkId,
     targetPhase: WorkPhaseType,
+    options?: AdvancePhaseOptions,
   ): Promise<Result<WorkArticle, StateTransitionError | GuardFailedError | NotFoundError | StorageError>> {
     const existing = this.store.get(id);
     if (!existing) return err(new NotFoundError("WorkArticle", id));
 
-    // Delegate guard/transition validation to lifecycle
-    const transitionResult = checkTransition(existing, targetPhase);
+    // Delegate guard/transition validation to lifecycle (Tier 2.1: pass skipGuard)
+    const transitionResult = checkTransition(existing, targetPhase, {
+      ...(options?.skipGuard ? { skipGuard: options.skipGuard } : {}),
+    });
     if (!transitionResult.ok) return transitionResult;
+    const { skippedGuards } = transitionResult.value;
 
     const now = timestamp();
 
@@ -184,10 +191,14 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
         : entry,
     );
 
+    const newEntry: PhaseHistoryEntry = targetPhase === WorkPhase.CANCELLED
+      ? buildCancellationHistoryEntry(targetPhase, now, options, skippedGuards)
+      : buildAdvanceHistoryEntry(targetPhase, now, options, skippedGuards);
+
     const updated: WorkArticle = {
       ...existing,
       phase: targetPhase,
-      phaseHistory: [...updatedHistory, { phase: targetPhase, enteredAt: now }],
+      phaseHistory: [...updatedHistory, newEntry],
       updatedAt: now,
       completedAt: targetPhase === WorkPhase.DONE ? now : existing.completedAt,
     };

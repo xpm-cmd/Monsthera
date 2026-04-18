@@ -1,11 +1,13 @@
 import type { Result } from "../core/result.js";
-import type { NotFoundError, StorageError, ValidationError, StateTransitionError, GuardFailedError } from "../core/errors.js";
+import { err } from "../core/result.js";
+import { ValidationError } from "../core/errors.js";
+import type { NotFoundError, StorageError, StateTransitionError, GuardFailedError } from "../core/errors.js";
 import type { Logger } from "../core/logger.js";
 import type { StatusReporter } from "../core/status.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
-import { workId, agentId } from "../core/types.js";
+import { workId, agentId, WorkPhase } from "../core/types.js";
 import type { OrchestrationEventRepository, OrchestrationEventType } from "../orchestration/repository.js";
-import type { WorkArticle, WorkArticleRepository, CreateWorkArticleInput, UpdateWorkArticleInput } from "./repository.js";
+import type { WorkArticle, WorkArticleRepository, CreateWorkArticleInput, UpdateWorkArticleInput, AdvancePhaseOptions } from "./repository.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { SearchMutationSync } from "../search/sync.js";
 import type { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
@@ -108,9 +110,22 @@ export class WorkService {
   async advancePhase(
     id: string,
     targetPhase: WorkPhaseType,
-  ): Promise<Result<WorkArticle, StateTransitionError | GuardFailedError | NotFoundError | StorageError>> {
+    options?: AdvancePhaseOptions,
+  ): Promise<Result<WorkArticle, ValidationError | StateTransitionError | GuardFailedError | NotFoundError | StorageError>> {
+    // Tier 2.1 — cancellation requires an explicit reason at the service boundary
+    // to guarantee an audit trail for every cancelled work article, regardless
+    // of which tool/script initiated it.
+    if (targetPhase === WorkPhase.CANCELLED) {
+      const reason = options?.reason;
+      if (typeof reason !== "string" || reason.trim().length === 0) {
+        return err(new ValidationError(
+          "A non-empty 'reason' is required when advancing a work article to 'cancelled'",
+          { targetPhase },
+        ));
+      }
+    }
     this.logger.info("Advancing work article phase", { operation: "advancePhase", id, targetPhase });
-    const result = await this.repo.advancePhase(workId(id), targetPhase);
+    const result = await this.repo.advancePhase(workId(id), targetPhase, options);
     if (result.ok) {
       await this.syncIndexedArticle(result.value.id);
       await this.logEvent(result.value.id, "phase_advanced", {

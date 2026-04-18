@@ -1,7 +1,15 @@
-import { WorkTemplate, EnrichmentRole } from "../core/types.js";
-import type { EnrichmentRole as EnrichmentRoleType, WorkTemplate as WorkTemplateType } from "../core/types.js";
+import { WorkTemplate, EnrichmentRole, WorkPhase } from "../core/types.js";
+import type { EnrichmentRole as EnrichmentRoleType, WorkTemplate as WorkTemplateType, WorkPhase as WorkPhaseType } from "../core/types.js";
 
 // ─── Template Configuration ──────────────────────────────────────────────────
+
+/**
+ * Forward phase-graph edges for a template, formatted as `"from:to"` strings.
+ * Cancellation from any non-terminal phase is always implicit — do not list it.
+ * Tier 2.1 introduced per-template graphs so that documentation-style templates
+ * (spike) skip phases that do not apply.
+ */
+export type PhaseGraphEdge = `${WorkPhaseType}:${WorkPhaseType}`;
 
 /** Configuration for a work article template */
 export interface WorkTemplateConfig {
@@ -10,7 +18,21 @@ export interface WorkTemplateConfig {
   readonly defaultEnrichmentRoles: readonly EnrichmentRoleType[];
   readonly minEnrichmentCount: number;
   readonly autoAdvance: boolean;
+  /** Forward phase-graph edges for this template (Tier 2.1). Cancellation is implicit. */
+  readonly phaseGraph: readonly PhaseGraphEdge[];
 }
+
+const STANDARD_PHASE_GRAPH: readonly PhaseGraphEdge[] = [
+  `${WorkPhase.PLANNING}:${WorkPhase.ENRICHMENT}`,
+  `${WorkPhase.ENRICHMENT}:${WorkPhase.IMPLEMENTATION}`,
+  `${WorkPhase.IMPLEMENTATION}:${WorkPhase.REVIEW}`,
+  `${WorkPhase.REVIEW}:${WorkPhase.DONE}`,
+];
+
+const SPIKE_PHASE_GRAPH: readonly PhaseGraphEdge[] = [
+  `${WorkPhase.PLANNING}:${WorkPhase.ENRICHMENT}`,
+  `${WorkPhase.ENRICHMENT}:${WorkPhase.DONE}`,
+];
 
 /** Template configurations for all 4 work article types */
 export const WORK_TEMPLATES: Record<WorkTemplateType, WorkTemplateConfig> = {
@@ -20,6 +42,7 @@ export const WORK_TEMPLATES: Record<WorkTemplateType, WorkTemplateConfig> = {
     defaultEnrichmentRoles: [EnrichmentRole.ARCHITECTURE, EnrichmentRole.TESTING],
     minEnrichmentCount: 1,
     autoAdvance: false,
+    phaseGraph: STANDARD_PHASE_GRAPH,
   },
   [WorkTemplate.BUGFIX]: {
     template: WorkTemplate.BUGFIX,
@@ -27,6 +50,7 @@ export const WORK_TEMPLATES: Record<WorkTemplateType, WorkTemplateConfig> = {
     defaultEnrichmentRoles: [EnrichmentRole.TESTING],
     minEnrichmentCount: 1,
     autoAdvance: false,
+    phaseGraph: STANDARD_PHASE_GRAPH,
   },
   [WorkTemplate.REFACTOR]: {
     template: WorkTemplate.REFACTOR,
@@ -34,6 +58,7 @@ export const WORK_TEMPLATES: Record<WorkTemplateType, WorkTemplateConfig> = {
     defaultEnrichmentRoles: [EnrichmentRole.ARCHITECTURE],
     minEnrichmentCount: 1,
     autoAdvance: false,
+    phaseGraph: STANDARD_PHASE_GRAPH,
   },
   [WorkTemplate.SPIKE]: {
     template: WorkTemplate.SPIKE,
@@ -41,6 +66,7 @@ export const WORK_TEMPLATES: Record<WorkTemplateType, WorkTemplateConfig> = {
     defaultEnrichmentRoles: [],
     minEnrichmentCount: 0,
     autoAdvance: false,
+    phaseGraph: SPIKE_PHASE_GRAPH,
   },
 };
 

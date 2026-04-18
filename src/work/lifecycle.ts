@@ -9,14 +9,6 @@ import { WORK_TEMPLATES } from "./templates.js";
 
 // ─── State Machine ──────────────────────────────────────────────────────────
 
-/** Valid forward transitions between phases */
-const VALID_TRANSITIONS = new Set([
-  "planning:enrichment",
-  "enrichment:implementation",
-  "implementation:review",
-  "review:done",
-]);
-
 /** Terminal phases that cannot transition to anything */
 const TERMINAL_PHASES = new Set<WorkPhaseType>([WorkPhase.DONE, WorkPhase.CANCELLED]);
 
@@ -61,41 +53,67 @@ export function getGuardSet(article: WorkArticle, from: WorkPhaseType, to: WorkP
   }
 }
 
-/** Get the next forward phase in the lifecycle, or null if none */
-export function getNextPhase(phase: WorkPhaseType): WorkPhaseType | null {
-  switch (phase) {
-    case WorkPhase.PLANNING: return WorkPhase.ENRICHMENT;
-    case WorkPhase.ENRICHMENT: return WorkPhase.IMPLEMENTATION;
-    case WorkPhase.IMPLEMENTATION: return WorkPhase.REVIEW;
-    case WorkPhase.REVIEW: return WorkPhase.DONE;
-    default: return null;
-  }
+/**
+ * Get the next forward phase for this article's template, or null if the
+ * article is in a terminal phase or no forward edge is defined. Tier 2.1 —
+ * template-aware, so spike articles advance enrichment→done directly.
+ */
+export function getNextPhase(article: WorkArticle): WorkPhaseType | null {
+  if (TERMINAL_PHASES.has(article.phase)) return null;
+  const graph = WORK_TEMPLATES[article.template].phaseGraph;
+  const edge = graph.find((e) => e.startsWith(`${article.phase}:`));
+  if (!edge) return null;
+  const [, to] = edge.split(":") as [WorkPhaseType, WorkPhaseType];
+  return to;
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Check if a transition from one phase to another is structurally valid
- * (without evaluating guards).
+ * Check whether a transition is structurally valid for a specific article.
+ * Terminal phases cannot transition. Cancellation is always valid from
+ * non-terminal phases. All other forward transitions must appear in the
+ * article's template `phaseGraph`.
  */
-export function isValidTransition(from: WorkPhaseType, to: WorkPhaseType): boolean {
+export function isValidTransition(article: WorkArticle, to: WorkPhaseType): boolean {
+  const from = article.phase;
   if (TERMINAL_PHASES.has(from)) return false;
   if (to === WorkPhase.CANCELLED) return true;
-  return VALID_TRANSITIONS.has(`${from}:${to}`);
+  const graph = WORK_TEMPLATES[article.template].phaseGraph;
+  return graph.includes(`${from}:${to}` as const);
+}
+
+/** Options for `checkTransition` (Tier 2.1). */
+export interface CheckTransitionOptions {
+  /** When present, guard failures do not block the transition; the names of the
+   * bypassed guards are returned so the caller can record them in history. */
+  readonly skipGuard?: { readonly reason: string };
+}
+
+/** Success shape of `checkTransition`. `skippedGuards` is populated only when
+ * the `skipGuard` option actually bypassed one or more failing guards. */
+export interface TransitionSuccess {
+  readonly targetPhase: WorkPhaseType;
+  readonly skippedGuards: readonly string[];
 }
 
 /**
  * Check if a work article can transition to the target phase.
  * Validates structural transition legality AND evaluates all guards.
  *
- * Returns ok(targetPhase) if transition is allowed.
+ * Returns ok({targetPhase, skippedGuards}) if transition is allowed.
  * Returns err(StateTransitionError) if transition is structurally invalid.
- * Returns err(GuardFailedError) if a guard fails.
+ * Returns err(GuardFailedError) if a guard fails and `skipGuard` is not set.
+ *
+ * When `options.skipGuard` is provided, failing guards are collected and the
+ * transition succeeds with those guard names in `skippedGuards`. Structural
+ * invalidity is never bypassed.
  */
 export function checkTransition(
   article: WorkArticle,
   targetPhase: WorkPhaseType,
-): Result<WorkPhaseType, StateTransitionError | GuardFailedError> {
+  options: CheckTransitionOptions = {},
+): Result<TransitionSuccess, StateTransitionError | GuardFailedError> {
   const from = article.phase;
 
   // 1. Terminal phase check
@@ -103,24 +121,27 @@ export function checkTransition(
     return err(new StateTransitionError(from, targetPhase, `Phase "${from}" is terminal`));
   }
 
-  // 2. Structural validity check
-  if (!isValidTransition(from, targetPhase)) {
+  // 2. Structural validity check (skipGuard does NOT bypass this)
+  if (!isValidTransition(article, targetPhase)) {
     return err(new StateTransitionError(from, targetPhase, `Transition from "${from}" to "${targetPhase}" is not valid`));
   }
 
   // 3. Cancellation bypass — no guards needed
   if (targetPhase === WorkPhase.CANCELLED) {
-    return ok(targetPhase);
+    return ok({ targetPhase, skippedGuards: [] });
   }
 
   // 4. Evaluate guards in order
   const guards = getGuardSet(article, from, targetPhase);
+  const failed: string[] = [];
   for (const guard of guards) {
     if (!guard.check(article)) {
-      return err(new GuardFailedError(guard.name, `Guard "${guard.name}" failed for transition from "${from}" to "${targetPhase}"`));
+      if (!options.skipGuard) {
+        return err(new GuardFailedError(guard.name, `Guard "${guard.name}" failed for transition from "${from}" to "${targetPhase}"`));
+      }
+      failed.push(guard.name);
     }
   }
 
-  // 5. All guards pass
-  return ok(targetPhase);
+  return ok({ targetPhase, skippedGuards: failed });
 }

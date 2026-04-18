@@ -22,7 +22,9 @@ import type {
   EnrichmentAssignment,
   ReviewAssignment,
   PhaseHistoryEntry,
+  AdvancePhaseOptions,
 } from "./repository.js";
+import { buildCancellationHistoryEntry, buildAdvanceHistoryEntry } from "./phase-history.js";
 
 const TERMINAL_PHASES = new Set<WorkPhaseType>([WorkPhase.DONE, WorkPhase.CANCELLED]);
 
@@ -123,11 +125,20 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
 
     const phaseHistory = parseJsonArray<PhaseHistoryEntry>(rawFrontmatter["phaseHistoryJson"], [
       { phase: frontmatter.phase, enteredAt: timestamp(frontmatter.createdAt) },
-    ]).map((entry) => ({
-      phase: entry.phase,
-      enteredAt: timestamp(String(entry.enteredAt)),
-      exitedAt: entry.exitedAt ? timestamp(String(entry.exitedAt)) : undefined,
-    }));
+    ]).map((entry) => {
+      const rawSkipped = (entry as { skippedGuards?: unknown }).skippedGuards;
+      const skippedGuards = Array.isArray(rawSkipped)
+        ? rawSkipped.map((g) => String(g)).filter((g) => g.length > 0)
+        : undefined;
+      const base: PhaseHistoryEntry = {
+        phase: entry.phase,
+        enteredAt: timestamp(String(entry.enteredAt)),
+        ...(entry.exitedAt ? { exitedAt: timestamp(String(entry.exitedAt)) } : {}),
+        ...(typeof entry.reason === "string" && entry.reason.length > 0 ? { reason: entry.reason } : {}),
+        ...(skippedGuards && skippedGuards.length > 0 ? { skippedGuards } : {}),
+      };
+      return base;
+    });
 
     return ok({
       id: workId(frontmatter.id),
@@ -362,12 +373,16 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
   async advancePhase(
     id: WorkId,
     targetPhase: WorkPhaseType,
+    options?: AdvancePhaseOptions,
   ): Promise<Result<WorkArticle, StateTransitionError | NotFoundError | StorageError>> {
     const existing = await this.findById(id);
     if (!existing.ok) return existing;
 
-    const transitionResult = checkTransition(existing.value, targetPhase);
+    const transitionResult = checkTransition(existing.value, targetPhase, {
+      ...(options?.skipGuard ? { skipGuard: options.skipGuard } : {}),
+    });
     if (!transitionResult.ok) return transitionResult;
+    const { skippedGuards } = transitionResult.value;
 
     const now = timestamp();
     const updatedHistory = existing.value.phaseHistory.map((entry, index) =>
@@ -376,10 +391,14 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
         : entry,
     );
 
+    const newEntry = targetPhase === WorkPhase.CANCELLED
+      ? buildCancellationHistoryEntry(targetPhase, now, options, skippedGuards)
+      : buildAdvanceHistoryEntry(targetPhase, now, options, skippedGuards);
+
     const updated: WorkArticle = {
       ...existing.value,
       phase: targetPhase,
-      phaseHistory: [...updatedHistory, { phase: targetPhase, enteredAt: now }],
+      phaseHistory: [...updatedHistory, newEntry],
       updatedAt: now,
       completedAt: targetPhase === WorkPhase.DONE ? now : existing.value.completedAt,
     };

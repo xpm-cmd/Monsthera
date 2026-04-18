@@ -61,4 +61,50 @@ describe("FileSystemWorkArticleRepository", () => {
     expect(reloaded.value.reviewers[0]?.agentId).toBe("reviewer-1");
     expect(reloaded.value.phaseHistory).toHaveLength(2);
   });
+
+  it("round-trips Tier 2.1 phase-history reason + skippedGuards through markdown", async () => {
+    const repoRoot = createRepoRoot();
+    const repo = new FileSystemWorkArticleRepository(repoRoot);
+
+    const article = await repo.create({
+      title: "Skip guard article",
+      template: WorkTemplate.FEATURE,
+      priority: Priority.MEDIUM,
+      author: agentId("agent-1"),
+      content: "## Objective\n\nX\n\n## Acceptance Criteria\n\n- Y",
+    });
+    expect(article.ok).toBe(true);
+    if (!article.ok) return;
+
+    // planning → enrichment (guards pass normally)
+    await repo.advancePhase(article.value.id, WorkPhase.ENRICHMENT);
+    await repo.contributeEnrichment(article.value.id, "architecture", "contributed");
+    await repo.advancePhase(article.value.id, WorkPhase.IMPLEMENTATION);
+    // implementation → review with skip_guard (no `## Implementation` section)
+    const r = await repo.advancePhase(article.value.id, WorkPhase.REVIEW, {
+      skipGuard: { reason: "documentation-only feature" },
+    });
+    expect(r.ok).toBe(true);
+    // Cancel with reason
+    const c = await repo.advancePhase(article.value.id, WorkPhase.CANCELLED, {
+      reason: "abandoned: redirected to w-other",
+    });
+    expect(c.ok).toBe(true);
+
+    const reopened = new FileSystemWorkArticleRepository(repoRoot);
+    const reloaded = await reopened.findById(article.value.id);
+    expect(reloaded.ok).toBe(true);
+    if (!reloaded.ok) return;
+
+    const history = reloaded.value.phaseHistory;
+    // Find the review entry (skipped guard) and the cancellation entry
+    const reviewEntry = history.find((e) => e.phase === WorkPhase.REVIEW);
+    const cancelEntry = history.find((e) => e.phase === WorkPhase.CANCELLED);
+
+    expect(reviewEntry?.reason).toBe("documentation-only feature");
+    expect(reviewEntry?.skippedGuards).toEqual(["implementation_linked"]);
+
+    expect(cancelEntry?.reason).toBe("abandoned: redirected to w-other");
+    expect(cancelEntry?.skippedGuards).toBeUndefined();
+  });
 });

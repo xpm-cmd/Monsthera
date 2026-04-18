@@ -301,6 +301,77 @@ describe("advancePhase", () => {
     if (!events.ok) return;
     expect(events.value.some((event) => event.workId === article.id)).toBe(true);
   });
+
+  // ─── Tier 2.1: cancellation reason + skip_guard ────────────────────────────
+
+  it("cancellation: records reason on new phase-history entry", async () => {
+    const { service } = createService();
+    const article = await seedWork(service);
+    const result = await service.advancePhase(article.id, WorkPhase.CANCELLED, {
+      reason: "superseded by w-other",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const latest = result.value.phaseHistory.at(-1);
+    expect(latest?.phase).toBe(WorkPhase.CANCELLED);
+    expect(latest?.reason).toBe("superseded by w-other");
+  });
+
+  it("cancellation: service rejects missing reason with ValidationError", async () => {
+    const { service } = createService();
+    const article = await seedWork(service);
+    const result = await service.advancePhase(article.id, WorkPhase.CANCELLED);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.VALIDATION_FAILED);
+  });
+
+  it("cancellation: service rejects blank/whitespace reason", async () => {
+    const { service } = createService();
+    const article = await seedWork(service);
+    const result = await service.advancePhase(article.id, WorkPhase.CANCELLED, { reason: "   " });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.VALIDATION_FAILED);
+  });
+
+  it("skip_guard: bypasses a failing guard and records skippedGuards + reason", async () => {
+    const { service, workRepo } = createService();
+    // Feature article in implementation phase WITHOUT a '## Implementation' section
+    // would normally fail implementation_linked. skip_guard should bypass.
+    const article = await seedWork(service, {
+      content: "## Objective\nDo the thing.\n\n## Acceptance Criteria\n- Works.",
+    });
+    // Advance planning → enrichment → implementation via skip_guard (needs enrichment contribution too).
+    await service.advancePhase(article.id, WorkPhase.ENRICHMENT);
+    await workRepo.contributeEnrichment(article.id, "architecture", "contributed");
+    await service.advancePhase(article.id, WorkPhase.IMPLEMENTATION);
+
+    const result = await service.advancePhase(article.id, WorkPhase.REVIEW, {
+      skipGuard: { reason: "docs-only feature, no implementation section" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const latest = result.value.phaseHistory.at(-1);
+    expect(latest?.phase).toBe(WorkPhase.REVIEW);
+    expect(latest?.skippedGuards).toEqual(["implementation_linked"]);
+    expect(latest?.reason).toBe("docs-only feature, no implementation section");
+  });
+
+  it("skip_guard does NOT bypass structural invalidity", async () => {
+    const { service } = createService();
+    const article = await seedWork(service, {
+      template: WorkTemplate.SPIKE,
+      content: "## Objective\nX\n\n## Research Questions\n- Q",
+    });
+    // spike: planning → review is not in the phase graph — must fail.
+    const result = await service.advancePhase(article.id, WorkPhase.REVIEW, {
+      skipGuard: { reason: "nope" },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.STATE_TRANSITION_INVALID);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -356,31 +427,28 @@ describe("assignReviewer", () => {
 
 describe("submitReview", () => {
   it("records review outcome", async () => {
-    const { service } = createService();
-    // Use spike template (minEnrichmentCount=0) to simplify the path to review phase
+    const { service, workRepo } = createService();
+    // Tier 2.1: spike now skips implementation + review. Use feature template
+    // and contribute enrichment so the path to review is reachable.
     const createResult = await service.createWork({
-      title: "Spike Work",
-      template: WorkTemplate.SPIKE,
+      title: "Feature Work",
+      template: WorkTemplate.FEATURE,
       priority: "medium",
       author: "agent-1",
-      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1",
+      content: "## Objective\n\nShip it\n\n## Acceptance Criteria\n\n- Works",
     });
     if (!createResult.ok) throw new Error("setup failed");
     const id = createResult.value.id;
-    // planning → enrichment
     const e = await service.advancePhase(id, WorkPhase.ENRICHMENT);
     if (!e.ok) throw new Error(`advance to enrichment failed: ${e.error.message}`);
-    // enrichment → implementation
+    await workRepo.contributeEnrichment(createResult.value.id, "architecture", "contributed");
     const i = await service.advancePhase(id, WorkPhase.IMPLEMENTATION);
     if (!i.ok) throw new Error(`advance to implementation failed: ${i.error.message}`);
-    // add implementation section
     await service.updateWork(id, {
-      content: "## Objective\n\nExplore\n\n## Research Questions\n\n- Q1\n\n## Implementation\n\nDone",
+      content: "## Objective\n\nShip it\n\n## Acceptance Criteria\n\n- Works\n\n## Implementation\n\nPR #1",
     });
-    // implementation → review
     const r = await service.advancePhase(id, WorkPhase.REVIEW);
     if (!r.ok) throw new Error(`advance to review failed: ${r.error.message}`);
-    // assign reviewer after reaching review phase
     await service.assignReviewer(id, "reviewer-1");
     const result = await service.submitReview(id, "reviewer-1", "approved");
     expect(result.ok).toBe(true);

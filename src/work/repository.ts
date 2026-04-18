@@ -23,6 +23,10 @@ export interface PhaseHistoryEntry {
   readonly phase: WorkPhase;
   readonly enteredAt: Timestamp;
   readonly exitedAt?: Timestamp;
+  /** Tier 2.1 — set on cancellation + skip_guard transitions */
+  readonly reason?: string;
+  /** Tier 2.1 — names of guards bypassed via skip_guard */
+  readonly skippedGuards?: readonly string[];
 }
 
 /** Work article entity */
@@ -84,6 +88,20 @@ export interface UpdateWorkArticleInput {
   content?: string;
 }
 
+/** Options for `advancePhase` (Tier 2.1) */
+export interface SkipGuardOption {
+  /** Required human-readable justification for bypassing the guard(s). */
+  readonly reason: string;
+}
+
+/** Options for `advancePhase` (Tier 2.1) */
+export interface AdvancePhaseOptions {
+  /** Required when `targetPhase === "cancelled"`; recorded on the cancellation phase-history entry. */
+  readonly reason?: string;
+  /** Auditable escape hatch that bypasses guard failures (but NOT structural transition validity). */
+  readonly skipGuard?: SkipGuardOption;
+}
+
 /** Work article repository with domain-specific queries */
 export interface WorkArticleRepository
   extends Repository<WorkArticle, CreateWorkArticleInput, UpdateWorkArticleInput> {
@@ -96,7 +114,11 @@ export interface WorkArticleRepository
   findByPriority(priority: Priority): Promise<Result<WorkArticle[], StorageError>>;
   findActive(): Promise<Result<WorkArticle[], StorageError>>;
   findBlocked(): Promise<Result<WorkArticle[], StorageError>>;
-  advancePhase(id: WorkId, targetPhase: WorkPhase): Promise<Result<WorkArticle, StateTransitionError | NotFoundError | StorageError>>;
+  advancePhase(
+    id: WorkId,
+    targetPhase: WorkPhase,
+    options?: AdvancePhaseOptions,
+  ): Promise<Result<WorkArticle, StateTransitionError | NotFoundError | StorageError>>;
 
   /** Record an enrichment contribution or skip for a role */
   contributeEnrichment(id: WorkId, role: string, status: "contributed" | "skipped"): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>>;

@@ -32,63 +32,69 @@ function makeArticle(overrides: Partial<WorkArticle> = {}): WorkArticle {
 
 describe("isValidTransition", () => {
   it("planning → enrichment: true", () => {
-    expect(isValidTransition(WorkPhase.PLANNING, WorkPhase.ENRICHMENT)).toBe(true);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.PLANNING }), WorkPhase.ENRICHMENT)).toBe(true);
   });
 
   it("enrichment → implementation: true", () => {
-    expect(isValidTransition(WorkPhase.ENRICHMENT, WorkPhase.IMPLEMENTATION)).toBe(true);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.ENRICHMENT }), WorkPhase.IMPLEMENTATION)).toBe(true);
   });
 
   it("implementation → review: true", () => {
-    expect(isValidTransition(WorkPhase.IMPLEMENTATION, WorkPhase.REVIEW)).toBe(true);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.IMPLEMENTATION }), WorkPhase.REVIEW)).toBe(true);
   });
 
   it("review → done: true", () => {
-    expect(isValidTransition(WorkPhase.REVIEW, WorkPhase.DONE)).toBe(true);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.REVIEW }), WorkPhase.DONE)).toBe(true);
   });
 
   it("planning → cancelled: true", () => {
-    expect(isValidTransition(WorkPhase.PLANNING, WorkPhase.CANCELLED)).toBe(true);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.PLANNING }), WorkPhase.CANCELLED)).toBe(true);
   });
 
   it("enrichment → cancelled: true", () => {
-    expect(isValidTransition(WorkPhase.ENRICHMENT, WorkPhase.CANCELLED)).toBe(true);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.ENRICHMENT }), WorkPhase.CANCELLED)).toBe(true);
   });
 
   it("implementation → cancelled: true", () => {
-    expect(isValidTransition(WorkPhase.IMPLEMENTATION, WorkPhase.CANCELLED)).toBe(true);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.IMPLEMENTATION }), WorkPhase.CANCELLED)).toBe(true);
   });
 
   it("review → cancelled: true", () => {
-    expect(isValidTransition(WorkPhase.REVIEW, WorkPhase.CANCELLED)).toBe(true);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.REVIEW }), WorkPhase.CANCELLED)).toBe(true);
   });
 
   it("done → anything: false (terminal)", () => {
-    expect(isValidTransition(WorkPhase.DONE, WorkPhase.PLANNING)).toBe(false);
-    expect(isValidTransition(WorkPhase.DONE, WorkPhase.ENRICHMENT)).toBe(false);
-    expect(isValidTransition(WorkPhase.DONE, WorkPhase.CANCELLED)).toBe(false);
+    const done = makeArticle({ phase: WorkPhase.DONE });
+    expect(isValidTransition(done, WorkPhase.PLANNING)).toBe(false);
+    expect(isValidTransition(done, WorkPhase.ENRICHMENT)).toBe(false);
+    expect(isValidTransition(done, WorkPhase.CANCELLED)).toBe(false);
   });
 
   it("cancelled → anything: false (terminal)", () => {
-    expect(isValidTransition(WorkPhase.CANCELLED, WorkPhase.PLANNING)).toBe(false);
-    expect(isValidTransition(WorkPhase.CANCELLED, WorkPhase.ENRICHMENT)).toBe(false);
-    expect(isValidTransition(WorkPhase.CANCELLED, WorkPhase.DONE)).toBe(false);
+    const cancelled = makeArticle({ phase: WorkPhase.CANCELLED });
+    expect(isValidTransition(cancelled, WorkPhase.PLANNING)).toBe(false);
+    expect(isValidTransition(cancelled, WorkPhase.ENRICHMENT)).toBe(false);
+    expect(isValidTransition(cancelled, WorkPhase.DONE)).toBe(false);
   });
 
   it("planning → review: false (skip)", () => {
-    expect(isValidTransition(WorkPhase.PLANNING, WorkPhase.REVIEW)).toBe(false);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.PLANNING }), WorkPhase.REVIEW)).toBe(false);
   });
 
   it("planning → done: false (skip)", () => {
-    expect(isValidTransition(WorkPhase.PLANNING, WorkPhase.DONE)).toBe(false);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.PLANNING }), WorkPhase.DONE)).toBe(false);
   });
 
-  it("enrichment → done: false (skip)", () => {
-    expect(isValidTransition(WorkPhase.ENRICHMENT, WorkPhase.DONE)).toBe(false);
+  it("enrichment → done (feature template): false (skip)", () => {
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.ENRICHMENT, template: WorkTemplate.FEATURE }), WorkPhase.DONE)).toBe(false);
+  });
+
+  it("enrichment → done (spike template): true (per-template phase graph)", () => {
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.ENRICHMENT, template: WorkTemplate.SPIKE }), WorkPhase.DONE)).toBe(true);
   });
 
   it("review → planning: false (backward)", () => {
-    expect(isValidTransition(WorkPhase.REVIEW, WorkPhase.PLANNING)).toBe(false);
+    expect(isValidTransition(makeArticle({ phase: WorkPhase.REVIEW }), WorkPhase.PLANNING)).toBe(false);
   });
 });
 
@@ -151,7 +157,7 @@ describe("checkTransition — cancellation", () => {
     const result = checkTransition(article, WorkPhase.CANCELLED);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toBe(WorkPhase.CANCELLED);
+      expect(result.value.targetPhase).toBe(WorkPhase.CANCELLED);
     }
   });
 
@@ -185,7 +191,7 @@ describe("checkTransition — planning → enrichment guards", () => {
     const result = checkTransition(article, WorkPhase.ENRICHMENT);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toBe(WorkPhase.ENRICHMENT);
+      expect(result.value.targetPhase).toBe(WorkPhase.ENRICHMENT);
     }
   });
 
@@ -294,14 +300,17 @@ describe("checkTransition — enrichment → implementation guards", () => {
     }
   });
 
-  it("spike template (minEnrichmentCount=0) always passes even with no contributions", () => {
+  it("spike template: enrichment → implementation is structurally invalid under Tier 2.1 phase graph", () => {
     const article = makeArticle({
       phase: WorkPhase.ENRICHMENT,
       template: WorkTemplate.SPIKE,
       enrichmentRoles: [],
     });
     const result = checkTransition(article, WorkPhase.IMPLEMENTATION);
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("StateTransitionError");
+    }
   });
 
   it("feature template needs at least 1 contributed/skipped", () => {
@@ -341,7 +350,7 @@ describe("checkTransition — implementation → review guards", () => {
     const result = checkTransition(article, WorkPhase.REVIEW);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toBe(WorkPhase.REVIEW);
+      expect(result.value.targetPhase).toBe(WorkPhase.REVIEW);
     }
   });
 
@@ -379,7 +388,7 @@ describe("checkTransition — review → done guards", () => {
     const result = checkTransition(article, WorkPhase.DONE);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toBe(WorkPhase.DONE);
+      expect(result.value.targetPhase).toBe(WorkPhase.DONE);
     }
   });
 
@@ -421,6 +430,138 @@ describe("checkTransition — review → done guards", () => {
       ],
     });
     const result = checkTransition(article, WorkPhase.DONE);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("GuardFailedError");
+    }
+  });
+});
+
+// ─── Tier 2.1: per-template phase graph + skipGuard ─────────────────────────
+
+describe("checkTransition — per-template phase graph (Tier 2.1)", () => {
+  it("spike: enrichment → done is a valid structural transition", () => {
+    const article = makeArticle({
+      phase: WorkPhase.ENRICHMENT,
+      template: WorkTemplate.SPIKE,
+    });
+    const result = checkTransition(article, WorkPhase.DONE);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.targetPhase).toBe(WorkPhase.DONE);
+      expect(result.value.skippedGuards).toEqual([]);
+    }
+  });
+
+  it("spike: planning → implementation is structurally invalid (not in spike phaseGraph)", () => {
+    const article = makeArticle({
+      phase: WorkPhase.PLANNING,
+      template: WorkTemplate.SPIKE,
+      content: "## Objective\n\nX\n\n## Research Questions\n\n- Q",
+    });
+    const result = checkTransition(article, WorkPhase.IMPLEMENTATION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("StateTransitionError");
+    }
+  });
+
+  it("spike: planning → review is structurally invalid", () => {
+    const article = makeArticle({
+      phase: WorkPhase.PLANNING,
+      template: WorkTemplate.SPIKE,
+    });
+    const result = checkTransition(article, WorkPhase.REVIEW);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("StateTransitionError");
+    }
+  });
+
+  it("feature: enrichment → done is structurally invalid (regression)", () => {
+    const article = makeArticle({
+      phase: WorkPhase.ENRICHMENT,
+      template: WorkTemplate.FEATURE,
+    });
+    const result = checkTransition(article, WorkPhase.DONE);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("StateTransitionError");
+    }
+  });
+
+  it.each([WorkTemplate.FEATURE, WorkTemplate.BUGFIX, WorkTemplate.REFACTOR, WorkTemplate.SPIKE])(
+    "%s: every non-terminal phase can transition to cancelled",
+    (template) => {
+      const phases = [WorkPhase.PLANNING, WorkPhase.ENRICHMENT, WorkPhase.IMPLEMENTATION, WorkPhase.REVIEW] as const;
+      for (const phase of phases) {
+        const article = makeArticle({ phase, template });
+        const result = checkTransition(article, WorkPhase.CANCELLED);
+        expect(result.ok).toBe(true);
+      }
+    },
+  );
+});
+
+describe("checkTransition — skipGuard escape hatch (Tier 2.1)", () => {
+  it("bypasses a failing guard and returns the skipped guard name", () => {
+    const article = makeArticle({
+      phase: WorkPhase.IMPLEMENTATION,
+      template: WorkTemplate.FEATURE,
+      content: "## Objective\n\nno implementation section here",
+    });
+    const result = checkTransition(article, WorkPhase.REVIEW, {
+      skipGuard: { reason: "docs-only feature, no implementation section" },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.targetPhase).toBe(WorkPhase.REVIEW);
+      expect(result.value.skippedGuards).toEqual(["implementation_linked"]);
+    }
+  });
+
+  it("skipGuard does NOT bypass structural invalidity (spike: planning → review still fails)", () => {
+    const article = makeArticle({
+      phase: WorkPhase.PLANNING,
+      template: WorkTemplate.SPIKE,
+      content: "## Objective\n\nX\n\n## Research Questions\n\n- Q",
+    });
+    const result = checkTransition(article, WorkPhase.REVIEW, {
+      skipGuard: { reason: "trying to cheat structural validity" },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("StateTransitionError");
+    }
+  });
+
+  it("collects every failing guard when skipGuard is active (planning → enrichment)", () => {
+    // Feature template requires both has_objective AND has_acceptance_criteria
+    // at planning→enrichment. Supply neither — both should be in skippedGuards.
+    const article = makeArticle({
+      phase: WorkPhase.PLANNING,
+      template: WorkTemplate.FEATURE,
+      content: "",
+    });
+    const result = checkTransition(article, WorkPhase.ENRICHMENT, {
+      skipGuard: { reason: "stub article, content landing separately" },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.skippedGuards).toEqual(
+        expect.arrayContaining(["has_objective", "has_acceptance_criteria"]),
+      );
+      expect(result.value.skippedGuards).toHaveLength(2);
+    }
+  });
+
+  it("without skipGuard, the first failing guard still short-circuits (regression)", () => {
+    const article = makeArticle({
+      phase: WorkPhase.PLANNING,
+      template: WorkTemplate.FEATURE,
+      content: "",
+    });
+    const result = checkTransition(article, WorkPhase.ENRICHMENT);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.name).toBe("GuardFailedError");

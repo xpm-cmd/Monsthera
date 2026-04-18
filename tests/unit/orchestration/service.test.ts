@@ -218,19 +218,21 @@ describe("evaluateReadiness", () => {
   });
 
   it("evaluates enrichment to implementation transition correctly", async () => {
-    // Use spike template: minEnrichmentCount is 0, so it auto-passes
+    // Tier 2.1: spike now advances enrichment → done directly. Use feature
+    // template so the next edge is still enrichment → implementation.
     const createResult = await workRepo.create({
-      title: "Spike Work",
-      template: WorkTemplate.SPIKE,
+      title: "Feature Work",
+      template: WorkTemplate.FEATURE,
       priority: Priority.MEDIUM,
       author: agentId("agent-1"),
-      content: "## Objective\nResearch\n\n## Research Questions\nWhat?\n",
+      content: "## Objective\n\nShip it\n\n## Acceptance Criteria\n\n- Works",
     });
     expect(createResult.ok).toBe(true);
     if (!createResult.ok) return;
     const article = createResult.value;
-    // Advance to enrichment (spike only requires has_objective, no acceptance criteria)
     await workRepo.advancePhase(article.id, WorkPhase.ENRICHMENT);
+    // Feature needs at least 1 enrichment contribution before implementation.
+    await workRepo.contributeEnrichment(article.id, "architecture", "contributed");
 
     const result = await service.evaluateReadiness(article.id);
     expect(result.ok).toBe(true);

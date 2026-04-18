@@ -113,6 +113,44 @@ describe("Spike template", () => {
   });
 });
 
+// ─── Tier 2.1: phaseGraph ────────────────────────────────────────────────────
+
+describe("phaseGraph (Tier 2.1)", () => {
+  it("feature follows the standard four-edge flow", () => {
+    expect(WORK_TEMPLATES[WorkTemplate.FEATURE].phaseGraph).toEqual([
+      "planning:enrichment",
+      "enrichment:implementation",
+      "implementation:review",
+      "review:done",
+    ]);
+  });
+
+  it("bugfix follows the standard four-edge flow", () => {
+    expect(WORK_TEMPLATES[WorkTemplate.BUGFIX].phaseGraph).toEqual([
+      "planning:enrichment",
+      "enrichment:implementation",
+      "implementation:review",
+      "review:done",
+    ]);
+  });
+
+  it("refactor follows the standard four-edge flow", () => {
+    expect(WORK_TEMPLATES[WorkTemplate.REFACTOR].phaseGraph).toEqual([
+      "planning:enrichment",
+      "enrichment:implementation",
+      "implementation:review",
+      "review:done",
+    ]);
+  });
+
+  it("spike skips implementation + review (enrichment → done directly)", () => {
+    expect(WORK_TEMPLATES[WorkTemplate.SPIKE].phaseGraph).toEqual([
+      "planning:enrichment",
+      "enrichment:done",
+    ]);
+  });
+});
+
 // ─── getTemplateConfig ────────────────────────────────────────────────────────
 
 describe("getTemplateConfig", () => {
