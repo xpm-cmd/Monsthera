@@ -11,6 +11,7 @@ import { workToolDefinitions, handleWorkTool } from "./tools/work-tools.js";
 import { searchToolDefinitions, handleSearchTool } from "./tools/search-tools.js";
 import { WikiBookkeeper } from "./knowledge/wiki-bookkeeper.js";
 import { orchestrationToolDefinitions, handleOrchestrationTool } from "./tools/orchestration-tools.js";
+import { waveToolDefinitions, handleWaveTool } from "./tools/wave-tools.js";
 import { statusToolDefinitions, handleStatusTool } from "./tools/status-tools.js";
 import { ingestToolDefinitions, handleIngestTool } from "./tools/ingest-tools.js";
 import { structureToolDefinitions, handleStructureTool } from "./tools/structure-tools.js";
@@ -45,6 +46,9 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
   const orchestrationTools = orchestrationToolDefinitions();
   const orchestrationToolNames = new Set(orchestrationTools.map((t) => t.name));
 
+  const waveTools = waveToolDefinitions();
+  const waveToolNames = new Set(waveTools.map((t) => t.name));
+
   const statusTools = statusToolDefinitions();
   const statusToolNames = new Set(statusTools.map((t) => t.name));
 
@@ -65,6 +69,7 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
         ...workTools,
         ...searchTools,
         ...orchestrationTools,
+        ...waveTools,
         ...statusTools,
         ...ingestTools,
         ...structureTools,
@@ -103,6 +108,10 @@ export async function startServer(container: MonstheraContainer): Promise<void> 
 
     if (orchestrationToolNames.has(name)) {
       return handleOrchestrationTool(name, args, container.orchestrationRepo);
+    }
+
+    if (waveToolNames.has(name)) {
+      return handleWaveTool(name, args, container.orchestrationService, container.workService);
     }
 
     if (statusToolNames.has(name)) {
