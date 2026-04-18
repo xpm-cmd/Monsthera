@@ -628,6 +628,38 @@ async function handleRequest(
     return;
   }
 
+  // ── POST /api/knowledge/preview-slug ─────────────────────────────────────
+  // Must match BEFORE the /api/knowledge/:id regex, which would otherwise
+  // capture "preview-slug" as an article ID.
+  if (pathname === "/api/knowledge/preview-slug") {
+    if (req.method !== "POST") {
+      errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+      return;
+    }
+    const body = await parseJsonBody(req);
+    if (!body.ok) {
+      errorResponse(res, 400, "VALIDATION_FAILED", body.message);
+      return;
+    }
+    const raw = (body.value as { title?: unknown }).title;
+    if (typeof raw !== "string" || raw.trim().length === 0) {
+      errorResponse(res, 400, "VALIDATION_FAILED", `"title" is required and must be a non-empty string`);
+      return;
+    }
+    const result = await container.knowledgeService.previewSlug(raw);
+    if (result.ok) {
+      jsonResponse(res, 200, {
+        slug: result.value.slug,
+        alreadyExists: result.value.alreadyExists,
+        conflicts: result.value.conflicts,
+      });
+    } else {
+      const { status, code } = mapErrorToHttp(result.error);
+      errorResponse(res, status, code, result.error.message);
+    }
+    return;
+  }
+
   // ── /api/knowledge/:id ───────────────────────────────────────────────────
   if (knowledgeMatch) {
     const id = decodeURIComponent(knowledgeMatch[1]!);

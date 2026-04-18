@@ -6,6 +6,8 @@ import {
   updateKnowledge,
   deleteKnowledge,
   ingestLocalKnowledge,
+  previewSlug,
+  renameKnowledgeSlug,
 } from "../lib/api.js";
 import {
   renderSearchInput,
@@ -29,9 +31,10 @@ function buildCreateForm() {
     '<form class="card form-stack" data-knowledge-create>',
     '<div class="card-title">Create knowledge article</div>',
     '<div class="form-grid form-grid--two">',
-    '<label class="field"><span class="text-label">Title</span><input class="input" name="title" placeholder="Architecture overview" required></label>',
+    '<label class="field"><span class="text-label">Title</span><input class="input" name="title" placeholder="Architecture overview" data-preview-slug-input required></label>',
     '<label class="field"><span class="text-label">Category</span><input class="input" name="category" value="engineering" required></label>',
     '</div>',
+    '<p class="text-xs text-muted" data-slug-preview>Slug will be auto-generated from the title.</p>',
     '<label class="field"><span class="text-label">Tags</span><input class="input" name="tags" placeholder="architecture, search"></label>',
     '<label class="field"><span class="text-label">Code refs</span><input class="input" name="codeRefs" placeholder="src/search/service.ts, src/dashboard/index.ts"></label>',
     '<label class="field"><span class="text-label">Content</span><textarea class="textarea textarea--dense" name="content" placeholder="# Summary&#10;&#10;Explain the decision and the important code paths." required></textarea></label>',
@@ -76,6 +79,13 @@ function buildEditor(article) {
     `<label class="field"><span class="text-label">Code refs</span><input class="input" name="codeRefs" value="${esc(codeRefsValue)}"></label>`,
     `<label class="field"><span class="text-label">Content</span><textarea class="textarea" name="content">${esc(article.content || "")}</textarea></label>`,
     '<div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">Save article</button></div>',
+    '</form>',
+    `<form class="card form-stack" data-knowledge-rename="${esc(article.id)}">`,
+    '<div class="card-title">Rename slug</div>',
+    `<p class="text-xs text-muted">Current: <span class="mono">${esc(article.slug)}</span>. Renaming atomically updates every other article's <code>references</code> to the new slug.</p>`,
+    `<label class="field"><span class="text-label">New slug</span><input class="input mono" name="newSlug" value="${esc(article.slug)}" placeholder="lowercase-hyphen-separated" pattern="[a-z0-9\\-]+" required></label>`,
+    '<label class="checkbox"><input type="checkbox" name="rewriteInlineWikilinks"> <span>Also rewrite <code>[[old-slug]]</code> wikilinks in other articles\' bodies</span></label>',
+    '<div class="form-actions"><button class="btn btn--outline btn--sm" type="submit">Rename slug</button></div>',
     '</form>',
     renderCard("Rendered preview", `<div class="markdown-preview">${renderMarkdown(article.content)}</div>`),
   ].join("");
@@ -309,11 +319,62 @@ export async function render(container) {
     }
   }, { signal: ac.signal });
 
+  function renderSlugPreview(el, result) {
+    el.textContent = "";
+    if (result.alreadyExists) {
+      el.append("Slug ");
+      const code = document.createElement("code");
+      code.className = "mono";
+      code.textContent = result.slug;
+      el.append(code, " already exists — pick a different title or content will collide.");
+      return;
+    }
+    el.append("Slug will be ");
+    const code = document.createElement("code");
+    code.className = "mono";
+    code.textContent = result.slug;
+    el.append(code);
+    if (result.conflicts?.length) {
+      el.append(" · near-miss conflicts: ");
+      result.conflicts.forEach((conflict, index) => {
+        if (index > 0) el.append(", ");
+        const c = document.createElement("code");
+        c.className = "mono";
+        c.textContent = conflict;
+        el.append(c);
+      });
+    }
+    el.append(".");
+  }
+
+  let slugPreviewTimer = null;
   container.addEventListener("input", (event) => {
     if (event.target.classList.contains("search-input")) {
       captureInputState(event.target);
       searchQuery = event.target.value;
       rerender();
+      return;
+    }
+
+    const titleInput = event.target.closest("[data-preview-slug-input]");
+    if (titleInput) {
+      clearTimeout(slugPreviewTimer);
+      const preview = container.querySelector("[data-slug-preview]");
+      if (!preview) return;
+      const title = titleInput.value.trim();
+      if (!title) {
+        preview.textContent = "Slug will be auto-generated from the title.";
+        return;
+      }
+      preview.textContent = "Checking slug…";
+      slugPreviewTimer = setTimeout(async () => {
+        try {
+          const res = await previewSlug(title);
+          renderSlugPreview(preview, res);
+        } catch (_err) {
+          preview.textContent = "Slug preview unavailable.";
+        }
+      }, 300);
     }
   }, { signal: ac.signal });
 
@@ -370,6 +431,29 @@ export async function render(container) {
         "Saved knowledge article.",
         id,
       );
+      return;
+    }
+
+    if (form.matches("[data-knowledge-rename]")) {
+      const data = new FormData(form);
+      const id = form.dataset.knowledgeRename;
+      const newSlug = String(data.get("newSlug") || "").trim();
+      const rewriteInlineWikilinks = data.get("rewriteInlineWikilinks") !== null;
+      if (!newSlug || !/^[a-z0-9-]+$/.test(newSlug)) {
+        flash = { kind: "error", message: "New slug must be lowercase letters, numbers, and hyphens." };
+        rerender();
+        return;
+      }
+      const confirmMsg = rewriteInlineWikilinks
+        ? `Rename slug to "${newSlug}" and rewrite [[${newSlug}]] wikilinks in other articles' bodies?`
+        : `Rename slug to "${newSlug}"? References in other articles will be updated automatically.`;
+      if (!window.confirm(confirmMsg)) return;
+      await runMutation(
+        () => renameKnowledgeSlug(id, newSlug, { rewriteInlineWikilinks }),
+        `Renamed slug to ${newSlug}.`,
+        id,
+      );
+      return;
     }
   }, { signal: ac.signal });
 

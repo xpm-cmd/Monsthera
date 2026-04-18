@@ -475,6 +475,97 @@ describe("Dashboard JSON API", () => {
       const body = (await res.json()) as { content: string };
       expect(body.content).toBe("Updated by dashboard");
     });
+
+    it("renames via new_slug and updates incoming references in other articles", async () => {
+      if (dashboardError) return;
+      const target = await container.knowledgeService.createArticle({
+        title: "Slug Rename Target Dashboard",
+        category: "architecture",
+        content: "Target content",
+      });
+      expect(target.ok).toBe(true);
+      if (!target.ok) return;
+
+      const referrer = await container.knowledgeService.createArticle({
+        title: "Slug Rename Referrer Dashboard",
+        category: "architecture",
+        content: "Referrer content",
+        references: [target.value.slug],
+      });
+      expect(referrer.ok).toBe(true);
+      if (!referrer.ok) return;
+
+      const res = await fetch(url(`/api/knowledge/${target.value.id}`), {
+        method: "PATCH",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ new_slug: "slug-rename-target-renamed" }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { slug: string };
+      expect(body.slug).toBe("slug-rename-target-renamed");
+
+      const referrerAfter = await container.knowledgeService.getArticle(referrer.value.id);
+      expect(referrerAfter.ok).toBe(true);
+      if (!referrerAfter.ok) return;
+      expect(referrerAfter.value.references).toContain("slug-rename-target-renamed");
+      expect(referrerAfter.value.references).not.toContain(target.value.slug);
+    });
+  });
+
+  describe("POST /api/knowledge/preview-slug", () => {
+    it("returns the deterministic slug for a given title", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/knowledge/preview-slug"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ title: "My Fancy ADR Title" }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { slug: string; alreadyExists: boolean; conflicts: string[] };
+      expect(body.slug).toBe("my-fancy-adr-title");
+      expect(body.alreadyExists).toBe(false);
+      expect(Array.isArray(body.conflicts)).toBe(true);
+    });
+
+    it("reports alreadyExists=true when a sibling article already owns the slug", async () => {
+      if (dashboardError) return;
+      const existing = await container.knowledgeService.createArticle({
+        title: "Preview Slug Collision Target",
+        category: "architecture",
+        content: "Existing",
+      });
+      expect(existing.ok).toBe(true);
+      if (!existing.ok) return;
+
+      const res = await fetch(url("/api/knowledge/preview-slug"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ title: "Preview Slug Collision Target" }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { slug: string; alreadyExists: boolean };
+      expect(body.slug).toBe(existing.value.slug);
+      expect(body.alreadyExists).toBe(true);
+    });
+
+    it("rejects missing or empty title with 400", async () => {
+      if (dashboardError) return;
+      const missing = await fetch(url("/api/knowledge/preview-slug"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({}),
+      });
+      expect(missing.status).toBe(400);
+      const missingBody = (await missing.json()) as { error: string };
+      expect(missingBody.error).toBe("VALIDATION_FAILED");
+
+      const empty = await fetch(url("/api/knowledge/preview-slug"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ title: "  " }),
+      });
+      expect(empty.status).toBe(400);
+    });
   });
 
   describe("DELETE /api/knowledge/:id", () => {
