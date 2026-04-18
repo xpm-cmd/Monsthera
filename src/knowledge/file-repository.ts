@@ -14,6 +14,7 @@ import type {
   KnowledgeArticleRepository,
   CreateKnowledgeArticleInput,
   UpdateKnowledgeArticleInput,
+  WriteWithSlugInput,
 } from "./repository.js";
 
 export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRepository {
@@ -190,6 +191,30 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       codeRefs: input.codeRefs ?? existing.codeRefs,
       references: input.references ?? existing.references,
       sourcePath: input.sourcePath ?? existing.sourcePath,
+      updatedAt: timestamp(),
+    };
+
+    return this.writeArticle(updated, existing.slug);
+  }
+
+  async writeWithSlug(
+    id: string,
+    input: WriteWithSlugInput,
+  ): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>> {
+    const existingResult = await this.findById(id);
+    if (!existingResult.ok) return existingResult;
+
+    const existing = existingResult.value;
+
+    const updated: KnowledgeArticle = {
+      ...existing,
+      title: input.title ?? existing.title,
+      slug: input.slug ?? existing.slug,
+      category: input.category ?? existing.category,
+      content: input.content ?? existing.content,
+      tags: input.tags ?? existing.tags,
+      codeRefs: input.codeRefs ?? existing.codeRefs,
+      references: input.references ?? existing.references,
       updatedAt: timestamp(),
     };
 

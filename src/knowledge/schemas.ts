@@ -46,6 +46,13 @@ export const UpdateArticleInputSchema = z.object({
   tags: z.array(z.string()).optional(),
   codeRefs: z.array(z.string()).optional(),
   references: z.array(z.string()).optional(),
+  new_slug: z
+    .string()
+    .min(1)
+    .max(200)
+    .regex(SLUG_PATTERN, "new_slug must match ^[a-z0-9-]+$ (lowercase alphanumerics and hyphens only)")
+    .optional(),
+  rewrite_inline_wikilinks: z.boolean().optional(),
 });
 
 // ─── Inferred types ───────────────────────────────────────────────────────────

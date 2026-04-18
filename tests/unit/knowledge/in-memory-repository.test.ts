@@ -369,6 +369,47 @@ describe("update", () => {
 });
 
 // ---------------------------------------------------------------------------
+// writeWithSlug
+// ---------------------------------------------------------------------------
+
+describe("writeWithSlug", () => {
+  let repo: InMemoryKnowledgeArticleRepository;
+
+  beforeEach(() => {
+    repo = new InMemoryKnowledgeArticleRepository();
+  });
+
+  it("writes a new slug directly (bypassing title→slug regeneration)", async () => {
+    const created = await createArticle(repo, { title: "Original Title" });
+    const result = await repo.writeWithSlug(created.id, { slug: brandSlug("renamed-slug") });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.slug).toBe("renamed-slug");
+    // Title unchanged.
+    expect(result.value.title).toBe("Original Title");
+  });
+
+  it("updates content and references in the same call", async () => {
+    const created = await createArticle(repo, { title: "X" });
+    const result = await repo.writeWithSlug(created.id, {
+      content: "new body",
+      references: ["some-other-slug"],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.content).toBe("new body");
+    expect(result.value.references).toEqual(["some-other-slug"]);
+  });
+
+  it("returns NotFoundError for an unknown id", async () => {
+    const result = await repo.writeWithSlug("ghost-id", { slug: brandSlug("anything") });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.NOT_FOUND);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // delete
 // ---------------------------------------------------------------------------
 

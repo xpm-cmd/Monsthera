@@ -74,3 +74,87 @@ export function extractWikilinks(content: string): ExtractedWikilink[] {
   const matches = stripped.matchAll(/\[\[([^\]]+)\]\]/g);
   return [...matches].map((m) => parseWikilink(m[1]!));
 }
+
+/**
+ * Walk `content` and produce a list of segments tagged as either "code"
+ * (inside HTML comments, fenced code blocks, or inline code) or "text"
+ * (everything else). Callers can safely mutate only the "text" segments
+ * and re-concatenate — offsets and content of "code" segments are
+ * preserved verbatim.
+ *
+ * Exported for use by rewriteWikilinkSlug; mirrors the strip rules of
+ * stripCodeRegions but keeps the code content instead of deleting it.
+ */
+function segmentByCodeRegions(content: string): { kind: "text" | "code"; value: string }[] {
+  // Match any code-like region: HTML comment, fenced code block, or inline code.
+  //
+  // We compose this from a string so we can use backreferences that span the
+  // whole pattern: group 1 is the fenced-opener (3+ backticks/tildes),
+  // group 2 is the inline-opener (1-3 backticks). Each alternative references
+  // its own opener to enforce matching-length close, which is important so
+  // a longer run of backticks doesn't prematurely close a shorter inline span
+  // (and vice versa).
+  const CODE_REGION = new RegExp(
+    "<!--[\\s\\S]*?-->" +
+      "|" +
+      "(?:^|\\n)[ \\t]{0,3}(`{3,}|~{3,})[^\\n]*\\n[\\s\\S]*?\\n[ \\t]{0,3}\\1[ \\t]*(?=\\n|$)" +
+      "|" +
+      "(`{1,3})(?:(?!\\2)[^\\n])+?\\2",
+    "g",
+  );
+
+  const segments: { kind: "text" | "code"; value: string }[] = [];
+  let lastIdx = 0;
+  for (const match of content.matchAll(CODE_REGION)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    if (start > lastIdx) {
+      segments.push({ kind: "text", value: content.slice(lastIdx, start) });
+    }
+    segments.push({ kind: "code", value: match[0] });
+    lastIdx = end;
+  }
+  if (lastIdx < content.length) {
+    segments.push({ kind: "text", value: content.slice(lastIdx) });
+  }
+  return segments;
+}
+
+/**
+ * Rewrite all `[[old-slug]]` / `[[old-slug|display]]` / `[[old-slug#anchor]]`
+ * wikilinks in `content` to use `new-slug`, preserving display text and anchor
+ * exactly. Wikilinks inside HTML comments, fenced code blocks, and inline code
+ * are left alone — the rewrite is inline-text only.
+ *
+ * Matching is exact-slug only: `[[foo-bar]]` is NOT rewritten when `oldSlug`
+ * is `foo`. Returns the rewritten content and the number of replacements made.
+ *
+ * Implementation approach: segment the content into alternating text/code
+ * regions (segmentByCodeRegions), rewrite wikilinks only inside text
+ * segments, and re-concatenate. This preserves exact byte content of code
+ * regions including example wikilinks used as templates.
+ */
+export function rewriteWikilinkSlug(
+  content: string,
+  oldSlug: string,
+  newSlug: string,
+): { content: string; replacementCount: number } {
+  if (oldSlug === newSlug) {
+    return { content, replacementCount: 0 };
+  }
+
+  const segments = segmentByCodeRegions(content);
+  let replacementCount = 0;
+  const rewritten = segments.map((seg) => {
+    if (seg.kind === "code") return seg.value;
+    return seg.value.replace(/\[\[([^\]]+)\]\]/g, (whole, inner: string) => {
+      const parsed = parseWikilink(inner);
+      if (parsed.slug !== oldSlug) return whole;
+      replacementCount += 1;
+      const anchorPart = parsed.anchor ? `#${parsed.anchor}` : "";
+      const displayPart = parsed.display ? `|${parsed.display}` : "";
+      return `[[${newSlug}${anchorPart}${displayPart}]]`;
+    });
+  });
+  return { content: rewritten.join(""), replacementCount };
+}

@@ -10,6 +10,7 @@ import type {
   KnowledgeArticleRepository,
   CreateKnowledgeArticleInput,
   UpdateKnowledgeArticleInput,
+  WriteWithSlugInput,
 } from "./repository.js";
 
 export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepository {
@@ -114,6 +115,29 @@ export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepos
   async findByTag(tag: string): Promise<Result<KnowledgeArticle[], StorageError>> {
     const results = [...this.store.values()].filter((a) => a.tags.includes(tag));
     return ok(results);
+  }
+
+  async writeWithSlug(
+    id: string,
+    input: WriteWithSlugInput,
+  ): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>> {
+    const existing = this.store.get(id);
+    if (!existing) return err(new NotFoundError("KnowledgeArticle", id));
+
+    const updated: KnowledgeArticle = {
+      ...existing,
+      title: input.title ?? existing.title,
+      slug: input.slug ?? existing.slug,
+      category: input.category ?? existing.category,
+      content: input.content ?? existing.content,
+      tags: input.tags ?? existing.tags,
+      codeRefs: input.codeRefs ?? existing.codeRefs,
+      references: input.references ?? existing.references,
+      updatedAt: timestamp(),
+    };
+
+    this.store.set(id, updated);
+    return ok(updated);
   }
 
   async search(query: string): Promise<Result<KnowledgeArticle[], StorageError>> {

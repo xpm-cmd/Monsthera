@@ -64,7 +64,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "update_article",
-      description: "Update an existing knowledge article as understanding improves. Add durable wording, code refs, and reusable conclusions instead of leaving them only in chat or work history. Search sync happens automatically; manual reindex is not needed for normal edits.",
+      description: "Update an existing knowledge article as understanding improves. Add durable wording, code refs, and reusable conclusions instead of leaving them only in chat or work history. Search sync happens automatically; manual reindex is not needed for normal edits. Pass `new_slug` to atomically rename the article and fix every incoming reference in one operation.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -75,6 +75,8 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           tags: { type: "array", items: { type: "string" }, description: "New tags" },
           codeRefs: { type: "array", items: { type: "string" }, description: "New code refs" },
           references: { type: "array", items: { type: "string" }, description: "References to other articles (IDs or slugs)" },
+          new_slug: { type: "string", description: "Optional: rename the article's slug. Collision-checked. All incoming references in other articles' `references` arrays are updated automatically. Use `rewrite_inline_wikilinks: true` to also update inline `[[old-slug]]` wikilinks in bodies." },
+          rewrite_inline_wikilinks: { type: "boolean", description: "When renaming via `new_slug`, also rewrite `[[old-slug]]` / `[[old-slug|display]]` / `[[old-slug#anchor]]` wikilinks in other articles' bodies (display text and anchors preserved). Default false — body content changes are opt-in." },
         },
         required: ["id"],
       },
