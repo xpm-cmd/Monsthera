@@ -49,6 +49,7 @@ export interface MonstheraContainer extends Disposable {
   readonly agentsService: AgentService;
   readonly ingestService: IngestService;
   readonly migrationService?: MigrationService;
+  readonly bookkeeper: WikiBookkeeper;
 }
 
 /**
@@ -342,6 +343,7 @@ export async function createContainer(
     agentsService,
     ingestService,
     migrationService,
+    bookkeeper,
     async dispose() {
       logger.info("Shutting down container");
       await stack.dispose();

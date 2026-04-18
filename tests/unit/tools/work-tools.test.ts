@@ -320,6 +320,111 @@ describe("list_work", () => {
 });
 
 // ---------------------------------------------------------------------------
+// list_work — combinable filters
+// ---------------------------------------------------------------------------
+
+describe("list_work combinable filters", () => {
+  let service: WorkService;
+  let a: WorkArticle;
+  let b: WorkArticle;
+  let c: WorkArticle;
+  let d: WorkArticle;
+
+  beforeEach(async () => {
+    service = createService();
+    a = await seedWork(service, {
+      title: "A",
+      priority: Priority.HIGH,
+      assignee: "alice",
+      tags: ["backend", "db"],
+    });
+    b = await seedWork(service, {
+      title: "B",
+      priority: Priority.LOW,
+      assignee: "bob",
+      tags: ["frontend"],
+    });
+    c = await seedWork(service, {
+      title: "C",
+      priority: Priority.HIGH,
+      assignee: "alice",
+      tags: ["backend"],
+    });
+    d = await seedWork(service, {
+      title: "D",
+      priority: Priority.HIGH,
+      assignee: "alice",
+      tags: ["docs"],
+    });
+    const depResult = await service.addDependency(d.id, a.id);
+    if (!depResult.ok) throw new Error(`seed block failed: ${depResult.error.message}`);
+  });
+
+  it("filters by priority", async () => {
+    const response = await handleWorkTool("list_work", { priority: "high" }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(3);
+    const ids = body.items.map((i) => i.id);
+    expect(ids).toEqual(expect.arrayContaining([a.id, c.id, d.id]));
+    expect(ids).not.toContain(b.id);
+  });
+
+  it("filters by assignee", async () => {
+    const response = await handleWorkTool("list_work", { assignee: "bob" }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(1);
+    expect(body.items[0]!.id).toBe(b.id);
+  });
+
+  it("filters by tag", async () => {
+    const response = await handleWorkTool("list_work", { tag: "backend" }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(2);
+    const ids = body.items.map((i) => i.id).sort();
+    expect(ids).toEqual([a.id, c.id].sort());
+  });
+
+  it("filters by blocked=true", async () => {
+    const response = await handleWorkTool("list_work", { blocked: true }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(1);
+    expect(body.items[0]!.id).toBe(d.id);
+  });
+
+  it("filters by blocked=false (not blocked)", async () => {
+    const response = await handleWorkTool("list_work", { blocked: false }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(3);
+    expect(body.items.map((i) => i.id)).not.toContain(d.id);
+  });
+
+  it("combines multiple filters (priority + assignee + tag)", async () => {
+    const response = await handleWorkTool(
+      "list_work",
+      { priority: "high", assignee: "alice", tag: "backend" },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(2);
+    const ids = body.items.map((i) => i.id).sort();
+    expect(ids).toEqual([a.id, c.id].sort());
+  });
+
+  it("rejects invalid priority", async () => {
+    const response = await handleWorkTool("list_work", { priority: "extreme" }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // advance_phase
 // ---------------------------------------------------------------------------
 

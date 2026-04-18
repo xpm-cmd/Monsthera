@@ -97,11 +97,16 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_articles",
-      description: "List knowledge articles, optionally filtered by category. Returns summaries (no content) with pagination. Use get_article to read full content.",
+      description: "List knowledge articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_article (or batch_get_articles for many) to read full content. Filters: `category`, `tag` (single tag; matches if the article carries it), `hasCodeRefs` (true = articles grounded in code, false = prose-only).",
       inputSchema: {
         type: "object" as const,
         properties: {
           category: { type: "string", description: "Filter by category" },
+          tag: { type: "string", description: "Filter by a single tag (article must carry it)" },
+          hasCodeRefs: {
+            type: "boolean",
+            description: "Filter by presence of code references — true returns only articles with at least one codeRef, false returns only prose-only articles",
+          },
           limit: { type: "number", description: "Max results (1-100, default 20)" },
           offset: { type: "number", description: "Skip N results (default 0)" },
         },
@@ -145,6 +150,21 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           },
         },
         required: ["articles"],
+      },
+    },
+    {
+      name: "batch_get_articles",
+      description: `Fetch many knowledge articles by id in a single call. Best-effort: each id is resolved independently and the response reports per-item success or failure in the requested order. Accepts 1-${MAX_BATCH_ARTICLES} ids. Designed as the natural follow-up to build_context_pack / search — send the ids from the ranked results instead of calling get_article N times. For a single article, prefer get_article (which also returns graph connections).`,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          ids: {
+            type: "array",
+            description: `Array of 1-${MAX_BATCH_ARTICLES} knowledge article ids.`,
+            items: { type: "string" },
+          },
+        },
+        required: ["ids"],
       },
     },
     {
@@ -266,14 +286,33 @@ export async function handleKnowledgeTool(
     case "list_articles": {
       const category = optionalString(args, "category");
       if (isErrorResponse(category)) return category;
+      const tag = optionalString(args, "tag");
+      if (isErrorResponse(tag)) return tag;
+      let hasCodeRefs: boolean | undefined;
+      if (args.hasCodeRefs !== undefined) {
+        if (typeof args.hasCodeRefs !== "boolean") {
+          return errorResponse("VALIDATION_FAILED", `"hasCodeRefs" must be a boolean`);
+        }
+        hasCodeRefs = args.hasCodeRefs;
+      }
       const rawLimit = typeof args.limit === "number" ? args.limit : 20;
       const limit = Math.max(1, Math.min(rawLimit, 100));
       const rawOffset = typeof args.offset === "number" ? args.offset : 0;
       const offset = Math.max(0, rawOffset);
       const result = await service.listArticles(category);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
-      const total = result.value.length;
-      const page = result.value.slice(offset, offset + limit);
+
+      // AND-combined in-memory filters layered on top of the repo-level
+      // category filter, so agents can mix criteria without per-combination
+      // repo methods.
+      const filtered = result.value.filter((a) => {
+        if (tag !== undefined && !a.tags.includes(tag)) return false;
+        if (hasCodeRefs === true && a.codeRefs.length === 0) return false;
+        if (hasCodeRefs === false && a.codeRefs.length > 0) return false;
+        return true;
+      });
+      const total = filtered.length;
+      const page = filtered.slice(offset, offset + limit);
       const summaries = page.map((a) => ({
         id: a.id,
         title: a.title,
@@ -327,6 +366,23 @@ export async function handleKnowledgeTool(
         );
       }
       const result = await service.batchUpdateArticles(arr);
+      return successResponse(result);
+    }
+    case "batch_get_articles": {
+      const arr = args.ids;
+      if (!Array.isArray(arr)) {
+        return errorResponse("VALIDATION_FAILED", '"ids" is required and must be an array');
+      }
+      if (arr.length === 0) {
+        return errorResponse("VALIDATION_FAILED", '"ids" must not be empty');
+      }
+      if (arr.length > MAX_BATCH_ARTICLES) {
+        return errorResponse(
+          "VALIDATION_FAILED",
+          `"ids" accepts at most ${MAX_BATCH_ARTICLES} entries per call (received ${arr.length})`,
+        );
+      }
+      const result = await service.batchGetArticles(arr);
       return successResponse(result);
     }
     case "search_articles": {

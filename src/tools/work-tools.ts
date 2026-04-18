@@ -1,7 +1,8 @@
 import type { WorkService } from "../work/service.js";
 import type { StructureService, NeighborResult } from "../structure/service.js";
-import { VALID_PHASES } from "../core/types.js";
-import type { WorkPhase as WorkPhaseType } from "../core/types.js";
+import { VALID_PHASES, Priority } from "../core/types.js";
+import type { WorkPhase as WorkPhaseType, Priority as PriorityType } from "../core/types.js";
+import type { WorkArticle } from "../work/repository.js";
 import type { ToolDefinition, ToolResponse } from "./knowledge-tools.js";
 import { successResponse, errorResponse, requireString, optionalString, isErrorResponse, requireEnum } from "./validation.js";
 
@@ -9,6 +10,7 @@ import { successResponse, errorResponse, requireString, optionalString, isErrorR
 
 const VALID_ENRICHMENT_STATUSES: Set<string> = new Set(["contributed", "skipped"]);
 const VALID_REVIEW_STATUSES: Set<string> = new Set(["approved", "changes-requested"]);
+const VALID_PRIORITIES: ReadonlySet<string> = new Set<string>(Object.values(Priority));
 
 /** Returns the work tool definitions for MCP ListTools */
 export function workToolDefinitions(): ToolDefinition[] {
@@ -76,7 +78,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_work",
-      description: "List work articles, optionally filtered by phase. Returns summaries (no content) with pagination. Use get_work to read full content.",
+      description: "List work articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_work to read full content. Filters: `phase`, `priority`, `assignee` (agent id), `tag` (single tag; matches if the work carries it), `blocked` (true = has unresolved dependencies, false = clear to pick up).",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -84,6 +86,17 @@ export function workToolDefinitions(): ToolDefinition[] {
             type: "string",
             enum: ["planning", "enrichment", "implementation", "review", "done", "cancelled"],
             description: "Filter by phase",
+          },
+          priority: {
+            type: "string",
+            enum: ["critical", "high", "medium", "low"],
+            description: "Filter by priority",
+          },
+          assignee: { type: "string", description: "Filter by assignee agent id" },
+          tag: { type: "string", description: "Filter by a single tag (work must carry it)" },
+          blocked: {
+            type: "boolean",
+            description: "Filter by blocked state — true returns only work with unresolved `blockedBy` dependencies, false returns only unblocked work",
           },
           limit: { type: "number", description: "Max results (1-100, default 20)" },
           offset: { type: "number", description: "Skip N results (default 0)" },
@@ -186,6 +199,32 @@ export function workToolDefinitions(): ToolDefinition[] {
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
+interface ListWorkFilters {
+  readonly priority?: PriorityType;
+  readonly assignee?: string;
+  readonly tag?: string;
+  readonly blocked?: boolean;
+}
+
+/**
+ * AND-combined in-memory filter for list_work. Applied after the repo-level
+ * phase filter so agents can mix criteria freely without per-combination
+ * repo methods.
+ */
+function filterWorkArticles(
+  articles: readonly WorkArticle[],
+  filters: ListWorkFilters,
+): WorkArticle[] {
+  return articles.filter((w) => {
+    if (filters.priority !== undefined && w.priority !== filters.priority) return false;
+    if (filters.assignee !== undefined && w.assignee !== filters.assignee) return false;
+    if (filters.tag !== undefined && !w.tags.includes(filters.tag)) return false;
+    if (filters.blocked === true && w.blockedBy.length === 0) return false;
+    if (filters.blocked === false && w.blockedBy.length > 0) return false;
+    return true;
+  });
+}
+
 /** Handle a work tool call */
 function formatWorkConnections(neighbors: NeighborResult): Record<string, unknown> {
   const references: { id: string; title: string; kind: string }[] = [];
@@ -269,14 +308,41 @@ export async function handleWorkTool(
         const enumErr = requireEnum(phase, VALID_PHASES, "phase");
         if (enumErr) return enumErr;
       }
+      const priority = optionalString(args, "priority");
+      if (isErrorResponse(priority)) return priority;
+      if (priority !== undefined) {
+        const enumErr = requireEnum(priority, VALID_PRIORITIES, "priority");
+        if (enumErr) return enumErr;
+      }
+      const assignee = optionalString(args, "assignee");
+      if (isErrorResponse(assignee)) return assignee;
+      const tag = optionalString(args, "tag");
+      if (isErrorResponse(tag)) return tag;
+      let blocked: boolean | undefined;
+      if (args.blocked !== undefined) {
+        if (typeof args.blocked !== "boolean") {
+          return errorResponse("VALIDATION_FAILED", `"blocked" must be a boolean`);
+        }
+        blocked = args.blocked;
+      }
       const rawLimit = typeof args.limit === "number" ? args.limit : 20;
       const limit = Math.max(1, Math.min(rawLimit, 100));
       const rawOffset = typeof args.offset === "number" ? args.offset : 0;
       const offset = Math.max(0, rawOffset);
-      const result = await service.listWork(phase as WorkPhaseType);
+      const result = await service.listWork(phase as WorkPhaseType | undefined);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
-      const total = result.value.length;
-      const page = result.value.slice(offset, offset + limit);
+
+      // Apply AND-combined in-memory filters. The phase filter is already
+      // satisfied by the repo-level findByPhase above; the rest are applied
+      // here so agents can mix them without repo-side combinatorial bloat.
+      const filtered = filterWorkArticles(result.value, {
+        priority: priority as PriorityType | undefined,
+        assignee,
+        tag,
+        blocked,
+      });
+      const total = filtered.length;
+      const page = filtered.slice(offset, offset + limit);
       const summaries = page.map((w) => ({
         id: w.id,
         title: w.title,
