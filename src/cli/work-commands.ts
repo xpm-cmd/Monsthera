@@ -170,7 +170,12 @@ async function handleWorkAdvance(args: string[]): Promise<void> {
       process.exit(1);
     }
     const phase = phaseStr as WorkPhaseType;
-    const result = await container.workService.advancePhase(id, phase);
+    const reason = parseFlag(args, "--reason");
+    const skipGuardReason = parseFlag(args, "--skip-guard-reason");
+    const options: { reason?: string; skipGuard?: { reason: string } } = {};
+    if (reason) options.reason = reason;
+    if (skipGuardReason) options.skipGuard = { reason: skipGuardReason };
+    const result = await container.workService.advancePhase(id, phase, options);
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);

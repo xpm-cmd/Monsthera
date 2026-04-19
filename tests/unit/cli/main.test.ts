@@ -175,6 +175,65 @@ describe("CLI main()", () => {
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
+
+    it("work advance --skip-guard-reason bypasses a failing guard at review→done", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const create = await captureStdout(() =>
+        main([
+          "work", "create",
+          "--title", "Skip-guard close-out",
+          "--template", "bugfix",
+          "--author", "agent-1",
+          "--content", "## Objective\n\nX\n\n## Steps to Reproduce\n\nY\n\n## Acceptance Criteria\n\n- [ ] Z\n\n## Implementation\n\nlanded\n",
+          "--repo", repoPath,
+        ]),
+      );
+      const match = create.match(/ID:\s+(w-\S+)/);
+      expect(match).not.toBeNull();
+      const id = match![1]!;
+
+      // Walk through planning → enrichment → implementation → review normally.
+      await main(["work", "advance", id, "--phase", "enrichment", "--repo", repoPath]);
+      await main(["work", "enrich", id, "--role", "testing", "--status", "contributed", "--repo", repoPath]);
+      await main(["work", "advance", id, "--phase", "implementation", "--repo", repoPath]);
+      await main(["work", "advance", id, "--phase", "review", "--repo", repoPath]);
+
+      // review → done is blocked by all_reviewers_approved (no reviewers assigned);
+      // --skip-guard-reason must bypass it and record the reason on phase history.
+      const output = await captureStdout(() =>
+        main(["work", "advance", id, "--phase", "done", "--skip-guard-reason", "no reviewer in this session", "--repo", repoPath]),
+      );
+      expect(output).toContain("Phase:     done");
+    });
+
+    it("work advance --phase cancelled requires --reason", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const create = await captureStdout(() =>
+        main(withTempRepo(["work", "create", "--title", "To cancel", "--template", "bugfix", "--author", "agent-1"])),
+      );
+      const match = create.match(/ID:\s+(w-\S+)/);
+      if (!match) return;
+      const id = match[1]!;
+
+      await main(["work", "advance", id, "--phase", "cancelled", "--repo", repoPath]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("reason"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("work advance --phase cancelled --reason succeeds and records the reason", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const create = await captureStdout(() =>
+        main(["work", "create", "--title", "Cancel with reason", "--template", "bugfix", "--author", "agent-1", "--repo", repoPath]),
+      );
+      const match = create.match(/ID:\s+(w-\S+)/);
+      expect(match).not.toBeNull();
+      const id = match![1]!;
+
+      const output = await captureStdout(() =>
+        main(["work", "advance", id, "--phase", "cancelled", "--reason", "deferred indefinitely", "--repo", repoPath]),
+      );
+      expect(output).toContain("Phase:     cancelled");
+    });
   });
 
   // ─── Search subcommand ───────────────────────────────────────────────────

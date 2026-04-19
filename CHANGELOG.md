@@ -4,9 +4,17 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **CLI `work advance` accepts `--reason` and `--skip-guard-reason`** (work article `w-21c2n6q5`). Previously the CLI could only pass a bare phase; cancellations and audit-recorded guard bypasses required writing one-off tsx scripts. The flags plumb straight into the existing `AdvancePhaseOptions.reason` / `AdvancePhaseOptions.skipGuard` contract — no semantic change, just surface parity with the MCP `advance_phase` tool.
+
+## [3.0.0-alpha.5] — 2026-04-19
+
+**Tier 5 — IRIS Meta-Harness follow-ups: environment snapshots, snapshot-aware guards, and dashboard drift.** Six PRs (#59 #60 #61 #62 #63 #64) that close the semantic-vs-physical context gap identified in the Stanford IRIS `meta-harness-tbench2-artifact` analysis: agents now get a structured snapshot of the sandbox (cwd, runtimes, lockfile hashes, git ref, memory) recorded against a work id, surfaced inside `build_context_pack`, gated by an opt-in async guard, and visualized as a drift band in the dashboard. Persistence is behind the existing `doltEnabled` flag.
+
 ### Added
 
-- **Environment-snapshot MCP tools** (work article `w-0ieze72s`, research note `k-to46fuoi`). Three new tools close the "semantic context vs. physical context" gap that the Stanford IRIS `meta-harness-tbench2-artifact` highlighted in its environment-bootstrapping design:
+- **Environment-snapshot MCP tools** (work article `w-0ieze72s`, research note `k-to46fuoi`, #59). Three new tools close the "semantic context vs. physical context" gap that the Stanford IRIS `meta-harness-tbench2-artifact` highlighted in its environment-bootstrapping design:
   - `record_environment_snapshot` — stores a validated snapshot (cwd, file listing, runtimes, package managers, lockfile sha256, memory, git ref). The MCP server never spawns shell processes; callers gather probes in their own harness.
   - `get_latest_environment_snapshot` — returns the most recent snapshot for an `agentId`, `workId`, or both. Response includes `ageSeconds` and a `stale` flag computed against `MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES` (default 30, `0` disables).
   - `compare_environment_snapshots` — diffs two snapshots by id. Flags runtime changes, lockfile hash changes, branch / sha / dirty changes, cwd changes, and package-manager changes.

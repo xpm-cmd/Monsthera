@@ -147,13 +147,16 @@ Next steps still open (separate work, not this one):
 
 ## Follow-up work articles
 
-All four items listed above are now tracked as dedicated work articles. Each one is opened as its own PR off `main`; none of them touches the MCP-server-shells-out boundary or the `InMemorySnapshotRepository` contract.
+All four "next step" items listed above shipped as dedicated PRs off `main`; none touches the MCP-server-shells-out boundary or the `InMemorySnapshotRepository` contract. Closed out into release `3.0.0-alpha.5` on 2026-04-19. The benchmark spike was cancelled with an audit-recorded reason — the plan is captured, the numbers require a dedicated API-budgeted session.
 
-| Work article | Template | Phase at time of note update | Scope | PR |
+| Work article | Template | Final phase | Scope | PR |
 | :-- | :-- | :-- | :-- | :-- |
-| `w-guptmc33` — Dolt persistence for environment snapshots | feature | review | `DoltSnapshotRepository` + `environment_snapshots` table + container wiring; snapshots survive restarts when `doltEnabled`. | [#60](https://github.com/xpm-cmd/Monsthera/pull/60) |
-| `w-y988ky96` — Opt-in `snapshot_ready` guard | feature | review | Async guard layer (`AsyncGuardEntry`, `evaluateAsyncGuards`), `snapshot_ready` guard gating `enrichment → implementation` for opted-in templates (only `FEATURE` by default), ADR-006. | [#61](https://github.com/xpm-cmd/Monsthera/pull/61) |
-| `w-r85lzqhv` — Dashboard snapshot-diff endpoint & drift band | feature | review | `GET /api/work/:id/snapshot-diff?against=<id>` + expanded-card drift banner for phase `implementation` / `review`. | [#62](https://github.com/xpm-cmd/Monsthera/pull/62) |
-| `w-uvp3azdf` — Benchmark spike (methodology + target results) | spike | enrichment | Measurement plan for the cold-start savings claim; methodology lives in the companion knowledge article `k-pwksnl38`. Numbers land on the work article when the driver runs. | (closes when the bench runs) |
+| `w-guptmc33` — Dolt persistence for environment snapshots | feature | done (skipGuard) | `DoltSnapshotRepository` + `environment_snapshots` table + container wiring; snapshots survive restarts when `doltEnabled`. | [#60](https://github.com/xpm-cmd/Monsthera/pull/60) |
+| `w-y988ky96` — Opt-in `snapshot_ready` guard | feature | done (skipGuard) | Async guard layer (`AsyncGuardEntry`, `evaluateAsyncGuards`), `snapshot_ready` guard gating `enrichment → implementation` for opted-in templates (only `FEATURE` by default), ADR-006. | [#61](https://github.com/xpm-cmd/Monsthera/pull/61) |
+| `w-r85lzqhv` — Dashboard snapshot-diff endpoint & drift band | feature | done (skipGuard) | `GET /api/work/:id/snapshot-diff?against=<id>` + expanded-card drift banner for phase `implementation` / `review`. | [#62](https://github.com/xpm-cmd/Monsthera/pull/62) |
+| `w-uvp3azdf` — Benchmark spike (methodology + target results) | spike | cancelled | Measurement plan for the cold-start savings claim; methodology lives in the companion knowledge article `k-pwksnl38`. Cancelled: the bench requires an API-budgeted session to run; the methodology survives and a future session can pick it up without re-designing. | [#63](https://github.com/xpm-cmd/Monsthera/pull/63) |
+| `w-ksaf2rcr` — Agent-facing docs + recovery hints | refactor | done (skipGuard) | `AsyncGuardEntry.recoveryHint?`, `snapshot_ready` hint pointing at the capture helper + `skipGuard`, "Environment snapshots" section on the agent operating guide `k-uuz80fga`. | [#64](https://github.com/xpm-cmd/Monsthera/pull/64) |
 
-The benchmark methodology is captured in a sibling research note: `k-pwksnl38` — "Benchmark Methodology — Environment Snapshot + `build_context_pack` Impact". It is the playbook; the measured results land on `w-uvp3azdf` once the driver runs.
+`done (skipGuard)` means the article advanced `review → done` with the `all_reviewers_approved` guard bypassed; the bypass name + reason are recorded in each article's phase history per the Tier 2.1 audit-trail contract. No external reviewer participated in this session; future work should not copy this pattern if an external reviewer is available.
+
+The benchmark methodology is captured in a sibling research note: `k-pwksnl38` — "Benchmark Methodology — Environment Snapshot + `build_context_pack` Impact". It is the playbook; if a future session runs the bench, the results land on a new work article referencing `k-pwksnl38` and this note.

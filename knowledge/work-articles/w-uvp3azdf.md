@@ -2,7 +2,7 @@
 id: w-uvp3azdf
 title: Benchmark: snapshot + build_context_pack cold-start impact
 template: spike
-phase: enrichment
+phase: cancelled
 priority: medium
 author: agent-claude-followups
 tags: [snapshot, benchmark, terminal-bench, cold-start, spike, followup, iris-research]
@@ -11,10 +11,10 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-19T09:24:43.978Z
-updatedAt: 2026-04-19T09:25:26.002Z
+updatedAt: 2026-04-19T10:02:55.078Z
 enrichmentRolesJson: {"items":[]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-19T09:24:43.978Z","exitedAt":"2026-04-19T09:25:26.002Z"},{"phase":"enrichment","enteredAt":"2026-04-19T09:25:26.002Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-19T09:24:43.978Z","exitedAt":"2026-04-19T09:25:26.002Z"},{"phase":"enrichment","enteredAt":"2026-04-19T09:25:26.002Z","exitedAt":"2026-04-19T10:02:55.078Z"},{"phase":"cancelled","enteredAt":"2026-04-19T10:02:55.078Z","reason":"deferred: benchmark requires API budget + dedicated session to run the 10-20 task × 2 arm × N trial matrix; methodology (k-pwksnl38) + plan (w-uvp3azdf) landed so a future session can pick up where this one left off without re-designing"}]}
 ---
 
 ## Objective
