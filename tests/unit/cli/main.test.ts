@@ -234,6 +234,96 @@ describe("CLI main()", () => {
       );
       expect(output).toContain("Phase:     cancelled");
     });
+
+    it("work create --content-file reads body from disk verbatim (backticks survive)", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await fs.mkdir(repoPath, { recursive: true });
+      const body = "## Objective\n\nUse `foo()` and `bar()` everywhere.\n\n## Context\n\nn/a\n\n## Acceptance Criteria\n\n- [ ] x\n\n## Scope\n\n- y\n";
+      const bodyPath = path.join(repoPath, "body.md");
+      await fs.writeFile(bodyPath, body, "utf-8");
+
+      const create = await captureStdout(() =>
+        main([
+          "work", "create",
+          "--title", "Backtick literal",
+          "--template", "feature",
+          "--author", "agent-1",
+          "--content-file", bodyPath,
+          "--repo", repoPath,
+        ]),
+      );
+      const match = create.match(/ID:\s+(w-\S+)/);
+      expect(match).not.toBeNull();
+      const id = match![1]!;
+
+      const get = await captureStdout(() =>
+        main(["work", "get", id, "--repo", repoPath]),
+      );
+      expect(get).toContain("`foo()`");
+      expect(get).toContain("`bar()`");
+      // And no accidental backslash-escaped backticks leaked through.
+      expect(get).not.toContain("\\`foo()\\`");
+    });
+
+    it("work create with both --content and --content-file fails", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await fs.mkdir(repoPath, { recursive: true });
+      const bodyPath = path.join(repoPath, "body.md");
+      await fs.writeFile(bodyPath, "## Objective\n\nfoo\n", "utf-8");
+
+      await main([
+        "work", "create",
+        "--title", "Conflict",
+        "--template", "feature",
+        "--author", "agent-1",
+        "--content", "inline",
+        "--content-file", bodyPath,
+        "--repo", repoPath,
+      ]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("mutually exclusive"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("work create --content-file with a missing path fails with a readable error", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await main([
+        "work", "create",
+        "--title", "Missing file",
+        "--template", "bugfix",
+        "--author", "agent-1",
+        "--content-file", "/tmp/no-such-file-xyz-abc.md",
+        "--repo", repoPath,
+      ]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to read --content-file"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("work update --content-file replaces body from disk", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const create = await captureStdout(() =>
+        main(["work", "create", "--title", "Update me", "--template", "bugfix", "--author", "agent-1", "--repo", repoPath]),
+      );
+      const id = create.match(/ID:\s+(w-\S+)/)![1]!;
+
+      const bodyPath = path.join("/tmp", `body-${randomUUID()}.md`);
+      await fs.writeFile(bodyPath, "## Updated\n\nnew `code` here.\n", "utf-8");
+
+      const output = await captureStdout(() =>
+        main(["work", "update", id, "--content-file", bodyPath, "--repo", repoPath]),
+      );
+      expect(output).toContain("new `code` here.");
+    });
+
+    it("work update with no fields lists --content-file and --edit in the error", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const c = await captureStdout(() =>
+        main(["work", "create", "--title", "x", "--template", "bugfix", "--author", "agent-1", "--repo", repoPath]),
+      );
+      const id = c.match(/ID:\s+(w-\S+)/)![1]!;
+      await main(["work", "update", id, "--repo", repoPath]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("--content-file"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
   });
 
   // ─── Search subcommand ───────────────────────────────────────────────────
