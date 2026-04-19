@@ -167,6 +167,52 @@ describe("SearchService", () => {
       expect(result.value.guidance.length).toBeGreaterThan(0);
     });
 
+    it("exclude_ids drops matching articles before top-N selection", async () => {
+      const keep = await seedKnowledgeArticle({
+        title: "Auth Keep",
+        category: "architecture",
+        content: "Auth keep body",
+      });
+      const drop = await seedKnowledgeArticle({
+        title: "Auth Drop",
+        category: "architecture",
+        content: "Auth drop body",
+      });
+      await service.indexKnowledgeArticle(keep.id);
+      await service.indexKnowledgeArticle(drop.id);
+
+      const result = await service.buildContextPack({
+        query: "auth",
+        mode: "code",
+        limit: 5,
+        exclude_ids: [drop.id],
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const ids = result.value.items.map((i) => i.id);
+      expect(ids).toContain(keep.id);
+      expect(ids).not.toContain(drop.id);
+    });
+
+    it("exclude_ids ignores non-string entries rather than throwing", async () => {
+      const a = await seedKnowledgeArticle({
+        title: "Auth A",
+        category: "architecture",
+        content: "Auth A body",
+      });
+      await service.indexKnowledgeArticle(a.id);
+
+      // The service filters non-string entries silently (Zod is on the
+      // MCP-tool boundary; the service itself is defensive).
+      const result = await service.buildContextPack({
+        query: "auth",
+        exclude_ids: [42, a.id, null],
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.items.map((i) => i.id)).not.toContain(a.id);
+    });
+
     it("treats anchored code refs as valid file links", async () => {
       const repoPath = path.join("/tmp", `monsthera-search-${randomUUID()}`);
       await fs.mkdir(path.join(repoPath, "src", "auth"), { recursive: true });
