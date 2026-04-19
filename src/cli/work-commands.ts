@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import { VALID_PHASES, WorkTemplate } from "../core/types.js";
+import { VALID_PHASES, WorkPhase, WorkTemplate } from "../core/types.js";
 import type { WorkPhase as WorkPhaseType, WorkTemplate as WorkTemplateType } from "../core/types.js";
 import { generateInitialContent } from "../work/templates.js";
 import {
@@ -45,6 +45,9 @@ export async function handleWork(args: string[]): Promise<void> {
       break;
     case "review":
       await handleWorkReview(subArgs);
+      break;
+    case "close":
+      await handleWorkClose(subArgs);
       break;
     case "delete":
       await handleWorkDelete(subArgs);
@@ -231,6 +234,42 @@ async function handleWorkReview(args: string[]): Promise<void> {
       process.exit(1);
     }
     const result = await container.workService.submitReview(id, reviewer, status);
+    if (!result.ok) {
+      console.error(formatError(result.error));
+      process.exit(1);
+    }
+    process.stdout.write(formatWorkArticle(result.value) + "\n");
+  });
+}
+
+async function handleWorkClose(args: string[]): Promise<void> {
+  await withContainer(args, async (container) => {
+    const id = parsePositional(args, 0);
+    if (!id) {
+      console.error("Missing required argument: <id>");
+      process.exit(1);
+    }
+
+    const reasonFlag = parseFlag(args, "--reason");
+    const prFlag = parseFlag(args, "--pr");
+    let reason: string;
+    if (reasonFlag) {
+      reason = reasonFlag;
+    } else if (prFlag) {
+      // Accept "42", "#42", and "PR #42" — strip leading "#".
+      const normalized = prFlag.replace(/^#/, "").trim();
+      reason = `merged via PR #${normalized}; no external reviewer — bypass recorded on phase history`;
+    } else {
+      console.error(
+        "work close requires --reason <text> or --pr <number> so the review→done bypass is auditable.",
+      );
+      process.exit(1);
+      return;
+    }
+
+    const result = await container.workService.advancePhase(id, WorkPhase.DONE, {
+      skipGuard: { reason },
+    });
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
