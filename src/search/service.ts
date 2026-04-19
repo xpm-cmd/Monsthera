@@ -427,6 +427,12 @@ export class SearchService {
     const mode = isContextPackMode((input as { mode?: unknown })?.mode)
       ? (input as { mode: "general" | "code" | "research" }).mode
       : "general";
+    const rawExclude = (input as { exclude_ids?: unknown })?.exclude_ids;
+    const excludeIds = new Set<string>(
+      Array.isArray(rawExclude)
+        ? rawExclude.filter((v): v is string => typeof v === "string" && v.length > 0)
+        : [],
+    );
     const requestedLimit = typeof validated.value.limit === "number" ? validated.value.limit : 8;
     const limit = Math.max(1, Math.min(requestedLimit, 20));
     const candidateLimit = Math.max(limit * 3, 12);
@@ -442,6 +448,7 @@ export class SearchService {
     let skippedStaleIndexCount = 0;
 
     for (const hit of searchResult.value) {
+      if (excludeIds.has(hit.id)) continue;
       if (hit.type === "knowledge") {
         const articleResult = await this.knowledgeRepo.findById(hit.id);
         if (!articleResult.ok) {

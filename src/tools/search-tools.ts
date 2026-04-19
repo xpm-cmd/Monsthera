@@ -68,6 +68,11 @@ export function searchToolDefinitions(): ToolDefinition[] {
             type: "string",
             description: "When provided, the pack includes the snapshot recorded against this work article (preferred over agent_id when both are set; falls back to agent_id if none was recorded for the work).",
           },
+          exclude_ids: {
+            type: "array",
+            items: { type: "string" },
+            description: "Article IDs to drop from the ranking before top-N selection. Useful when `work_id` is set and the caller already has that article in hand — pass `[work_id]` to free the slot. Not auto-populated from `work_id`, to preserve backwards compatibility; opt in explicitly.",
+          },
         },
         required: ["query"],
       },
@@ -214,6 +219,14 @@ export async function handleSearchTool(
       }
       if (args.work_id !== undefined && typeof args.work_id !== "string") {
         return errorResponse("VALIDATION_FAILED", `"work_id" must be a string`);
+      }
+      if (args.exclude_ids !== undefined) {
+        if (!Array.isArray(args.exclude_ids)) {
+          return errorResponse("VALIDATION_FAILED", `"exclude_ids" must be an array of strings`);
+        }
+        if (args.exclude_ids.some((v) => typeof v !== "string")) {
+          return errorResponse("VALIDATION_FAILED", `"exclude_ids" must be an array of strings`);
+        }
       }
       const includeContent = args.include_content === true;
       const agentId = typeof args.agent_id === "string" ? args.agent_id : undefined;

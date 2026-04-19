@@ -198,6 +198,84 @@ describe("handleSearchTool", () => {
       expect(body.error).toBe("VALIDATION_FAILED");
     });
 
+    it("exclude_ids filters matching items out of the ranked pack", async () => {
+      const a = await knowledgeRepo.create({
+        title: "Keep Me",
+        category: "guide",
+        content: "auth mechanism details",
+      });
+      const b = await knowledgeRepo.create({
+        title: "Drop Me",
+        category: "guide",
+        content: "auth flow overview",
+      });
+      if (!a.ok || !b.ok) throw new Error("seed failed");
+      await service.indexKnowledgeArticle(a.value.id);
+      await service.indexKnowledgeArticle(b.value.id);
+
+      const response = await handleSearchTool(
+        "build_context_pack",
+        { query: "auth", exclude_ids: [b.value.id] },
+        service,
+        { knowledgeRepo, workRepo },
+      );
+      expect(response.isError).toBeUndefined();
+      const body = JSON.parse(response.content[0]!.text) as {
+        items: Array<{ id: string }>;
+      };
+      const ids = body.items.map((i) => i.id);
+      expect(ids).toContain(a.value.id);
+      expect(ids).not.toContain(b.value.id);
+    });
+
+    it("build_context_pack does NOT auto-exclude the work_id (opt-in compat)", async () => {
+      // work_id by itself must not silently drop the matching article —
+      // callers preserve the old behaviour unless they explicitly opt in
+      // by passing exclude_ids.
+      const w = await workRepo.create({
+        title: "Work match",
+        template: "feature",
+        author: "agent-1",
+        content: "## Objective\n\nauth\n\n## Context\n\nn/a\n\n## Acceptance Criteria\n\n- [ ] x\n\n## Scope\n\n- y\n",
+      });
+      if (!w.ok) throw new Error("seed failed");
+      await service.indexWorkArticle(w.value.id);
+
+      const response = await handleSearchTool(
+        "build_context_pack",
+        { query: "auth", work_id: w.value.id },
+        service,
+        { knowledgeRepo, workRepo },
+      );
+      expect(response.isError).toBeUndefined();
+      const body = JSON.parse(response.content[0]!.text) as {
+        items: Array<{ id: string }>;
+      };
+      expect(body.items.map((i) => i.id)).toContain(w.value.id);
+    });
+
+    it("rejects non-array exclude_ids", async () => {
+      const response = await handleSearchTool(
+        "build_context_pack",
+        { query: "auth", exclude_ids: "k-1" },
+        service,
+      );
+      expect(response.isError).toBe(true);
+      const body = JSON.parse(response.content[0]!.text) as { error: string };
+      expect(body.error).toBe("VALIDATION_FAILED");
+    });
+
+    it("rejects exclude_ids whose entries are not strings", async () => {
+      const response = await handleSearchTool(
+        "build_context_pack",
+        { query: "auth", exclude_ids: ["k-1", 42] },
+        service,
+      );
+      expect(response.isError).toBe(true);
+      const body = JSON.parse(response.content[0]!.text) as { error: string };
+      expect(body.error).toBe("VALIDATION_FAILED");
+    });
+
     it("include_content without content-deps falls back to slim (no content field)", async () => {
       const createResult = await knowledgeRepo.create({
         title: "Fallback Article",
