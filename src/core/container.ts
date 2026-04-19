@@ -83,6 +83,7 @@ export async function createContainer(
   let workRepo: WorkArticleRepository | undefined;
   let searchRepo: SearchIndexRepository | undefined;
   let orchestrationRepo: OrchestrationEventRepository | undefined;
+  let snapshotRepo: SnapshotRepository | undefined;
   const markdownRoot = path.resolve(config.repoPath, config.storage.markdownRoot);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let doltPool: any;
@@ -99,6 +100,7 @@ export async function createContainer(
         monitorDoltHealth,
         DoltSearchIndexRepository,
         DoltOrchestrationRepository,
+        DoltSnapshotRepository,
       } = await import("../persistence/index.js");
 
       doltPool = createDoltPool({
@@ -119,9 +121,11 @@ export async function createContainer(
         doltPool = undefined;
       } else {
         // Knowledge and Work repos stay FileSystem — Markdown is the source of truth.
-        // Only search index and orchestration events (derived data) move to Dolt.
+        // Only search index, orchestration events, and snapshots (derived/ephemeral
+        // state) move to Dolt.
         searchRepo = new DoltSearchIndexRepository(doltPool);
         orchestrationRepo = new DoltOrchestrationRepository(doltPool);
+        snapshotRepo = new DoltSnapshotRepository(doltPool);
 
         stack.defer(() => closePool(doltPool));
 
@@ -260,7 +264,9 @@ export async function createContainer(
     searchSync: searchService,
     status,
   });
-  const snapshotRepo: SnapshotRepository = new InMemorySnapshotRepository();
+  if (!snapshotRepo) {
+    snapshotRepo = new InMemorySnapshotRepository();
+  }
   const snapshotService = new SnapshotService({
     repo: snapshotRepo,
     logger,

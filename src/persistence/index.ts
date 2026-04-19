@@ -24,3 +24,4 @@ export type { DoltHealthStatus } from "./health.js";
 // Repository implementations (only actively used repos are exported)
 export { DoltSearchIndexRepository } from "./dolt-search-repository.js";
 export { DoltOrchestrationRepository } from "./dolt-orchestration-repository.js";
+export { DoltSnapshotRepository } from "./dolt-snapshot-repository.js";

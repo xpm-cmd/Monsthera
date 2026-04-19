@@ -41,6 +41,25 @@ export const SCHEMA_STATEMENTS = [
     INDEX idx_agent_id (agent_id),
     INDEX idx_created_at (created_at)
   )`,
+
+  // Environment snapshots - physical sandbox state captured alongside semantic context
+  `CREATE TABLE IF NOT EXISTS environment_snapshots (
+    id VARCHAR(64) PRIMARY KEY,
+    agent_id VARCHAR(255) NOT NULL,
+    work_id VARCHAR(255),
+    cwd VARCHAR(1024) NOT NULL,
+    git_ref JSON,
+    files JSON NOT NULL,
+    runtimes JSON NOT NULL,
+    package_managers JSON NOT NULL,
+    lockfiles JSON NOT NULL,
+    memory JSON,
+    raw LONGTEXT,
+    captured_at TIMESTAMP(3) NOT NULL,
+    INDEX idx_agent_id (agent_id),
+    INDEX idx_work_id (work_id),
+    INDEX idx_captured_at (captured_at)
+  )`,
 ] as const;
 
 /**

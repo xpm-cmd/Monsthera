@@ -17,6 +17,7 @@ All notable changes to Monsthera are documented here.
 
 - **`MonstheraConfig` gains a `context` block** with `snapshotMaxAgeMinutes` (default 30). Env override: `MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES`.
 - **Container wires `snapshotRepo` + `snapshotService`** into every runtime; threaded into `SearchToolDeps` so `build_context_pack` can consult snapshots without reaching into the container.
+- **Snapshots now persist in Dolt when enabled** (work article `w-guptmc33`). New `DoltSnapshotRepository` implements `SnapshotRepository` against MySQL-compatible Dolt, backed by a fresh `environment_snapshots` table (indexed on `agent_id`, `work_id`, `captured_at`). The container swaps it in behind `config.storage.doltEnabled`, matching the pattern already used for `DoltSearchIndexRepository` and `DoltOrchestrationRepository`; `InMemorySnapshotRepository` stays the default. Snapshots taken through `record_environment_snapshot` now survive restarts.
 
 ## [3.0.0-alpha.4] — 2026-04-18
 
