@@ -2,7 +2,7 @@
 id: w-0ieze72s
 title: Add environment_snapshot MCP tool and snapshot-aware context pack
 template: feature
-phase: implementation
+phase: review
 priority: medium
 author: agent-investigator
 tags: [agents, context, mcp, tools, bootstrapping, iris-research]
@@ -11,11 +11,12 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-19T07:56:38.775Z
-updatedAt: 2026-04-19T08:25:50.409Z
+updatedAt: 2026-04-19T08:41:07.334Z
 enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"agent-investigator","status":"contributed","contributedAt":"2026-04-19T08:25:44.179Z"},{"role":"testing","agentId":"agent-investigator","status":"contributed","contributedAt":"2026-04-19T08:25:47.504Z"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-19T07:56:38.775Z","exitedAt":"2026-04-19T08:17:12.667Z"},{"phase":"enrichment","enteredAt":"2026-04-19T08:17:12.667Z","exitedAt":"2026-04-19T08:25:50.409Z"},{"phase":"implementation","enteredAt":"2026-04-19T08:25:50.409Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-19T07:56:38.775Z","exitedAt":"2026-04-19T08:17:12.667Z"},{"phase":"enrichment","enteredAt":"2026-04-19T08:17:12.667Z","exitedAt":"2026-04-19T08:25:50.409Z"},{"phase":"implementation","enteredAt":"2026-04-19T08:25:50.409Z","exitedAt":"2026-04-19T08:41:07.334Z"},{"phase":"review","enteredAt":"2026-04-19T08:41:07.334Z"}]}
 ---
+
 
 
 ## Objective
@@ -153,3 +154,43 @@ pnpm vitest run tests/unit/context/snapshot-schema.test.ts tests/unit/context/sn
 - Guard predicates that consume snapshots (e.g. `ready_to_implement` requires a fresh snapshot with clean lockfile).
 - Snapshot diffing surfaced in the dashboard when resuming a work article.
 - Benchmark harness that uses `environment_snapshot` + `build_context_pack` against a public terminal task set to produce numbers comparable to the IRIS Meta-Harness report.
+
+## Implementation evidence
+
+Landed on branch `claude/investigate-iris-artifact-GdxdL` (PR #59). Commit `8b58169` "feat(context): environment_snapshot MCP tools and snapshot-aware context pack".
+
+Files added:
+
+- `src/context/snapshot-schema.ts`
+- `src/context/snapshot-repository.ts`
+- `src/context/snapshot-in-memory-repository.ts`
+- `src/context/snapshot-service.ts`
+- `src/context/index.ts`
+- `src/tools/snapshot-tools.ts`
+- `scripts/capture-env-snapshot.ts`
+- `tests/unit/context/snapshot-schema.test.ts`
+- `tests/unit/context/snapshot-service.test.ts`
+- `tests/unit/tools/snapshot-tools.test.ts`
+- `tests/unit/tools/search-tools-snapshot.test.ts`
+
+Files modified:
+
+- `src/core/config.ts` — new `context` block with `snapshotMaxAgeMinutes`
+- `src/core/container.ts` — wires `snapshotRepo` + `snapshotService`
+- `src/server.ts` — registers and dispatches snapshot tools
+- `src/tools/index.ts` — re-exports
+- `src/tools/search-tools.ts` — `build_context_pack` accepts `agent_id` / `work_id` and attaches snapshot
+- `CHANGELOG.md`
+
+Acceptance criteria — all green:
+
+- `SnapshotSchema` validates realistic input and rejects malformed input with Zod issue paths.
+- `record` returns an `s-`-prefixed id.
+- `getLatest` returns the newest snapshot for a scope; `null` when none exists.
+- `compare` flags runtime, lockfile, branch, sha, dirty, cwd, and package-manager changes.
+- `build_context_pack` with `work_id` or `agent_id` includes the latest snapshot and an `ageSeconds` field.
+- Stale snapshots (`ageSeconds > maxAgeMinutes * 60`) append a `stale_snapshot` entry to `guidance`.
+- MCP server spawns no shell: snapshot input is provided by the caller.
+- `pnpm typecheck` clean; `pnpm lint` reports only pre-existing errors; 1183 tests pass.
+
+No files exceed 500 lines. No `any` types introduced. CHANGELOG updated under `[Unreleased]`.

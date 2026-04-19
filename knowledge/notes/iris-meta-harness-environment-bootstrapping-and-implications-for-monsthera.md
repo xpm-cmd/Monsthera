@@ -7,8 +7,9 @@ tags: [agents, research, terminal-bench, context, bootstrapping, mcp, tools]
 codeRefs: [src/context/insights.ts, src/tools/search-tools.ts, src/tools/agent-tools.ts, src/tools/index.ts]
 references: []
 createdAt: 2026-04-19T07:56:11.759Z
-updatedAt: 2026-04-19T07:57:02.516Z
+updatedAt: 2026-04-19T08:40:56.238Z
 ---
+
 
 
 Research note comparing Stanford IRIS Lab's `meta-harness-tbench2-artifact` against Monsthera's context model, and proposing an `environment_snapshot` tool so agents using Monsthera get the same cold-start savings the IRIS artifact reports.
@@ -114,3 +115,32 @@ Store snapshots as orchestration events (alongside phase transitions, wave runs)
 ## Next step
 
 See the accompanying work article `w-0ieze72s` for the implementation contract, acceptance criteria, and file plan.
+
+## Implementation status — shipped
+
+The proposal above has been implemented on branch `claude/investigate-iris-artifact-GdxdL` (PR #59). The "Proposed addition" and "Open questions" sections above are preserved as design record; the actual shipped behavior matches them with minor adjustments captured here.
+
+What landed:
+
+- `src/context/snapshot-schema.ts` — Zod schema for snapshot input/storage and the diff shape.
+- `src/context/snapshot-repository.ts` + `snapshot-in-memory-repository.ts` — bounded (5k) in-memory repo with oldest-first eviction.
+- `src/context/snapshot-service.ts` — `record`, `getLatest`, `compare`. Computes `ageSeconds` + `stale` against `maxAgeMinutes`.
+- `src/tools/snapshot-tools.ts` — three MCP tools: `record_environment_snapshot`, `get_latest_environment_snapshot`, `compare_environment_snapshots`.
+- `src/tools/search-tools.ts` — `build_context_pack` accepts `agent_id` / `work_id`; attaches a slim `snapshot` field and appends `stale_snapshot` to `guidance` when older than the threshold.
+- `scripts/capture-env-snapshot.ts` — client-side probe runner (node, pnpm, git, /proc/meminfo, lockfile sha256). Probe failures omit fields instead of failing.
+- Config: `MonstheraConfig.context.snapshotMaxAgeMinutes`, env var `MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES`, default 30, `0` disables.
+
+Design decisions that differ from the original proposal:
+
+- Storage is a dedicated repository, not an orchestration event. Events record facts; snapshots are queryable state, so a separate repo mirrors the existing `knowledge` / `work` / `search` pattern more cleanly.
+- Snapshot tools live in their own `snapshot-tools.ts` file instead of inside `agent-tools.ts`. Three tools are enough to deserve a file, and it matches the per-domain tool file convention.
+- Stale snapshots are kept and annotated in `guidance` rather than refused. Dropping a stale snapshot would silently remove physical context; annotating lets the agent decide.
+
+Validation: 33 new unit tests (schema, service, MCP tool dispatch, `build_context_pack` integration). Full suite: 1183 passed, 3 skipped. `tsc --noEmit` clean; `pnpm lint` reports only pre-existing errors unrelated to this work.
+
+Next steps still open (separate work, not this one):
+
+- Guard predicates that consume snapshots (e.g. a `ready_to_implement` guard that requires a fresh snapshot with clean lockfile).
+- Snapshot diffing in the dashboard when resuming a work article.
+- Dolt persistence for snapshots (currently in-memory only).
+- Benchmark harness to quantify the savings against a public terminal task set.
