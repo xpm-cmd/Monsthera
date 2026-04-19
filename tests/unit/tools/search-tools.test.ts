@@ -6,6 +6,7 @@ import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-me
 import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
 import { StubEmbeddingProvider } from "../../../src/search/embedding.js";
 import { createLogger } from "../../../src/core/logger.js";
+import { agentId, Priority, WorkTemplate } from "../../../src/core/types.js";
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -234,8 +235,9 @@ describe("handleSearchTool", () => {
       // by passing exclude_ids.
       const w = await workRepo.create({
         title: "Work match",
-        template: "feature",
-        author: "agent-1",
+        template: WorkTemplate.FEATURE,
+        priority: Priority.MEDIUM,
+        author: agentId("agent-1"),
         content: "## Objective\n\nauth\n\n## Context\n\nn/a\n\n## Acceptance Criteria\n\n- [ ] x\n\n## Scope\n\n- y\n",
       });
       if (!w.ok) throw new Error("seed failed");
