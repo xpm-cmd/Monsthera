@@ -4,6 +4,20 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Environment-snapshot MCP tools** (work article `w-0ieze72s`, research note `k-to46fuoi`). Three new tools close the "semantic context vs. physical context" gap that the Stanford IRIS `meta-harness-tbench2-artifact` highlighted in its environment-bootstrapping design:
+  - `record_environment_snapshot` — stores a validated snapshot (cwd, file listing, runtimes, package managers, lockfile sha256, memory, git ref). The MCP server never spawns shell processes; callers gather probes in their own harness.
+  - `get_latest_environment_snapshot` — returns the most recent snapshot for an `agentId`, `workId`, or both. Response includes `ageSeconds` and a `stale` flag computed against `MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES` (default 30, `0` disables).
+  - `compare_environment_snapshots` — diffs two snapshots by id. Flags runtime changes, lockfile hash changes, branch / sha / dirty changes, cwd changes, and package-manager changes.
+- **`build_context_pack` now accepts `agent_id` and `work_id`**. When either is provided and a snapshot exists, the pack includes a slim `snapshot` summary alongside the ranked items. Stale snapshots append a `stale_snapshot` line to `guidance` instead of being silently dropped, so agents see semantic context (what the project means) and physical context (what this sandbox is) in one round-trip.
+- **`scripts/capture-env-snapshot.ts` helper**. Client-side probe runner that emits JSON suitable for `record_environment_snapshot`. Runs `node --version`, `pnpm --version`, `git rev-parse`, lockfile hashing, `/proc/meminfo`, etc., with every probe wrapped in a failure-tolerant `tryExec` — missing tools omit fields instead of failing the snapshot.
+
+### Changed
+
+- **`MonstheraConfig` gains a `context` block** with `snapshotMaxAgeMinutes` (default 30). Env override: `MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES`.
+- **Container wires `snapshotRepo` + `snapshotService`** into every runtime; threaded into `SearchToolDeps` so `build_context_pack` can consult snapshots without reaching into the container.
+
 ## [3.0.0-alpha.4] — 2026-04-18
 
 **Tier 3.3 + 4.x — Agent UX, server coverage, and dashboard hardening.** Three PRs that cut agent token usage, close the server test gap, and fix the fresh-corpus dashboard experience.

@@ -36,6 +36,11 @@ const DashboardConfigSchema = z.object({
   authToken: z.string().optional(),
 });
 
+const ContextConfigSchema = z.object({
+  /** Snapshots older than this are flagged `stale` in context packs. 0 disables the check. */
+  snapshotMaxAgeMinutes: z.number().min(0).default(30),
+});
+
 const ServerConfigSchema = z.object({
   port: z.number().default(3000),
   host: z.string().default("localhost"),
@@ -48,6 +53,7 @@ export const MonstheraConfigSchema = z.object({
   orchestration: OrchestrationConfigSchema.default(() => OrchestrationConfigSchema.parse({})),
   server: ServerConfigSchema.default(() => ServerConfigSchema.parse({})),
   dashboard: DashboardConfigSchema.default(() => DashboardConfigSchema.parse({})),
+  context: ContextConfigSchema.default(() => ContextConfigSchema.parse({})),
   verbosity: z.enum(["quiet", "normal", "verbose", "debug"]).default("normal"),
 });
 
@@ -219,6 +225,18 @@ export function applyEnvOverrides(config: Record<string, unknown>): Record<strin
         : {}),
       ollamaUrl: process.env["MONSTHERA_OLLAMA_URL"],
     };
+  }
+
+  if (process.env["MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES"] !== undefined) {
+    const minutes = Number(process.env["MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES"]);
+    if (Number.isFinite(minutes) && minutes >= 0) {
+      result["context"] = {
+        ...(typeof result["context"] === "object" && result["context"] !== null
+          ? (result["context"] as Record<string, unknown>)
+          : {}),
+        snapshotMaxAgeMinutes: minutes,
+      };
+    }
   }
 
   return result;
