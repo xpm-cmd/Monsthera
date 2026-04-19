@@ -17,6 +17,7 @@ import { handleKnowledge } from "./knowledge-commands.js";
 import { handleWork } from "./work-commands.js";
 import { handleIngest } from "./ingest-commands.js";
 import { handleDoctor } from "./doctor-commands.js";
+import { handlePack } from "./context-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -69,6 +70,7 @@ function handleHelp(): void {
       "  work <subcommand>        Manage work articles",
       "  ingest <subcommand>      Import local sources into knowledge",
       "  search <query>           Search across all articles",
+      "  pack <query>             Build a ranked context pack (optionally record snapshot)",
       "  reindex                  Rebuild the search index",
       "  migrate                  Run v2 -> v3 migration from SQLite",
       "  doctor                   Run health checks and diagnostics",
@@ -104,12 +106,18 @@ function handleHelp(): void {
       "  --version, -v       Print version and exit",
       "  --help, -h          Show this help message",
       "",
+      "PACK",
+      "  monsthera pack <query...> [--mode general|code|research] [--limit N] [--type knowledge|work|all]",
+      "                            [--agent-id A] [--work-id W] [--include-content] [--verbose] [--json]",
+      "                            [--record <path>|- ]",
+      "",
       "EXAMPLES",
       "  monsthera serve",
       "  monsthera knowledge create --title \"API Design\" --category architecture --content \"REST vs GraphQL...\"",
       "  monsthera work create --title \"Add auth\" --template feature --author agent-1 --priority high",
       "  monsthera ingest local --path docs/adrs --summary",
       "  monsthera search \"authentication\"",
+      "  pnpm exec tsx scripts/capture-env-snapshot.ts --agent-id a-1 --work-id w-xxx | monsthera pack \"token use\" --record - --work-id w-xxx",
       "  monsthera reindex",
       "  monsthera migrate --mode dry-run --scope all --source .monsthera/monsthera.db --json",
       "",
@@ -276,6 +284,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "doctor":
         await handleDoctor(args.slice(1));
+        break;
+      case "pack":
+        await handlePack(args.slice(1));
         break;
       case "--version":
       case "-v":

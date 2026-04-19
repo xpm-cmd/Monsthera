@@ -418,6 +418,83 @@ describe("CLI main()", () => {
     });
   });
 
+  describe("pack subcommand", () => {
+    it("pack with no query exits 1", async () => {
+      await main(withTempRepo(["pack"]));
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("Missing required argument"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("pack <query> prints a rendered summary on an empty corpus", async () => {
+      const output = await captureStdout(() =>
+        main(withTempRepo(["pack", "authentication"])),
+      );
+      expect(output).toContain('query="authentication"');
+      expect(output).toContain("Summary: 0 items");
+      expect(output).toContain("Items:");
+    });
+
+    it("pack <query> --json prints a parseable JSON pack", async () => {
+      const output = await captureStdout(() =>
+        main(withTempRepo(["pack", "authentication", "--json"])),
+      );
+      const parsed = JSON.parse(output);
+      expect(parsed).toHaveProperty("query", "authentication");
+      expect(parsed).toHaveProperty("summary");
+      expect(parsed).toHaveProperty("items");
+      expect(Array.isArray(parsed.items)).toBe(true);
+    });
+
+    it("pack --record <path> records a snapshot before building the pack", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await fs.mkdir(repoPath, { recursive: true });
+      const snapshotPath = path.join(repoPath, "snap.json");
+      await fs.writeFile(
+        snapshotPath,
+        JSON.stringify({
+          agentId: "a-1",
+          cwd: repoPath,
+          files: ["README.md"],
+          runtimes: { node: "22.0.0" },
+          packageManagers: ["pnpm"],
+          lockfiles: [],
+        }),
+        "utf-8",
+      );
+
+      const output = await captureStdout(() =>
+        main([
+          "pack", "onboarding",
+          "--agent-id", "a-1",
+          "--record", snapshotPath,
+          "--json",
+          "--repo", repoPath,
+        ]),
+      );
+      const parsed = JSON.parse(output);
+      expect(parsed).toHaveProperty("recordedSnapshotId");
+      expect(typeof parsed.recordedSnapshotId).toBe("string");
+      // The pack should also surface the snapshot (not stale).
+      expect(parsed).toHaveProperty("snapshot");
+      expect(parsed.snapshot).toHaveProperty("agentId", "a-1");
+    });
+
+    it("pack --record with malformed JSON exits 1 with a readable error", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await fs.mkdir(repoPath, { recursive: true });
+      const snapshotPath = path.join(repoPath, "bad.json");
+      await fs.writeFile(snapshotPath, "{ not valid json", "utf-8");
+
+      await main([
+        "pack", "q",
+        "--record", snapshotPath,
+        "--repo", repoPath,
+      ]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to parse --record JSON"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
   describe("ingest subcommand", () => {
     it("ingest local imports a markdown file and prints a summary", async () => {
       const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
