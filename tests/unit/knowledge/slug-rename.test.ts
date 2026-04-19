@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { KnowledgeService } from "../../../src/knowledge/service.js";
 import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
-import { ErrorCode, NotFoundError, StorageError } from "../../../src/core/errors.js";
+import { ErrorCode, StorageError } from "../../../src/core/errors.js";
+import type { NotFoundError } from "../../../src/core/errors.js";
 import { err } from "../../../src/core/result.js";
 import type { Result } from "../../../src/core/result.js";
 import type { Logger } from "../../../src/core/logger.js";

@@ -3,6 +3,7 @@ import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import { StorageError } from "../core/errors.js";
 import type { DatabaseSync } from "node:sqlite";
+import type * as NodeSqlite from "node:sqlite";
 import type {
   V2SourceReader,
   V2Ticket,
@@ -14,8 +15,8 @@ import type {
 
 const require = createRequire(import.meta.url);
 
-function loadNodeSqlite(): typeof import("node:sqlite") {
-  return require("node:sqlite") as typeof import("node:sqlite");
+function loadNodeSqlite(): typeof NodeSqlite {
+  return require("node:sqlite") as typeof NodeSqlite;
 }
 
 interface TicketRow {

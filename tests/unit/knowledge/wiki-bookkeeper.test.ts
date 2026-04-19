@@ -3,28 +3,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { WikiBookkeeper } from "../../../src/knowledge/wiki-bookkeeper.js";
-import { VALID_PHASES } from "../../../src/core/types.js";
-import type { KnowledgeArticle } from "../../../src/knowledge/repository.js";
 import type { WorkArticle } from "../../../src/work/repository.js";
-import { articleId, workId, agentId, timestamp, slug, WorkPhase, WorkTemplate, Priority } from "../../../src/core/types.js";
+import type { Logger } from "../../../src/core/logger.js";
+import { workId, agentId, timestamp, WorkPhase, WorkTemplate, Priority } from "../../../src/core/types.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function makeKnowledge(overrides: Partial<KnowledgeArticle> = {}): KnowledgeArticle {
-  return {
-    id: articleId("k-test0001"),
-    title: "Test Knowledge",
-    slug: slug("test-knowledge"),
-    category: "engineering",
-    content: "Test content for knowledge article.",
-    tags: [],
-    codeRefs: [],
-    references: [],
-    createdAt: timestamp("2026-01-01T00:00:00.000Z"),
-    updatedAt: timestamp("2026-01-01T00:00:00.000Z"),
-    ...overrides,
-  };
-}
 
 function makeWork(overrides: Partial<WorkArticle> = {}): WorkArticle {
   return {
@@ -49,12 +32,13 @@ function makeWork(overrides: Partial<WorkArticle> = {}): WorkArticle {
   };
 }
 
-const noopLogger = {
+const noopLogger: Logger = {
   info: () => {},
   warn: () => {},
   error: () => {},
   debug: () => {},
-} as any;
+  child: () => noopLogger,
+};
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
