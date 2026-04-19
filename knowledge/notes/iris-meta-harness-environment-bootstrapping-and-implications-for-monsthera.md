@@ -144,3 +144,16 @@ Next steps still open (separate work, not this one):
 - Snapshot diffing in the dashboard when resuming a work article.
 - Dolt persistence for snapshots (currently in-memory only).
 - Benchmark harness to quantify the savings against a public terminal task set.
+
+## Follow-up work articles
+
+All four items listed above are now tracked as dedicated work articles. Each one is opened as its own PR off `main`; none of them touches the MCP-server-shells-out boundary or the `InMemorySnapshotRepository` contract.
+
+| Work article | Template | Phase at time of note update | Scope | PR |
+| :-- | :-- | :-- | :-- | :-- |
+| `w-guptmc33` — Dolt persistence for environment snapshots | feature | review | `DoltSnapshotRepository` + `environment_snapshots` table + container wiring; snapshots survive restarts when `doltEnabled`. | [#60](https://github.com/xpm-cmd/Monsthera/pull/60) |
+| `w-y988ky96` — Opt-in `snapshot_ready` guard | feature | review | Async guard layer (`AsyncGuardEntry`, `evaluateAsyncGuards`), `snapshot_ready` guard gating `enrichment → implementation` for opted-in templates (only `FEATURE` by default), ADR-006. | [#61](https://github.com/xpm-cmd/Monsthera/pull/61) |
+| `w-r85lzqhv` — Dashboard snapshot-diff endpoint & drift band | feature | review | `GET /api/work/:id/snapshot-diff?against=<id>` + expanded-card drift banner for phase `implementation` / `review`. | [#62](https://github.com/xpm-cmd/Monsthera/pull/62) |
+| `w-uvp3azdf` — Benchmark spike (methodology + target results) | spike | enrichment | Measurement plan for the cold-start savings claim; methodology lives in the companion knowledge article `k-pwksnl38`. Numbers land on the work article when the driver runs. | (closes when the bench runs) |
+
+The benchmark methodology is captured in a sibling research note: `k-pwksnl38` — "Benchmark Methodology — Environment Snapshot + `build_context_pack` Impact". It is the playbook; the measured results land on `w-uvp3azdf` once the driver runs.
