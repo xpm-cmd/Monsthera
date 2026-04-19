@@ -107,10 +107,16 @@ async function handleWorkList(args: string[]): Promise<void> {
       process.exit(1);
     }
     const phase = phaseParam as WorkPhaseType | undefined;
+    const asJson = args.includes("--json");
     const result = await container.workService.listWork(phase);
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
+    }
+
+    if (asJson) {
+      process.stdout.write(JSON.stringify(result.value, null, 2) + "\n");
+      return;
     }
 
     if (result.value.length === 0) {

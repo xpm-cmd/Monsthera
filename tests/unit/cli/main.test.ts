@@ -125,6 +125,29 @@ describe("CLI main()", () => {
       expect(output.length).toBeGreaterThan(0);
     });
 
+    it("knowledge list --json emits parseable JSON (empty corpus)", async () => {
+      const output = await captureStdout(() => main(withTempRepo(["knowledge", "list", "--json"])));
+      expect(JSON.parse(output)).toEqual([]);
+    });
+
+    it("knowledge list --json emits full article shapes after create", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await main([
+        "knowledge", "create",
+        "--title", "Entry One",
+        "--category", "engineering",
+        "--content", "body",
+        "--repo", repoPath,
+      ]);
+      const output = await captureStdout(() =>
+        main(["knowledge", "list", "--json", "--repo", repoPath]),
+      );
+      const parsed = JSON.parse(output) as Array<{ id: string; title: string; content: string }>;
+      expect(parsed.length).toBe(1);
+      expect(parsed[0]?.title).toBe("Entry One");
+      expect(parsed[0]?.id).toMatch(/^k-/);
+    });
+
     it("knowledge get prints error for non-existent ID", async () => {
       // Each CLI invocation creates a fresh in-memory container, so no
       // previously-created article persists. Verify the error path works.
@@ -162,6 +185,29 @@ describe("CLI main()", () => {
     it("work list prints articles or empty message", async () => {
       const output = await captureStdout(() => main(withTempRepo(["work", "list"])));
       expect(output.length).toBeGreaterThan(0);
+    });
+
+    it("work list --json emits parseable JSON (empty corpus)", async () => {
+      const output = await captureStdout(() => main(withTempRepo(["work", "list", "--json"])));
+      expect(JSON.parse(output)).toEqual([]);
+    });
+
+    it("work list --json emits full work shapes after create", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await main([
+        "work", "create",
+        "--title", "Listable",
+        "--template", "bugfix",
+        "--author", "agent-1",
+        "--repo", repoPath,
+      ]);
+      const output = await captureStdout(() =>
+        main(["work", "list", "--json", "--repo", repoPath]),
+      );
+      const parsed = JSON.parse(output) as Array<{ id: string; title: string; phase: string }>;
+      expect(parsed.length).toBe(1);
+      expect(parsed[0]?.title).toBe("Listable");
+      expect(parsed[0]?.phase).toBe("planning");
     });
 
     it("work get prints error for non-existent ID", async () => {

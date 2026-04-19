@@ -87,10 +87,16 @@ async function handleKnowledgeGet(args: string[]): Promise<void> {
 async function handleKnowledgeList(args: string[]): Promise<void> {
   await withContainer(args, async (container) => {
     const category = parseFlag(args, "--category");
+    const asJson = args.includes("--json");
     const result = await container.knowledgeService.listArticles(category);
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
+    }
+
+    if (asJson) {
+      process.stdout.write(JSON.stringify(result.value, null, 2) + "\n");
+      return;
     }
 
     if (result.value.length === 0) {
