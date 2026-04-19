@@ -111,6 +111,19 @@ export class DoltSnapshotRepository implements SnapshotRepository {
     return ok(this.parseRow(rows[0]!));
   }
 
+  async findAllByWork(
+    workId: string,
+  ): Promise<Result<readonly EnvironmentSnapshot[], StorageError>> {
+    const queryResult = await executeQuery(
+      this.pool,
+      "SELECT * FROM environment_snapshots WHERE work_id = ? ORDER BY captured_at ASC",
+      [workId],
+    );
+    if (!queryResult.ok) return queryResult;
+    const rows = queryResult.value as SnapshotRow[];
+    return ok(rows.map((r) => this.parseRow(r)));
+  }
+
   private parseRow(row: SnapshotRow): EnvironmentSnapshot {
     const gitRef = decodeJson<SnapshotGitRef>(row.git_ref);
     const memory = decodeJson<{ totalMb: number; availableMb: number }>(row.memory);

@@ -8,6 +8,7 @@ import {
   getAgents,
   getOrchestrationWave,
   getWork,
+  getWorkSnapshotDiff,
   removeWorkDependency,
   submitReview,
   updateWork,
@@ -158,6 +159,45 @@ function buildDependencyManager(article, workArticles) {
   ].join("");
 }
 
+const DRIFT_PHASES = new Set(["implementation", "review"]);
+
+function buildSnapshotDriftPlaceholder(article) {
+  if (!DRIFT_PHASES.has(article.phase)) return "";
+  return `<div class="mt-16 snapshot-drift" data-snapshot-diff="${esc(article.id)}"></div>`;
+}
+
+function renderSnapshotDriftBand(payload) {
+  if (!payload) return "";
+  if (!payload.baseline || !payload.diff) {
+    const capturedAt = payload.current?.capturedAt
+      ? ` · captured ${esc(timeAgo(payload.current.capturedAt))}`
+      : "";
+    return `<div class="inline-notice inline-notice--outline"><strong>Environment snapshot</strong><div class="text-xs text-muted mt-4">Only one snapshot on record for this work article; nothing to diff against${capturedAt}.</div></div>`;
+  }
+  const diff = payload.diff;
+  const changes = [];
+  if (diff.cwdChanged) changes.push("cwd");
+  if (diff.branchChanged) changes.push("branch");
+  if (diff.shaChanged) changes.push("sha");
+  if (diff.dirtyChanged) changes.push("dirty");
+  if (diff.packageManagersChanged) changes.push("package managers");
+  if (diff.runtimesChanged?.length) changes.push(`runtimes (${diff.runtimesChanged.map(esc).join(", ")})`);
+  if (diff.lockfilesChanged?.length) changes.push(`lockfiles (${diff.lockfilesChanged.map(esc).join(", ")})`);
+  if (changes.length === 0) {
+    return `<div class="inline-notice inline-notice--success"><strong>Environment snapshot</strong><div class="text-xs text-muted mt-4">Current sandbox matches the baseline recorded for this work article.</div></div>`;
+  }
+  const ageDelta = typeof diff.ageDeltaSeconds === "number"
+    ? `Baseline → current: ${Math.max(0, Math.round(diff.ageDeltaSeconds / 60))} min`
+    : "";
+  return [
+    '<div class="inline-notice inline-notice--warning">',
+    '<strong>Sandbox drift detected</strong>',
+    `<div class="text-xs mt-4">Changed: ${changes.join(" · ")}</div>`,
+    ageDelta ? `<div class="text-xs text-muted mt-4">${esc(ageDelta)}</div>` : "",
+    '</div>',
+  ].filter(Boolean).join("");
+}
+
 function buildEnrichmentPanel(article) {
   const rows = (article.enrichmentRoles || []).length > 0
     ? article.enrichmentRoles.map((role) => {
@@ -247,6 +287,7 @@ function buildQueueCard(article, expandedId, workArticles, readySet) {
           `<label class="field"><span class="text-label">Content</span><textarea class="textarea" name="content">${esc(article.content || "")}</textarea></label>`,
           '<div class="form-actions"><button class="btn btn--primary btn--sm" type="submit">Save changes</button></div>',
           '</form>',
+          buildSnapshotDriftPlaceholder(article),
           buildEnrichmentPanel(article),
           buildReviewerManager(article),
           buildDependencyManager(article, workArticles),
@@ -277,6 +318,8 @@ export async function render(container) {
     state: "all",
   };
 
+  const snapshotDiffCache = new Map();
+
   async function refresh(preferredId = expandedId) {
     [workArticles, directory, wave] = await Promise.all([
       getWork().catch(() => []),
@@ -295,6 +338,7 @@ export async function render(container) {
       const result = await action();
       flash = { kind: "success", message: successMessage };
       await refresh(result?.id || preferredId || null);
+      snapshotDiffCache.clear();
       rerender();
     } catch (error) {
       flash = { kind: "error", message: error?.message || "Request failed" };
@@ -464,10 +508,36 @@ export async function render(container) {
     return temp.content;
   }
 
+  async function hydrateSnapshotDrift() {
+    const placeholders = container.querySelectorAll("[data-snapshot-diff]");
+    for (const node of placeholders) {
+      const id = node.getAttribute("data-snapshot-diff");
+      if (!id) continue;
+      if (snapshotDiffCache.has(id)) {
+        node.innerHTML = renderSnapshotDriftBand(snapshotDiffCache.get(id));
+        continue;
+      }
+      node.innerHTML = '<div class="text-xs text-muted">Checking snapshot drift…</div>';
+      try {
+        const payload = await getWorkSnapshotDiff(id);
+        snapshotDiffCache.set(id, payload);
+        node.innerHTML = renderSnapshotDriftBand(payload);
+      } catch (error) {
+        if (error?.status === 404) {
+          snapshotDiffCache.set(id, null);
+          node.innerHTML = "";
+        } else {
+          node.innerHTML = '<div class="text-xs text-muted">Snapshot drift unavailable.</div>';
+        }
+      }
+    }
+  }
+
   function rerender() {
     container.textContent = "";
     container.appendChild(buildDOM());
     if (typeof lucide !== "undefined") lucide.createIcons({ nodes: [container] });
+    hydrateSnapshotDrift();
   }
 
   rerender();

@@ -118,6 +118,10 @@ export function assignReviewer(id, reviewerAgentId) { return post(`/api/work/${e
 export function submitReview(id, reviewerAgentId, status) { return post(`/api/work/${encodeURIComponent(id)}/review`, { reviewerAgentId, status }); }
 export function addWorkDependency(id, blockedById) { return post(`/api/work/${encodeURIComponent(id)}/dependencies`, { blockedById }); }
 export function removeWorkDependency(id, blockedById) { return del(`/api/work/${encodeURIComponent(id)}/dependencies?blockedById=${encodeURIComponent(blockedById)}`); }
+export function getWorkSnapshotDiff(id, { against } = {}) {
+  const params = against ? `?against=${encodeURIComponent(against)}` : "";
+  return get(`/api/work/${encodeURIComponent(id)}/snapshot-diff${params}`);
+}
 export function search(q, limit) {
   const params = new URLSearchParams({ q });
   if (limit) params.set("limit", String(limit));

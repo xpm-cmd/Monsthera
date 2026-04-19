@@ -49,4 +49,12 @@ export class InMemorySnapshotRepository implements SnapshotRepository {
     const latest = matching.reduce((acc, cur) => (cur.capturedAt > acc.capturedAt ? cur : acc));
     return ok(latest);
   }
+
+  async findAllByWork(workId: string): Promise<Result<readonly EnvironmentSnapshot[], StorageError>> {
+    const matching = this.snapshots
+      .filter((s) => s.workId === workId)
+      .slice()
+      .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+    return ok(matching);
+  }
 }
