@@ -18,6 +18,7 @@ import { statusToolDefinitions, handleStatusTool } from "./tools/status-tools.js
 import { ingestToolDefinitions, handleIngestTool } from "./tools/ingest-tools.js";
 import { structureToolDefinitions, handleStructureTool } from "./tools/structure-tools.js";
 import { wikiToolDefinitions, handleWikiTool } from "./tools/wiki-tools.js";
+import { snapshotToolDefinitions, handleSnapshotTool } from "./tools/snapshot-tools.js";
 import { migrationToolDefinitions, handleMigrationTool } from "./migration/tools.js";
 
 /**
@@ -38,6 +39,7 @@ export interface ToolRegistry {
     readonly ingest: ReadonlySet<string>;
     readonly structure: ReadonlySet<string>;
     readonly wiki: ReadonlySet<string>;
+    readonly snapshot: ReadonlySet<string>;
     readonly migration: ReadonlySet<string>;
   };
 }
@@ -58,6 +60,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
   const ingestTools = ingestToolDefinitions();
   const structureTools = structureToolDefinitions();
   const wikiTools = wikiToolDefinitions();
+  const snapshotTools = snapshotToolDefinitions();
   const migrationTools = container.migrationService ? migrationToolDefinitions() : [];
 
   return {
@@ -72,6 +75,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       ...ingestTools,
       ...structureTools,
       ...wikiTools,
+      ...snapshotTools,
       ...migrationTools,
     ],
     names: {
@@ -85,6 +89,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       ingest: new Set(ingestTools.map((t) => t.name)),
       structure: new Set(structureTools.map((t) => t.name)),
       wiki: new Set(wikiTools.map((t) => t.name)),
+      snapshot: new Set(snapshotTools.map((t) => t.name)),
       migration: new Set(migrationTools.map((t) => t.name)),
     },
   };
@@ -114,6 +119,7 @@ export async function dispatchToolCall(
     const result = await handleSearchTool(name, args, container.searchService, {
       knowledgeRepo: container.knowledgeRepo,
       workRepo: container.workRepo,
+      snapshotService: container.snapshotService,
     });
     // Rebuild wiki index after a full reindex so index.md stays in sync.
     if (name === "reindex_all" && result.content[0]?.type === "text" && !result.isError) {
@@ -157,6 +163,9 @@ export async function dispatchToolCall(
   }
   if (names.wiki.has(name)) {
     return handleWikiTool(name, args, container.bookkeeper);
+  }
+  if (names.snapshot.has(name)) {
+    return handleSnapshotTool(name, args, container.snapshotService);
   }
   if (names.migration.has(name) && container.migrationService) {
     return handleMigrationTool(name, args, container.migrationService);

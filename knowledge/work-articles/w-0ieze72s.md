@@ -2,7 +2,7 @@
 id: w-0ieze72s
 title: Add environment_snapshot MCP tool and snapshot-aware context pack
 template: feature
-phase: planning
+phase: implementation
 priority: medium
 author: agent-investigator
 tags: [agents, context, mcp, tools, bootstrapping, iris-research]
@@ -11,10 +11,10 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-19T07:56:38.775Z
-updatedAt: 2026-04-19T07:56:38.775Z
-enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"agent-investigator","status":"pending"},{"role":"testing","agentId":"agent-investigator","status":"pending"}]}
+updatedAt: 2026-04-19T08:25:50.409Z
+enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"agent-investigator","status":"contributed","contributedAt":"2026-04-19T08:25:44.179Z"},{"role":"testing","agentId":"agent-investigator","status":"contributed","contributedAt":"2026-04-19T08:25:47.504Z"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-19T07:56:38.775Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-19T07:56:38.775Z","exitedAt":"2026-04-19T08:17:12.667Z"},{"phase":"enrichment","enteredAt":"2026-04-19T08:17:12.667Z","exitedAt":"2026-04-19T08:25:50.409Z"},{"phase":"implementation","enteredAt":"2026-04-19T08:25:50.409Z"}]}
 ---
 
 

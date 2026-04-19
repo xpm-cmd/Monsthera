@@ -31,6 +31,9 @@ import { StructureService } from "../structure/service.js";
 import { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import { AgentService } from "../agents/service.js";
 import { IngestService } from "../ingest/service.js";
+import { InMemorySnapshotRepository } from "../context/snapshot-in-memory-repository.js";
+import { SnapshotService } from "../context/snapshot-service.js";
+import type { SnapshotRepository } from "../context/snapshot-repository.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -50,6 +53,8 @@ export interface MonstheraContainer extends Disposable {
   readonly ingestService: IngestService;
   readonly migrationService?: MigrationService;
   readonly bookkeeper: WikiBookkeeper;
+  readonly snapshotRepo: SnapshotRepository;
+  readonly snapshotService: SnapshotService;
 }
 
 /**
@@ -255,6 +260,12 @@ export async function createContainer(
     searchSync: searchService,
     status,
   });
+  const snapshotRepo: SnapshotRepository = new InMemorySnapshotRepository();
+  const snapshotService = new SnapshotService({
+    repo: snapshotRepo,
+    logger,
+    maxAgeMinutes: config.context.snapshotMaxAgeMinutes,
+  });
 
   // Wire up migration service if a v2 reader is provided
   const migrationService = options?.v2Reader
@@ -372,6 +383,8 @@ export async function createContainer(
     ingestService,
     migrationService,
     bookkeeper,
+    snapshotRepo,
+    snapshotService,
     async dispose() {
       logger.info("Shutting down container");
       await stack.dispose();
