@@ -8,6 +8,8 @@ import type { StatusReporter } from "../core/status.js";
 import type { KnowledgeArticle, KnowledgeArticleRepository } from "./repository.js";
 import type { SearchMutationSync } from "../search/sync.js";
 import type { WikiBookkeeper } from "./wiki-bookkeeper.js";
+import type { UpdateArticleInput } from "./schemas.js";
+import type { WorkArticle } from "../work/repository.js";
 import { validateCreateInput, validateUpdateInput } from "./schemas.js";
 import { toSlug } from "./slug.js";
 import { nearMissConflicts } from "./slug-conflict.js";
@@ -342,7 +344,7 @@ export class KnowledgeService {
     id: string,
     newSlugRaw: string,
     rewriteInlineWikilinks: boolean,
-    otherFields: Omit<import("./schemas.js").UpdateArticleInput, "new_slug" | "rewrite_inline_wikilinks">,
+    otherFields: Omit<UpdateArticleInput, "new_slug" | "rewrite_inline_wikilinks">,
   ): Promise<Result<KnowledgeArticle, NotFoundError | ValidationError | AlreadyExistsError | StorageError>> {
     this.logger.info("Renaming knowledge article", {
       operation: "renameArticle",
@@ -589,7 +591,7 @@ export class KnowledgeService {
   }
 
   /** Set by container after both services are created. */
-  private _workRepoRef?: { findMany(): Promise<import("../core/result.js").Result<import("../work/repository.js").WorkArticle[], import("../core/errors.js").StorageError>> };
+  private _workRepoRef?: { findMany(): Promise<Result<WorkArticle[], StorageError>> };
   setWorkRepo(workRepo: typeof this._workRepoRef): void {
     this._workRepoRef = workRepo;
   }

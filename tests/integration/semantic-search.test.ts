@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- diagnostic output for an Ollama-gated integration test */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createContainer } from "../../src/core/container.js";
 import { defaultConfig } from "../../src/core/config.js";
