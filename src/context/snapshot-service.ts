@@ -98,6 +98,46 @@ export class SnapshotService {
     return ok(diffSnapshots(leftRes.value, rightRes.value));
   }
 
+  /**
+   * Build the `{ current, baseline, diff }` triple used by the dashboard
+   * drift banner. `baseline` is resolved from `baselineId` when provided,
+   * otherwise falls back to the oldest snapshot recorded for the work id.
+   * When only one snapshot exists for the work id, `baseline` + `diff` are
+   * both `null` — the caller still learns "current exists, nothing to
+   * compare against".
+   */
+  async getDiffForWork(
+    workId: string,
+    baselineId?: string,
+  ): Promise<Result<
+    {
+      readonly current: EnvironmentSnapshot;
+      readonly baseline: EnvironmentSnapshot | null;
+      readonly diff: SnapshotDiff | null;
+    } | null,
+    NotFoundError | StorageError
+  >> {
+    const latest = await this.repo.findLatestByWork(workId);
+    if (!latest.ok) return latest;
+    if (!latest.value) return ok(null);
+    const current = latest.value;
+
+    let baseline: EnvironmentSnapshot | null = null;
+    if (baselineId) {
+      const baselineResult = await this.repo.findById(baselineId);
+      if (!baselineResult.ok) return baselineResult;
+      baseline = baselineResult.value;
+    } else {
+      const all = await this.repo.findAllByWork(workId);
+      if (!all.ok) return all;
+      // Oldest snapshot that is not the current one.
+      baseline = all.value.find((s) => s.id !== current.id) ?? null;
+    }
+
+    const diff = baseline ? diffSnapshots(baseline, current) : null;
+    return ok({ current, baseline, diff });
+  }
+
   private decorate(snapshot: EnvironmentSnapshot): SnapshotWithAge {
     const ageMs = Math.max(0, this.now() - new Date(snapshot.capturedAt).getTime());
     const ageSeconds = Math.floor(ageMs / 1000);

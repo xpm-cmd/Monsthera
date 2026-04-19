@@ -271,6 +271,7 @@ async function handleRequest(
   const workReviewersMatch = pathname.match(/^\/api\/work\/([^/]+)\/reviewers$/);
   const workReviewMatch = pathname.match(/^\/api\/work\/([^/]+)\/review$/);
   const workDependenciesMatch = pathname.match(/^\/api\/work\/([^/]+)\/dependencies$/);
+  const workSnapshotDiffMatch = pathname.match(/^\/api\/work\/([^/]+)\/snapshot-diff$/);
   const agentMatch = pathname.match(/^\/api\/agents\/([^/]+)$/);
   const orchestrationWavePath = pathname === "/api/orchestration/wave";
   const orchestrationWaveExecutePath = pathname === "/api/orchestration/wave/execute";
@@ -1029,6 +1030,29 @@ async function handleRequest(
       const { status, code } = mapErrorToHttp(result.error);
       errorResponse(res, status, code, result.error.message);
     }
+    return;
+  }
+
+  // ── /api/work/:id/snapshot-diff ─────────────────────────────────────────
+  if (workSnapshotDiffMatch) {
+    const id = decodeURIComponent(workSnapshotDiffMatch[1]!);
+    if (req.method !== "GET") {
+      errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+      return;
+    }
+    const againstParam = searchParams.get("against") ?? undefined;
+    const baselineId = againstParam && againstParam.trim().length > 0 ? againstParam : undefined;
+    const diffResult = await container.snapshotService.getDiffForWork(id, baselineId);
+    if (!diffResult.ok) {
+      const { status, code } = mapErrorToHttp(diffResult.error);
+      errorResponse(res, status, code, diffResult.error.message);
+      return;
+    }
+    if (!diffResult.value) {
+      errorResponse(res, 404, "NOT_FOUND", `No snapshot recorded for work id "${id}"`);
+      return;
+    }
+    jsonResponse(res, 200, diffResult.value);
     return;
   }
 
