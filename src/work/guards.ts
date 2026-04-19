@@ -47,6 +47,15 @@ export interface SnapshotGuardDeps {
 }
 
 /**
+ * Agent-facing recovery line emitted alongside a `snapshot_ready` failure.
+ * Exported so the guard-set builder and any test that asserts on the message
+ * share a single source of truth — agents parsing the error must not get
+ * different wording depending on which code path constructed it.
+ */
+export const SNAPSHOT_READY_RECOVERY_HINT =
+  "Recovery: run `pnpm exec tsx scripts/capture-env-snapshot.ts --agent-id=<agent> --work-id=<work>` and pipe the JSON into `record_environment_snapshot`; then retry the advance, or pass `skipGuard: { reason }` to bypass with an audit trail.";
+
+/**
  * `snapshot_ready` — async guard for the `enrichment -> implementation`
  * transition on templates that opt in. Requires:
  *

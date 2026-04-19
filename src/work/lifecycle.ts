@@ -4,7 +4,7 @@ import { StateTransitionError, GuardFailedError } from "../core/errors.js";
 import { WorkPhase } from "../core/types.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import type { WorkArticle } from "./repository.js";
-import { has_objective, has_acceptance_criteria, min_enrichment_met, implementation_linked, all_reviewers_approved, snapshot_ready } from "./guards.js";
+import { has_objective, has_acceptance_criteria, min_enrichment_met, implementation_linked, all_reviewers_approved, snapshot_ready, SNAPSHOT_READY_RECOVERY_HINT } from "./guards.js";
 import { WORK_TEMPLATES } from "./templates.js";
 import type { SnapshotService } from "../context/snapshot-service.js";
 
@@ -24,6 +24,13 @@ export interface GuardEntry {
 export interface AsyncGuardEntry {
   readonly name: string;
   readonly check: (article: WorkArticle) => Promise<boolean>;
+  /**
+   * Agent-facing recovery text appended to `GuardFailedError.message` when
+   * this guard blocks a transition. Optional — guards without a well-defined
+   * recovery path stay silent. Exists so an agent reading the error can act
+   * without cross-referencing an ADR.
+   */
+  readonly recoveryHint?: string;
 }
 
 /**
@@ -93,6 +100,7 @@ export function getAsyncGuardSet(
         {
           name: "snapshot_ready",
           check: (a) => snapshot_ready(a, deps),
+          recoveryHint: SNAPSHOT_READY_RECOVERY_HINT,
         },
       ];
     }
@@ -118,7 +126,9 @@ export async function evaluateAsyncGuards(
     const pass = await guard.check(article);
     if (!pass) {
       if (!options.skipGuard) {
-        return err(new GuardFailedError(guard.name, `Guard "${guard.name}" failed for transition from "${from}" to "${to}"`));
+        const base = `Guard "${guard.name}" failed for transition from "${from}" to "${to}"`;
+        const message = guard.recoveryHint ? `${base}. ${guard.recoveryHint}` : base;
+        return err(new GuardFailedError(guard.name, message));
       }
       failed.push(guard.name);
     }

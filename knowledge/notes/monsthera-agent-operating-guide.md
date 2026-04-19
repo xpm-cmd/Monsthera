@@ -81,6 +81,47 @@ Agents should not spend extra tool calls on manual per-article reindexing after 
 - Keep blockers visible rather than hiding them behind optimistic automation.
 - Treat review as a real gate. Done means approved, not just coded.
 
+## Environment snapshots
+
+Monsthera carries physical sandbox context (cwd, runtimes, lockfile hashes, git ref, memory) alongside the semantic context that `build_context_pack` already provides. Agents that capture and record a snapshot at the start of a session get three things for free: cold-start context in one pack call, drift detection when resuming work someone else started, and the ability to pass the `snapshot_ready` guard on feature templates.
+
+### The three-step runbook
+
+Before starting implementation on a feature work article — or when resuming any article in `implementation` / `review` in a new sandbox — run these three calls in order:
+
+1. **Capture** the snapshot client-side (the MCP server never shells out):
+   ```
+   pnpm exec tsx scripts/capture-env-snapshot.ts --agent-id <you> --work-id <wid>
+   ```
+   Probe failures are tolerated — missing tools just omit fields.
+
+2. **Record** the JSON via MCP:
+   ```
+   record_environment_snapshot({ …stdout of step 1 })
+   ```
+   Returns `{ id, capturedAt, agentId, workId }`. The id is stable; keep it if you want to compare later.
+
+3. **Retrieve** with semantic context in one shot:
+   ```
+   build_context_pack({ query: "...", agent_id: "<you>", work_id: "<wid>" })
+   ```
+   The response now includes a slim `snapshot` block alongside the ranked items. If the snapshot is older than `MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES` (default 30, `0` disables), the pack appends a `stale_snapshot` line to `guidance` — treat that as a signal to re-capture.
+
+### When the `snapshot_ready` guard fires
+
+`feature`-template work articles gate the `enrichment → implementation` advance on a fresh snapshot whose lockfile hashes match HEAD. Bugfix, refactor, and spike templates do not. When the guard blocks an advance, the error message now includes a recovery line pointing at `scripts/capture-env-snapshot.ts` — re-run the three-step runbook above and retry.
+
+Legitimate bypasses (benchmarks, one-off imports, repos without lockfiles) use the existing escape hatch: pass `skipGuard: { reason: "..." }` to `advance_phase`. The bypass records the guard name (`"snapshot_ready"`) and the reason on the phase-history entry, so the audit trail survives.
+
+### Comparing and diffing
+
+- `compare_environment_snapshots({ leftId, rightId })` — use when you have two ids and want a typed diff.
+- `GET /api/work/:id/snapshot-diff?against=<id>` (dashboard only) — shows the drift band on the expanded work card when a work article is in `implementation` or `review`. Baseline defaults to the oldest snapshot recorded against the id; `against` pins an explicit baseline.
+
+### Persistence
+
+Snapshots persist in Dolt when `MONSTHERA_DOLT_ENABLED=true`; otherwise they live in the bounded in-memory repo (5k entries, oldest-first eviction) and vanish on restart. The `SnapshotRepository` contract is identical in both modes.
+
 ## Continuous improvement loop
 
 1. Observe friction: find missing sections, missing refs, weak ownership, review gaps, and blocked work.
