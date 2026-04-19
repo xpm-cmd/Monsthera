@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
-import { VALID_PHASES } from "../core/types.js";
-import type { WorkPhase as WorkPhaseType } from "../core/types.js";
+import { VALID_PHASES, WorkTemplate } from "../core/types.js";
+import type { WorkPhase as WorkPhaseType, WorkTemplate as WorkTemplateType } from "../core/types.js";
+import { generateInitialContent } from "../work/templates.js";
 import {
   formatWorkArticle,
   formatTable,
@@ -11,8 +12,13 @@ import {
   parseFlag,
   parsePositional,
   parseCommaSeparated,
+  readContentInput,
   withContainer,
 } from "./arg-helpers.js";
+
+function isWorkTemplate(value: string): value is WorkTemplateType {
+  return (Object.values(WorkTemplate) as string[]).includes(value);
+}
 
 export async function handleWork(args: string[]): Promise<void> {
   const subcommand = args[0];
@@ -57,11 +63,12 @@ async function handleWorkCreate(args: string[]): Promise<void> {
     const author = requireFlag(args, "--author");
     const priority = parseFlag(args, "--priority") ?? "medium";
     const tags = parseCommaSeparated(args, "--tags");
-    const content = parseFlag(args, "--content");
+    const seed = isWorkTemplate(template) ? generateInitialContent(template) : "";
+    const content = readContentInput(args, { seed });
 
     const input: Record<string, unknown> = { title, template, author, priority };
     if (tags) input.tags = tags;
-    if (content) input.content = content;
+    if (content !== undefined) input.content = content;
 
     const result = await container.workService.createWork(input);
     if (!result.ok) {
@@ -134,16 +141,18 @@ async function handleWorkUpdate(args: string[]): Promise<void> {
     const assignee = parseFlag(args, "--assignee");
     const priority = parseFlag(args, "--priority");
     const tags = parseCommaSeparated(args, "--tags");
-    const content = parseFlag(args, "--content");
+    const content = readContentInput(args);
 
     if (title) input.title = title;
     if (assignee) input.assignee = assignee;
     if (priority) input.priority = priority;
     if (tags) input.tags = tags;
-    if (content) input.content = content;
+    if (content !== undefined) input.content = content;
 
     if (Object.keys(input).length === 0) {
-      console.error("No update fields provided. Use --title, --assignee, --priority, --tags, or --content.");
+      console.error(
+        "No update fields provided. Use --title, --assignee, --priority, --tags, --content, --content-file, or --edit.",
+      );
       process.exit(1);
     }
 
