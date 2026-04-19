@@ -9,6 +9,7 @@ import {
 } from "../../../src/core/types.js";
 import type { WorkArticle } from "../../../src/work/repository.js";
 import { evaluateAsyncGuards, getAsyncGuardSet } from "../../../src/work/lifecycle.js";
+import { SNAPSHOT_READY_RECOVERY_HINT } from "../../../src/work/guards.js";
 import { InMemorySnapshotRepository } from "../../../src/context/snapshot-in-memory-repository.js";
 import { SnapshotService } from "../../../src/context/snapshot-service.js";
 import { createLogger } from "../../../src/core/logger.js";
@@ -252,5 +253,40 @@ describe("snapshot_ready guard — async", () => {
     if (result.ok) {
       expect(result.value.skippedGuards).toEqual(["snapshot_ready"]);
     }
+  });
+
+  it("attaches the recovery hint to the error message when the guard fires", async () => {
+    const service = await makeService();
+    const article = makeArticle();
+    const result = await evaluateAsyncGuards(
+      article,
+      WorkPhase.ENRICHMENT,
+      WorkPhase.IMPLEMENTATION,
+      {},
+      { snapshotService: service },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain(SNAPSHOT_READY_RECOVERY_HINT);
+      expect(result.error.message).toContain("snapshot_ready");
+      expect(SNAPSHOT_READY_RECOVERY_HINT).toContain("capture-env-snapshot.ts");
+      expect(SNAPSHOT_READY_RECOVERY_HINT).toContain("skipGuard");
+    }
+  });
+
+  it("exposes the recovery hint on the guard entry itself", () => {
+    const service = new SnapshotService({
+      repo: new InMemorySnapshotRepository(),
+      logger: LOGGER,
+      maxAgeMinutes: 30,
+    });
+    const set = getAsyncGuardSet(
+      makeArticle(),
+      WorkPhase.ENRICHMENT,
+      WorkPhase.IMPLEMENTATION,
+      { snapshotService: service },
+    );
+    expect(set).toHaveLength(1);
+    expect(set[0]!.recoveryHint).toBe(SNAPSHOT_READY_RECOVERY_HINT);
   });
 });
