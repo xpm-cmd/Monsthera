@@ -4,8 +4,9 @@ import { StateTransitionError, GuardFailedError } from "../core/errors.js";
 import { WorkPhase } from "../core/types.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import type { WorkArticle } from "./repository.js";
-import { has_objective, has_acceptance_criteria, min_enrichment_met, implementation_linked, all_reviewers_approved } from "./guards.js";
+import { has_objective, has_acceptance_criteria, min_enrichment_met, implementation_linked, all_reviewers_approved, snapshot_ready } from "./guards.js";
 import { WORK_TEMPLATES } from "./templates.js";
+import type { SnapshotService } from "../context/snapshot-service.js";
 
 // ─── State Machine ──────────────────────────────────────────────────────────
 
@@ -17,6 +18,24 @@ const TERMINAL_PHASES = new Set<WorkPhaseType>([WorkPhase.DONE, WorkPhase.CANCEL
 export interface GuardEntry {
   readonly name: string;
   readonly check: (article: WorkArticle) => boolean;
+}
+
+/** Async guards consult dependencies that are not embedded in the article. */
+export interface AsyncGuardEntry {
+  readonly name: string;
+  readonly check: (article: WorkArticle) => Promise<boolean>;
+}
+
+/**
+ * Extra data passed into async guard evaluation. Kept per-call (not per-repo)
+ * so the repository stays stateless w.r.t. the snapshot service. `snapshotService`
+ * is optional: when a template opts into `snapshot_ready` but the deps are
+ * missing, the guard fails closed.
+ */
+export interface GuardDeps {
+  readonly snapshotService?: SnapshotService;
+  /** Pre-computed sha256 of each HEAD lockfile keyed by relative path. */
+  readonly headLockfileHashes?: Record<string, string>;
 }
 
 /** Get the guard set for a specific transition. Returns empty array for cancellation. */
@@ -51,6 +70,60 @@ export function getGuardSet(article: WorkArticle, from: WorkPhaseType, to: WorkP
     default:
       return [];
   }
+}
+
+/**
+ * Async guard set for a transition. Separate from `getGuardSet` so pure
+ * guards stay dependency-free. Returns an empty array when the template does
+ * not opt in, when the transition is not gated by an async predicate, or
+ * when the caller does not supply the deps required to evaluate the guard —
+ * unenforced ≠ failed, and dependency-less callers (unit tests, repo-level
+ * use sites) must keep the legacy fast path.
+ */
+export function getAsyncGuardSet(
+  article: WorkArticle,
+  from: WorkPhaseType,
+  to: WorkPhaseType,
+  deps?: GuardDeps,
+): AsyncGuardEntry[] {
+  if (from === WorkPhase.ENRICHMENT && to === WorkPhase.IMPLEMENTATION) {
+    const templateConfig = WORK_TEMPLATES[article.template];
+    if (templateConfig.requiresSnapshotForImplementation && deps?.snapshotService) {
+      return [
+        {
+          name: "snapshot_ready",
+          check: (a) => snapshot_ready(a, deps),
+        },
+      ];
+    }
+  }
+  return [];
+}
+
+/**
+ * Evaluate the async guard set for a transition. Mirrors the bypass semantics
+ * of the sync evaluator: when `skipGuard` is set, failing guards are recorded
+ * in `skippedGuards` instead of short-circuiting with an error.
+ */
+export async function evaluateAsyncGuards(
+  article: WorkArticle,
+  from: WorkPhaseType,
+  to: WorkPhaseType,
+  options: CheckTransitionOptions = {},
+  deps?: GuardDeps,
+): Promise<Result<{ readonly skippedGuards: readonly string[] }, GuardFailedError>> {
+  const guards = getAsyncGuardSet(article, from, to, deps);
+  const failed: string[] = [];
+  for (const guard of guards) {
+    const pass = await guard.check(article);
+    if (!pass) {
+      if (!options.skipGuard) {
+        return err(new GuardFailedError(guard.name, `Guard "${guard.name}" failed for transition from "${from}" to "${to}"`));
+      }
+      failed.push(guard.name);
+    }
+  }
+  return ok({ skippedGuards: failed });
 }
 
 /**

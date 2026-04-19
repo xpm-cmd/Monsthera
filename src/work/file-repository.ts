@@ -11,7 +11,7 @@ import {
 import { generateWorkId, timestamp, workId, agentId, WorkPhase } from "../core/types.js";
 import type { WorkId, AgentId, WorkPhase as WorkPhaseType } from "../core/types.js";
 import { parseMarkdown, serializeMarkdown } from "../knowledge/markdown.js";
-import { checkTransition } from "./lifecycle.js";
+import { checkTransition, evaluateAsyncGuards } from "./lifecycle.js";
 import { WORK_TEMPLATES, generateInitialContent } from "./templates.js";
 import { validateWorkFrontmatter } from "./schemas.js";
 import type {
@@ -382,7 +382,18 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
       ...(options?.skipGuard ? { skipGuard: options.skipGuard } : {}),
     });
     if (!transitionResult.ok) return transitionResult;
-    const { skippedGuards } = transitionResult.value;
+    const asyncResult = await evaluateAsyncGuards(
+      existing.value,
+      existing.value.phase,
+      targetPhase,
+      { ...(options?.skipGuard ? { skipGuard: options.skipGuard } : {}) },
+      options?.guardDeps,
+    );
+    if (!asyncResult.ok) return asyncResult;
+    const skippedGuards = [
+      ...transitionResult.value.skippedGuards,
+      ...asyncResult.value.skippedGuards,
+    ];
 
     const now = timestamp();
     const updatedHistory = existing.value.phaseHistory.map((entry, index) =>

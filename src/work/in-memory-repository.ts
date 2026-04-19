@@ -5,7 +5,7 @@ import type { StorageError, GuardFailedError } from "../core/errors.js";
 import { generateWorkId, timestamp, WorkPhase } from "../core/types.js";
 import type { WorkId, AgentId, WorkPhase as WorkPhaseType } from "../core/types.js";
 import { WORK_TEMPLATES, generateInitialContent } from "./templates.js";
-import { checkTransition } from "./lifecycle.js";
+import { checkTransition, evaluateAsyncGuards } from "./lifecycle.js";
 import type {
   WorkArticle,
   WorkArticleRepository,
@@ -180,7 +180,18 @@ export class InMemoryWorkArticleRepository implements WorkArticleRepository {
       ...(options?.skipGuard ? { skipGuard: options.skipGuard } : {}),
     });
     if (!transitionResult.ok) return transitionResult;
-    const { skippedGuards } = transitionResult.value;
+    const asyncResult = await evaluateAsyncGuards(
+      existing,
+      existing.phase,
+      targetPhase,
+      { ...(options?.skipGuard ? { skipGuard: options.skipGuard } : {}) },
+      options?.guardDeps,
+    );
+    if (!asyncResult.ok) return asyncResult;
+    const skippedGuards = [
+      ...transitionResult.value.skippedGuards,
+      ...asyncResult.value.skippedGuards,
+    ];
 
     const now = timestamp();
 

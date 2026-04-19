@@ -11,7 +11,10 @@ import type { WorkArticle, WorkArticleRepository, CreateWorkArticleInput, Update
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { SearchMutationSync } from "../search/sync.js";
 import type { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
+import type { SnapshotService } from "../context/snapshot-service.js";
 import { validateCreateWorkInput, validateUpdateWorkInput } from "./schemas.js";
+import { WORK_TEMPLATES } from "./templates.js";
+import { readHeadLockfileHashes } from "./lockfile-hashes.js";
 
 // ─── WorkService ─────────────────────────────────────────────────────────────
 
@@ -22,6 +25,10 @@ export interface WorkServiceDeps {
   status?: StatusReporter;
   orchestrationRepo?: OrchestrationEventRepository;
   bookkeeper?: WikiBookkeeper;
+  /** Required for templates that opt into the async `snapshot_ready` guard. */
+  snapshotService?: SnapshotService;
+  /** Absolute path to the repo root; used to hash HEAD lockfiles for the guard. */
+  repoPath?: string;
 }
 
 export class WorkService {
@@ -31,6 +38,8 @@ export class WorkService {
   private readonly status?: StatusReporter;
   private readonly orchestrationRepo?: OrchestrationEventRepository;
   private readonly bookkeeper?: WikiBookkeeper;
+  private readonly snapshotService?: SnapshotService;
+  private readonly repoPath?: string;
 
   constructor(deps: WorkServiceDeps) {
     this.repo = deps.workRepo;
@@ -39,6 +48,8 @@ export class WorkService {
     this.status = deps.status;
     this.orchestrationRepo = deps.orchestrationRepo;
     this.bookkeeper = deps.bookkeeper;
+    this.snapshotService = deps.snapshotService;
+    this.repoPath = deps.repoPath;
   }
 
   async createWork(
@@ -125,7 +136,9 @@ export class WorkService {
       }
     }
     this.logger.info("Advancing work article phase", { operation: "advancePhase", id, targetPhase });
-    const result = await this.repo.advancePhase(workId(id), targetPhase, options);
+    // Resolve async-guard deps once per advance when a template opts in.
+    const enrichedOptions = await this.enrichOptionsWithGuardDeps(id, targetPhase, options);
+    const result = await this.repo.advancePhase(workId(id), targetPhase, enrichedOptions);
     if (result.ok) {
       await this.syncIndexedArticle(result.value.id);
       await this.logEvent(result.value.id, "phase_advanced", {
@@ -204,6 +217,31 @@ export class WorkService {
       await this.logEvent(result.value.id, "dependency_resolved", { blockedById });
     }
     return result;
+  }
+
+  /**
+   * Attach `guardDeps` (snapshot service + HEAD lockfile hashes) to the advance
+   * options when the target transition is a template-gated one that requires
+   * async guard evaluation. No-op for other transitions / templates so the
+   * existing fast path stays unchanged.
+   */
+  private async enrichOptionsWithGuardDeps(
+    id: string,
+    targetPhase: WorkPhaseType,
+    options?: AdvancePhaseOptions,
+  ): Promise<AdvancePhaseOptions | undefined> {
+    if (targetPhase !== WorkPhase.IMPLEMENTATION) return options;
+    if (!this.snapshotService) return options;
+    const existing = await this.repo.findById(id);
+    if (!existing.ok) return options;
+    const template = existing.value.template;
+    if (!WORK_TEMPLATES[template].requiresSnapshotForImplementation) return options;
+
+    const headLockfileHashes = this.repoPath
+      ? await readHeadLockfileHashes(this.repoPath)
+      : {};
+    const guardDeps = { snapshotService: this.snapshotService, headLockfileHashes };
+    return { ...(options ?? {}), guardDeps };
   }
 
   private async syncIndexedArticle(id: string): Promise<void> {

@@ -1,7 +1,8 @@
 import type { Repository } from "../core/repository.js";
 import type { Result } from "../core/result.js";
 import type { WorkId, AgentId, WorkPhase, Priority, WorkTemplate, Timestamp } from "../core/types.js";
-import type { NotFoundError, StorageError, StateTransitionError, ValidationError } from "../core/errors.js";
+import type { NotFoundError, StorageError, StateTransitionError, ValidationError, GuardFailedError } from "../core/errors.js";
+import type { GuardDeps } from "./lifecycle.js";
 
 /** Enrichment role assignment */
 export interface EnrichmentAssignment {
@@ -100,6 +101,13 @@ export interface AdvancePhaseOptions {
   readonly reason?: string;
   /** Auditable escape hatch that bypasses guard failures (but NOT structural transition validity). */
   readonly skipGuard?: SkipGuardOption;
+  /**
+   * Per-call dependencies used by async guards (e.g. `snapshot_ready`). Supplied
+   * by the service layer so the repo stays stateless w.r.t. the snapshot service
+   * and the working tree. Absent on default transitions; present when a template
+   * opts in.
+   */
+  readonly guardDeps?: GuardDeps;
 }
 
 /** Work article repository with domain-specific queries */
@@ -118,7 +126,7 @@ export interface WorkArticleRepository
     id: WorkId,
     targetPhase: WorkPhase,
     options?: AdvancePhaseOptions,
-  ): Promise<Result<WorkArticle, StateTransitionError | NotFoundError | StorageError>>;
+  ): Promise<Result<WorkArticle, StateTransitionError | GuardFailedError | NotFoundError | StorageError>>;
 
   /** Record an enrichment contribution or skip for a role */
   contributeEnrichment(id: WorkId, role: string, status: "contributed" | "skipped"): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>>;
