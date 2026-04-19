@@ -20,6 +20,13 @@ export interface WorkTemplateConfig {
   readonly autoAdvance: boolean;
   /** Forward phase-graph edges for this template (Tier 2.1). Cancellation is implicit. */
   readonly phaseGraph: readonly PhaseGraphEdge[];
+  /**
+   * When true, the `enrichment -> implementation` transition additionally runs the
+   * async `snapshot_ready` guard: a fresh snapshot must exist for the article
+   * and every HEAD lockfile hash must match the one in the snapshot.
+   * Opt-in per template so bugfix / refactor / spike flows stay untouched.
+   */
+  readonly requiresSnapshotForImplementation?: boolean;
 }
 
 const STANDARD_PHASE_GRAPH: readonly PhaseGraphEdge[] = [
@@ -43,6 +50,7 @@ export const WORK_TEMPLATES: Record<WorkTemplateType, WorkTemplateConfig> = {
     minEnrichmentCount: 1,
     autoAdvance: false,
     phaseGraph: STANDARD_PHASE_GRAPH,
+    requiresSnapshotForImplementation: true,
   },
   [WorkTemplate.BUGFIX]: {
     template: WorkTemplate.BUGFIX,

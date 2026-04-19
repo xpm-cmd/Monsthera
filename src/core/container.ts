@@ -227,6 +227,14 @@ export async function createContainer(
     status,
     bookkeeper,
   });
+  if (!snapshotRepo) {
+    snapshotRepo = new InMemorySnapshotRepository();
+  }
+  const snapshotService = new SnapshotService({
+    repo: snapshotRepo,
+    logger,
+    maxAgeMinutes: config.context.snapshotMaxAgeMinutes,
+  });
   const workService = new WorkService({
     workRepo: workRepo!,
     logger,
@@ -234,6 +242,8 @@ export async function createContainer(
     status,
     orchestrationRepo: orchestrationRepo!,
     bookkeeper,
+    snapshotService,
+    repoPath: config.repoPath,
   });
   // Cross-wire: both services need the opposite repo to keep index.md in sync.
   knowledgeService.setWorkRepo(workRepo!);
@@ -264,15 +274,6 @@ export async function createContainer(
     searchSync: searchService,
     status,
   });
-  if (!snapshotRepo) {
-    snapshotRepo = new InMemorySnapshotRepository();
-  }
-  const snapshotService = new SnapshotService({
-    repo: snapshotRepo,
-    logger,
-    maxAgeMinutes: config.context.snapshotMaxAgeMinutes,
-  });
-
   // Wire up migration service if a v2 reader is provided
   const migrationService = options?.v2Reader
     ? new MigrationService({
