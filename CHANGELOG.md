@@ -4,9 +4,21 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+## [3.0.0-alpha.6] — 2026-04-19
+
+**Tier 6 — CLI UX polish.** Six follow-ups from the Tier 5 retrospective (`w-21c2n6q5`). Every item was driven by a real-session friction surfaced while shipping alpha.5: shell heredoc corrupting markdown backticks, three different ways to type the same `review → done` bypass, a throwaway `scripts/probe.ts` that got written and deleted three times, the caller's own `work_id` article wasting the top slot in `build_context_pack`, the 16-error "lint parity with main" workaround, and list-command output that agents can't parse.
+
+### Added
+
+- **`--content-file <path>` and `--edit` on `work create` / `work update`** (#66). Alternatives to `--content` for passing markdown bodies. `--content-file` reads verbatim from disk (no shell quoting involved — fixes the backtick-corruption in `w-r85lzqhv`, `w-uvp3azdf`). `--edit` opens `$EDITOR` on a scratch file; for `work create` the buffer is seeded with `generateInitialContent(template)`. All three modes are mutually exclusive.
+- **`work close <id>` subcommand** (#67). Collapses the four-flag `work advance <id> --phase done --skip-guard-reason "merged via PR #N; no external reviewer in this session"` into either `--pr <n>` (canonical reason, `#`-prefix normalised) or `--reason <text>` (custom verbatim). Thin delegation to `workService.advancePhase(id, DONE, { skipGuard: { reason } })` — no new service logic, identical phase-history audit as every other guard bypass.
+- **`monsthera pack <query...>` subcommand** (#68). End-to-end `build_context_pack` from the CLI, optionally preceded by `record_environment_snapshot` via `--record <path>` (or `--record -` for stdin). Reuses the same `handleSearchTool("build_context_pack", ...)` dispatcher the MCP server uses — no duplicated scoring/snapshot logic. Default output is a short human render (top items, snapshot summary, guidance); `--json` emits the full pack. Replaces the throwaway `scripts/probe.ts` pattern that every Tier 5 session reinvented.
+- **`exclude_ids: string[]` on `build_context_pack`** (#69). Opt-in filter applied to the candidate set before top-N selection — pass `[work_id]` to free the slot that was usually wasted ranking the caller's own article back at it. `work_id` does **not** auto-populate `exclude_ids`; the compat contract stays identical. Service layer filters non-string entries defensively; the MCP-tool boundary rejects them with `VALIDATION_FAILED`.
+- **`--json` flag on `work list` and `knowledge list`** (#71). Emits `JSON.stringify(result.value, null, 2)` so agents can parse the listing without re-querying via MCP. Default table output is unchanged.
+
 ### Changed
 
-- **CLI `work advance` accepts `--reason` and `--skip-guard-reason`** (work article `w-21c2n6q5`). Previously the CLI could only pass a bare phase; cancellations and audit-recorded guard bypasses required writing one-off tsx scripts. The flags plumb straight into the existing `AdvancePhaseOptions.reason` / `AdvancePhaseOptions.skipGuard` contract — no semantic change, just surface parity with the MCP `advance_phase` tool.
+- **`pnpm lint` exits 0** (#70). Cleanup of the 10 errors + 6 warnings that every alpha.5 PR shipped against with "lint parity with main" as the workaround. Inline `import()` type annotations replaced with top-level `import type`; unused test imports removed; the Ollama-gated integration test's diagnostic logs now have a file-scoped `eslint-disable no-console` with a reason. No behavioural changes.
 
 ## [3.0.0-alpha.5] — 2026-04-19
 

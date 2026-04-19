@@ -160,3 +160,20 @@ All four "next step" items listed above shipped as dedicated PRs off `main`; non
 `done (skipGuard)` means the article advanced `review → done` with the `all_reviewers_approved` guard bypassed; the bypass name + reason are recorded in each article's phase history per the Tier 2.1 audit-trail contract. No external reviewer participated in this session; future work should not copy this pattern if an external reviewer is available.
 
 The benchmark methodology is captured in a sibling research note: `k-pwksnl38` — "Benchmark Methodology — Environment Snapshot + `build_context_pack` Impact". It is the playbook; if a future session runs the bench, the results land on a new work article referencing `k-pwksnl38` and this note.
+
+## CLI UX follow-ups (post-alpha.5)
+
+Using the alpha.5 surface live during its own close-out exposed six separate friction points that weren't design flaws — they were the CLI's edges scraping against real agent workflows. Every one was cheap to fix once the session had already typed the painful version. Shipped as Tier 6 on 2026-04-19 (release `3.0.0-alpha.6`).
+
+| Friction | Fix | PR |
+| :-- | :-- | :-- |
+| Shell heredoc corrupted backticks in `--content "$(cat <<'EOF' ... EOF)"` (visible on `w-r85lzqhv`, `w-uvp3azdf`). | `work create` / `work update` gain `--content-file <path>` (verbatim disk read) and `--edit` (opens `$EDITOR`, seeded with `generateInitialContent(template)` on create). Three input modes, mutually exclusive. | [#66](https://github.com/xpm-cmd/Monsthera/pull/66) |
+| Closing a merged work article was a four-flag incantation; the same `review → done` skipGuard string was typed six times this tier. | `work close <id>` delegates to `advancePhase(id, DONE, { skipGuard: { reason } })` with the reason sourced from either `--pr <n>` (canonical) or `--reason <text>` (custom). | [#67](https://github.com/xpm-cmd/Monsthera/pull/67) |
+| End-to-end `record_environment_snapshot + build_context_pack` required a throwaway `scripts/probe.ts` in the same container; written + deleted three times during alpha.5. | `monsthera pack <query...>` subcommand reusing `handleSearchTool("build_context_pack", ...)`; optional `--record <path>` or `--record -` for stdin snapshots; `--json` for machine output. | [#68](https://github.com/xpm-cmd/Monsthera/pull/68) |
+| When `work_id` was set, `build_context_pack` ranked the caller's own article at #1, wasting the top slot. | `exclude_ids: string[]` opt-in filter on `build_context_pack` (service + MCP tool). `work_id` does not auto-exclude — callers pass `[work_id]` explicitly to free the slot. Compat unchanged. | [#69](https://github.com/xpm-cmd/Monsthera/pull/69) |
+| Every alpha.5 PR shipped with 16 "lint parity with main" pre-existing issues as dead freight in the PR description. | `pnpm lint` exits 0: inline `import()` types replaced with `import type`, unused test imports dropped, `as any` on the wiki-bookkeeper log stub typed properly, Ollama-gated integration-test logs given a scoped `eslint-disable no-console` with a reason. | [#70](https://github.com/xpm-cmd/Monsthera/pull/70) |
+| `work list` / `knowledge list` emit a human-readable table agents can't parse — agents re-queried via MCP for structured data. | `--json` flag on both commands: `JSON.stringify(result.value, null, 2)`. Default table output unchanged. | [#71](https://github.com/xpm-cmd/Monsthera/pull/71) |
+
+These six PRs were landed off `main` in parallel — none touches the MCP-server-shells-out boundary, the `InMemorySnapshotRepository` contract, the 30-minute snapshot-staleness default, or the compat shape of `build_context_pack`. No external reviewer participated; closures use the new `work close` command built in this same tier (#67) — self-hosting — and each bypass reason is recorded in phase history per the Tier 2.1 audit contract.
+
+The pattern is worth recording: the friction in each of these six items was invisible until we used the surface ourselves, and each was a tiny commit once typed. The takeaway for Tier 7+ is simple — "dogfood every tier before closing it," which is exactly what the IRIS meta-harness thesis predicts will matter.
