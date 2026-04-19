@@ -324,6 +324,82 @@ describe("CLI main()", () => {
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("--content-file"));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
+
+    async function walkToReview(repoPath: string, title: string): Promise<string> {
+      const create = await captureStdout(() =>
+        main([
+          "work", "create",
+          "--title", title,
+          "--template", "bugfix",
+          "--author", "agent-1",
+          "--content", "## Objective\n\nX\n\n## Steps to Reproduce\n\nY\n\n## Acceptance Criteria\n\n- [ ] Z\n\n## Implementation\n\nlanded\n",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = create.match(/ID:\s+(w-\S+)/)![1]!;
+      await main(["work", "advance", id, "--phase", "enrichment", "--repo", repoPath]);
+      await main(["work", "enrich", id, "--role", "testing", "--status", "contributed", "--repo", repoPath]);
+      await main(["work", "advance", id, "--phase", "implementation", "--repo", repoPath]);
+      await main(["work", "advance", id, "--phase", "review", "--repo", repoPath]);
+      return id;
+    }
+
+    async function readWorkMarkdown(repoPath: string, id: string): Promise<string> {
+      return fs.readFile(path.join(repoPath, "knowledge", "work-articles", `${id}.md`), "utf-8");
+    }
+
+    it("work close --pr closes a review-phase article with the canonical reason", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const id = await walkToReview(repoPath, "Close via PR");
+
+      const output = await captureStdout(() =>
+        main(["work", "close", id, "--pr", "42", "--repo", repoPath]),
+      );
+      expect(output).toContain("Phase:     done");
+
+      const raw = await readWorkMarkdown(repoPath, id);
+      expect(raw).toContain("merged via PR #42");
+      expect(raw).toContain("bypass recorded on phase history");
+    });
+
+    it("work close --pr accepts a #-prefixed number", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const id = await walkToReview(repoPath, "Close via #-prefixed PR");
+
+      const output = await captureStdout(() =>
+        main(["work", "close", id, "--pr", "#7", "--repo", repoPath]),
+      );
+      expect(output).toContain("Phase:     done");
+      const raw = await readWorkMarkdown(repoPath, id);
+      expect(raw).toContain("merged via PR #7");
+    });
+
+    it("work close --reason uses the custom reason verbatim", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const id = await walkToReview(repoPath, "Close with custom reason");
+
+      const reason = "abandoned mid-review, keeping audit trail";
+      await main(["work", "close", id, "--reason", reason, "--repo", repoPath]);
+      const raw = await readWorkMarkdown(repoPath, id);
+      expect(raw).toContain(reason);
+      // Custom reason should replace, not append to, the canonical text.
+      expect(raw).not.toContain("merged via PR");
+    });
+
+    it("work close with no flags exits 1 with a readable error", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const id = await walkToReview(repoPath, "No flags");
+      await main(["work", "close", id, "--repo", repoPath]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("--reason"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("work close with no positional id exits 1", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await main(["work", "close", "--pr", "1", "--repo", repoPath]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("Missing required argument"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
   });
 
   // ─── Search subcommand ───────────────────────────────────────────────────
