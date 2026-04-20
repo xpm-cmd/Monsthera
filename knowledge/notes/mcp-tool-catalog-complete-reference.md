@@ -4,15 +4,15 @@ title: MCP Tool Catalog — Complete Reference
 slug: mcp-tool-catalog-complete-reference
 category: guide
 tags: [mcp, tools, reference]
-codeRefs: [src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, src/tools/orchestration-tools.ts, src/tools/status-tools.ts, src/tools/ingest-tools.ts, src/tools/structure-tools.ts, src/tools/validation.ts, src/server.ts, src/tools/agent-tools.ts, src/tools/wave-tools.ts, src/tools/wiki-tools.ts]
+codeRefs: [src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, src/tools/orchestration-tools.ts, src/tools/status-tools.ts, src/tools/ingest-tools.ts, src/tools/structure-tools.ts, src/tools/snapshot-tools.ts, src/tools/validation.ts, src/server.ts, src/tools/agent-tools.ts, src/tools/wave-tools.ts, src/tools/wiki-tools.ts]
 references: [k-8dsb3up8, agent-and-wave-mcp-tools, wiki-surfaces-and-wikilink-semantics]
 createdAt: 2026-04-11T02:17:34.606Z
-updatedAt: 2026-04-18T07:40:31.259Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 ## Overview
 
-Monsthera exposes **28 MCP tools** via stdio transport, organized into 7 groups. All tools return JSON responses through the standard MCP `CallToolResult` format. Input validation is handled by `src/tools/validation.ts` before delegation to services.
+Monsthera exposes **31 MCP tools** via stdio transport, organized into 8 groups. All tools return JSON responses through the standard MCP `CallToolResult` format. Input validation is handled by `src/tools/validation.ts` before delegation to services.
 
 ---
 
@@ -279,6 +279,49 @@ Navigate the knowledge graph from any article. Returns direct connections (refer
 
 ### `get_graph_summary`
 High-level overview of the knowledge graph: node/edge counts by type and structural gaps. No parameters.
+
+---
+
+## Snapshot Tools (3 tools)
+
+Source: `src/tools/snapshot-tools.ts`
+
+Sandbox environment snapshots travel alongside semantic context. Monsthera never shells out — callers capture the data client-side (for example via `scripts/capture-env-snapshot.ts`) and pass the parsed JSON to `record_environment_snapshot`. Snapshots are consumed by the `snapshot_ready` guard on feature templates and by the `build_context_pack` response, which embeds the matching snapshot when `agent_id` / `work_id` are supplied.
+
+### `record_environment_snapshot`
+Record a sandbox snapshot: cwd, git ref, file listing, runtimes, package managers, lockfile hashes, memory, and optional raw probe output for audit.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| agentId | string | yes | Agent that captured the snapshot |
+| cwd | string | yes | Working directory at capture time |
+| workId | string | no | Work article the snapshot belongs to |
+| gitRef | object | no | `{ branch?, sha?, dirty? }` |
+| files | string[] | no | Top-level file listing |
+| runtimes | object | no | Runtime name -> version map (e.g. `{ node: "20.11.0" }`) |
+| packageManagers | string[] | no | Package managers detected in the sandbox |
+| lockfiles | object[] | no | `{ path, sha256 }` pairs for drift detection |
+| memory | object | no | `{ totalMb?, availableMb? }` |
+| raw | string | no | Raw probe output for audit (length-limited by `MAX_CONTENT_LENGTH`) |
+
+Returns `{ id, capturedAt, agentId, workId }`.
+
+### `get_latest_environment_snapshot`
+Return the most recent snapshot for a given agent, work article, or both. `workId` is preferred when both are provided; falls back to the agent's latest if none was recorded against the work. At least one of `agentId` / `workId` is required.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| agentId | string | no | Filter by agent |
+| workId | string | no | Filter by work article |
+
+Returns either `{ snapshot: null }` or `{ snapshot, ageSeconds, stale, maxAgeMinutes }`. `stale` is driven by `MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES` (default 30; `0` disables the check).
+
+### `compare_environment_snapshots`
+Diff two snapshots by id. Reports changes in runtimes, lockfile hashes, git fields, package managers, cwd, plus the wall-clock age delta. Use when resuming a work article in a new sandbox to detect drift before trusting prior state.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| leftId | string | yes | Older snapshot id |
+| rightId | string | yes | Newer snapshot id |
+
+Returns the typed diff payload produced by `SnapshotService.compare`.
 
 <!-- codex-related-articles:start -->
 ## Related Articles

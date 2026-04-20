@@ -4,10 +4,10 @@ title: Package entrypoints and barrel exports
 slug: package-entrypoints-and-barrel-exports
 category: reference
 tags: [api-surface, barrels, exports, modules, package-boundaries]
-codeRefs: [src/index.ts, src/core/index.ts, src/knowledge/index.ts, src/work/index.ts, src/search/index.ts, src/orchestration/index.ts, src/migration/index.ts, src/ingest/index.ts, src/tools/index.ts, src/agents/index.ts, src/structure/index.ts, src/cli/index.ts, src/persistence/index.ts]
+codeRefs: [src/index.ts, src/core/index.ts, src/knowledge/index.ts, src/work/index.ts, src/search/index.ts, src/orchestration/index.ts, src/migration/index.ts, src/ingest/index.ts, src/tools/index.ts, src/agents/index.ts, src/structure/index.ts, src/cli/index.ts, src/persistence/index.ts, src/context/index.ts]
 references: [monsthera-hybrid-knowledge-architecture-v6, adr-005-surface-boundaries]
 createdAt: 2026-04-18T07:40:30.867Z
-updatedAt: 2026-04-18T07:40:30.867Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 ## Overview
@@ -35,6 +35,7 @@ Several subsystems expose curated barrels:
 - `src/knowledge/index.ts` exposes the knowledge domain public API
 - `src/work/index.ts` exposes the work domain public API plus in-memory repository helpers
 - `src/search/index.ts` exposes repository interfaces, tokenizer, embeddings, schemas, and service
+- `src/context/index.ts` exposes diagnostics insights plus the environment-snapshot surface: `SnapshotService`, `SnapshotRepository`, `InMemorySnapshotRepository`, and the snapshot Zod schemas
 - `src/orchestration/index.ts`, `src/ingest/index.ts`, and `src/migration/index.ts` serve the same role for their subsystems
 
 ## Specialized barrels

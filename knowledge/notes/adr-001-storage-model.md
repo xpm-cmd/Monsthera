@@ -4,11 +4,11 @@ title: ADR-001: Storage Model
 slug: adr-001-storage-model
 category: architecture
 tags: [storage, persistence, markdown, dolt, file-system]
-codeRefs: [src/knowledge/file-repository.ts, src/work/file-repository.ts, src/knowledge/markdown.ts, src/search/in-memory-repository.ts, src/persistence/index.ts, src/persistence/schema.ts, src/persistence/connection.ts, src/persistence/health.ts, src/core/container.ts]
+codeRefs: [src/knowledge/file-repository.ts, src/work/file-repository.ts, src/knowledge/markdown.ts, src/search/in-memory-repository.ts, src/persistence/index.ts, src/persistence/schema.ts, src/persistence/connection.ts, src/persistence/health.ts, src/core/container.ts, src/context/index.ts]
 references: []
 sourcePath: docs/adrs/001-storage-model.md
 createdAt: 2026-04-10T23:03:46.166Z
-updatedAt: 2026-04-11T02:14:21.620Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 ## Dual Storage Model
@@ -46,7 +46,9 @@ Markdown body content here.
 When `config.storage.doltEnabled` is true, the container attempts to connect to a Dolt instance (MySQL-compatible) for **derived data only**:
 
 - **Search index** (`DoltSearchIndexRepository`) — stores tokenized documents and an inverted index in `search_documents` and `search_inverted_index` tables.
+- **Search embeddings** — stores persisted semantic vectors in `search_embeddings` for restart-safe hybrid search.
 - **Orchestration events** (`DoltOrchestrationRepository`) — stores agent audit trail in `orchestration_events` table.
+- **Environment snapshots** — stores physical sandbox state (files, runtimes, package managers, lockfiles, memory) in `environment_snapshots`.
 
 Dolt never stores the canonical article content. It stores search tokens and event logs that can be rebuilt from the Markdown files at any time.
 
@@ -79,10 +81,12 @@ This means the system **always starts successfully** — the only hard requireme
 
 ### Schema (Dolt DDL)
 
-Three tables defined in `src/persistence/schema.ts`:
+Five tables defined in `src/persistence/schema.ts`:
 - `search_documents` — id, title, content, type, indexed_at
 - `search_inverted_index` — term-to-document mapping (composite PK: term + doc_id)
+- `search_embeddings` — doc_id (PK, FK to `search_documents`), `embedding_json` LONGTEXT, `updated_at`; persists semantic vectors so hybrid search survives restart without a full reindex.
 - `orchestration_events` — work_id, event_type, agent_id, details (JSON), created_at
+- `environment_snapshots` — id (PK), `agent_id`, `work_id` (optional FK to work articles), `cwd`, `git_ref` JSON, `files`/`runtimes`/`package_managers`/`lockfiles`/`memory` JSON columns, optional `raw` LONGTEXT, `captured_at` (TIMESTAMP(3)); indexed by `agent_id`, `work_id`, and `captured_at` so snapshot lookups by agent, work, or recency are all single-index scans.
 
 ### Connection Management
 

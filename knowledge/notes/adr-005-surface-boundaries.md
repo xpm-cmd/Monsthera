@@ -4,11 +4,11 @@ title: ADR-005: Surface Boundaries
 slug: adr-005-surface-boundaries
 category: architecture
 tags: [mcp, cli, dashboard, tools, api-surface, validation, adr, architecture]
-codeRefs: [src/server.ts, src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, src/tools/orchestration-tools.ts, src/tools/status-tools.ts, src/tools/ingest-tools.ts, src/tools/structure-tools.ts, src/tools/validation.ts, src/cli/main.ts, src/cli/knowledge-commands.ts, src/cli/work-commands.ts, src/cli/doctor-commands.ts, src/dashboard/index.ts, src/dashboard/auth.ts, src/bin.ts, src/tools/agent-tools.ts, src/tools/wave-tools.ts, src/tools/wiki-tools.ts]
+codeRefs: [src/server.ts, src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, src/tools/orchestration-tools.ts, src/tools/status-tools.ts, src/tools/ingest-tools.ts, src/tools/structure-tools.ts, src/tools/validation.ts, src/cli/main.ts, src/cli/knowledge-commands.ts, src/cli/work-commands.ts, src/cli/doctor-commands.ts, src/dashboard/index.ts, src/dashboard/auth.ts, src/bin.ts, src/tools/agent-tools.ts, src/tools/wave-tools.ts, src/tools/wiki-tools.ts, src/tools/snapshot-tools.ts, src/tools/index.ts]
 references: [cli-entrypoint-and-command-routing, package-entrypoints-and-barrel-exports, wiki-surfaces-and-wikilink-semantics, agent-and-wave-mcp-tools]
 sourcePath: docs/adrs/005-surface-boundaries.md
 createdAt: 2026-04-10T23:03:46.549Z
-updatedAt: 2026-04-18T07:40:31.482Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 ## Status
@@ -25,19 +25,23 @@ Monsthera exposes three distinct surfaces. All three share the same `MonstheraCo
 **Entry point:** `monsthera serve` -> `startServer(container)`
 **Purpose:** Primary interface for AI coding agents (Claude Code, etc.)
 
-Registers all tool definitions from 7 tool modules (plus optional migration tools). The `server.ts` aggregates definitions via `*ToolDefinitions()` functions and dispatches calls via `handle*Tool()` handlers. Each handler uses `src/tools/validation.ts` for input sanitization before delegating to the corresponding service.
+Registers all tool definitions from 11 tool modules (plus optional migration tools). The `server.ts` aggregates definitions via `*ToolDefinitions()` functions and dispatches calls via `handle*Tool()` handlers. Each handler uses `src/tools/validation.ts` for input sanitization before delegating to the corresponding service. The full set is re-exported from `src/tools/index.ts`.
 
 ### MCP Tool Groups
 
-**Knowledge tools** (6): `create_article`, `get_article`, `update_article`, `delete_article`, `list_articles`, `search_articles`
+**Knowledge tools** (10): `create_article`, `preview_slug`, `get_article`, `update_article`, `delete_article`, `list_articles`, `search_articles`, `batch_create_articles`, `batch_get_articles`, `batch_update_articles`
 **Work tools** (11): `create_work`, `get_work`, `update_work`, `delete_work`, `list_work`, `advance_phase`, `contribute_enrichment`, `assign_reviewer`, `submit_review`, `add_dependency`, `remove_dependency`
 **Search tools** (5): `search`, `build_context_pack`, `index_article`, `remove_from_index`, `reindex_all`
 **Orchestration tools** (2): `log_event`, `get_events`
+**Wave tools** (3): `plan_wave`, `execute_wave`, `evaluate_readiness`
+**Agent tools** (3): `list_agents`, `get_agent`, `get_agent_experience`
 **Status tools** (1): `status`
 **Ingest tools** (1): `ingest_local_sources`
 **Structure/graph tools** (2): `get_neighbors`, `get_graph_summary`
+**Wiki tools** (2): `get_wiki_index`, `get_wiki_log`
+**Snapshot tools** (3, from `src/tools/snapshot-tools.ts`): `record_environment_snapshot`, `get_latest_environment_snapshot`, `compare_environment_snapshots` — physical-sandbox companions to the semantic context produced by `build_context_pack`.
 
-Total: **28 MCP tools** (+ migration tools when v2 source is present).
+Total: **43 MCP tools** (+ migration tools when v2 source is present).
 
 ---
 

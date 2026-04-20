@@ -4,10 +4,10 @@ title: Context Pack Builder: Scoring, Diagnostics, and Mode-Specific Ranking
 slug: context-pack-builder-scoring-diagnostics-and-mode-specific-ranking
 category: context
 tags: [context-pack, scoring, diagnostics, freshness, quality, search, code-refs]
-codeRefs: [src/search/service.ts, src/context/insights.ts, src/core/code-refs.ts, src/work/templates.ts]
+codeRefs: [src/search/service.ts, src/context/insights.ts, src/core/code-refs.ts, src/work/templates.ts, src/tools/search-tools.ts, src/tools/snapshot-tools.ts]
 references: [k-ypsx5ask]
 createdAt: 2026-04-11T02:16:43.540Z
-updatedAt: 2026-04-11T02:16:43.540Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 ## How build_context_pack Works
@@ -97,3 +97,20 @@ The returned `ContextPack` includes:
 ## Reason String
 
 Each item gets a human-readable `reason` built from signals: quality label, code ref count, reference count, source path presence, legacy status, and freshness state. Example: "strong quality · 3 code ref(s) · linked source path · fresh context"
+
+## exclude_ids Filter
+
+The `build_context_pack` tool accepts an optional `exclude_ids: string[]` parameter (`src/tools/search-tools.ts`). Any article IDs listed here are dropped from the ranked candidate set before the top-N slice is computed, freeing a slot for the next-best item. The validation path rejects non-array or non-string-array values with a `VALIDATION_FAILED` response.
+
+The intended use is when the caller already has an article in hand — most commonly the `work_id` they're currently operating on. To avoid breaking existing callers, `exclude_ids` is **never** auto-populated from `work_id`; callers must opt in explicitly by passing `[work_id]` (or any other IDs they want suppressed).
+
+## Snapshot-Aware Context
+
+When `agent_id` or `work_id` is provided, the tool handler in `src/tools/search-tools.ts` also resolves the most recent environment snapshot via `SnapshotService.getLatest()` (wired through `SearchToolDeps.snapshotService`). The behaviour:
+
+- `work_id` is preferred when both are set; the service falls back to the agent's latest snapshot if none was recorded against the work.
+- When a snapshot is found, the response includes a `snapshot` field alongside `items`, carrying `id`, `agentId`, `workId`, `capturedAt`, `ageSeconds`, `stale`, `cwd`, `gitRef`, `runtimes`, `packageManagers`, `lockfiles`, and `files` — i.e. the physical sandbox state matched to the semantic pack.
+- If the snapshot is older than the configured max age (`MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES`, default 30), the `stale` flag is set and an extra guidance string is appended: `"stale_snapshot: the attached environment snapshot is older than the configured max age; re-capture before trusting cwd, lockfile, or runtime fields."`
+- A missing snapshot never fails the pack — service errors and unwired `snapshotService` both resolve to `null` and the `snapshot` field is simply omitted from the response.
+
+This lets an agent receive semantic context (what the project means) and physical context (what this sandbox actually is) in a single call, and be warned when the two may be out of sync. See `src/tools/snapshot-tools.ts` for the companion `record_environment_snapshot`, `get_latest_environment_snapshot`, and `compare_environment_snapshots` tools that feed and query this state.

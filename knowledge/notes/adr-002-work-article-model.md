@@ -4,11 +4,11 @@ title: ADR-002: Work Article Model
 slug: adr-002-work-article-model
 category: architecture
 tags: [work-articles, lifecycle, guards, templates, phase-transitions, adr, architecture]
-codeRefs: [src/work/lifecycle.ts, src/work/guards.ts, src/work/templates.ts, src/work/schemas.ts, src/work/repository.ts, src/work/service.ts]
+codeRefs: [src/work/lifecycle.ts, src/work/guards.ts, src/work/templates.ts, src/work/schemas.ts, src/work/repository.ts, src/work/service.ts, src/work/lockfile-hashes.ts, src/context/snapshot-service.ts]
 references: []
 sourcePath: docs/adrs/002-work-article-model.md
 createdAt: 2026-04-10T23:03:46.338Z
-updatedAt: 2026-04-11T02:14:41.618Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 ## Overview
@@ -64,6 +64,33 @@ Guards are pure functions `(article: WorkArticle) => boolean` that gate transiti
 - **`min_enrichment_met`** -- counts enrichment roles with status `contributed` or `skipped`, compared to template's `minEnrichmentCount`
 - **`implementation_linked`** -- checks `content.includes("## Implementation")`
 - **`all_reviewers_approved`** -- requires `reviewers.length > 0` AND all reviewers have status `approved`
+- **`snapshot_ready`** (async) -- gates `enrichment → implementation` on templates that opt in; verifies a recent environment snapshot matches the HEAD lockfile hashes (see below)
+
+## Snapshot-Ready Guard
+
+The `snapshot_ready` guard is the only **async** guard in the system. It runs on the `enrichment → implementation` transition for opt-in templates and ties the semantic work article to a physical sandbox capture before implementation can begin.
+
+**Shape** (`src/work/guards.ts`):
+
+```ts
+async function snapshot_ready(
+  article: WorkArticle,
+  deps?: SnapshotGuardDeps,
+): Promise<boolean>
+```
+
+`SnapshotGuardDeps` carries a `SnapshotService` (from `src/context/`) and the caller-supplied `headLockfileHashes` (a `{ relativePath: sha256 }` map produced by `readHeadLockfileHashes()` in `src/work/lockfile-hashes.ts`).
+
+**What it checks:**
+
+1. A `SnapshotService` is wired. If not, the guard fails closed.
+2. `snapshotService.getLatest({ workId: article.id })` returns a snapshot.
+3. The snapshot is not flagged `stale` — freshness controlled by `MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES` (default 30 minutes; `0` disables the freshness check).
+4. Every HEAD lockfile hash matches the corresponding entry in `snapshot.lockfiles`. A lockfile present at HEAD but absent from the snapshot fails closed — the sandbox is out of sync with the repo.
+
+**Failure message.** When the guard rejects, the lifecycle layer emits `SNAPSHOT_READY_RECOVERY_HINT`, a single exported constant so every code path and test share the same wording. It tells the agent to run `scripts/capture-env-snapshot.ts` and pipe the JSON into `record_environment_snapshot`, then retry — or pass `skipGuard: { reason }` to bypass.
+
+**Bypass.** Callers can pass `--skipGuard` (CLI) or `skipGuard: { reason }` (MCP) on `advance_phase`. The bypass is audited: the reason lands in `phase_history` alongside the transition so an auditor can always see which advances skipped the snapshot check and why.
 
 ## 4 Templates
 

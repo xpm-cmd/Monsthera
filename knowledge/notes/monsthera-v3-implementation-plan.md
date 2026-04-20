@@ -8,8 +8,12 @@ codeRefs: []
 references: []
 sourcePath: MonstheraV3/monsthera-v3-implementation-plan-final.md
 createdAt: 2026-04-10T23:03:46.184Z
-updatedAt: 2026-04-10T23:07:36.981Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
+
+## ⚠️ Status snapshot
+
+This plan reflects the alpha.3 / alpha.4 implementation and is kept verbatim as a historical import. Tiers 5 and 6 (the snapshot system and the CLI UX polish — `monsthera pack`, `work close`, `--json` listings, `--content-file` / `--edit`, audited `skipGuard` on phase transitions) landed in alpha.5 / alpha.6. For the current state, see [[adr-005-surface-boundaries]] and the release notes rather than this document.
 
 ## Source
 - Path: `MonstheraV3/monsthera-v3-implementation-plan-final.md`

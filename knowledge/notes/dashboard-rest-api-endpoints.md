@@ -7,7 +7,7 @@ tags: [dashboard, api, rest, endpoints, reference]
 codeRefs: [src/dashboard/index.ts, src/dashboard/auth.ts, src/dashboard/agent-experience.ts, public/lib/api.js]
 references: []
 createdAt: 2026-04-11T02:20:25.323Z
-updatedAt: 2026-04-11T02:20:25.323Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 # Dashboard REST API Endpoints
@@ -225,6 +225,31 @@ Remove a dependency. The `blockedById` can be in query param or request body.
 
 **Response** (200): Updated work article.
 
+### `GET /api/work/:id/snapshot-diff?against=<snapshotId>`
+Return the baseline-vs-current environment snapshot diff for a work article. Used by the dashboard to render the snapshot-drift band on expanded work cards.
+
+**Query params**:
+- `against` (optional): Specific baseline snapshot ID to diff against. If omitted, the service picks the oldest snapshot for the work that is not the current one.
+
+**Response** (200):
+```json
+{
+  "current": { "id": "...", "workId": "...", "capturedAt": "...", "cwd": "...", "branch": "...", "sha": "...", "dirty": false, "runtimes": { "node": "20.x" }, "packageManagers": [...], "lockfiles": [...] },
+  "baseline": { ... } ,
+  "diff": {
+    "cwdChanged": false,
+    "branchChanged": false,
+    "shaChanged": true,
+    "dirtyChanged": false,
+    "packageManagersChanged": false,
+    "runtimesChanged": ["node"],
+    "lockfilesChanged": [],
+    "ageDeltaSeconds": 1234
+  }
+}
+```
+When only a single snapshot exists for the work article, `baseline` and `diff` are both `null` (the caller still learns that a current snapshot exists but has nothing to compare against). Returns 404 `{ error: "NOT_FOUND", message: "No snapshot recorded for work id \"<id>\"" }` when no snapshots have been recorded at all. Served by `container.snapshotService.getDiffForWork()`.
+
 ---
 
 ## Search
@@ -246,15 +271,15 @@ Hybrid BM25 + semantic search across knowledge and work articles.
 Knowledge results include `category`, `sourcePath`, `codeRefs`. Work results include `template`, `phase`, `references`.
 
 ### `GET /api/search/context-pack?q=<query>&mode=<mode>&limit=<n>&type=<type>`
-Build a ranked context pack for agent consumption.
+Build a ranked context pack for agent consumption. Delegates to `container.searchService.buildContextPack()` — the same code path backing the `build_context_pack` MCP tool.
 
 **Query params**:
-- `q` (required): Search query
-- `mode`: "code", "research", or "general"
-- `limit`: Max results (default varies by mode)
-- `type`: "knowledge", "work", or "all"
+- `q` (required): Search query. 400 `VALIDATION_FAILED` if missing.
+- `mode` (optional): `"code"`, `"research"`, or `"general"`.
+- `limit` (optional): Max results (default varies by mode). Parsed with `Number()`.
+- `type` (optional): `"knowledge"`, `"work"`, or `"all"`.
 
-**Response** (200): Context pack object with ranked items, quality scores, guidance.
+**Response** (200): Context pack object with ranked items, quality scores, freshness/stale-ref diagnostics, and guidance.
 
 ### `POST /api/search/reindex`
 Trigger a full reindex of the search index.

@@ -8,8 +8,12 @@ codeRefs: [docs/CODING-STANDARDS.md, README.md]
 references: []
 sourcePath: MonstheraV3/README.md
 createdAt: 2026-04-10T23:03:46.165Z
-updatedAt: 2026-04-10T23:07:36.745Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
+
+## ⚠️ Status snapshot
+
+This article is an imported summary of the original v3 design folder and is intentionally kept as a historical snapshot. It does not reflect alpha.5 / alpha.6 work — notably the snapshot system, the `snapshot_ready` guard on feature templates, and the expanded CLI surface (`monsthera pack`, `work close`, `--json` listings, `--content-file` / `--edit`). For current docs, read `README.md`, `docs/adrs/006-snapshot-ready-guard.md`, and the ADR notes under `knowledge/notes/adr-*.md` rather than this summary.
 
 ## Source
 - Path: `MonstheraV3/README.md`

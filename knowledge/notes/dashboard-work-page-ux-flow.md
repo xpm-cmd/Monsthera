@@ -4,10 +4,10 @@ title: Dashboard work page UX flow
 slug: dashboard-work-page-ux-flow
 category: context
 tags: [dashboard, work, ux, lifecycle, orchestration]
-codeRefs: [public/pages/work.js]
+codeRefs: [public/pages/work.js, src/dashboard/index.ts]
 references: []
 createdAt: 2026-04-11T02:19:06.860Z
-updatedAt: 2026-04-11T02:19:06.860Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 # Dashboard work page UX flow
@@ -168,6 +168,25 @@ At the bottom, a compact phase history timeline: "Phases: planning → enrichmen
 
 ### Delete
 "Delete" button with `window.confirm()` dialog. Calls `deleteWork(id)` with `preferredId = null`.
+
+## Snapshot drift band
+
+Expanded work cards can include a **snapshot-drift band** comparing a baseline environment snapshot to the current sandbox — helping agents notice when their working context has shifted since the work was shaped.
+
+**When it appears**: Only on expanded cards whose phase is in `DRIFT_PHASES` (a `Set` of `"implementation"` and `"review"`). `buildSnapshotDriftPlaceholder(article)` returns `""` for any other phase, so no placeholder is rendered.
+
+**Placeholder + hydration**: During server-side-style render, the expanded card embeds a placeholder `<div class="mt-16 snapshot-drift" data-snapshot-diff="<workId>"></div>` right after the edit form and before the enrichment panel. After every `rerender()`, `hydrateSnapshotDrift()` walks `container.querySelectorAll("[data-snapshot-diff]")` and fetches the diff for each work id.
+
+**API call**: `getWorkSnapshotDiff(id)` hits `GET /api/work/:id/snapshot-diff` and returns `{ current, baseline, diff }`. While the request is in flight the placeholder shows "Checking snapshot drift…".
+
+**Render states** (`renderSnapshotDriftBand(payload)`):
+- **No payload / only-one-snapshot** (`!payload.baseline || !payload.diff`): outline notice — "Only one snapshot on record for this work article; nothing to diff against · captured <timeAgo>".
+- **No changes**: success notice — "Current sandbox matches the baseline recorded for this work article".
+- **Changes detected**: warning notice listing which fields drifted — any of `cwd`, `branch`, `sha`, `dirty`, `package managers`, `runtimes (<names>)`, `lockfiles (<paths>)` — plus an "Baseline → current: N min" age-delta line computed from `diff.ageDeltaSeconds`.
+- **404 from API**: the placeholder is cleared (`innerHTML = ""`) and the null payload is cached so the work article renders with no drift band at all.
+- **Other errors**: muted "Snapshot drift unavailable." fallback.
+
+**Caching**: A per-page-instance `snapshotDiffCache = new Map()` memoises responses by work id so that collapsing and re-expanding a card (or switching filters) does not re-fetch. The cache is cleared inside `runMutation()` after any successful mutation so the next render sees fresh drift data. 404 responses are cached as `null` to suppress the band entirely on subsequent renders.
 
 ## Stat cards (top section)
 

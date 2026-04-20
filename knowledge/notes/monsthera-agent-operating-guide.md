@@ -4,10 +4,10 @@ title: Monsthera Agent Operating Guide
 slug: monsthera-agent-operating-guide
 category: guide
 tags: [agents, orchestration, automation, continuous-improvement, dashboard, operations]
-codeRefs: [src/dashboard/index.ts, src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, public/pages/guide.js, public/lib/guide-data.js, public/pages/search.js, src/tools/agent-tools.ts, src/tools/wave-tools.ts, src/tools/wiki-tools.ts]
+codeRefs: [src/dashboard/index.ts, src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, src/tools/snapshot-tools.ts, public/pages/guide.js, public/lib/guide-data.js, public/pages/search.js, src/tools/agent-tools.ts, src/tools/wave-tools.ts, src/tools/wiki-tools.ts]
 references: [wiki-surfaces-and-wikilink-semantics, agent-and-wave-mcp-tools, mcp-tool-catalog-complete-reference]
 createdAt: 2026-04-09T13:10:00.000Z
-updatedAt: 2026-04-18T07:40:31.688Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 Monsthera works best when agents use it as an operational memory and coordination layer, not as a passive ticket archive.
@@ -81,6 +81,15 @@ Agents should not spend extra tool calls on manual per-article reindexing after 
 - Keep ownership clear before implementation and review handoffs.
 - Keep blockers visible rather than hiding them behind optimistic automation.
 - Treat review as a real gate. Done means approved, not just coded.
+
+## CLI shortcuts worth knowing
+
+Two alpha.6 additions make the common snapshot + bypass flows one-liners — both are fully audit-trail-preserving:
+
+- `monsthera pack <query...>` builds a ranked context pack end-to-end and, with `--record <path>` or `--record -`, records an environment snapshot in the same call. Piping `scripts/capture-env-snapshot.ts` into `monsthera pack "..." --record - --work-id <wid>` collapses the three-step runbook below to a single shell invocation.
+- `monsthera work close <id> (--pr <n> | --reason <text>)` is the sanctioned bypass of the `review -> done` transition. It routes through `advance_phase` with `skipGuard: { reason }`, so the bypass is recorded in `phase_history[].skipped_guards` alongside the operator's rationale.
+
+Both live in `src/cli/context-commands.ts` and `src/cli/work-commands.ts`; the MCP surface is unchanged.
 
 ## Environment snapshots
 
