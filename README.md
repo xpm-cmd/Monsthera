@@ -17,7 +17,7 @@ Agents should prefer `build_context_pack` before deep work and should not call m
 
 ## Status
 
-**v3.0.0-alpha** — Clean rewrite in progress.
+**v3.0.0-alpha.4** — Clean rewrite in progress.
 
 v2 is maintained on the `release/2.x` branch.
 

@@ -14,9 +14,6 @@ coverage/
 .env
 .env.*
 
-# Auto-generated wiki files (rebuilt on every startup)
-knowledge/index.md
-knowledge/log.md
 .env.local
 *.log
 tmp/
@@ -43,9 +40,3 @@ docs/claude-review/
 *.bak
 *.png
 package-lock.json
-
-# Generated knowledge/article corpus
-knowledge/notes/*.md
-knowledge/work-articles/*.md
-!knowledge/notes/.gitkeep
-!knowledge/work-articles/.gitkeep

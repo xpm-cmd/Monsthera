@@ -111,7 +111,7 @@ The backend serves these read-only JSON endpoints at `http://localhost:3000`:
 ```json
 {
   "healthy": true,
-  "version": "3.0.0-alpha.0",
+  "version": "3.0.0-alpha.4",
   "uptime": 12345,
   "subsystems": [
     { "name": "knowledge", "healthy": true, "detail": "ok" },
@@ -123,7 +123,7 @@ The backend serves these read-only JSON endpoints at `http://localhost:3000`:
 ### `GET /api/status`
 ```json
 {
-  "version": "3.0.0-alpha.0",
+  "version": "3.0.0-alpha.4",
   "uptime": 12345,
   "timestamp": "2026-04-09T...",
   "subsystems": [...],

@@ -18,6 +18,12 @@ interface InvertedIndexRow extends RowDataPacket {
   doc_id: string;
 }
 
+interface SearchEmbeddingRow extends RowDataPacket {
+  id: string;
+  type: "knowledge" | "work";
+  embedding_json: string;
+}
+
 // ---------------------------------------------------------------------------
 // BM25-lite constants
 // ---------------------------------------------------------------------------
@@ -34,10 +40,14 @@ const DEFAULT_OFFSET = 0;
 // ---------------------------------------------------------------------------
 
 export class DoltSearchIndexRepository implements SearchIndexRepository {
-  /** In-memory embedding cache (Dolt has no native vector column type). */
+  /** In-memory embedding cache hydrated from Dolt on demand. */
   private readonly embeddings = new Map<string, number[]>();
   /** In-memory doc type cache to avoid N+1 queries during semantic search. */
   private readonly docTypes = new Map<string, "knowledge" | "work">();
+  /** Cached count of persisted embeddings for status reporting. */
+  private cachedEmbeddingCount = 0;
+  /** Whether the in-memory embedding/docType caches reflect persisted Dolt state. */
+  private embeddingCacheHydrated = false;
 
   constructor(private readonly pool: Pool) {}
 
@@ -113,9 +123,17 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
       // Remove from search_documents
       await connection.query<ResultSetHeader>("DELETE FROM search_documents WHERE id = ?", [id]);
 
+      // Remove persisted embedding for this document as well
+      await connection.query<ResultSetHeader>("DELETE FROM search_embeddings WHERE doc_id = ?", [id]);
+
       await connection.commit();
       this.docTypes.delete(id);
       this.embeddings.delete(id);
+      if (this.embeddingCacheHydrated) {
+        this.cachedEmbeddingCount = this.embeddings.size;
+      } else {
+        await this.refreshEmbeddingCount();
+      }
       return ok(undefined);
     } catch (error) {
       await connection.rollback();
@@ -244,9 +262,14 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
 
       // Truncate both tables
       await connection.query<ResultSetHeader>("TRUNCATE TABLE search_inverted_index");
+      await connection.query<ResultSetHeader>("TRUNCATE TABLE search_embeddings");
       await connection.query<ResultSetHeader>("TRUNCATE TABLE search_documents");
 
       await connection.commit();
+      this.embeddings.clear();
+      this.docTypes.clear();
+      this.cachedEmbeddingCount = 0;
+      this.embeddingCacheHydrated = true;
       return ok(undefined);
     } catch (error) {
       await connection.rollback();
@@ -257,12 +280,29 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
   }
 
   // -------------------------------------------------------------------------
-  // Semantic / vector methods (in-memory cache, Dolt lacks vector columns)
+  // Semantic / vector methods (vectors are persisted as JSON in Dolt)
   // -------------------------------------------------------------------------
 
   async storeEmbedding(id: string, embedding: number[]): Promise<Result<void, StorageError>> {
-    this.embeddings.set(id, embedding);
-    return ok(undefined);
+    try {
+      await this.pool.query<ResultSetHeader>(
+        `INSERT INTO search_embeddings (doc_id, embedding_json, updated_at)
+         VALUES (?, ?, CURRENT_TIMESTAMP)
+         ON DUPLICATE KEY UPDATE
+         embedding_json = VALUES(embedding_json),
+         updated_at = CURRENT_TIMESTAMP`,
+        [id, JSON.stringify(embedding)],
+      );
+      this.embeddings.set(id, embedding);
+      if (this.embeddingCacheHydrated) {
+        this.cachedEmbeddingCount = this.embeddings.size;
+      } else {
+        await this.refreshEmbeddingCount();
+      }
+      return ok(undefined);
+    } catch (error) {
+      return err(new StorageError(`Failed to persist embedding: ${id}`, { cause: error }));
+    }
   }
 
   async searchSemantic(
@@ -271,6 +311,8 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
     type?: "knowledge" | "work" | "all",
   ): Promise<Result<SemanticResult[], StorageError>> {
     try {
+      await this.ensureEmbeddingCacheLoaded();
+
       const scored: Array<{ id: string; score: number }> = [];
 
       for (const [id, docEmbedding] of this.embeddings) {
@@ -290,7 +332,7 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
   }
 
   get embeddingCount(): number {
-    return this.embeddings.size;
+    return this.cachedEmbeddingCount;
   }
 
   // -------------------------------------------------------------------------
@@ -309,6 +351,7 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
         "SELECT COUNT(*) as count FROM search_documents",
       );
       this.cachedSize = (countRows[0] as RowDataPacket & { count: number }).count || 0;
+      await this.ensureEmbeddingCacheLoaded();
       if (this.cachedSize === 0) return true;
 
       // Pick any term from the inverted index and verify search returns results
@@ -327,6 +370,46 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
+
+  private async refreshEmbeddingCount(): Promise<void> {
+    try {
+      const [rows] = await this.pool.query<RowDataPacket[]>(
+        "SELECT COUNT(*) as count FROM search_embeddings",
+      );
+      this.cachedEmbeddingCount = (rows[0] as RowDataPacket & { count: number }).count || 0;
+    } catch {
+      this.cachedEmbeddingCount = 0;
+    }
+  }
+
+  private async ensureEmbeddingCacheLoaded(): Promise<void> {
+    if (this.embeddingCacheHydrated) return;
+
+    try {
+      const [rows] = await this.pool.query<SearchEmbeddingRow[]>(
+        `SELECT e.doc_id AS id, d.type AS type, e.embedding_json
+         FROM search_embeddings e
+         INNER JOIN search_documents d ON d.id = e.doc_id`,
+      );
+
+      this.embeddings.clear();
+      this.docTypes.clear();
+
+      for (const row of rows) {
+        const parsed = parseEmbeddingJson(row.embedding_json);
+        if (parsed === null) continue;
+        this.embeddings.set(row.id, parsed);
+        this.docTypes.set(row.id, row.type);
+      }
+
+      this.cachedEmbeddingCount = this.embeddings.size;
+      this.embeddingCacheHydrated = true;
+    } catch {
+      this.embeddings.clear();
+      this.docTypes.clear();
+      this.cachedEmbeddingCount = 0;
+    }
+  }
 
   /**
    * Fetch document frequencies for all query terms in a single query.
@@ -442,4 +525,16 @@ function cosineSimilarity(a: number[], b: number[]): number {
   }
   const denom = Math.sqrt(normA) * Math.sqrt(normB);
   return denom === 0 ? 0 : dot / denom;
+}
+
+function parseEmbeddingJson(raw: string): number[] | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== "number")) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
 }

@@ -28,6 +28,15 @@ export const SCHEMA_STATEMENTS = [
     INDEX idx_doc_id (doc_id)
   )`,
 
+  // Search embeddings - persisted semantic vectors for restart-safe hybrid search
+  `CREATE TABLE IF NOT EXISTS search_embeddings (
+    doc_id VARCHAR(255) PRIMARY KEY,
+    embedding_json LONGTEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (doc_id) REFERENCES search_documents(id),
+    INDEX idx_updated_at (updated_at)
+  )`,
+
   // Orchestration events - audit trail of agent actions
   `CREATE TABLE IF NOT EXISTS orchestration_events (
     id INT AUTO_INCREMENT PRIMARY KEY,

@@ -4,9 +4,10 @@ title: Monsthera Agent Operating Guide
 slug: monsthera-agent-operating-guide
 category: guide
 tags: [agents, orchestration, automation, continuous-improvement, dashboard, operations]
-codeRefs: [src/dashboard/index.ts, src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, public/pages/guide.js, public/lib/guide-data.js, public/pages/search.js]
+codeRefs: [src/dashboard/index.ts, src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, src/tools/snapshot-tools.ts, public/pages/guide.js, public/lib/guide-data.js, public/pages/search.js, src/tools/agent-tools.ts, src/tools/wave-tools.ts, src/tools/wiki-tools.ts]
+references: [wiki-surfaces-and-wikilink-semantics, agent-and-wave-mcp-tools, mcp-tool-catalog-complete-reference]
 createdAt: 2026-04-09T13:10:00.000Z
-updatedAt: 2026-04-09T15:10:00.000Z
+updatedAt: 2026-04-20T00:00:00.000Z
 ---
 
 Monsthera works best when agents use it as an operational memory and coordination layer, not as a passive ticket archive.
@@ -81,6 +82,15 @@ Agents should not spend extra tool calls on manual per-article reindexing after 
 - Keep blockers visible rather than hiding them behind optimistic automation.
 - Treat review as a real gate. Done means approved, not just coded.
 
+## CLI shortcuts worth knowing
+
+Two alpha.6 additions make the common snapshot + bypass flows one-liners — both are fully audit-trail-preserving:
+
+- `monsthera pack <query...>` builds a ranked context pack end-to-end and, with `--record <path>` or `--record -`, records an environment snapshot in the same call. Piping `scripts/capture-env-snapshot.ts` into `monsthera pack "..." --record - --work-id <wid>` collapses the three-step runbook below to a single shell invocation.
+- `monsthera work close <id> (--pr <n> | --reason <text>)` is the sanctioned bypass of the `review -> done` transition. It routes through `advance_phase` with `skipGuard: { reason }`, so the bypass is recorded in `phase_history[].skipped_guards` alongside the operator's rationale.
+
+Both live in `src/cli/context-commands.ts` and `src/cli/work-commands.ts`; the MCP surface is unchanged.
+
 ## Environment snapshots
 
 Monsthera carries physical sandbox context (cwd, runtimes, lockfile hashes, git ref, memory) alongside the semantic context that `build_context_pack` already provides. Agents that capture and record a snapshot at the start of a session get three things for free: cold-start context in one pack call, drift detection when resuming work someone else started, and the ability to pass the `snapshot_ready` guard on feature templates.
@@ -130,3 +140,11 @@ Snapshots persist in Dolt when `MONSTHERA_DOLT_ENABLED=true`; otherwise they liv
 4. Automate the proven path with guarded waves.
 
 This loop compounds over time. Better contracts create faster agents; faster agents produce better knowledge; better knowledge reduces future token and planning cost.
+
+<!-- codex-related-articles:start -->
+## Related Articles
+
+- [[wiki-surfaces-and-wikilink-semantics]]
+- [[agent-and-wave-mcp-tools]]
+- [[mcp-tool-catalog-complete-reference]]
+<!-- codex-related-articles:end -->
