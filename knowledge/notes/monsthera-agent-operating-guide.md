@@ -4,9 +4,10 @@ title: Monsthera Agent Operating Guide
 slug: monsthera-agent-operating-guide
 category: guide
 tags: [agents, orchestration, automation, continuous-improvement, dashboard, operations]
-codeRefs: [src/dashboard/index.ts, src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, public/pages/guide.js, public/lib/guide-data.js, public/pages/search.js]
+codeRefs: [src/dashboard/index.ts, src/tools/knowledge-tools.ts, src/tools/work-tools.ts, src/tools/search-tools.ts, public/pages/guide.js, public/lib/guide-data.js, public/pages/search.js, src/tools/agent-tools.ts, src/tools/wave-tools.ts, src/tools/wiki-tools.ts]
+references: [wiki-surfaces-and-wikilink-semantics, agent-and-wave-mcp-tools, mcp-tool-catalog-complete-reference]
 createdAt: 2026-04-09T13:10:00.000Z
-updatedAt: 2026-04-09T15:10:00.000Z
+updatedAt: 2026-04-18T07:40:31.688Z
 ---
 
 Monsthera works best when agents use it as an operational memory and coordination layer, not as a passive ticket archive.
@@ -130,3 +131,11 @@ Snapshots persist in Dolt when `MONSTHERA_DOLT_ENABLED=true`; otherwise they liv
 4. Automate the proven path with guarded waves.
 
 This loop compounds over time. Better contracts create faster agents; faster agents produce better knowledge; better knowledge reduces future token and planning cost.
+
+<!-- codex-related-articles:start -->
+## Related Articles
+
+- [[wiki-surfaces-and-wikilink-semantics]]
+- [[agent-and-wave-mcp-tools]]
+- [[mcp-tool-catalog-complete-reference]]
+<!-- codex-related-articles:end -->

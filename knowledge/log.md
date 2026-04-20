@@ -1,0 +1,114 @@
+# Monsthera Log
+
+Append-only record of knowledge and work mutations.
+
+- **[2026-04-10 11:45:37]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 11:54:10]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 11:54:10]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 11:56:36]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:03:55]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:09:37]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:16:34]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:30:57]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:30:57]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:31:21]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:31:40]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:32:39]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:36:46]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:37:08]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:37:43]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:37:44]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:38:12]** reindex knowledge | Startup reindex: 162 knowledge, 194 work
+- **[2026-04-10 12:38:12]** create knowledge | Monsthera stale code ref repair and orchestration audit (k-ey8wyfqz)
+- **[2026-04-10 12:39:06]** reindex knowledge | Startup reindex: 163 knowledge, 194 work
+- **[2026-04-10 22:59:45]** reindex knowledge | Startup reindex: 163 knowledge, 194 work
+- **[2026-04-10 23:00:38]** reindex knowledge | Startup reindex: 163 knowledge, 194 work
+- **[2026-04-10 23:03:46]** reindex knowledge | Startup reindex: 163 knowledge, 194 work
+- **[2026-04-10 23:03:46]** reindex knowledge | Startup reindex: 163 knowledge, 194 work
+- **[2026-04-10 23:03:46]** reindex knowledge | Startup reindex: 163 knowledge, 194 work
+- **[2026-04-10 23:03:46]** reindex knowledge | Startup reindex: 163 knowledge, 194 work
+- **[2026-04-10 23:03:46]** reindex knowledge | Startup reindex: 163 knowledge, 194 work
+- **[2026-04-10 23:04:23]** reindex knowledge | Startup reindex: 172 knowledge, 194 work
+- **[2026-04-10 23:04:23]** reindex knowledge | Startup reindex: 172 knowledge, 194 work
+- **[2026-04-10 23:04:24]** reindex knowledge | Startup reindex: 172 knowledge, 194 work
+- **[2026-04-10 23:05:13]** reindex knowledge | Startup reindex: 172 knowledge, 194 work
+- **[2026-04-10 23:05:13]** create knowledge | Monsthera trust ranking and current-docs ingest (k-t2ihkk5i)
+- **[2026-04-10 23:05:43]** reindex knowledge | Startup reindex: 173 knowledge, 194 work
+- **[2026-04-10 23:05:43]** reindex knowledge | Startup reindex: 173 knowledge, 194 work
+- **[2026-04-10 23:06:20]** reindex knowledge | Startup reindex: 173 knowledge, 194 work
+- **[2026-04-10 23:07:19]** reindex knowledge | Startup reindex: 173 knowledge, 194 work
+- **[2026-04-10 23:07:36]** reindex knowledge | Startup reindex: 173 knowledge, 194 work
+- **[2026-04-10 23:17:58]** reindex knowledge | Startup reindex: 173 knowledge, 194 work
+- **[2026-04-10 23:19:55]** reindex knowledge | Startup reindex: 173 knowledge, 194 work
+- **[2026-04-10 23:19:55]** archive knowledge | Archived 161 legacy knowledge article(s)
+- **[2026-04-10 23:19:55]** archive work | Archived 194 legacy work article(s)
+- **[2026-04-10 23:20:05]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:20:05]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:20:05]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:20:05]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:24:59]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:30:09]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:30:40]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:30:53]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:31:48]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:32:03]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:32:48]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-10 23:33:39]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-11 01:27:55]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-11 01:38:44]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-11 01:39:39]** reindex knowledge | Startup reindex: 12 knowledge, 0 work
+- **[2026-04-11 02:04:30]** create knowledge | Smoke test: Karpathy wiki flow (k-b0gdd5yi)
+- **[2026-04-11 02:04:42]** delete knowledge | Smoke test: Karpathy wiki flow (k-b0gdd5yi)
+- **[2026-04-11 02:10:26]** create knowledge | Monsthera usage guide for humans and agents (k-5o4nk93g)
+- **[2026-04-11 02:14:21]** update knowledge | ADR-001: Storage Model (k-acodv9lb)
+- **[2026-04-11 02:14:41]** update knowledge | ADR-002: Work Article Model (k-n3gtykv5)
+- **[2026-04-11 02:14:49]** create knowledge | Markdown Frontmatter Serialization: Custom YAML Parser (k-zj0lp1yv)
+- **[2026-04-11 02:14:55]** update knowledge | ADR-003: Migration Boundary (k-rksv8m51)
+- **[2026-04-11 02:15:05]** update knowledge | ADR-004: Orchestration Model (k-40emzavw)
+- **[2026-04-11 02:15:07]** create knowledge | Work Article Guard System (k-qlgfto92)
+- **[2026-04-11 02:15:18]** create knowledge | In-Memory Search Index: BM25 Scoring and Fallback Behavior (k-0bz1r6n0)
+- **[2026-04-11 02:15:20]** create knowledge | Trust Signal System: Legacy Content Identification and Search Demotion (k-cg3xlfgt)
+- **[2026-04-11 02:15:28]** create knowledge | Work Article Template System (k-ofsgt3dd)
+- **[2026-04-11 02:15:37]** update knowledge | Monsthera: Hybrid Knowledge Architecture v6 (k-ypsx5ask)
+- **[2026-04-11 02:15:43]** update knowledge | Monsthera: Work Article Design (k-g0buqcg5)
+- **[2026-04-11 02:15:52]** create knowledge | Wave Planning and Execution System (k-4e666q5w)
+- **[2026-04-11 02:16:09]** create knowledge | Monsthera: Markdown Serialization for Articles (k-t27zzmvw)
+- **[2026-04-11 02:16:11]** create knowledge | Search Ranking: BM25 + Semantic Hybrid with Trust Reranking (k-zoawqis5)
+- **[2026-04-11 02:16:31]** create knowledge | Monsthera: Ingest Service for Local File Import (k-wntxpu85)
+- **[2026-04-11 02:16:41]** update knowledge | ADR-005: Surface Boundaries (k-8dsb3up8)
+- **[2026-04-11 02:16:43]** create knowledge | Context Pack Builder: Scoring, Diagnostics, and Mode-Specific Ranking (k-x8umv6et)
+- **[2026-04-11 02:17:27]** create knowledge | Dashboard data flow and state management (k-l7oy85r0)
+- **[2026-04-11 02:17:34]** create knowledge | MCP Tool Catalog — Complete Reference (k-qhu1sw8h)
+- **[2026-04-11 02:17:46]** create knowledge | Dashboard architecture and SPA routing (k-2jb9bh3p)
+- **[2026-04-11 02:18:12]** create knowledge | Dashboard knowledge page UX flow (k-w8xru25o)
+- **[2026-04-11 02:18:32]** create knowledge | Dashboard UI component library (k-imz9hai0)
+- **[2026-04-11 02:19:06]** create knowledge | Dashboard work page UX flow (k-5nuw1j8i)
+- **[2026-04-11 02:19:30]** create knowledge | Dashboard pages and features (k-jgazhhz6)
+- **[2026-04-11 02:20:25]** create knowledge | Dashboard REST API endpoints (k-kmnflb56)
+- **[2026-04-11 02:23:56]** create knowledge | KnowledgeService: CRUD, search sync, and wiki integration (k-g7zu4ki4)
+- **[2026-04-11 02:24:00]** create knowledge | AgentService: Agent registry and session tracking (k-c8uur83h)
+- **[2026-04-11 02:24:58]** create knowledge | StructureService: Code reference validation and graph analysis (k-c04vr46t)
+- **[2026-04-11 02:25:11]** create knowledge | SearchService: Unified search, indexing, and context packs (k-qszeow1i)
+- **[2026-04-11 02:26:06]** create knowledge | Dolt persistence layer: connection, schema, and health monitoring (k-2njgnd6v)
+- **[2026-04-11 02:27:05]** create knowledge | Dolt repositories: search index and orchestration events (k-klbt2h37)
+- **[2026-04-18 07:20:02]** reindex knowledge | Reindex: 37 knowledge, 0 work
+- **[2026-04-18 07:40:30]** create knowledge | Core runtime state, logging, and startup bootstrap (k-gi8pj4gg)
+- **[2026-04-18 07:40:30]** create knowledge | CLI entrypoint and command routing (k-fqn5b57c)
+- **[2026-04-18 07:40:30]** create knowledge | Package entrypoints and barrel exports (k-hvaoejze)
+- **[2026-04-18 07:40:30]** create knowledge | Wiki surfaces and wikilink semantics (k-koa51gtj)
+- **[2026-04-18 07:40:31]** create knowledge | Agent and wave MCP tools (k-u16rujhn)
+- **[2026-04-18 07:40:31]** create knowledge | In-memory repositories and degraded-mode fallbacks (k-q2wz8nb0)
+- **[2026-04-18 07:40:31]** create knowledge | Work phase history and skipped-guard audit trail (k-qti3v876)
+- **[2026-04-18 07:40:31]** update knowledge | Monsthera: Hybrid Knowledge Architecture v6 (k-ypsx5ask)
+- **[2026-04-18 07:40:31]** update knowledge | SearchService: Unified search, indexing, and context packs (k-qszeow1i)
+- **[2026-04-18 07:40:31]** update knowledge | MCP Tool Catalog — Complete Reference (k-qhu1sw8h)
+- **[2026-04-18 07:40:31]** update knowledge | StructureService: Code reference validation and graph analysis (k-c04vr46t)
+- **[2026-04-18 07:40:31]** update knowledge | AgentService: Agent registry and session tracking (k-c8uur83h)
+- **[2026-04-18 07:40:31]** update knowledge | Monsthera: Work Article Design (k-g0buqcg5)
+- **[2026-04-18 07:40:31]** update knowledge | ADR-005: Surface Boundaries (k-8dsb3up8)
+- **[2026-04-18 07:40:31]** update knowledge | In-Memory Search Index: BM25 Scoring and Fallback Behavior (k-0bz1r6n0)
+- **[2026-04-18 07:40:31]** update knowledge | Work Article Guard System (k-qlgfto92)
+- **[2026-04-18 07:40:31]** update knowledge | KnowledgeService: CRUD, search sync, and wiki integration (k-g7zu4ki4)
+- **[2026-04-18 07:40:31]** update knowledge | Monsthera Agent Operating Guide (k-uuz80fga)
+- **[2026-04-18 07:40:33]** reindex knowledge | Reindex: 44 knowledge, 0 work
+- **[2026-04-18 07:48:45]** reindex knowledge | Reindex: 44 knowledge, 0 work

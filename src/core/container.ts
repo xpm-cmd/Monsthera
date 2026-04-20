@@ -329,12 +329,16 @@ export async function createContainer(
       if (persistedRuntimeState.lastReindexAt) {
         status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
       }
+      status.recordStat("embeddingCount", searchRepo!.embeddingCount);
+      status.recordStat("semanticSearchEnabled", config.search.semanticEnabled && searchRepo!.embeddingCount > 0);
     }
   } else {
     status.recordStat("searchIndexSize", searchRepo!.size);
     if (persistedRuntimeState.lastReindexAt) {
       status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
     }
+    status.recordStat("embeddingCount", searchRepo!.embeddingCount);
+    status.recordStat("semanticSearchEnabled", config.search.semanticEnabled && searchRepo!.embeddingCount > 0);
   }
 
   status.register("knowledge", () => ({

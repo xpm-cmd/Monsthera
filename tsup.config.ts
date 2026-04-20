@@ -10,7 +10,7 @@ export default defineConfig([
     sourcemap: true,
     clean: true,
     define: {
-      __MONSTHERA_VERSION__: JSON.stringify("3.0.0-alpha.2"),
+      __MONSTHERA_VERSION__: JSON.stringify("3.0.0-alpha.4"),
     },
   },
   // CLI binary entry point
@@ -25,7 +25,7 @@ export default defineConfig([
       js: "#!/usr/bin/env node",
     },
     define: {
-      __MONSTHERA_VERSION__: JSON.stringify("3.0.0-alpha.2"),
+      __MONSTHERA_VERSION__: JSON.stringify("3.0.0-alpha.4"),
     },
   },
 ]);
