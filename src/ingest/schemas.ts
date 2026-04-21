@@ -13,6 +13,10 @@ export const IngestLocalInputSchema = z.object({
   mode: z.enum(INGEST_MODES).default("raw"),
   recursive: z.boolean().default(true),
   replaceExisting: z.boolean().default(true),
+  // When true, skip auto-appending the "imported" tag. Default false
+  // preserves the pre-alpha.7 behaviour so every existing caller keeps
+  // its tag set — this is an opt-out, not a breaking change.
+  noImportedTag: z.boolean().default(false),
 });
 
 export type IngestLocalInput = z.infer<typeof IngestLocalInputSchema>;

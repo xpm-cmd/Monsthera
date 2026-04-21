@@ -34,7 +34,7 @@ async function handleLocalIngest(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera ingest local",
       summary: "Import a local file or directory of Markdown/text into knowledge.",
-      usage: "--path <file-or-dir> [--category <c>] [--tags t1,t2] [--code-refs r1,r2] [--summary] [--no-recursive] [--no-replace]",
+      usage: "--path <file-or-dir> [--category <c>] [--tags t1,t2] [--code-refs r1,r2] [--summary] [--no-recursive] [--no-replace] [--no-imported-tag]",
       flags: [
         { name: "--path <p>", required: true, description: "File or directory path. --source is accepted as an alias." },
         { name: "--category <c>", description: "Override category for imported articles." },
@@ -43,10 +43,12 @@ async function handleLocalIngest(args: string[]): Promise<void> {
         { name: "--summary", description: "Normalise content into a structured summary article." },
         { name: "--no-recursive", description: "Do not descend into subdirectories." },
         { name: "--no-replace", description: "Skip articles whose sourcePath already exists." },
+        { name: "--no-imported-tag", description: "Skip the automatic `imported` tag appended to every ingested article." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
       examples: [
         "monsthera ingest local --path docs/adrs --summary",
+        "monsthera ingest local --path notes.md --category guide --no-imported-tag",
       ],
     });
     return;
@@ -65,6 +67,7 @@ async function handleLocalIngest(args: string[]): Promise<void> {
     const mode = args.includes("--summary") ? "summary" : "raw";
     const recursive = !args.includes("--no-recursive");
     const replaceExisting = !args.includes("--no-replace");
+    const noImportedTag = args.includes("--no-imported-tag");
 
     const result = await container.ingestService.importLocal({
       sourcePath,
@@ -74,6 +77,7 @@ async function handleLocalIngest(args: string[]): Promise<void> {
       mode,
       recursive,
       replaceExisting,
+      noImportedTag,
     });
 
     if (!result.ok) {

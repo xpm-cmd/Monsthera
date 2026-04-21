@@ -116,6 +116,7 @@ export class IngestService {
         validated.value.tags,
         validated.value.codeRefs,
         validated.value.mode,
+        validated.value.noImportedTag,
       );
       const existing = validated.value.replaceExisting ? existingBySourcePath.get(normalizedSourcePath) : undefined;
 
@@ -257,6 +258,7 @@ export class IngestService {
     tagOverrides: readonly string[],
     codeRefOverrides: readonly string[],
     mode: IngestMode,
+    noImportedTag: boolean,
   ): Promise<{
     title: string;
     category: string;
@@ -281,7 +283,7 @@ export class IngestService {
       ...tagOverrides,
       ...arrayValue(frontmatter.data.tags),
       ...(mode === "summary" ? ["summary"] : []),
-      "imported",
+      ...(noImportedTag ? [] : ["imported"]),
     ]);
     const codeRefs = dedupeStrings([
       ...codeRefOverrides,

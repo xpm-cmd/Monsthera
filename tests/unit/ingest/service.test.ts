@@ -183,6 +183,63 @@ describe("IngestService", () => {
     await fs.rm(repoPath, { recursive: true, force: true });
   });
 
+  it("appends the `imported` tag by default", async () => {
+    const repoPath = path.join("/tmp", `monsthera-ingest-${randomUUID()}`);
+    await fs.mkdir(path.join(repoPath, "docs"), { recursive: true });
+    await fs.writeFile(path.join(repoPath, "docs", "note.md"), "# Note\n\nBody\n", "utf-8");
+
+    const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
+    const service = new IngestService({
+      knowledgeRepo,
+      repoPath,
+      logger: createSilentLogger(),
+    });
+
+    const result = await service.importLocal({
+      sourcePath: "docs/note.md",
+      tags: ["alpha"],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const articles = await knowledgeRepo.findMany();
+    expect(articles.ok).toBe(true);
+    if (!articles.ok) return;
+    expect(articles.value[0]?.tags).toContain("imported");
+    expect(articles.value[0]?.tags).toContain("alpha");
+
+    await fs.rm(repoPath, { recursive: true, force: true });
+  });
+
+  it("skips the `imported` tag when noImportedTag is true", async () => {
+    const repoPath = path.join("/tmp", `monsthera-ingest-${randomUUID()}`);
+    await fs.mkdir(path.join(repoPath, "docs"), { recursive: true });
+    await fs.writeFile(path.join(repoPath, "docs", "note.md"), "# Note\n\nBody\n", "utf-8");
+
+    const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
+    const service = new IngestService({
+      knowledgeRepo,
+      repoPath,
+      logger: createSilentLogger(),
+    });
+
+    const result = await service.importLocal({
+      sourcePath: "docs/note.md",
+      tags: ["alpha"],
+      noImportedTag: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const articles = await knowledgeRepo.findMany();
+    expect(articles.ok).toBe(true);
+    if (!articles.ok) return;
+    expect(articles.value[0]?.tags).not.toContain("imported");
+    expect(articles.value[0]?.tags).toContain("alpha");
+
+    await fs.rm(repoPath, { recursive: true, force: true });
+  });
+
   it("returns not found for a missing source path", async () => {
     const repoPath = path.join("/tmp", `monsthera-ingest-${randomUUID()}`);
     await fs.mkdir(repoPath, { recursive: true });
