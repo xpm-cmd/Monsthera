@@ -326,6 +326,86 @@ describe("CLI main()", () => {
       expect(exitSpy).not.toHaveBeenCalled();
     });
 
+    it("work create --blocked-by / --dependencies populate the frontmatter on a new article", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      // First article: W1 (no deps).
+      const first = await captureStdout(() =>
+        main(["work", "create", "--title", "W1", "--template", "feature", "--author", "agent-1", "--repo", repoPath]),
+      );
+      const w1Id = first.match(/ID:\s+(w-\S+)/)?.[1];
+      expect(w1Id).toBeDefined();
+
+      // Second article: W2 blocked-by W1. Use JSON list to read the
+      // structured frontmatter so we aren't parsing the pretty printer.
+      await main([
+        "work", "create",
+        "--title", "W2",
+        "--template", "feature",
+        "--author", "agent-1",
+        "--blocked-by", w1Id!,
+        "--dependencies", w1Id!,
+        "--repo", repoPath,
+      ]);
+
+      const listing = await captureStdout(() =>
+        main(["work", "list", "--json", "--repo", repoPath]),
+      );
+      const parsed = JSON.parse(listing) as Array<{
+        title: string;
+        blockedBy: string[];
+        dependencies: string[];
+      }>;
+      const w2 = parsed.find((w) => w.title === "W2");
+      expect(w2).toBeDefined();
+      expect(w2?.blockedBy).toEqual([w1Id]);
+      expect(w2?.dependencies).toEqual([w1Id]);
+    });
+
+    it("work create --blocked-by errors when a referenced id does not exist", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await main([
+        "work", "create",
+        "--title", "Dangling",
+        "--template", "feature",
+        "--author", "agent-1",
+        "--blocked-by", "w-does-not-exist",
+        "--repo", repoPath,
+      ]);
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Referenced work id not found: w-does-not-exist"),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("work update --blocked-by routes through addDependency and maintains blockedBy ⊆ dependencies", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const a = await captureStdout(() =>
+        main(["work", "create", "--title", "A", "--template", "feature", "--author", "agent-1", "--repo", repoPath]),
+      );
+      const aId = a.match(/ID:\s+(w-\S+)/)?.[1];
+      const b = await captureStdout(() =>
+        main(["work", "create", "--title", "B", "--template", "feature", "--author", "agent-1", "--repo", repoPath]),
+      );
+      const bId = b.match(/ID:\s+(w-\S+)/)?.[1];
+
+      await main(["work", "update", aId!, "--blocked-by", bId!, "--repo", repoPath]);
+
+      const listing = await captureStdout(() =>
+        main(["work", "list", "--json", "--repo", repoPath]),
+      );
+      const parsed = JSON.parse(listing) as Array<{
+        id: string;
+        blockedBy: string[];
+        dependencies: string[];
+      }>;
+      const a2 = parsed.find((w) => w.id === aId);
+      // addDependency maintains the invariant that a new blocker is also in
+      // `dependencies`, so the test doubles as a regression guard for that
+      // invariant leaking into the CLI surface.
+      expect(a2?.blockedBy).toEqual([bId]);
+      expect(a2?.dependencies).toEqual([bId]);
+    });
+
     it("work advance --skip-guard-reason bypasses a failing guard at review→done", async () => {
       const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
       const create = await captureStdout(() =>

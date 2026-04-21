@@ -91,14 +91,20 @@ async function handleWorkCreate(args: string[]): Promise<void> {
         { name: "--author <a>", required: true, description: "Author agent id or name." },
         { name: "--priority <p>", description: "low | medium | high | critical.", default: "medium" },
         { name: "--tags t1,t2", description: "Comma-separated tag list." },
+        { name: "--blocked-by w-a,w-b", description: "Comma-separated work ids that block this article (populates frontmatter.blockedBy)." },
+        { name: "--dependencies w-a,w-b", description: "Comma-separated work ids this article depends on (populates frontmatter.dependencies)." },
         { name: "--content <body>", description: "Markdown body as a literal string." },
         { name: "--content-file <path>", description: "Markdown body read from disk." },
         { name: "--edit", description: "Open $EDITOR on a scratch buffer seeded from the template." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
-      notes: ["--content, --content-file, and --edit are mutually exclusive."],
+      notes: [
+        "--content, --content-file, and --edit are mutually exclusive.",
+        "--blocked-by and --dependencies values must reference existing work articles; invalid ids error out before creation.",
+      ],
       examples: [
         'monsthera work create --title "Add auth" --template feature --author agent-1 --priority high',
+        "monsthera work create --title 'Wave 2: API' --template feature --author agent-1 --blocked-by w-xxx,w-yyy",
       ],
     });
     return;
@@ -110,11 +116,30 @@ async function handleWorkCreate(args: string[]): Promise<void> {
     const author = requireFlag(args, "--author");
     const priority = parseFlag(args, "--priority") ?? "medium";
     const tags = parseCommaSeparated(args, "--tags");
+    const blockedBy = parseCommaSeparated(args, "--blocked-by");
+    const dependencies = parseCommaSeparated(args, "--dependencies");
     const seed = isWorkTemplate(template) ? generateInitialContent(template) : "";
     const content = readContentInput(args, { seed });
 
+    // Validate referenced work ids before touching the service. The in-memory
+    // repo would surface the same error via addDependency post-creation, but
+    // rejecting up front gives a clearer error and avoids creating an article
+    // with dangling ids in its frontmatter.
+    const referencedIds = [...(blockedBy ?? []), ...(dependencies ?? [])];
+    for (const id of referencedIds) {
+      const found = await container.workRepo.findById(id);
+      if (!found.ok) {
+        console.error(
+          `Referenced work id not found: ${id}. Check --blocked-by / --dependencies values.`,
+        );
+        process.exit(1);
+      }
+    }
+
     const input: Record<string, unknown> = { title, template, author, priority };
     if (tags) input.tags = tags;
+    if (blockedBy) input.blockedBy = blockedBy;
+    if (dependencies) input.dependencies = dependencies;
     if (content !== undefined) input.content = content;
 
     const result = await container.workService.createWork(input);
@@ -211,13 +236,15 @@ async function handleWorkUpdate(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera work update",
       summary: "Update fields of an existing work article.",
-      usage: "<id> [--title <t>] [--assignee <a>] [--priority <p>] [--tags t1,t2] [--content ... | --content-file ... | --edit]",
+      usage: "<id> [--title <t>] [--assignee <a>] [--priority <p>] [--tags t1,t2] [--blocked-by ids | --dependencies ids] [--content ... | --content-file ... | --edit]",
       positional: [{ name: "<id>", description: "Work article id." }],
       flags: [
         { name: "--title <t>", description: "New title." },
         { name: "--assignee <a>", description: "New assignee id." },
         { name: "--priority <p>", description: "New priority." },
         { name: "--tags t1,t2", description: "Replace the tag list." },
+        { name: "--blocked-by ids", description: "Add these work ids as dependencies (comma-separated; idempotent; each adds to both blockedBy and dependencies)." },
+        { name: "--dependencies ids", description: "Alias of --blocked-by on update: the repo's addDependency primitive maintains blockedBy ⊆ dependencies." },
         { name: "--content <body>", description: "New markdown body (literal string)." },
         { name: "--content-file <path>", description: "Read new markdown body from disk." },
         { name: "--edit", description: "Open $EDITOR on the existing body." },
@@ -225,6 +252,7 @@ async function handleWorkUpdate(args: string[]): Promise<void> {
       ],
       notes: [
         "--content, --content-file, and --edit are mutually exclusive.",
+        "--blocked-by / --dependencies go through addDependency so each add emits an orchestration event and is auditable. Use `work create --blocked-by ...` to set the initial set atomically.",
         "At least one update field is required.",
       ],
     });
@@ -243,6 +271,8 @@ async function handleWorkUpdate(args: string[]): Promise<void> {
     const assignee = parseFlag(args, "--assignee");
     const priority = parseFlag(args, "--priority");
     const tags = parseCommaSeparated(args, "--tags");
+    const blockedBy = parseCommaSeparated(args, "--blocked-by");
+    const dependencies = parseCommaSeparated(args, "--dependencies");
     const content = readContentInput(args);
 
     if (title) input.title = title;
@@ -251,19 +281,48 @@ async function handleWorkUpdate(args: string[]): Promise<void> {
     if (tags) input.tags = tags;
     if (content !== undefined) input.content = content;
 
-    if (Object.keys(input).length === 0) {
+    const depsToAdd = [...(blockedBy ?? []), ...(dependencies ?? [])];
+    if (Object.keys(input).length === 0 && depsToAdd.length === 0) {
       console.error(
-        "No update fields provided. Use --title, --assignee, --priority, --tags, --content, --content-file, or --edit.",
+        "No update fields provided. Use --title, --assignee, --priority, --tags, --blocked-by, --dependencies, --content, --content-file, or --edit.",
       );
       process.exit(1);
     }
 
-    const result = await container.workService.updateWork(id, input);
-    if (!result.ok) {
-      console.error(formatError(result.error));
-      process.exit(1);
+    // Apply non-dependency updates first so the article title in any
+    // subsequent error message is already current.
+    let latest: unknown = undefined;
+    if (Object.keys(input).length > 0) {
+      const result = await container.workService.updateWork(id, input);
+      if (!result.ok) {
+        console.error(formatError(result.error));
+        process.exit(1);
+      }
+      latest = result.value;
     }
-    process.stdout.write(formatWorkArticle(result.value) + "\n");
+
+    // Then apply each dependency. addDependency validates the referenced id
+    // exists and is idempotent, so re-runs are safe and the orchestration
+    // event trail mirrors the MCP `add_dependency` tool exactly.
+    for (const depId of depsToAdd) {
+      const result = await container.workService.addDependency(id, depId);
+      if (!result.ok) {
+        console.error(formatError(result.error));
+        process.exit(1);
+      }
+      latest = result.value;
+    }
+
+    // Fall back to the pre-update state if the caller only passed -h etc.
+    if (latest === undefined) {
+      const fetched = await container.workService.getWork(id);
+      if (!fetched.ok) {
+        console.error(formatError(fetched.error));
+        process.exit(1);
+      }
+      latest = fetched.value;
+    }
+    process.stdout.write(formatWorkArticle(latest as Parameters<typeof formatWorkArticle>[0]) + "\n");
   });
 }
 
