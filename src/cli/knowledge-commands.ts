@@ -9,6 +9,7 @@ import {
   parseFlag,
   parsePositional,
   parseCommaSeparated,
+  readContentInput,
   withContainer,
 } from "./arg-helpers.js";
 import { printGroupHelp, printSubcommandHelp, wantsHelp } from "./help.js";
@@ -60,17 +61,22 @@ async function handleKnowledgeCreate(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge create",
       summary: "Create a new knowledge article.",
-      usage: "--title <t> --category <c> --content <body> [--tags t1,t2] [--code-refs r1,r2]",
+      usage: "--title <t> --category <c> (--content <body> | --content-file <path>) [--tags t1,t2] [--code-refs r1,r2]",
       flags: [
         { name: "--title <t>", required: true, description: "Article title." },
         { name: "--category <c>", required: true, description: "Article category (decision, context, guide, solution, pattern, gotcha, etc.)." },
-        { name: "--content <body>", required: true, description: "Markdown body as a literal string." },
+        { name: "--content <body>", description: "Markdown body as a literal string." },
+        { name: "--content-file <path>", description: "Read the markdown body verbatim from disk. Avoids shell heredoc corruption of backticks etc." },
         { name: "--tags t1,t2", description: "Comma-separated tag list." },
         { name: "--code-refs r1,r2", description: "Comma-separated code-reference paths." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
+      notes: [
+        "Exactly one of --content or --content-file is required.",
+      ],
       examples: [
         'monsthera knowledge create --title "API Design" --category architecture --content "REST vs GraphQL..."',
+        "monsthera knowledge create --title 'Long Note' --category guide --content-file /tmp/note.md",
       ],
     });
     return;
@@ -79,7 +85,30 @@ async function handleKnowledgeCreate(args: string[]): Promise<void> {
   await withContainer(args, async (container) => {
     const title = requireFlag(args, "--title");
     const category = requireFlag(args, "--category");
-    const content = requireFlag(args, "--content");
+    // --content / --content-file are mutually exclusive. --edit is
+    // intentionally not exposed here — knowledge articles are usually
+    // written programmatically, and keeping the surface narrow avoids
+    // scope creep. Reject it explicitly with a clear message.
+    if (args.includes("--edit")) {
+      console.error(
+        "--edit is not supported on `knowledge create`. Use --content or --content-file.",
+      );
+      process.exit(1);
+    }
+    // Narrow the mutual-exclusion error to match the flags this command
+    // actually exposes, instead of leaking `readContentInput`'s generic
+    // "--content, --content-file, and --edit are mutually exclusive".
+    const hasContent = parseFlag(args, "--content") !== undefined;
+    const hasContentFile = parseFlag(args, "--content-file") !== undefined;
+    if (hasContent && hasContentFile) {
+      console.error("Use --content or --content-file, not both.");
+      process.exit(1);
+    }
+    const content = readContentInput(args);
+    if (content === undefined) {
+      console.error("Missing required flag: --content or --content-file");
+      process.exit(1);
+    }
     const tags = parseCommaSeparated(args, "--tags");
     const codeRefs = parseCommaSeparated(args, "--code-refs");
 

@@ -186,6 +186,74 @@ describe("CLI main()", () => {
       expect(output).toContain("ARGUMENTS");
       expect(exitSpy).not.toHaveBeenCalled();
     });
+
+    it("knowledge create --content-file reads the body from disk", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const bodyPath = `/tmp/monsthera-cli-body-${randomUUID()}.md`;
+      // Markdown that would be mangled by a shell heredoc — backticks
+      // and a fenced block are the classic corruption case we're guarding.
+      const body = [
+        "# Title in body",
+        "",
+        "- bullet with `backticks that break heredoc`",
+        "",
+        "```ts",
+        "const x = 1;",
+        "```",
+      ].join("\n");
+      await fs.writeFile(bodyPath, body, "utf-8");
+
+      const output = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "From File",
+          "--category", "guide",
+          "--content-file", bodyPath,
+          "--repo", repoPath,
+        ]),
+      );
+      expect(output).toContain("From File");
+      expect(output).toContain("const x = 1;");
+      expect(output).toContain("backticks that break heredoc");
+      expect(exitSpy).not.toHaveBeenCalled();
+
+      await fs.rm(bodyPath, { force: true });
+    });
+
+    it("knowledge create errors when both --content and --content-file are set", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const bodyPath = `/tmp/monsthera-cli-body-${randomUUID()}.md`;
+      await fs.writeFile(bodyPath, "body", "utf-8");
+
+      await main([
+        "knowledge", "create",
+        "--title", "Both",
+        "--category", "guide",
+        "--content", "inline",
+        "--content-file", bodyPath,
+        "--repo", repoPath,
+      ]);
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Use --content or --content-file, not both."),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+
+      await fs.rm(bodyPath, { force: true });
+    });
+
+    it("knowledge create errors when neither --content nor --content-file is set", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await main([
+        "knowledge", "create",
+        "--title", "Empty",
+        "--category", "guide",
+        "--repo", repoPath,
+      ]);
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Missing required flag: --content or --content-file"),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
   });
 
   // ─── Work subcommand ─────────────────────────────────────────────────────

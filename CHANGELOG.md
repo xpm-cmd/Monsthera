@@ -8,6 +8,10 @@ All notable changes to Monsthera are documented here.
 
 **Tier 7 — External-consumer polish.** Bug fixes and CLI symmetry discovered while a downstream research agent (Hedera investigation) drove Monsthera v3 through its CLI to scaffold 31 workstreams + knowledge articles.
 
+### Added
+
+- **`--content-file <path>` on `knowledge create`**, symmetric with the `work create` flag shipped in alpha.6. Large knowledge articles (≥100 lines) previously forced callers into heredoc gymnastics (where backticks and code fences get corrupted by the shell) or into the `ingest local` fallback (which attaches the `imported` tag). `--content-file` reads verbatim from disk. Mutually exclusive with `--content`; the error message is tailored to the knowledge surface ("Use --content or --content-file, not both."). `--edit` is intentionally not exposed on `knowledge create` — knowledge articles are normally generated programmatically, and narrowing the surface keeps the invocation simple.
+
 ### Fixed
 
 - **`ingest local` now preserves frontmatter `title` when `--category` is provided.** The previous implementation gated *every* frontmatter field behind the presence of `--category`, which conflated "override the category" with "ignore the rest of the frontmatter." Title resolution is now an unconditional cascade: frontmatter `title` → first `#` heading → humanized filename stem. The category override flag only affects the category field.
