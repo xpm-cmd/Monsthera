@@ -58,6 +58,7 @@ export function ingestToolDefinitions(): ToolDefinition[] {
           },
           recursive: { type: "boolean", description: "When sourcePath is a directory, recurse into nested folders (default true)" },
           replaceExisting: { type: "boolean", description: "Update previously imported articles with the same sourcePath (default true)" },
+          noImportedTag: { type: "boolean", description: "Skip the automatic `imported` tag appended to every ingested article (default false)" },
         },
         required: ["sourcePath"],
       },
@@ -99,6 +100,10 @@ export async function handleIngestTool(
         return errorResponse("VALIDATION_FAILED", "\"replaceExisting\" must be a boolean");
       }
 
+      if (args.noImportedTag !== undefined && typeof args.noImportedTag !== "boolean") {
+        return errorResponse("VALIDATION_FAILED", "\"noImportedTag\" must be a boolean");
+      }
+
       const result = await service.importLocal({
         sourcePath,
         category,
@@ -107,6 +112,7 @@ export async function handleIngestTool(
         mode,
         recursive: args.recursive as boolean | undefined,
         replaceExisting: args.replaceExisting as boolean | undefined,
+        noImportedTag: args.noImportedTag as boolean | undefined,
       });
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);

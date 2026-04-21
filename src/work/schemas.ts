@@ -36,6 +36,12 @@ export const CreateWorkArticleInputSchema = z.object({
   tags: z.array(z.string()).default([]),
   references: z.array(z.string()).default([]),
   codeRefs: z.array(z.string()).default([]),
+  // `dependencies` and `blockedBy` are accepted at create time so callers can
+  // seed a wave-level dep graph in a single round-trip. They were already
+  // present on WorkArticleFrontmatterSchema and the repository's
+  // CreateWorkArticleInput, but missing here meant Zod silently stripped them.
+  dependencies: z.array(z.string()).default([]),
+  blockedBy: z.array(z.string()).default([]),
   content: z.string().optional(),
 });
 

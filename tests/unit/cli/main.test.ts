@@ -163,9 +163,95 @@ describe("CLI main()", () => {
       expect(output).toContain("Deleted knowledge article");
     });
 
-    it("knowledge with no subcommand prints error", async () => {
-      await main(["knowledge"]);
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
+    it("knowledge with no subcommand prints group help", async () => {
+      const output = await captureStdout(() => main(["knowledge"]));
+      expect(output).toContain("monsthera knowledge");
+      expect(output).toContain("SUBCOMMANDS");
+      expect(output).toContain("create");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge create --help prints usage without requiring flags", async () => {
+      const output = await captureStdout(() => main(["knowledge", "create", "--help"]));
+      expect(output).toContain("monsthera knowledge create");
+      expect(output).toContain("USAGE");
+      expect(output).toContain("--title");
+      // Help is a success path, not an error — no exit(1).
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge update -h short-form also prints usage", async () => {
+      const output = await captureStdout(() => main(["knowledge", "update", "-h"]));
+      expect(output).toContain("monsthera knowledge update");
+      expect(output).toContain("ARGUMENTS");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge create --content-file reads the body from disk", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const bodyPath = `/tmp/monsthera-cli-body-${randomUUID()}.md`;
+      // Markdown that would be mangled by a shell heredoc — backticks
+      // and a fenced block are the classic corruption case we're guarding.
+      const body = [
+        "# Title in body",
+        "",
+        "- bullet with `backticks that break heredoc`",
+        "",
+        "```ts",
+        "const x = 1;",
+        "```",
+      ].join("\n");
+      await fs.writeFile(bodyPath, body, "utf-8");
+
+      const output = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "From File",
+          "--category", "guide",
+          "--content-file", bodyPath,
+          "--repo", repoPath,
+        ]),
+      );
+      expect(output).toContain("From File");
+      expect(output).toContain("const x = 1;");
+      expect(output).toContain("backticks that break heredoc");
+      expect(exitSpy).not.toHaveBeenCalled();
+
+      await fs.rm(bodyPath, { force: true });
+    });
+
+    it("knowledge create errors when both --content and --content-file are set", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const bodyPath = `/tmp/monsthera-cli-body-${randomUUID()}.md`;
+      await fs.writeFile(bodyPath, "body", "utf-8");
+
+      await main([
+        "knowledge", "create",
+        "--title", "Both",
+        "--category", "guide",
+        "--content", "inline",
+        "--content-file", bodyPath,
+        "--repo", repoPath,
+      ]);
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Use --content or --content-file, not both."),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+
+      await fs.rm(bodyPath, { force: true });
+    });
+
+    it("knowledge create errors when neither --content nor --content-file is set", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await main([
+        "knowledge", "create",
+        "--title", "Empty",
+        "--category", "guide",
+        "--repo", repoPath,
+      ]);
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Missing required flag: --content or --content-file"),
+      );
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
   });
@@ -216,10 +302,108 @@ describe("CLI main()", () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
-    it("work with no subcommand prints error", async () => {
-      await main(["work"]);
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
+    it("work with no subcommand prints group help", async () => {
+      const output = await captureStdout(() => main(["work"]));
+      expect(output).toContain("monsthera work");
+      expect(output).toContain("SUBCOMMANDS");
+      expect(output).toContain("create");
+      expect(output).toContain("advance");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("work create --help prints usage without requiring flags", async () => {
+      const output = await captureStdout(() => main(["work", "create", "--help"]));
+      expect(output).toContain("monsthera work create");
+      expect(output).toContain("--template");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("work enrich --help prints usage without requiring the id or --role", async () => {
+      const output = await captureStdout(() => main(["work", "enrich", "--help"]));
+      expect(output).toContain("monsthera work enrich");
+      expect(output).toContain("--role");
+      expect(output).toContain("--status");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("work create --blocked-by / --dependencies populate the frontmatter on a new article", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      // First article: W1 (no deps).
+      const first = await captureStdout(() =>
+        main(["work", "create", "--title", "W1", "--template", "feature", "--author", "agent-1", "--repo", repoPath]),
+      );
+      const w1Id = first.match(/ID:\s+(w-\S+)/)?.[1];
+      expect(w1Id).toBeDefined();
+
+      // Second article: W2 blocked-by W1. Use JSON list to read the
+      // structured frontmatter so we aren't parsing the pretty printer.
+      await main([
+        "work", "create",
+        "--title", "W2",
+        "--template", "feature",
+        "--author", "agent-1",
+        "--blocked-by", w1Id!,
+        "--dependencies", w1Id!,
+        "--repo", repoPath,
+      ]);
+
+      const listing = await captureStdout(() =>
+        main(["work", "list", "--json", "--repo", repoPath]),
+      );
+      const parsed = JSON.parse(listing) as Array<{
+        title: string;
+        blockedBy: string[];
+        dependencies: string[];
+      }>;
+      const w2 = parsed.find((w) => w.title === "W2");
+      expect(w2).toBeDefined();
+      expect(w2?.blockedBy).toEqual([w1Id]);
+      expect(w2?.dependencies).toEqual([w1Id]);
+    });
+
+    it("work create --blocked-by errors when a referenced id does not exist", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await main([
+        "work", "create",
+        "--title", "Dangling",
+        "--template", "feature",
+        "--author", "agent-1",
+        "--blocked-by", "w-does-not-exist",
+        "--repo", repoPath,
+      ]);
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Referenced work id not found: w-does-not-exist"),
+      );
       expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("work update --blocked-by routes through addDependency and maintains blockedBy ⊆ dependencies", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const a = await captureStdout(() =>
+        main(["work", "create", "--title", "A", "--template", "feature", "--author", "agent-1", "--repo", repoPath]),
+      );
+      const aId = a.match(/ID:\s+(w-\S+)/)?.[1];
+      const b = await captureStdout(() =>
+        main(["work", "create", "--title", "B", "--template", "feature", "--author", "agent-1", "--repo", repoPath]),
+      );
+      const bId = b.match(/ID:\s+(w-\S+)/)?.[1];
+
+      await main(["work", "update", aId!, "--blocked-by", bId!, "--repo", repoPath]);
+
+      const listing = await captureStdout(() =>
+        main(["work", "list", "--json", "--repo", repoPath]),
+      );
+      const parsed = JSON.parse(listing) as Array<{
+        id: string;
+        blockedBy: string[];
+        dependencies: string[];
+      }>;
+      const a2 = parsed.find((w) => w.id === aId);
+      // addDependency maintains the invariant that a new blocker is also in
+      // `dependencies`, so the test doubles as a regression guard for that
+      // invariant leaking into the CLI surface.
+      expect(a2?.blockedBy).toEqual([bId]);
+      expect(a2?.dependencies).toEqual([bId]);
     });
 
     it("work advance --skip-guard-reason bypasses a failing guard at review→done", async () => {
@@ -560,10 +744,19 @@ describe("CLI main()", () => {
       expect(output).toContain("docs/cli-import.md");
     });
 
-    it("ingest with no subcommand prints error", async () => {
-      await main(["ingest"]);
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
-      expect(exitSpy).toHaveBeenCalledWith(1);
+    it("ingest with no subcommand prints group help", async () => {
+      const output = await captureStdout(() => main(["ingest"]));
+      expect(output).toContain("monsthera ingest");
+      expect(output).toContain("local");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("ingest local --help prints usage without requiring --path", async () => {
+      const output = await captureStdout(() => main(["ingest", "local", "--help"]));
+      expect(output).toContain("monsthera ingest local");
+      expect(output).toContain("--path");
+      expect(output).toContain("--summary");
+      expect(exitSpy).not.toHaveBeenCalled();
     });
   });
 
