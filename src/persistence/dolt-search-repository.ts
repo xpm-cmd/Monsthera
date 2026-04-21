@@ -119,21 +119,13 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
       await connection.query<ResultSetHeader>("DELETE FROM search_inverted_index WHERE doc_id = ?", [
         id,
       ]);
-
-      // Remove from search_documents
-      await connection.query<ResultSetHeader>("DELETE FROM search_documents WHERE id = ?", [id]);
-
-      // Remove persisted embedding for this document as well
       await connection.query<ResultSetHeader>("DELETE FROM search_embeddings WHERE doc_id = ?", [id]);
+      await connection.query<ResultSetHeader>("DELETE FROM search_documents WHERE id = ?", [id]);
 
       await connection.commit();
       this.docTypes.delete(id);
       this.embeddings.delete(id);
-      if (this.embeddingCacheHydrated) {
-        this.cachedEmbeddingCount = this.embeddings.size;
-      } else {
-        await this.refreshEmbeddingCount();
-      }
+      this.cachedEmbeddingCount = this.embeddings.size;
       return ok(undefined);
     } catch (error) {
       await connection.rollback();
@@ -294,11 +286,7 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
         [id, JSON.stringify(embedding)],
       );
       this.embeddings.set(id, embedding);
-      if (this.embeddingCacheHydrated) {
-        this.cachedEmbeddingCount = this.embeddings.size;
-      } else {
-        await this.refreshEmbeddingCount();
-      }
+      this.cachedEmbeddingCount = this.embeddings.size;
       return ok(undefined);
     } catch (error) {
       return err(new StorageError(`Failed to persist embedding: ${id}`, { cause: error }));
@@ -370,17 +358,6 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
-
-  private async refreshEmbeddingCount(): Promise<void> {
-    try {
-      const [rows] = await this.pool.query<RowDataPacket[]>(
-        "SELECT COUNT(*) as count FROM search_embeddings",
-      );
-      this.cachedEmbeddingCount = (rows[0] as RowDataPacket & { count: number }).count || 0;
-    } catch {
-      this.cachedEmbeddingCount = 0;
-    }
-  }
 
   private async ensureEmbeddingCacheLoaded(): Promise<void> {
     if (this.embeddingCacheHydrated) return;
