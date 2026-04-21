@@ -11,10 +11,26 @@ import {
   parseCommaSeparated,
   withContainer,
 } from "./arg-helpers.js";
+import { printGroupHelp, printSubcommandHelp, wantsHelp } from "./help.js";
 
 export async function handleKnowledge(args: string[]): Promise<void> {
   const subcommand = args[0];
   const subArgs = args.slice(1);
+
+  if (subcommand === undefined || wantsHelp([subcommand])) {
+    printGroupHelp({
+      command: "monsthera knowledge",
+      summary: "Manage knowledge articles (notes, guides, decisions, patterns).",
+      subcommands: [
+        { name: "create", summary: "Create a new knowledge article." },
+        { name: "get", summary: "Fetch an article by id or slug." },
+        { name: "list", summary: "List articles, optionally filtered by category." },
+        { name: "update", summary: "Update an article's fields." },
+        { name: "delete", summary: "Delete an article by id." },
+      ],
+    });
+    return;
+  }
 
   switch (subcommand) {
     case "create":
@@ -33,13 +49,33 @@ export async function handleKnowledge(args: string[]): Promise<void> {
       await handleKnowledgeDelete(subArgs);
       break;
     default:
-      console.error(`Unknown knowledge subcommand: ${subcommand ?? "(none)"}`);
-      console.error('Run "monsthera --help" for usage.');
+      console.error(`Unknown knowledge subcommand: ${subcommand}`);
+      console.error('Run "monsthera knowledge --help" for usage.');
       process.exit(1);
   }
 }
 
 async function handleKnowledgeCreate(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera knowledge create",
+      summary: "Create a new knowledge article.",
+      usage: "--title <t> --category <c> --content <body> [--tags t1,t2] [--code-refs r1,r2]",
+      flags: [
+        { name: "--title <t>", required: true, description: "Article title." },
+        { name: "--category <c>", required: true, description: "Article category (decision, context, guide, solution, pattern, gotcha, etc.)." },
+        { name: "--content <body>", required: true, description: "Markdown body as a literal string." },
+        { name: "--tags t1,t2", description: "Comma-separated tag list." },
+        { name: "--code-refs r1,r2", description: "Comma-separated code-reference paths." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      examples: [
+        'monsthera knowledge create --title "API Design" --category architecture --content "REST vs GraphQL..."',
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const title = requireFlag(args, "--title");
     const category = requireFlag(args, "--category");
@@ -61,6 +97,21 @@ async function handleKnowledgeCreate(args: string[]): Promise<void> {
 }
 
 async function handleKnowledgeGet(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera knowledge get",
+      summary: "Fetch a knowledge article by id or slug.",
+      usage: "<id-or-slug>",
+      positional: [
+        { name: "<id-or-slug>", description: "Article id (k-xxxx) or slug." },
+      ],
+      flags: [
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const idOrSlug = parsePositional(args, 0);
     if (!idOrSlug) {
@@ -85,6 +136,20 @@ async function handleKnowledgeGet(args: string[]): Promise<void> {
 }
 
 async function handleKnowledgeList(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera knowledge list",
+      summary: "List knowledge articles.",
+      usage: "[--category <c>] [--json]",
+      flags: [
+        { name: "--category <c>", description: "Filter by category." },
+        { name: "--json", description: "Emit the full list as JSON (no table)." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const category = parseFlag(args, "--category");
     const asJson = args.includes("--json");
@@ -117,6 +182,28 @@ async function handleKnowledgeList(args: string[]): Promise<void> {
 }
 
 async function handleKnowledgeUpdate(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera knowledge update",
+      summary: "Update fields of an existing knowledge article.",
+      usage: "<id> [--title <t>] [--category <c>] [--content <body>] [--tags t1,t2]",
+      positional: [
+        { name: "<id>", description: "Article id (k-xxxx)." },
+      ],
+      flags: [
+        { name: "--title <t>", description: "New title." },
+        { name: "--category <c>", description: "New category." },
+        { name: "--content <body>", description: "New markdown body (literal string)." },
+        { name: "--tags t1,t2", description: "Replace the tag list with this comma-separated set." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "At least one of --title, --category, --content, or --tags is required.",
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
     if (!id) {
@@ -150,6 +237,21 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
 }
 
 async function handleKnowledgeDelete(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera knowledge delete",
+      summary: "Delete a knowledge article by id.",
+      usage: "<id>",
+      positional: [
+        { name: "<id>", description: "Article id (k-xxxx)." },
+      ],
+      flags: [
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
     if (!id) {

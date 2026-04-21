@@ -11,6 +11,7 @@ All notable changes to Monsthera are documented here.
 ### Fixed
 
 - **`ingest local` now preserves frontmatter `title` when `--category` is provided.** The previous implementation gated *every* frontmatter field behind the presence of `--category`, which conflated "override the category" with "ignore the rest of the frontmatter." Title resolution is now an unconditional cascade: frontmatter `title` → first `#` heading → humanized filename stem. The category override flag only affects the category field.
+- **`--help` / `-h` now works on every CLI subcommand before flag validation.** Previously `node dist/bin.js knowledge create --help` rejected the command with `Missing required flag: --title` — users could only learn a subcommand's interface by iteratively satisfying error messages. Every subcommand dispatcher now intercepts `--help` / `-h` at the very top and prints a per-subcommand usage block (USAGE, ARGUMENTS, FLAGS, NOTES, EXAMPLES). Group-level help (`monsthera knowledge --help`, `monsthera work --help`, `monsthera ingest --help`) also works, and running a group with no subcommand (e.g. `monsthera knowledge`) now prints the group help instead of erroring. Help goes to stdout and exits with code 0. See the new `src/cli/help.ts` for the shared `HelpEntry` + `printSubcommandHelp` helpers.
 
 ## [3.0.0-alpha.6] — 2026-04-19
 

@@ -15,6 +15,7 @@ import {
   readContentInput,
   withContainer,
 } from "./arg-helpers.js";
+import { printGroupHelp, printSubcommandHelp, wantsHelp } from "./help.js";
 
 function isWorkTemplate(value: string): value is WorkTemplateType {
   return (Object.values(WorkTemplate) as string[]).includes(value);
@@ -23,6 +24,25 @@ function isWorkTemplate(value: string): value is WorkTemplateType {
 export async function handleWork(args: string[]): Promise<void> {
   const subcommand = args[0];
   const subArgs = args.slice(1);
+
+  if (subcommand === undefined || wantsHelp([subcommand])) {
+    printGroupHelp({
+      command: "monsthera work",
+      summary: "Manage work articles (planning → enrichment → implementation → review → done).",
+      subcommands: [
+        { name: "create", summary: "Create a new work article." },
+        { name: "get", summary: "Fetch a work article by id." },
+        { name: "list", summary: "List work articles." },
+        { name: "update", summary: "Update an article's fields." },
+        { name: "advance", summary: "Advance the phase of a work article." },
+        { name: "enrich", summary: "Record an enrichment contribution." },
+        { name: "review", summary: "Submit a reviewer verdict." },
+        { name: "close", summary: "Close straight to done with an audit reason." },
+        { name: "delete", summary: "Delete a work article by id." },
+      ],
+    });
+    return;
+  }
 
   switch (subcommand) {
     case "create":
@@ -53,13 +73,37 @@ export async function handleWork(args: string[]): Promise<void> {
       await handleWorkDelete(subArgs);
       break;
     default:
-      console.error(`Unknown work subcommand: ${subcommand ?? "(none)"}`);
-      console.error('Run "monsthera --help" for usage.');
+      console.error(`Unknown work subcommand: ${subcommand}`);
+      console.error('Run "monsthera work --help" for usage.');
       process.exit(1);
   }
 }
 
 async function handleWorkCreate(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera work create",
+      summary: "Create a new work article.",
+      usage: "--title <t> --template <feature|bugfix|refactor|spike> --author <a> [flags]",
+      flags: [
+        { name: "--title <t>", required: true, description: "Work article title." },
+        { name: "--template <t>", required: true, description: "One of feature | bugfix | refactor | spike." },
+        { name: "--author <a>", required: true, description: "Author agent id or name." },
+        { name: "--priority <p>", description: "low | medium | high | critical.", default: "medium" },
+        { name: "--tags t1,t2", description: "Comma-separated tag list." },
+        { name: "--content <body>", description: "Markdown body as a literal string." },
+        { name: "--content-file <path>", description: "Markdown body read from disk." },
+        { name: "--edit", description: "Open $EDITOR on a scratch buffer seeded from the template." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: ["--content, --content-file, and --edit are mutually exclusive."],
+      examples: [
+        'monsthera work create --title "Add auth" --template feature --author agent-1 --priority high',
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const title = requireFlag(args, "--title");
     const template = requireFlag(args, "--template");
@@ -83,6 +127,17 @@ async function handleWorkCreate(args: string[]): Promise<void> {
 }
 
 async function handleWorkGet(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera work get",
+      summary: "Fetch a work article by id.",
+      usage: "<id>",
+      positional: [{ name: "<id>", description: "Work article id (w-xxxx)." }],
+      flags: [{ name: "--repo, -r <path>", description: "Repository path.", default: "cwd" }],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
     if (!id) {
@@ -100,6 +155,20 @@ async function handleWorkGet(args: string[]): Promise<void> {
 }
 
 async function handleWorkList(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera work list",
+      summary: "List work articles.",
+      usage: "[--phase <p>] [--json]",
+      flags: [
+        { name: "--phase <p>", description: `Filter by phase. One of: ${[...VALID_PHASES].join(" | ")}` },
+        { name: "--json", description: "Emit the full list as JSON." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const phaseParam = parseFlag(args, "--phase");
     if (phaseParam && !VALID_PHASES.has(phaseParam as WorkPhaseType)) {
@@ -138,6 +207,30 @@ async function handleWorkList(args: string[]): Promise<void> {
 }
 
 async function handleWorkUpdate(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera work update",
+      summary: "Update fields of an existing work article.",
+      usage: "<id> [--title <t>] [--assignee <a>] [--priority <p>] [--tags t1,t2] [--content ... | --content-file ... | --edit]",
+      positional: [{ name: "<id>", description: "Work article id." }],
+      flags: [
+        { name: "--title <t>", description: "New title." },
+        { name: "--assignee <a>", description: "New assignee id." },
+        { name: "--priority <p>", description: "New priority." },
+        { name: "--tags t1,t2", description: "Replace the tag list." },
+        { name: "--content <body>", description: "New markdown body (literal string)." },
+        { name: "--content-file <path>", description: "Read new markdown body from disk." },
+        { name: "--edit", description: "Open $EDITOR on the existing body." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "--content, --content-file, and --edit are mutually exclusive.",
+        "At least one update field is required.",
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
     if (!id) {
@@ -175,6 +268,22 @@ async function handleWorkUpdate(args: string[]): Promise<void> {
 }
 
 async function handleWorkAdvance(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera work advance",
+      summary: "Advance a work article to a new phase.",
+      usage: "<id> --phase <target> [--reason <text>] [--skip-guard-reason <text>]",
+      positional: [{ name: "<id>", description: "Work article id." }],
+      flags: [
+        { name: "--phase <target>", required: true, description: `One of: ${[...VALID_PHASES].join(" | ")}` },
+        { name: "--reason <text>", description: "Free-text reason recorded in phase history." },
+        { name: "--skip-guard-reason <text>", description: "Bypass phase guards with an audit reason." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
     if (!id) {
@@ -203,6 +312,21 @@ async function handleWorkAdvance(args: string[]): Promise<void> {
 }
 
 async function handleWorkEnrich(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera work enrich",
+      summary: "Record an enrichment contribution from a specialist role.",
+      usage: "<id> --role <role> --status <contributed|skipped>",
+      positional: [{ name: "<id>", description: "Work article id." }],
+      flags: [
+        { name: "--role <role>", required: true, description: "Role identifier (e.g. security, architecture)." },
+        { name: "--status <s>", required: true, description: "Either 'contributed' or 'skipped'." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
     if (!id) {
@@ -226,6 +350,21 @@ async function handleWorkEnrich(args: string[]): Promise<void> {
 }
 
 async function handleWorkReview(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera work review",
+      summary: "Submit a reviewer verdict on a work article.",
+      usage: "<id> --reviewer <agent-id> --status <approved|changes-requested>",
+      positional: [{ name: "<id>", description: "Work article id." }],
+      flags: [
+        { name: "--reviewer <id>", required: true, description: "Reviewer agent id." },
+        { name: "--status <s>", required: true, description: "Either 'approved' or 'changes-requested'." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
     if (!id) {
@@ -249,6 +388,22 @@ async function handleWorkReview(args: string[]): Promise<void> {
 }
 
 async function handleWorkClose(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera work close",
+      summary: "Advance a work article straight to done with an auditable reason.",
+      usage: "<id> (--pr <n> | --reason <text>)",
+      positional: [{ name: "<id>", description: "Work article id." }],
+      flags: [
+        { name: "--pr <n>", description: "Close with canonical 'merged via PR #N' reason." },
+        { name: "--reason <text>", description: "Close with verbatim reason text." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: ["Exactly one of --pr or --reason is required."],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
     if (!id) {
@@ -285,6 +440,17 @@ async function handleWorkClose(args: string[]): Promise<void> {
 }
 
 async function handleWorkDelete(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera work delete",
+      summary: "Delete a work article by id.",
+      usage: "<id>",
+      positional: [{ name: "<id>", description: "Work article id." }],
+      flags: [{ name: "--repo, -r <path>", description: "Repository path.", default: "cwd" }],
+    });
+    return;
+  }
+
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
     if (!id) {

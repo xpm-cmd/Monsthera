@@ -163,10 +163,28 @@ describe("CLI main()", () => {
       expect(output).toContain("Deleted knowledge article");
     });
 
-    it("knowledge with no subcommand prints error", async () => {
-      await main(["knowledge"]);
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
-      expect(exitSpy).toHaveBeenCalledWith(1);
+    it("knowledge with no subcommand prints group help", async () => {
+      const output = await captureStdout(() => main(["knowledge"]));
+      expect(output).toContain("monsthera knowledge");
+      expect(output).toContain("SUBCOMMANDS");
+      expect(output).toContain("create");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge create --help prints usage without requiring flags", async () => {
+      const output = await captureStdout(() => main(["knowledge", "create", "--help"]));
+      expect(output).toContain("monsthera knowledge create");
+      expect(output).toContain("USAGE");
+      expect(output).toContain("--title");
+      // Help is a success path, not an error — no exit(1).
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge update -h short-form also prints usage", async () => {
+      const output = await captureStdout(() => main(["knowledge", "update", "-h"]));
+      expect(output).toContain("monsthera knowledge update");
+      expect(output).toContain("ARGUMENTS");
+      expect(exitSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -216,10 +234,28 @@ describe("CLI main()", () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
-    it("work with no subcommand prints error", async () => {
-      await main(["work"]);
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
-      expect(exitSpy).toHaveBeenCalledWith(1);
+    it("work with no subcommand prints group help", async () => {
+      const output = await captureStdout(() => main(["work"]));
+      expect(output).toContain("monsthera work");
+      expect(output).toContain("SUBCOMMANDS");
+      expect(output).toContain("create");
+      expect(output).toContain("advance");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("work create --help prints usage without requiring flags", async () => {
+      const output = await captureStdout(() => main(["work", "create", "--help"]));
+      expect(output).toContain("monsthera work create");
+      expect(output).toContain("--template");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("work enrich --help prints usage without requiring the id or --role", async () => {
+      const output = await captureStdout(() => main(["work", "enrich", "--help"]));
+      expect(output).toContain("monsthera work enrich");
+      expect(output).toContain("--role");
+      expect(output).toContain("--status");
+      expect(exitSpy).not.toHaveBeenCalled();
     });
 
     it("work advance --skip-guard-reason bypasses a failing guard at review→done", async () => {
@@ -560,10 +596,19 @@ describe("CLI main()", () => {
       expect(output).toContain("docs/cli-import.md");
     });
 
-    it("ingest with no subcommand prints error", async () => {
-      await main(["ingest"]);
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("(none)"));
-      expect(exitSpy).toHaveBeenCalledWith(1);
+    it("ingest with no subcommand prints group help", async () => {
+      const output = await captureStdout(() => main(["ingest"]));
+      expect(output).toContain("monsthera ingest");
+      expect(output).toContain("local");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("ingest local --help prints usage without requiring --path", async () => {
+      const output = await captureStdout(() => main(["ingest", "local", "--help"]));
+      expect(output).toContain("monsthera ingest local");
+      expect(output).toContain("--path");
+      expect(output).toContain("--summary");
+      expect(exitSpy).not.toHaveBeenCalled();
     });
   });
 
