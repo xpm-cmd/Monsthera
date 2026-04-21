@@ -4,6 +4,14 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+## [3.0.0-alpha.7] — unreleased
+
+**Tier 7 — External-consumer polish.** Bug fixes and CLI symmetry discovered while a downstream research agent (Hedera investigation) drove Monsthera v3 through its CLI to scaffold 31 workstreams + knowledge articles.
+
+### Fixed
+
+- **`ingest local` now preserves frontmatter `title` when `--category` is provided.** The previous implementation gated *every* frontmatter field behind the presence of `--category`, which conflated "override the category" with "ignore the rest of the frontmatter." Title resolution is now an unconditional cascade: frontmatter `title` → first `#` heading → humanized filename stem. The category override flag only affects the category field.
+
 ## [3.0.0-alpha.6] — 2026-04-19
 
 **Tier 6 — CLI UX polish.** Six follow-ups from the Tier 5 retrospective (`w-21c2n6q5`). Every item was driven by a real-session friction surfaced while shipping alpha.5: shell heredoc corrupting markdown backticks, three different ways to type the same `review → done` bypass, a throwaway `scripts/probe.ts` that got written and deleted three times, the caller's own `work_id` article wasting the top slot in `build_context_pack`, the 16-error "lint parity with main" workaround, and list-command output that agents can't parse.

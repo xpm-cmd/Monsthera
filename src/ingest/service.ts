@@ -267,7 +267,7 @@ export class IngestService {
     const frontmatter = this.parseSourceFrontmatter(raw);
     const content = frontmatter.body.trim() || raw.trim();
     const title = firstNonEmptyString(
-      categoryOverride ? undefined : stringValue(frontmatter.data.title),
+      stringValue(frontmatter.data.title),
       extractFirstHeading(content),
       humanizeStem(path.basename(filePath, path.extname(filePath))),
     );

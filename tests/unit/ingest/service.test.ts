@@ -141,6 +141,48 @@ describe("IngestService", () => {
     await fs.rm(repoPath, { recursive: true, force: true });
   });
 
+  it("preserves frontmatter title when --category override is present", async () => {
+    const repoPath = path.join("/tmp", `monsthera-ingest-${randomUUID()}`);
+    await fs.mkdir(path.join(repoPath, "docs"), { recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, "docs", "titled.md"),
+      [
+        "---",
+        'title: "Deliberate Title"',
+        "tags: [foo]",
+        "---",
+        "## Not an H1",
+        "",
+        "Some body content.",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const knowledgeRepo = new InMemoryKnowledgeArticleRepository();
+    const service = new IngestService({
+      knowledgeRepo,
+      repoPath,
+      logger: createSilentLogger(),
+    });
+
+    const result = await service.importLocal({
+      sourcePath: "docs/titled.md",
+      category: "context",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const articles = await knowledgeRepo.findMany();
+    expect(articles.ok).toBe(true);
+    if (!articles.ok) return;
+
+    expect(articles.value).toHaveLength(1);
+    expect(articles.value[0]?.title).toBe("Deliberate Title");
+    expect(articles.value[0]?.category).toBe("context");
+
+    await fs.rm(repoPath, { recursive: true, force: true });
+  });
+
   it("returns not found for a missing source path", async () => {
     const repoPath = path.join("/tmp", `monsthera-ingest-${randomUUID()}`);
     await fs.mkdir(repoPath, { recursive: true });
