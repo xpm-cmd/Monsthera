@@ -1,4 +1,4 @@
-export const VERSION = "3.0.0-alpha.6";
+export const VERSION = "3.0.0-alpha.7";
 
 export const DEFAULT_CONFIG_DIR = ".monsthera";
 export const DEFAULT_CONFIG_FILE = "config.json";
