@@ -157,6 +157,76 @@ describe("createContainer()", () => {
     await secondBoot.dispose();
     await fs.rm(repoPath, { recursive: true, force: true });
   });
+
+  it("boot does NOT write runtime-state.json when only the in-memory bootstrap reindex runs", async () => {
+    const repoPath = path.join("/tmp", `monsthera-runtime-${randomUUID()}`);
+    const config = defaultConfig(repoPath);
+    config.search.semanticEnabled = false;
+
+    // Seed an article so the boot triggers a bootstrap reindex.
+    const seedBoot = await createContainer(config);
+    const seedResult = await seedBoot.knowledgeRepo.create({
+      title: "Boot stays read-only",
+      category: "context",
+      content: "Body so the article participates in the search index.",
+    });
+    expect(seedResult.ok).toBe(true);
+    await seedBoot.dispose();
+
+    // Remove any cache files written so far so we measure cleanly.
+    await fs.rm(path.join(repoPath, ".monsthera", "cache"), { recursive: true, force: true });
+    await fs.rm(path.join(repoPath, ".monsthera", "runtime-state.json"), { force: true });
+
+    // Boot a fresh container — bootstrap reindex runs internally.
+    const container = await createContainer(config);
+    const status = container.status.getStatus();
+    expect(status.stats?.searchIndexSize).toBe(1);
+    // lastReindexAt must be absent: no explicit reindex has happened yet.
+    expect(status.stats?.lastReindexAt).toBeUndefined();
+
+    await expect(
+      fs.access(path.join(repoPath, ".monsthera", "cache", "runtime-state.json")),
+    ).rejects.toThrow();
+    await expect(
+      fs.access(path.join(repoPath, ".monsthera", "runtime-state.json")),
+    ).rejects.toThrow();
+
+    await container.dispose();
+    await fs.rm(repoPath, { recursive: true, force: true });
+  });
+
+  it("writes runtime-state.json under .monsthera/cache/ and migrates the legacy file away", async () => {
+    const repoPath = path.join("/tmp", `monsthera-runtime-${randomUUID()}`);
+    const config = defaultConfig(repoPath);
+    config.search.semanticEnabled = false;
+
+    // Seed the legacy location to simulate an upgrade from a prior version.
+    await fs.mkdir(path.join(repoPath, ".monsthera"), { recursive: true });
+    const legacyPath = path.join(repoPath, ".monsthera", "runtime-state.json");
+    const newPath = path.join(repoPath, ".monsthera", "cache", "runtime-state.json");
+    await fs.writeFile(
+      legacyPath,
+      JSON.stringify({ lastReindexAt: "2026-04-09T00:00:00Z", searchIndexSize: 99 }, null, 2),
+      "utf-8",
+    );
+
+    // Boot creates an article, which triggers a reindex and a runtime-state write.
+    const container = await createContainer(config);
+    const articleResult = await container.knowledgeRepo.create({
+      title: "Migration target",
+      category: "context",
+      content: "Just enough body to participate in the search index.",
+    });
+    expect(articleResult.ok).toBe(true);
+    const reindexResult = await container.searchService.fullReindex();
+    expect(reindexResult.ok).toBe(true);
+
+    await expect(fs.access(newPath)).resolves.toBeUndefined();
+    await expect(fs.access(legacyPath)).rejects.toThrow();
+
+    await container.dispose();
+    await fs.rm(repoPath, { recursive: true, force: true });
+  });
 });
 
 describe("createTestContainer()", () => {

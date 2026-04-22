@@ -330,7 +330,21 @@ export class SearchService {
 
   // ─── fullReindex ───────────────────────────────────────────────────────────
 
-  async fullReindex(): Promise<Result<{ knowledgeCount: number; workCount: number }, StorageError>> {
+  /**
+   * Rebuild the search index from source articles.
+   *
+   * `persistState` defaults to `true` and controls whether the run is recorded
+   * as the canonical "last reindex" — written to runtime-state and surfaced as
+   * `lastReindexAt` on status. Internal callers that re-hydrate the in-memory
+   * index on container boot pass `false`: the index gets rebuilt, but the
+   * timestamp keeps reflecting the user's last explicit reindex (CLI/MCP),
+   * not the boot-time bootstrap. This prevents read-only operations like
+   * `monsthera status` from mutating .monsthera/cache/runtime-state.json.
+   */
+  async fullReindex(
+    options?: { persistState?: boolean },
+  ): Promise<Result<{ knowledgeCount: number; workCount: number }, StorageError>> {
+    const persistState = options?.persistState ?? true;
     const startTime = Date.now();
     const knowledgeResult = await this.knowledgeRepo.findMany();
     if (!knowledgeResult.ok) return knowledgeResult;
@@ -396,15 +410,17 @@ export class SearchService {
     this.status?.recordStat("knowledgeArticleCount", knowledgeArticles.length);
     this.status?.recordStat("workArticleCount", workArticles.length);
     this.status?.recordStat("searchIndexSize", knowledgeArticles.length + workArticles.length);
-    const reindexedAt = new Date().toISOString();
-    this.status?.recordStat("lastReindexAt", reindexedAt);
-    if (this.runtimeState) {
-      await this.runtimeState.write({
-        knowledgeArticleCount: knowledgeArticles.length,
-        workArticleCount: workArticles.length,
-        searchIndexSize: knowledgeArticles.length + workArticles.length,
-        lastReindexAt: reindexedAt,
-      });
+    if (persistState) {
+      const reindexedAt = new Date().toISOString();
+      this.status?.recordStat("lastReindexAt", reindexedAt);
+      if (this.runtimeState) {
+        await this.runtimeState.write({
+          knowledgeArticleCount: knowledgeArticles.length,
+          workArticleCount: workArticles.length,
+          searchIndexSize: knowledgeArticles.length + workArticles.length,
+          lastReindexAt: reindexedAt,
+        });
+      }
     }
     this.logger.info("Full reindex complete", {
       operation: "fullReindex",
