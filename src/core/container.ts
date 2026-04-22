@@ -304,6 +304,12 @@ export async function createContainer(
   if (persistedRuntimeState.lastMigrationAt) {
     status.recordStat("lastMigrationAt", persistedRuntimeState.lastMigrationAt);
   }
+  // `lastReindexAt` reflects the user's last explicit reindex (CLI/MCP/dashboard).
+  // Bootstrap reindex below runs with persistState:false and never overwrites it,
+  // so we surface the persisted value here regardless of whether bootstrap fires.
+  if (persistedRuntimeState.lastReindexAt) {
+    status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
+  }
 
   // Search repositories can be ephemeral. Probe the live index on boot and
   // rebuild it when source articles exist but the queryable index is empty or stale.
@@ -318,7 +324,12 @@ export async function createContainer(
       canaryHealthy,
     });
 
-    const bootstrapResult = await searchService.fullReindex();
+    // Bootstrap reindex re-hydrates the in-memory search index on container
+    // boot. It is NOT a user-initiated reindex, so we don't bump
+    // `lastReindexAt` or write runtime-state — that would mutate
+    // .monsthera/cache/runtime-state.json on every read-only `monsthera
+    // status` call.
+    const bootstrapResult = await searchService.fullReindex({ persistState: false });
     if (!bootstrapResult.ok) {
       logger.warn("Failed to bootstrap search index on startup; exposing live index state instead", {
         error: bootstrapResult.error.message,
@@ -326,17 +337,11 @@ export async function createContainer(
         existingIndexSize: searchRepo!.size,
       });
       status.recordStat("searchIndexSize", searchRepo!.size);
-      if (persistedRuntimeState.lastReindexAt) {
-        status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
-      }
       status.recordStat("embeddingCount", searchRepo!.embeddingCount);
       status.recordStat("semanticSearchEnabled", config.search.semanticEnabled && searchRepo!.embeddingCount > 0);
     }
   } else {
     status.recordStat("searchIndexSize", searchRepo!.size);
-    if (persistedRuntimeState.lastReindexAt) {
-      status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
-    }
     status.recordStat("embeddingCount", searchRepo!.embeddingCount);
     status.recordStat("semanticSearchEnabled", config.search.semanticEnabled && searchRepo!.embeddingCount > 0);
   }
