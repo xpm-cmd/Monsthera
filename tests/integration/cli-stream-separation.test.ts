@@ -25,17 +25,45 @@ const binPath = path.join(repoRoot, "dist", "bin.js");
 async function ensureBuilt(): Promise<void> {
   try {
     await fs.access(binPath);
+    return;
+  } catch {
+    // Fall through to build below.
+  }
+
+  // No dist/ yet — build now so `pnpm test` works in a clean clone.
+  // tsup is incremental and typically takes <5s; CI flows that already ran
+  // `pnpm build` first will hit the early-return path above and skip this.
+  const res = spawnSync("pnpm", ["build"], {
+    cwd: repoRoot,
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+
+  if (res.status !== 0 || res.error) {
+    throw new Error(
+      `Auto-build failed for ${binPath}. ` +
+      `Run \`pnpm build\` manually to see the underlying error.\n` +
+      `stdout: ${res.stdout ?? ""}\nstderr: ${res.stderr ?? ""}\n` +
+      `error: ${res.error?.message ?? "(none)"}`,
+    );
+  }
+
+  try {
+    await fs.access(binPath);
   } catch {
     throw new Error(
-      `dist/bin.js is missing at ${binPath}. Run \`pnpm build\` before running this test.`,
+      `Auto-build completed but ${binPath} is still missing. ` +
+      `Check the build output (look for tsup config drift).`,
     );
   }
 }
 
 describe("Integration: CLI stdout/stderr separation", () => {
+  // Allow up to 60s for the auto-build path; the early-return in
+  // `ensureBuilt` keeps post-build runs near-instant.
   beforeAll(async () => {
     await ensureBuilt();
-  });
+  }, 60_000);
 
   it("knowledge list keeps logs on stderr; stdout has no JSON log lines", async () => {
     const repoPath = path.join("/tmp", `monsthera-stream-${randomUUID()}`);

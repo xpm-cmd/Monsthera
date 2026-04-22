@@ -4,6 +4,11 @@ All notable changes to Monsthera are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`pnpm typecheck` is clean again.** `tests/unit/persistence/dolt-search-repository.test.ts` was annotating `vi.fn()` with `Pool["query"]` / `PoolConnection["query"]`, which TypeScript resolves to mysql2's overloaded supertype `(options: QueryOptions, values?: QueryValues) => Promise<[QueryResult, FieldPacket[]]>`. The mock implementations (`(sql: string) => ...`) and row literals (`[{ count: 1 }]`) are valid runtime shapes but don't satisfy that supertype, so three TS errors were leaking into every PR's typecheck output. Dropped the explicit `vi.fn<...>()` parameterisation on the mocks and concentrated the structural lie in the existing `as unknown as Pool` / `PoolConnection` cast at the assembly boundary — a single explanatory comment now documents *why* the mocks are untyped.
+- **`pnpm test` works on a clean clone without a manual `pnpm build`.** `tests/integration/cli-stream-separation.test.ts` previously *threw* in `beforeAll` if `dist/bin.js` was missing, forcing every contributor (and every CI without a build step) to discover the dependency by failure. The test now auto-builds via `spawnSync("pnpm", ["build"])` when the binary is absent, with the `beforeAll` timeout extended to 60s for the build path. The early-return fast path keeps post-build runs near-instant, so CI flows that already ran `pnpm build` pay nothing.
+
 ## [3.0.0-alpha.7] — unreleased
 
 **Tier 7 — External-consumer polish.** Bug fixes and CLI symmetry discovered while a downstream research agent (Hedera investigation) drove Monsthera v3 through its CLI to scaffold 31 workstreams + knowledge articles.
