@@ -1,7 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import type { Pool, PoolConnection, ResultSetHeader } from "mysql2/promise";
+import type { Pool, PoolConnection } from "mysql2/promise";
 import { DoltSearchIndexRepository } from "../../../src/persistence/dolt-search-repository.js";
 import { SCHEMA_STATEMENTS } from "../../../src/persistence/schema.js";
+
+// mysql2's `Pool["query"]` is a deeply overloaded function whose TS
+// supertype demands `(options: QueryOptions, values?: QueryValues) => ...`.
+// Mocks with `(sql: string) => ...` are valid runtime shapes but don't fit
+// that supertype, so we drop the explicit `vi.fn<Pool["query"]>()`
+// parameterisation here and concentrate the type assertion at the
+// assembly boundary (`as unknown as Pool` / `PoolConnection`). That way
+// each mock stays expressive and the cast lies once, in a single place.
 
 describe("DoltSearchIndexRepository", () => {
   it("declares a persisted embeddings table in the schema", () => {
@@ -9,12 +17,11 @@ describe("DoltSearchIndexRepository", () => {
   });
 
   it("removes inverted-index rows before deleting the parent document", async () => {
-    const query = vi.fn<PoolConnection["query"]>()
-      .mockResolvedValue([{} as ResultSetHeader, []]);
-    const beginTransaction = vi.fn<PoolConnection["beginTransaction"]>().mockResolvedValue(undefined);
-    const commit = vi.fn<PoolConnection["commit"]>().mockResolvedValue(undefined);
-    const rollback = vi.fn<PoolConnection["rollback"]>().mockResolvedValue(undefined);
-    const release = vi.fn<PoolConnection["release"]>().mockImplementation(() => {});
+    const query = vi.fn().mockResolvedValue([{}, []]);
+    const beginTransaction = vi.fn().mockResolvedValue(undefined);
+    const commit = vi.fn().mockResolvedValue(undefined);
+    const rollback = vi.fn().mockResolvedValue(undefined);
+    const release = vi.fn().mockImplementation(() => {});
 
     const connection = {
       beginTransaction,
@@ -24,7 +31,7 @@ describe("DoltSearchIndexRepository", () => {
       release,
     } as unknown as PoolConnection;
 
-    const getConnection = vi.fn<Pool["getConnection"]>().mockResolvedValue(connection);
+    const getConnection = vi.fn().mockResolvedValue(connection);
     const pool = { getConnection } as unknown as Pool;
 
     const repo = new DoltSearchIndexRepository(pool);
@@ -51,8 +58,8 @@ describe("DoltSearchIndexRepository", () => {
   });
 
   it("persists embeddings in Dolt when storing vectors", async () => {
-    const query = vi.fn<Pool["query"]>()
-      .mockResolvedValue([{} as ResultSetHeader, []])
+    const query = vi.fn()
+      .mockResolvedValue([{}, []])
       .mockResolvedValueOnce([[{ count: 1 }], []]);
     const pool = { query } as unknown as Pool;
 
@@ -68,7 +75,7 @@ describe("DoltSearchIndexRepository", () => {
   });
 
   it("hydrates persisted embeddings for semantic search after restart", async () => {
-    const query = vi.fn<Pool["query"]>().mockImplementation(async (sql: string) => {
+    const query = vi.fn().mockImplementation(async (sql: string) => {
       if (sql.includes("FROM search_embeddings e")) {
         return [[
           { id: "k-1", type: "knowledge", embedding_json: "[1,0]" },
@@ -89,7 +96,7 @@ describe("DoltSearchIndexRepository", () => {
   });
 
   it("hydrates embedding count during canary so restart status sees semantic vectors", async () => {
-    const query = vi.fn<Pool["query"]>().mockImplementation(async (sql: string, params?: unknown[]) => {
+    const query = vi.fn().mockImplementation(async (sql: string, params?: unknown[]) => {
       if (sql === "SELECT COUNT(*) as count FROM search_documents") {
         return [[{ count: 1 }], []];
       }
