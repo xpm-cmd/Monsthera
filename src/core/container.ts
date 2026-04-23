@@ -25,6 +25,7 @@ import { StubEmbeddingProvider, OllamaEmbeddingProvider } from "../search/embedd
 import type { EmbeddingProvider } from "../search/embedding.js";
 import { SearchService } from "../search/service.js";
 import { OrchestrationService } from "../orchestration/service.js";
+import { PolicyLoader } from "../work/policy-loader.js";
 import { MigrationService } from "../migration/service.js";
 import type { V2SourceReader } from "../migration/types.js";
 import { StructureService } from "../structure/service.js";
@@ -248,6 +249,10 @@ export async function createContainer(
   // Cross-wire: both services need the opposite repo to keep index.md in sync.
   knowledgeService.setWorkRepo(workRepo!);
   workService.setKnowledgeRepo(knowledgeRepo!);
+  const policyLoader = new PolicyLoader({
+    knowledgeRepo: knowledgeRepo!,
+    logger,
+  });
   const orchestrationService = new OrchestrationService({
     workRepo: workRepo!,
     orchestrationRepo: orchestrationRepo!,
@@ -255,6 +260,7 @@ export async function createContainer(
     autoAdvance: config.orchestration.autoAdvance,
     pollIntervalMs: config.orchestration.pollIntervalMs,
     maxConcurrentAgents: config.orchestration.maxConcurrentAgents,
+    policyLoader,
   });
   const structureService = new StructureService({
     knowledgeRepo: knowledgeRepo!,
