@@ -17,6 +17,38 @@ import type {
   WriteWithSlugInput,
 } from "./repository.js";
 
+/** Standard frontmatter keys recognised by `ArticleFrontmatterSchema`. */
+const KNOWN_FRONTMATTER_KEYS: ReadonlySet<string> = new Set([
+  "id",
+  "title",
+  "slug",
+  "category",
+  "tags",
+  "codeRefs",
+  "references",
+  "sourcePath",
+  "createdAt",
+  "updatedAt",
+]);
+
+/**
+ * Extract non-standard keys from parsed YAML frontmatter so they survive the
+ * read→domain→write round-trip. Returns undefined when there are no extras,
+ * so `extraFrontmatter` stays absent on articles that don't use it.
+ */
+function extractExtraFrontmatter(
+  raw: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const extras: Record<string, unknown> = {};
+  let hasAny = false;
+  for (const [key, value] of Object.entries(raw)) {
+    if (KNOWN_FRONTMATTER_KEYS.has(key)) continue;
+    extras[key] = value;
+    hasAny = true;
+  }
+  return hasAny ? extras : undefined;
+}
+
 export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRepository {
   constructor(private readonly markdownRoot: string) {}
 
@@ -53,6 +85,8 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       return err(new StorageError(`Invalid knowledge article frontmatter: ${filePath}`, { cause: frontmatter.error.message }));
     }
 
+    const extras = extractExtraFrontmatter(parsed.value.frontmatter);
+
     return ok({
       id: articleId(frontmatter.value.id),
       title: frontmatter.value.title,
@@ -65,6 +99,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       createdAt: timestamp(frontmatter.value.createdAt),
       updatedAt: timestamp(frontmatter.value.updatedAt),
       content: parsed.value.body,
+      ...(extras ? { extraFrontmatter: extras } : {}),
     });
   }
 
@@ -106,6 +141,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       ...(article.sourcePath ? { sourcePath: article.sourcePath } : {}),
       createdAt: article.createdAt,
       updatedAt: article.updatedAt,
+      ...(article.extraFrontmatter ?? {}),
     };
 
     try {
@@ -155,6 +191,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       sourcePath: input.sourcePath,
       createdAt,
       updatedAt,
+      ...(input.extraFrontmatter ? { extraFrontmatter: { ...input.extraFrontmatter } } : {}),
     };
 
     return this.writeArticle(article);
@@ -191,6 +228,11 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       codeRefs: input.codeRefs ?? existing.codeRefs,
       references: input.references ?? existing.references,
       sourcePath: input.sourcePath ?? existing.sourcePath,
+      ...(input.extraFrontmatter !== undefined
+        ? { extraFrontmatter: { ...input.extraFrontmatter } }
+        : existing.extraFrontmatter
+          ? { extraFrontmatter: existing.extraFrontmatter }
+          : {}),
       updatedAt: timestamp(),
     };
 

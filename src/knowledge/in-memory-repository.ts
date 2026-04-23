@@ -52,6 +52,7 @@ export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepos
       sourcePath: input.sourcePath,
       createdAt,
       updatedAt,
+      ...(input.extraFrontmatter ? { extraFrontmatter: { ...input.extraFrontmatter } } : {}),
     };
 
     this.store.set(id, article);
@@ -82,6 +83,11 @@ export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepos
       codeRefs: input.codeRefs ?? existing.codeRefs,
       references: input.references ?? existing.references,
       sourcePath: input.sourcePath ?? existing.sourcePath,
+      ...(input.extraFrontmatter !== undefined
+        ? { extraFrontmatter: { ...input.extraFrontmatter } }
+        : existing.extraFrontmatter
+          ? { extraFrontmatter: existing.extraFrontmatter }
+          : {}),
       updatedAt: timestamp(),
     };
 

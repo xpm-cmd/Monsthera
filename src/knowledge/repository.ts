@@ -16,6 +16,13 @@ export interface KnowledgeArticle {
   readonly sourcePath?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /**
+   * Passthrough for custom frontmatter fields not in the standard schema. Enables
+   * category-specific extensions (e.g. `policy` articles carry `policy_applies_templates`,
+   * `policy_requires_roles`, etc.) without modifying the core schema. File-backed
+   * repositories preserve these fields on read and re-serialize them on write.
+   */
+  readonly extraFrontmatter?: Readonly<Record<string, unknown>>;
 }
 
 /** Input for creating a knowledge article */
@@ -31,6 +38,8 @@ export interface CreateKnowledgeArticleInput {
   sourcePath?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** See `KnowledgeArticle.extraFrontmatter`. Preserved as-is through create. */
+  extraFrontmatter?: Record<string, unknown>;
 }
 
 /** Input for updating a knowledge article */
@@ -42,6 +51,8 @@ export interface UpdateKnowledgeArticleInput {
   codeRefs?: string[];
   references?: string[];
   sourcePath?: string;
+  /** See `KnowledgeArticle.extraFrontmatter`. Replaces any prior map when supplied. */
+  extraFrontmatter?: Record<string, unknown>;
 }
 
 /** Knowledge article repository with domain-specific queries */
