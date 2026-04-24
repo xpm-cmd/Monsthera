@@ -19,6 +19,7 @@ import { handleIngest } from "./ingest-commands.js";
 import { handleDoctor } from "./doctor-commands.js";
 import { handlePack } from "./context-commands.js";
 import { handleLint } from "./lint-commands.js";
+import { handleInstallHook, handleUninstallHook } from "./hook-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -75,7 +76,9 @@ function handleHelp(): void {
       "  reindex                  Rebuild the search index",
       "  migrate                  Run v2 -> v3 migration from SQLite",
       "  doctor                   Run health checks and diagnostics",
-      "  lint                     Audit the corpus for canonical-value drift (and orphan citations)",
+      "  lint                     Audit the corpus for drift (canonical values, anti-examples, planning sections, orphan citations)",
+      "  install-hook             Install a pre-commit hook that runs `monsthera lint` on staged knowledge/work .md files",
+      "  uninstall-hook           Remove a previously-installed monsthera pre-commit hook",
       "",
       "KNOWLEDGE SUBCOMMANDS",
       "  knowledge create  --title <t> --category <c> --content <body> [--tags t1,t2] [--code-refs r1,r2]",
@@ -108,6 +111,7 @@ function handleHelp(): void {
       "  --repo, -r <path>   Repository path (defaults to cwd)",
       "  --version, -v       Print version and exit",
       "  --help, -h          Show this help message",
+      "  --assert-worktree   Refuse to run from main repo (also via env MONSTHERA_REQUIRE_WORKTREE=true)",
       "",
       "PACK",
       "  monsthera pack <query...> [--mode general|code|research] [--limit N] [--type knowledge|work|all]",
@@ -293,6 +297,12 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "lint":
         await handleLint(args.slice(1));
+        break;
+      case "install-hook":
+        await handleInstallHook(args.slice(1));
+        break;
+      case "uninstall-hook":
+        await handleUninstallHook(args.slice(1));
         break;
       case "--version":
       case "-v":
