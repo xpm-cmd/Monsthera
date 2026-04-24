@@ -21,6 +21,7 @@ import { wikiToolDefinitions, handleWikiTool } from "./tools/wiki-tools.js";
 import { snapshotToolDefinitions, handleSnapshotTool } from "./tools/snapshot-tools.js";
 import { migrationToolDefinitions, handleMigrationTool } from "./migration/tools.js";
 import { lintToolDefinitions, handleLintTool } from "./tools/lint-tools.js";
+import { refsToolDefinitions, handleRefsTool } from "./tools/refs-tools.js";
 
 /**
  * Per-group tool registry. Exposed for tests and for the dispatch function
@@ -43,6 +44,7 @@ export interface ToolRegistry {
     readonly snapshot: ReadonlySet<string>;
     readonly migration: ReadonlySet<string>;
     readonly lint: ReadonlySet<string>;
+    readonly refs: ReadonlySet<string>;
   };
 }
 
@@ -65,6 +67,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
   const snapshotTools = snapshotToolDefinitions();
   const migrationTools = container.migrationService ? migrationToolDefinitions() : [];
   const lintTools = lintToolDefinitions();
+  const refsTools = refsToolDefinitions();
 
   return {
     definitions: [
@@ -81,6 +84,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       ...snapshotTools,
       ...migrationTools,
       ...lintTools,
+      ...refsTools,
     ],
     names: {
       knowledge: new Set(knowledgeTools.map((t) => t.name)),
@@ -96,6 +100,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       snapshot: new Set(snapshotTools.map((t) => t.name)),
       migration: new Set(migrationTools.map((t) => t.name)),
       lint: new Set(lintTools.map((t) => t.name)),
+      refs: new Set(refsTools.map((t) => t.name)),
     },
   };
 }
@@ -177,6 +182,9 @@ export async function dispatchToolCall(
   }
   if (names.lint.has(name)) {
     return handleLintTool(name, args, container);
+  }
+  if (names.refs.has(name)) {
+    return handleRefsTool(name, args, container.structureService);
   }
 
   return {

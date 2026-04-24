@@ -83,6 +83,7 @@ function handleHelp(): void {
       "  knowledge list    [--category <c>] [--json]",
       "  knowledge update  <id> [--title <t>] [--category <c>] [--content <body>] [--tags t1,t2]",
       "  knowledge delete  <id>",
+      "  knowledge refs    (--to <id> | --from <id> | --orphans) [--format table|json]",
       "",
       "WORK SUBCOMMANDS",
       "  work create   --title <t> --template <template> --author <a> [--priority <p>] [--tags t1,t2]",

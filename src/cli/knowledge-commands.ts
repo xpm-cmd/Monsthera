@@ -28,6 +28,7 @@ export async function handleKnowledge(args: string[]): Promise<void> {
         { name: "list", summary: "List articles, optionally filtered by category." },
         { name: "update", summary: "Update an article's fields." },
         { name: "delete", summary: "Delete an article by id." },
+        { name: "refs", summary: "Query the reference graph (--to, --from, --orphans)." },
       ],
     });
     return;
@@ -49,11 +50,105 @@ export async function handleKnowledge(args: string[]): Promise<void> {
     case "delete":
       await handleKnowledgeDelete(subArgs);
       break;
+    case "refs":
+      await handleKnowledgeRefs(subArgs);
+      break;
     default:
       console.error(`Unknown knowledge subcommand: ${subcommand}`);
       console.error('Run "monsthera knowledge --help" for usage.');
       process.exit(1);
   }
+}
+
+async function handleKnowledgeRefs(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera knowledge refs",
+      summary: "Query the reference graph across knowledge + work articles.",
+      usage: "(--to <id> | --from <id> | --orphans) [--format table|json]",
+      flags: [
+        { name: "--to <id-or-slug>", description: "List articles that cite <id> (incoming edges)." },
+        { name: "--from <id-or-slug>", description: "List articles cited by <id> (outgoing edges)." },
+        { name: "--orphans", description: "List every citation whose target does not resolve." },
+        { name: "--format <fmt>", description: "table (default) or json." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "Exactly one of --to, --from, --orphans is required.",
+        "Unlike `knowledge get` connections, this view is unbounded — use it for audits.",
+      ],
+      examples: [
+        "monsthera knowledge refs --to k-canonical-values",
+        "monsthera knowledge refs --from w-abc123 --format json",
+        "monsthera knowledge refs --orphans",
+      ],
+    });
+    return;
+  }
+
+  const to = parseFlag(args, "--to");
+  const from = parseFlag(args, "--from");
+  const orphans = args.includes("--orphans");
+  const format = parseFlag(args, "--format") ?? "table";
+
+  const modeCount = [to !== undefined, from !== undefined, orphans].filter(Boolean).length;
+  if (modeCount !== 1) {
+    console.error("Pass exactly one of --to <id>, --from <id>, or --orphans.");
+    process.exit(1);
+  }
+  if (!["table", "json"].includes(format)) {
+    console.error(`Invalid --format "${format}" (expected table|json).`);
+    process.exit(1);
+  }
+
+  await withContainer(args, async (container) => {
+    if (orphans) {
+      const result = await container.structureService.getOrphanCitations();
+      if (!result.ok) {
+        console.error(formatError(result.error));
+        process.exit(1);
+      }
+      if (format === "json") {
+        process.stdout.write(JSON.stringify(result.value, null, 2) + "\n");
+        return;
+      }
+      if (result.value.length === 0) {
+        process.stdout.write("No orphan citations.\n");
+        return;
+      }
+      process.stdout.write(
+        formatTable(
+          ["Source", "Missing ref", "Path"],
+          result.value.map((o) => [o.sourceArticleId, o.missingRefId, o.sourcePath ?? ""]),
+        ) + "\n",
+      );
+      return;
+    }
+
+    const target = to ?? from!;
+    const result = await container.structureService.getRefGraph(target);
+    if (!result.ok) {
+      console.error(formatError(result.error));
+      process.exit(1);
+    }
+
+    const edges = to !== undefined ? result.value.incoming : result.value.outgoing;
+    if (format === "json") {
+      process.stdout.write(JSON.stringify(edges, null, 2) + "\n");
+      return;
+    }
+    if (edges.length === 0) {
+      const direction = to !== undefined ? "incoming" : "outgoing";
+      process.stdout.write(`No ${direction} references for ${target}.\n`);
+      return;
+    }
+    process.stdout.write(
+      formatTable(
+        ["Id", "Title", "Kind"],
+        edges.map((e) => [e.id, e.title, e.kind]),
+      ) + "\n",
+    );
+  });
 }
 
 async function handleKnowledgeCreate(args: string[]): Promise<void> {
