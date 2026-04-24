@@ -64,11 +64,50 @@ export type PhraseAntiExampleFinding = {
   readonly sinceCommit?: string;
 };
 
+/**
+ * Citation-value mismatch finding: a citation-with-number in source
+ * prose whose claimed value does not appear in the cited article's
+ * content. Produced outside the scanner (by `StructureService
+ * .verifyCitedValues`) and merged into the findings list when the
+ * caller opts in via `--with-citation-values`. Default off because
+ * the cost is O(N*M) in citation pairs.
+ */
+export type CitationValueMismatchFinding = {
+  readonly file: string;
+  readonly severity: "error";
+  readonly rule: "citation_value_mismatch";
+  readonly sourceArticle: string;
+  readonly citedArticle: string;
+  readonly claimedValue: string;
+  readonly foundValues: readonly string[];
+  readonly lineHint: string;
+};
+
+/**
+ * Verify-density finding: the article carries more `[verify]`-family
+ * markers than the threshold of outgoing citations, which is a signal
+ * that unchecked verification has drifted out of proportion with the
+ * claims it was meant to gate. Warning, not error — density is an
+ * early-warning signal about review debt, not a correctness failure.
+ */
+export type VerifyDensityFinding = {
+  readonly file: string;
+  readonly severity: "warning";
+  readonly rule: "verify_density_exceeded";
+  readonly citationCount: number;
+  readonly verifyCount: number;
+  readonly densityPercent: number;
+  readonly threshold: number;
+  readonly oldestMarker?: { readonly line: string };
+};
+
 export type LintFinding =
   | CanonicalValueMismatchFinding
   | OrphanCitationFinding
   | TokenDriftFinding
-  | PhraseAntiExampleFinding;
+  | PhraseAntiExampleFinding
+  | CitationValueMismatchFinding
+  | VerifyDensityFinding;
 
 export type LintInclude = "knowledge" | "work" | "both";
 
@@ -96,6 +135,20 @@ export interface LintScanInput {
    * `StructureService`, not in the filesystem scan.
    */
   readonly orphanFindings?: readonly OrphanCitationFinding[];
+  /**
+   * Citation-value mismatches produced elsewhere (by iterating
+   * `StructureService.verifyCitedValues` over every article). Merged as
+   * errors. Absent by default — the `--with-citation-values` CLI flag
+   * opts in because the cost is O(N*M) in citation pairs.
+   */
+  readonly citationValueFindings?: readonly CitationValueMismatchFinding[];
+  /**
+   * Threshold at which `[verify]`-density exceeds acceptable review
+   * debt. When `undefined` the check is skipped entirely; when a number
+   * (e.g. 0.20 = 20%), articles with `verifyCount / citationCount >
+   * threshold` emit a `verify_density_exceeded` warning.
+   */
+  readonly verifyDensityThreshold?: number;
 }
 
 export interface LintScanResult {
@@ -177,10 +230,20 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
         findings.push(...scanTokenDrift(body, relFile, tokenContexts));
         findings.push(...scanPhraseAntiExamples(body, relFile, phrases));
       }
+
+      if (input.verifyDensityThreshold !== undefined) {
+        const densityFinding = scanVerifyDensity(
+          body,
+          relFile,
+          input.verifyDensityThreshold,
+        );
+        if (densityFinding) findings.push(densityFinding);
+      }
     }
   }
 
   if (input.orphanFindings) findings.push(...input.orphanFindings);
+  if (input.citationValueFindings) findings.push(...input.citationValueFindings);
 
   return {
     findings,
@@ -421,4 +484,71 @@ function extractLineForIndex(text: string, index: number): string {
   const lineStart = text.lastIndexOf("\n", index) + 1;
   const lineEnd = text.indexOf("\n", index);
   return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
+}
+
+// ─── Verify-density check ─────────────────────────────────────────────────
+
+/** Default threshold when no policy or CLI flag overrides. */
+export const DEFAULT_VERIFY_DENSITY_THRESHOLD = 0.2;
+
+/** Strip code regions before counting so example markers in fences do not dilute/inflate density. */
+function stripCodeRegionsLocal(content: string): string {
+  let result = content;
+  result = result.replace(/<!--[\s\S]*?-->/g, "");
+  result = result.replace(/^([ \t]{0,3})(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1\2[ \t]*$/gm, "");
+  result = result.replace(/(`{1,3})(?:(?!\1)[^\n])+?\1/g, "");
+  return result;
+}
+
+/**
+ * Count `(citations, verify-markers)` in body text, then emit a warning
+ * if the ratio exceeds `threshold` and the article actually carries
+ * any citations. Zero citations → zero density, no finding (an article
+ * with only prose may legitimately carry `[verify]` markers about
+ * things other than cited claims — that's not density signal).
+ *
+ * Marker grammar accepted:
+ *   [verify]
+ *   [verify at <anything-except-right-bracket>]
+ *   [verify-deferred-to-<anything-except-right-bracket>]
+ *
+ * Citations counted are `k-*` / `w-*` inline ids and `[[slug]]`
+ * wikilinks. Duplicates are NOT deduped — the ratio is measured in
+ * raw occurrences, matching how a reader actually encounters them.
+ */
+function scanVerifyDensity(
+  body: string,
+  file: string,
+  threshold: number,
+): VerifyDensityFinding | undefined {
+  const stripped = stripCodeRegionsLocal(body);
+
+  const inlineIds = [...stripped.matchAll(/\b[kw]-[a-z0-9]+(?:-[a-z0-9]+)*\b/g)];
+  const wikilinks = [...stripped.matchAll(/\[\[([^\]]+)\]\]/g)];
+  const citationCount = inlineIds.length + wikilinks.length;
+
+  const verifyMatches = [
+    ...stripped.matchAll(/\[verify(?:\s+at\s+[^\]]+|-deferred-to-[^\]]+)?\]/g),
+  ];
+  const verifyCount = verifyMatches.length;
+
+  if (citationCount === 0 || verifyCount === 0) return undefined;
+
+  const density = verifyCount / citationCount;
+  if (density <= threshold) return undefined;
+
+  const first = verifyMatches[0];
+  const oldestLine =
+    first !== undefined ? extractLineForIndex(stripped, first.index ?? 0) : undefined;
+
+  return {
+    file,
+    severity: "warning",
+    rule: "verify_density_exceeded",
+    citationCount,
+    verifyCount,
+    densityPercent: Math.round(density * 1000) / 10, // one decimal
+    threshold,
+    ...(oldestLine ? { oldestMarker: { line: oldestLine } } : {}),
+  };
 }

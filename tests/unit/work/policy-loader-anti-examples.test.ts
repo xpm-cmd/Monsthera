@@ -5,6 +5,7 @@ import { articleId } from "../../../src/core/types.js";
 import {
   ANTI_EXAMPLE_PHRASES_FRONTMATTER_KEY,
   ANTI_EXAMPLE_TOKENS_FRONTMATTER_KEY,
+  MAX_VERIFY_DENSITY_FRONTMATTER_KEY,
   POLICY_CATEGORY,
   PolicyLoader,
 } from "../../../src/work/policy-loader.js";
@@ -158,5 +159,41 @@ describe("PolicyLoader.getAntiExamplePhrases", () => {
     const phrases = await makeLoader(repo).getAntiExamplePhrases();
     expect(phrases).toHaveLength(1);
     expect(phrases[0]?.corrected).toBe("first");
+  });
+});
+
+describe("PolicyLoader.getMaxVerifyDensity", () => {
+  let repo: InMemoryKnowledgeArticleRepository;
+
+  beforeEach(() => {
+    repo = new InMemoryKnowledgeArticleRepository();
+  });
+
+  it("returns undefined when no policy article pins a threshold", async () => {
+    expect(await makeLoader(repo).getMaxVerifyDensity()).toBeUndefined();
+  });
+
+  it("reads a numeric threshold from policy_max_verify_density", async () => {
+    await seed(repo, "density-policy", {
+      [MAX_VERIFY_DENSITY_FRONTMATTER_KEY]: "0.15",
+    });
+    expect(await makeLoader(repo).getMaxVerifyDensity()).toBeCloseTo(0.15);
+  });
+
+  it("rejects out-of-range values and falls back to undefined", async () => {
+    await seed(repo, "invalid-policy", {
+      [MAX_VERIFY_DENSITY_FRONTMATTER_KEY]: "1.5",
+    });
+    expect(await makeLoader(repo).getMaxVerifyDensity()).toBeUndefined();
+  });
+
+  it("first-wins when multiple policies supply a threshold", async () => {
+    await seed(repo, "policy-a", {
+      [MAX_VERIFY_DENSITY_FRONTMATTER_KEY]: "0.1",
+    });
+    await seed(repo, "policy-b", {
+      [MAX_VERIFY_DENSITY_FRONTMATTER_KEY]: "0.5",
+    });
+    expect(await makeLoader(repo).getMaxVerifyDensity()).toBeCloseTo(0.1);
   });
 });

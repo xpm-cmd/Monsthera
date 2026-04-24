@@ -165,6 +165,14 @@ export const ANTI_EXAMPLE_TOKENS_FRONTMATTER_KEY = "policy_anti_example_tokens_j
 /** Frontmatter field whose JSON-string value holds an `AntiExamplePhrase[]`. */
 export const ANTI_EXAMPLE_PHRASES_FRONTMATTER_KEY = "policy_anti_example_phrases_json";
 
+/**
+ * Frontmatter field carrying the maximum acceptable `[verify]`-marker
+ * density (markers / citations). Policy articles may set this to
+ * override the lint default of 0.20. First-wins across multiple
+ * policies; missing / malformed values are skipped silently.
+ */
+export const MAX_VERIFY_DENSITY_FRONTMATTER_KEY = "policy_max_verify_density";
+
 // ─── PolicyLoader ─────────────────────────────────────────────────────────
 
 export interface PolicyLoaderDeps {
@@ -184,6 +192,7 @@ export class PolicyLoader {
   private canonicalValuesCache: readonly CanonicalValue[] | null = null;
   private antiExampleTokensCache: readonly AntiExampleToken[] | null = null;
   private antiExamplePhrasesCache: readonly AntiExamplePhrase[] | null = null;
+  private maxVerifyDensityCache: number | null | undefined = undefined;
 
   constructor(private readonly deps: PolicyLoaderDeps) {}
 
@@ -202,6 +211,7 @@ export class PolicyLoader {
       this.canonicalValuesCache = [];
       this.antiExampleTokensCache = [];
       this.antiExamplePhrasesCache = [];
+      this.maxVerifyDensityCache = null;
       return this.cache;
     }
 
@@ -214,6 +224,7 @@ export class PolicyLoader {
     this.canonicalValuesCache = this.loadCanonicalValues(articlesResult.value);
     this.antiExampleTokensCache = this.loadAntiExampleTokens(articlesResult.value);
     this.antiExamplePhrasesCache = this.loadAntiExamplePhrases(articlesResult.value);
+    this.maxVerifyDensityCache = this.loadMaxVerifyDensity(articlesResult.value);
     return this.cache;
   }
 
@@ -252,6 +263,21 @@ export class PolicyLoader {
     if (this.antiExamplePhrasesCache) return this.antiExamplePhrasesCache;
     await this.refresh();
     return this.antiExamplePhrasesCache ?? [];
+  }
+
+  /**
+   * Maximum acceptable `[verify]`-density, expressed as a ratio
+   * (markers / citations). Policy articles may set this via
+   * `policy_max_verify_density` (number or numeric string); first-wins
+   * across multiple policies; missing or out-of-range values return
+   * `undefined` so callers fall back to their own default.
+   */
+  async getMaxVerifyDensity(): Promise<number | undefined> {
+    if (this.maxVerifyDensityCache !== undefined) {
+      return this.maxVerifyDensityCache ?? undefined;
+    }
+    await this.refresh();
+    return this.maxVerifyDensityCache ?? undefined;
   }
 
   /** Filter policies applicable to a specific article + transition. Pure. */
@@ -403,6 +429,30 @@ export class PolicyLoader {
     }
 
     return [...byPhrase.values()];
+  }
+
+  /**
+   * Scan policy articles for the first `policy_max_verify_density`
+   * entry that parses as a valid ratio in (0, 1]. Anything else — wrong
+   * type, out of range, unparseable — is logged and ignored. Returns
+   * `null` when no policy supplies a valid value (distinct from the
+   * "not yet loaded" state, which the loader tracks separately).
+   */
+  private loadMaxVerifyDensity(articles: readonly KnowledgeArticle[]): number | null {
+    for (const article of articles) {
+      const raw = article.extraFrontmatter?.[MAX_VERIFY_DENSITY_FRONTMATTER_KEY];
+      if (raw === undefined || raw === "") continue;
+      const parsed = typeof raw === "number" ? raw : Number(raw);
+      if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+        this.deps.logger.warn("Invalid max-verify-density in policy; skipping", {
+          slug: article.slug,
+          raw,
+        });
+        continue;
+      }
+      return parsed;
+    }
+    return null;
   }
 
   private toPolicy(article: KnowledgeArticle): Policy | null {
