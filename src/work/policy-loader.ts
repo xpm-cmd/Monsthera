@@ -54,6 +54,39 @@ const CanonicalValueSchema = z.object({
 
 const CanonicalValuesArraySchema = z.array(CanonicalValueSchema);
 
+/**
+ * Schema for a single anti-example token entry. Carried inside
+ * `policy_anti_example_tokens_json` on a `category: policy` article. Same
+ * JSON-string detour as canonical values — see ADR-010.
+ *
+ * A token rule says: "any prose occurrence of something matching `pattern`
+ * must appear as a real, canonical name defined in the files matching
+ * `canonicalSource`". Drift is caught by comparing the match against a set
+ * built from scanning the canonical source tree.
+ */
+const AntiExampleTokenSchema = z.object({
+  pattern: z.string().min(1),
+  canonical_source: z.string().min(1),
+  description: z.string().default(""),
+});
+
+const AntiExampleTokensArraySchema = z.array(AntiExampleTokenSchema);
+
+/**
+ * Schema for a single anti-example phrase entry. A phrase rule pins an
+ * exact wrong-string → corrected-string mapping that bled into the corpus
+ * and must never creep back. `sinceCommit` surfaces in lint findings so a
+ * reader can trace when the correction was established.
+ */
+const AntiExamplePhraseSchema = z.object({
+  phrase: z.string().min(1),
+  corrected: z.string().min(1),
+  since_commit: z.string().optional(),
+  rationale: z.string().optional(),
+});
+
+const AntiExamplePhrasesArraySchema = z.array(AntiExamplePhraseSchema);
+
 // ─── Domain types ─────────────────────────────────────────────────────────
 
 export interface PolicyAppliesTo {
@@ -97,6 +130,41 @@ export interface CanonicalValue {
 /** Frontmatter field whose JSON-string value holds a `CanonicalValue[]`. */
 export const CANONICAL_VALUES_FRONTMATTER_KEY = "policy_canonical_values_json";
 
+/**
+ * A single token-drift rule. The pattern matches in prose; matches are
+ * then compared against the set of canonical names extracted from the
+ * files under `canonicalSourceGlob`. Anything matching `pattern` but not
+ * in the canonical set surfaces as a `token_drift` finding.
+ */
+export interface AntiExampleToken {
+  /** JavaScript regex source. Compiled with the `g` flag at scan time. */
+  readonly pattern: string;
+  /** Glob (relative to the repo root) of files that define the canonical names. */
+  readonly canonicalSource: string;
+  readonly description: string;
+}
+
+/**
+ * A single phrase anti-example. Exact-match (case-insensitive) against
+ * article prose; a hit surfaces as a `phrase_anti_example` finding with
+ * the corrected form suggested. Lines carrying forward-guard markers
+ * (see `FORWARD_GUARD_MARKERS` in `lint.ts`) are skipped so the registry
+ * article itself — which must cite the wrong phrase verbatim — does not
+ * self-flag.
+ */
+export interface AntiExamplePhrase {
+  readonly phrase: string;
+  readonly corrected: string;
+  readonly sinceCommit?: string;
+  readonly rationale?: string;
+}
+
+/** Frontmatter field whose JSON-string value holds an `AntiExampleToken[]`. */
+export const ANTI_EXAMPLE_TOKENS_FRONTMATTER_KEY = "policy_anti_example_tokens_json";
+
+/** Frontmatter field whose JSON-string value holds an `AntiExamplePhrase[]`. */
+export const ANTI_EXAMPLE_PHRASES_FRONTMATTER_KEY = "policy_anti_example_phrases_json";
+
 // ─── PolicyLoader ─────────────────────────────────────────────────────────
 
 export interface PolicyLoaderDeps {
@@ -114,6 +182,8 @@ export interface PolicyLoaderDeps {
 export class PolicyLoader {
   private cache: readonly Policy[] | null = null;
   private canonicalValuesCache: readonly CanonicalValue[] | null = null;
+  private antiExampleTokensCache: readonly AntiExampleToken[] | null = null;
+  private antiExamplePhrasesCache: readonly AntiExamplePhrase[] | null = null;
 
   constructor(private readonly deps: PolicyLoaderDeps) {}
 
@@ -130,6 +200,8 @@ export class PolicyLoader {
       });
       this.cache = [];
       this.canonicalValuesCache = [];
+      this.antiExampleTokensCache = [];
+      this.antiExamplePhrasesCache = [];
       return this.cache;
     }
 
@@ -140,6 +212,8 @@ export class PolicyLoader {
     }
     this.cache = policies;
     this.canonicalValuesCache = this.loadCanonicalValues(articlesResult.value);
+    this.antiExampleTokensCache = this.loadAntiExampleTokens(articlesResult.value);
+    this.antiExamplePhrasesCache = this.loadAntiExamplePhrases(articlesResult.value);
     return this.cache;
   }
 
@@ -155,6 +229,29 @@ export class PolicyLoader {
     if (this.canonicalValuesCache) return this.canonicalValuesCache;
     await this.refresh();
     return this.canonicalValuesCache ?? [];
+  }
+
+  /**
+   * Anti-example token rules. Same aggregation shape as canonical values —
+   * every policy article carrying a non-empty
+   * `policy_anti_example_tokens_json` contributes entries, first-wins on
+   * `pattern` collisions.
+   */
+  async getAntiExampleTokens(): Promise<readonly AntiExampleToken[]> {
+    if (this.antiExampleTokensCache) return this.antiExampleTokensCache;
+    await this.refresh();
+    return this.antiExampleTokensCache ?? [];
+  }
+
+  /**
+   * Anti-example phrases. Aggregation shape matches `getCanonicalValues` —
+   * `first-wins` on exact-phrase collisions, malformed JSON logs a warning
+   * and is skipped without breaking the registry.
+   */
+  async getAntiExamplePhrases(): Promise<readonly AntiExamplePhrase[]> {
+    if (this.antiExamplePhrasesCache) return this.antiExamplePhrasesCache;
+    await this.refresh();
+    return this.antiExamplePhrasesCache ?? [];
   }
 
   /** Filter policies applicable to a specific article + transition. Pure. */
@@ -230,6 +327,84 @@ export class PolicyLoader {
     return [...byName.values()];
   }
 
+  /**
+   * Aggregate anti-example token rules across every policy article that
+   * carries `policy_anti_example_tokens_json`. Same failure model as
+   * `loadCanonicalValues`: malformed JSON → log-and-skip the article;
+   * duplicate patterns → log-and-keep-first.
+   */
+  private loadAntiExampleTokens(
+    articles: readonly KnowledgeArticle[],
+  ): readonly AntiExampleToken[] {
+    const byPattern = new Map<string, AntiExampleToken>();
+
+    for (const article of articles) {
+      const parsed = readJsonFrontmatterArray(
+        article,
+        ANTI_EXAMPLE_TOKENS_FRONTMATTER_KEY,
+        AntiExampleTokensArraySchema,
+        this.deps.logger,
+      );
+      if (!parsed) continue;
+
+      for (const entry of parsed) {
+        if (byPattern.has(entry.pattern)) {
+          this.deps.logger.warn("Duplicate anti-example token; keeping first definition", {
+            pattern: entry.pattern,
+            conflictingSlug: article.slug,
+          });
+          continue;
+        }
+        byPattern.set(entry.pattern, {
+          pattern: entry.pattern,
+          canonicalSource: entry.canonical_source,
+          description: entry.description,
+        });
+      }
+    }
+
+    return [...byPattern.values()];
+  }
+
+  /**
+   * Aggregate anti-example phrase rules. Collisions on the exact phrase
+   * resolve first-wins; there is no normalisation (trailing whitespace,
+   * quotes, unicode dashes are all distinct phrases).
+   */
+  private loadAntiExamplePhrases(
+    articles: readonly KnowledgeArticle[],
+  ): readonly AntiExamplePhrase[] {
+    const byPhrase = new Map<string, AntiExamplePhrase>();
+
+    for (const article of articles) {
+      const parsed = readJsonFrontmatterArray(
+        article,
+        ANTI_EXAMPLE_PHRASES_FRONTMATTER_KEY,
+        AntiExamplePhrasesArraySchema,
+        this.deps.logger,
+      );
+      if (!parsed) continue;
+
+      for (const entry of parsed) {
+        if (byPhrase.has(entry.phrase)) {
+          this.deps.logger.warn("Duplicate anti-example phrase; keeping first definition", {
+            phrase: entry.phrase,
+            conflictingSlug: article.slug,
+          });
+          continue;
+        }
+        byPhrase.set(entry.phrase, {
+          phrase: entry.phrase,
+          corrected: entry.corrected,
+          ...(entry.since_commit !== undefined ? { sinceCommit: entry.since_commit } : {}),
+          ...(entry.rationale !== undefined ? { rationale: entry.rationale } : {}),
+        });
+      }
+    }
+
+    return [...byPhrase.values()];
+  }
+
   private toPolicy(article: KnowledgeArticle): Policy | null {
     const parsed = PolicyFrontmatterSchema.safeParse(article.extraFrontmatter ?? {});
     if (!parsed.success) {
@@ -268,6 +443,54 @@ export class PolicyLoader {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Parse a JSON-encoded array field from an article's extra frontmatter.
+ * Returns `null` when the field is absent, empty, non-string, malformed
+ * JSON, or schema-invalid. Every failure mode logs a warning — the caller
+ * treats `null` as "skip this article, do not reject the whole registry".
+ *
+ * Factored out because canonical-values, anti-example tokens, and
+ * anti-example phrases all follow the exact same JSON-string-in-flat-YAML
+ * detour (see ADR-010). Keeping one helper means one place to evolve when
+ * the markdown parser gains native YAML-object support.
+ */
+function readJsonFrontmatterArray<T>(
+  article: KnowledgeArticle,
+  key: string,
+  schema: z.ZodType<T[]>,
+  logger: Logger,
+): readonly T[] | null {
+  const raw = article.extraFrontmatter?.[key];
+  if (raw === undefined || raw === "") return null;
+  if (typeof raw !== "string") {
+    logger.warn("Policy JSON field is not a string; skipping", { slug: article.slug, key });
+    return null;
+  }
+
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(raw);
+  } catch (e) {
+    logger.warn("Malformed policy JSON; skipping article", {
+      slug: article.slug,
+      key,
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  }
+
+  const parsed = schema.safeParse(decoded);
+  if (!parsed.success) {
+    logger.warn("Policy JSON schema violation; skipping article", {
+      slug: article.slug,
+      key,
+      issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+    });
+    return null;
+  }
+  return parsed.data;
+}
 
 function compileTemplates(values: readonly string[]): readonly WorkTemplateType[] {
   return values.filter((v): v is WorkTemplateType => VALID_TEMPLATES.has(v));
