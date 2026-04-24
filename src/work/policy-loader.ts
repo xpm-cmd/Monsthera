@@ -36,6 +36,24 @@ const PolicyFrontmatterSchema = z.object({
   policy_rationale: z.string().default(""),
 });
 
+/**
+ * Schema for a single canonical-value entry. Carried inside
+ * `policy_canonical_values_json` as a JSON-encoded array on one or more
+ * `category: policy` articles. The JSON-string detour exists because the
+ * flat markdown parser (`src/knowledge/markdown.ts`) does not round-trip
+ * nested YAML objects — see ADR-010.
+ */
+const CanonicalValueSchema = z.object({
+  name: z.string().min(1),
+  value: z.string().min(1),
+  unit: z.string().optional(),
+  source_article: z.string().optional(),
+  valid_since_commit: z.string().optional(),
+  rationale: z.string().optional(),
+});
+
+const CanonicalValuesArraySchema = z.array(CanonicalValueSchema);
+
 // ─── Domain types ─────────────────────────────────────────────────────────
 
 export interface PolicyAppliesTo {
@@ -66,6 +84,19 @@ export interface PolicyTransition {
   readonly to: WorkPhaseType;
 }
 
+/** A single canonical value — a term the corpus agrees on by name. */
+export interface CanonicalValue {
+  readonly name: string;
+  readonly value: string;
+  readonly unit?: string;
+  readonly sourceArticle?: string;
+  readonly validSinceCommit?: string;
+  readonly rationale?: string;
+}
+
+/** Frontmatter field whose JSON-string value holds a `CanonicalValue[]`. */
+export const CANONICAL_VALUES_FRONTMATTER_KEY = "policy_canonical_values_json";
+
 // ─── PolicyLoader ─────────────────────────────────────────────────────────
 
 export interface PolicyLoaderDeps {
@@ -82,6 +113,7 @@ export interface PolicyLoaderDeps {
  */
 export class PolicyLoader {
   private cache: readonly Policy[] | null = null;
+  private canonicalValuesCache: readonly CanonicalValue[] | null = null;
 
   constructor(private readonly deps: PolicyLoaderDeps) {}
 
@@ -97,6 +129,7 @@ export class PolicyLoader {
         error: articlesResult.error.message,
       });
       this.cache = [];
+      this.canonicalValuesCache = [];
       return this.cache;
     }
 
@@ -106,7 +139,22 @@ export class PolicyLoader {
       if (policy) policies.push(policy);
     }
     this.cache = policies;
+    this.canonicalValuesCache = this.loadCanonicalValues(articlesResult.value);
     return this.cache;
+  }
+
+  /**
+   * Canonical-value registry — flat list aggregated across every `category:
+   * policy` article that carries `policy_canonical_values_json`. A single
+   * registry article is the common case; splitting across policies is allowed
+   * so teams can scope values next to the prose that motivates them. First
+   * definition of a given `name` wins — later duplicates are skipped with a
+   * warning.
+   */
+  async getCanonicalValues(): Promise<readonly CanonicalValue[]> {
+    if (this.canonicalValuesCache) return this.canonicalValuesCache;
+    await this.refresh();
+    return this.canonicalValuesCache ?? [];
   }
 
   /** Filter policies applicable to a specific article + transition. Pure. */
@@ -116,6 +164,70 @@ export class PolicyLoader {
     transition: PolicyTransition,
   ): readonly Policy[] {
     return policies.filter((policy) => policyApplies(policy, article, transition));
+  }
+
+  /**
+   * Aggregate canonical values from every policy article that carries a
+   * non-empty `policy_canonical_values_json` field. Malformed JSON or schema
+   * violations are logged and skipped — one bad article cannot disable the
+   * registry. Name collisions across articles resolve "first wins" with a
+   * warning, since the authored order is deterministic per-article-id.
+   */
+  private loadCanonicalValues(
+    articles: readonly KnowledgeArticle[],
+  ): readonly CanonicalValue[] {
+    const byName = new Map<string, CanonicalValue>();
+
+    for (const article of articles) {
+      const raw = article.extraFrontmatter?.[CANONICAL_VALUES_FRONTMATTER_KEY];
+      if (raw === undefined || raw === "") continue;
+      if (typeof raw !== "string") {
+        this.deps.logger.warn("Canonical-values field is not a string; skipping", {
+          slug: article.slug,
+        });
+        continue;
+      }
+
+      let decoded: unknown;
+      try {
+        decoded = JSON.parse(raw);
+      } catch (e) {
+        this.deps.logger.warn("Malformed canonical-values JSON; skipping article", {
+          slug: article.slug,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        continue;
+      }
+
+      const parsed = CanonicalValuesArraySchema.safeParse(decoded);
+      if (!parsed.success) {
+        this.deps.logger.warn("Canonical-values schema violation; skipping article", {
+          slug: article.slug,
+          issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+        });
+        continue;
+      }
+
+      for (const entry of parsed.data) {
+        if (byName.has(entry.name)) {
+          this.deps.logger.warn("Duplicate canonical value; keeping first definition", {
+            name: entry.name,
+            conflictingSlug: article.slug,
+          });
+          continue;
+        }
+        byName.set(entry.name, {
+          name: entry.name,
+          value: entry.value,
+          ...(entry.unit !== undefined ? { unit: entry.unit } : {}),
+          ...(entry.source_article !== undefined ? { sourceArticle: entry.source_article } : {}),
+          ...(entry.valid_since_commit !== undefined ? { validSinceCommit: entry.valid_since_commit } : {}),
+          ...(entry.rationale !== undefined ? { rationale: entry.rationale } : {}),
+        });
+      }
+    }
+
+    return [...byName.values()];
   }
 
   private toPolicy(article: KnowledgeArticle): Policy | null {
