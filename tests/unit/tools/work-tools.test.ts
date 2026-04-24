@@ -41,9 +41,9 @@ async function seedWork(
 // ---------------------------------------------------------------------------
 
 describe("workToolDefinitions", () => {
-  it("returns exactly 11 tools", () => {
+  it("returns exactly 12 tools", () => {
     const defs = workToolDefinitions();
-    expect(defs).toHaveLength(11);
+    expect(defs).toHaveLength(12);
   });
 
   it("each tool has name, description, and inputSchema", () => {
@@ -74,6 +74,7 @@ describe("workToolDefinitions", () => {
         "submit_review",
         "add_dependency",
         "remove_dependency",
+        "search_work_by_metadata",
       ]),
     );
   });
@@ -459,6 +460,87 @@ describe("list_work combinable filters", () => {
     expect(response.isError).toBeUndefined();
     const body = JSON.parse(response.content[0]!.text) as { total: number };
     expect(body.total).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// list_work + search_work_by_metadata — structured metadata queries
+// ---------------------------------------------------------------------------
+
+describe("metadata-aware work filters", () => {
+  async function seedWithMetadata(
+    service: WorkService,
+    title: string,
+    metadata: Record<string, unknown>,
+    content = "## Objective\nx\n\n## Acceptance Criteria\n- [ ] x",
+  ): Promise<WorkArticle> {
+    const art = await seedWork(service, { title, content });
+    const advanced = await service.advancePhase(art.id, WorkPhase.ENRICHMENT, { metadata });
+    if (!advanced.ok) throw new Error(`advance failed: ${advanced.error.message}`);
+    return advanced.value;
+  }
+
+  it("list_work filters by metadataField + metadataValue (string equality)", async () => {
+    const svc = createService();
+    const a = await seedWithMetadata(svc, "A", { success_test: "Y" });
+    const b = await seedWithMetadata(svc, "B", { success_test: "N" });
+
+    const resp = await handleWorkTool(
+      "list_work",
+      { metadataField: "success_test", metadataValue: "N" },
+      svc,
+    );
+    const body = JSON.parse(resp.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(1);
+    expect(body.items[0]!.id).toBe(b.id);
+    expect(body.items[0]!.id).not.toBe(a.id);
+  });
+
+  it("list_work metadata filter matches array-valued fields by inclusion", async () => {
+    const svc = createService();
+    const a = await seedWithMetadata(svc, "A", { verdicts: ["adopt-v1", "monitor"] });
+    await seedWithMetadata(svc, "B", { verdicts: ["retire"] });
+
+    const resp = await handleWorkTool(
+      "list_work",
+      { metadataField: "verdicts", metadataValue: "adopt-v1" },
+      svc,
+    );
+    const body = JSON.parse(resp.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(1);
+    expect(body.items[0]!.id).toBe(a.id);
+  });
+
+  it("list_work metadata filter requires a paired metadataValue", async () => {
+    const svc = createService();
+    const resp = await handleWorkTool("list_work", { metadataField: "success_test" }, svc);
+    expect(resp.isError).toBe(true);
+  });
+
+  it("search_work_by_metadata returns matching articles and nothing else", async () => {
+    const svc = createService();
+    const a = await seedWithMetadata(svc, "A", { blockers: 0 });
+    const b = await seedWithMetadata(svc, "B", { blockers: 3 });
+
+    const resp = await handleWorkTool(
+      "search_work_by_metadata",
+      { field: "blockers", value: 0 },
+      svc,
+    );
+    const body = JSON.parse(resp.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(1);
+    expect(body.items[0]!.id).toBe(a.id);
+    expect(body.items[0]!.id).not.toBe(b.id);
+  });
+
+  it("search_work_by_metadata rejects missing value", async () => {
+    const svc = createService();
+    const resp = await handleWorkTool(
+      "search_work_by_metadata",
+      { field: "blockers" },
+      svc,
+    );
+    expect(resp.isError).toBe(true);
   });
 });
 

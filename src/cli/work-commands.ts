@@ -188,12 +188,13 @@ async function handleWorkList(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera work list",
       summary: "List work articles with optional filters.",
-      usage: "[--phase <p>] [--tag <t>] [--wave <name>] [--phase-age-days <n>] [--format table|csv|tsv|json] [--json]",
+      usage: "[--phase <p>] [--tag <t>] [--wave <name>] [--phase-age-days <n>] [--metadata-filter field=value] [--format table|csv|tsv|json] [--json]",
       flags: [
         { name: "--phase <p>", description: `Filter by phase. One of: ${[...VALID_PHASES].join(" | ")}` },
         { name: "--tag <t>", description: "Filter by a single tag (article must carry it)." },
         { name: "--wave <name>", description: "Shorthand: matches tag `wave-<name>` or the literal name." },
         { name: "--phase-age-days <n>", description: "Only articles whose current phase is at least <n> days old (by latest phaseHistory.enteredAt)." },
+        { name: "--metadata-filter field=value", description: "Only articles whose phase_history has an entry where metadata[field] equals <value> (JSON-parsed; array-valued fields match on inclusion)." },
         { name: "--format <fmt>", description: "table (default) | csv | tsv | json (NDJSON).", default: "table" },
         { name: "--json", description: "Alias for --format json. Kept for backwards compatibility." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
@@ -214,6 +215,7 @@ async function handleWorkList(args: string[]): Promise<void> {
 
   const tag = parseFlag(args, "--tag");
   const wave = parseFlag(args, "--wave");
+  const metadataFilter = parseMetadataFilterFlag(args);
   const phaseAgeDaysRaw = parseFlag(args, "--phase-age-days");
   let phaseAgeDays: number | undefined;
   if (phaseAgeDaysRaw !== undefined) {
@@ -251,6 +253,9 @@ async function handleWorkList(args: string[]): Promise<void> {
         return false;
       }
       if (phaseAgeDays !== undefined && currentPhaseAgeDays(w) < phaseAgeDays) {
+        return false;
+      }
+      if (metadataFilter !== undefined && !articleMetadataMatches(w, metadataFilter.field, metadataFilter.value)) {
         return false;
       }
       return true;
@@ -603,6 +608,57 @@ function parsePhaseAdvanceMetadata(args: string[]): Record<string, unknown> | un
   }
 
   return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+/**
+ * Parse `--metadata-filter field=value`. Values round-trip through JSON.parse
+ * first so numbers / booleans / null come back as their JS types; on parse
+ * failure the raw string is used, which covers the common case of
+ * `--metadata-filter success_test=Y`.
+ */
+function parseMetadataFilterFlag(args: string[]): { field: string; value: unknown } | undefined {
+  const raw = parseFlag(args, "--metadata-filter");
+  if (raw === undefined) return undefined;
+  const eqIdx = raw.indexOf("=");
+  if (eqIdx === -1) {
+    console.error(`Invalid --metadata-filter "${raw}" (expected field=value).`);
+    process.exit(1);
+  }
+  const field = raw.slice(0, eqIdx).trim();
+  if (field.length === 0) {
+    console.error(`Invalid --metadata-filter: field name is empty.`);
+    process.exit(1);
+  }
+  const rawValue = raw.slice(eqIdx + 1);
+  let value: unknown = rawValue;
+  try {
+    value = JSON.parse(rawValue);
+  } catch {
+    // Treat as string literal.
+  }
+  return { field, value };
+}
+
+/**
+ * Mirror of the MCP-side check: scan every phase-history entry, and on the
+ * first one whose metadata carries `field`, compare. Array-valued fields
+ * match when the array includes the supplied value.
+ */
+function articleMetadataMatches(
+  article: { phaseHistory: readonly { metadata?: Readonly<Record<string, unknown>> }[] },
+  field: string,
+  value: unknown,
+): boolean {
+  for (const entry of article.phaseHistory) {
+    const stored = entry.metadata?.[field];
+    if (stored === undefined) continue;
+    if (Array.isArray(stored)) {
+      if (stored.some((item) => item === value)) return true;
+      continue;
+    }
+    if (stored === value) return true;
+  }
+  return false;
 }
 
 function parseOptionalNonNegativeInt(args: string[], flag: string): number | undefined {

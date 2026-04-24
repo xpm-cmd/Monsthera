@@ -169,6 +169,35 @@ describe("Integration: monsthera work list filters", () => {
     await fs.rm(repoPath, { recursive: true, force: true });
   }, 60_000);
 
+  it("--metadata-filter narrows results by phase_history metadata", async () => {
+    const repoPath = path.join("/tmp", `monsthera-list-${randomUUID()}`);
+    await fs.mkdir(repoPath, { recursive: true });
+    await seedRepo(repoPath, [{ title: "Alpha" }, { title: "Beta" }]);
+
+    // Advance Alpha to enrichment with success_test=Y.
+    const list = cli(repoPath, ["work", "list", "--format", "json"]);
+    const lines = list.stdout.trim().split("\n").filter((l) => l.length > 0);
+    const articles = lines.map((l) => JSON.parse(l) as { id: string; title: string });
+    const alpha = articles.find((a) => a.title === "Alpha")!;
+    cli(repoPath, [
+      "work", "advance", alpha.id,
+      "--phase", "enrichment",
+      "--success-test", "Y",
+    ]);
+
+    const res = cli(repoPath, [
+      "work", "list",
+      "--metadata-filter", "success_test=Y",
+      "--format", "json",
+    ]);
+    expect(res.status).toBe(0);
+    const matchedLines = res.stdout.trim().split("\n").filter((l) => l.length > 0);
+    expect(matchedLines.length).toBe(1);
+    expect((JSON.parse(matchedLines[0]!) as { title: string }).title).toBe("Alpha");
+
+    await fs.rm(repoPath, { recursive: true, force: true });
+  }, 180_000);
+
   it("--json still works as a backwards-compat alias for --format json", async () => {
     const repoPath = path.join("/tmp", `monsthera-list-${randomUUID()}`);
     await fs.mkdir(repoPath, { recursive: true });
