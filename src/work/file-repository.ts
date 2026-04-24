@@ -167,6 +167,7 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
       createdAt: timestamp(frontmatter.createdAt),
       updatedAt: timestamp(frontmatter.updatedAt),
       completedAt: frontmatter.completedAt ? timestamp(frontmatter.completedAt) : undefined,
+      ...(frontmatter.planning_hash ? { planningHash: frontmatter.planning_hash } : {}),
     });
   }
 
@@ -221,6 +222,7 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
     if (article.lead) frontmatter["lead"] = article.lead;
     if (article.assignee) frontmatter["assignee"] = article.assignee;
     if (article.completedAt) frontmatter["completedAt"] = article.completedAt;
+    if (article.planningHash) frontmatter["planning_hash"] = article.planningHash;
     if (aliases.length > 0) frontmatter["aliases"] = aliases;
     if (migrationHash) frontmatter["migrationHash"] = migrationHash;
 
