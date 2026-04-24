@@ -125,6 +125,27 @@ Fields:
 
 The field is a JSON string because the flat markdown parser does not round-trip nested YAML (see ADR-010). Keep the outer single quotes, use valid JSON inside. After editing, run `monsthera lint` to verify the registry parses — malformed JSON is logged and the registry silently drops the offending article.
 
+## Structured reason fields convention
+
+When advancing a work article, prefer structured flags over packing prose into `--reason`. Structured fields land on `phase_history[*].metadata`, survive the frontmatter round-trip via the existing `phaseHistoryJson` blob, and are directly queryable via `monsthera work list --metadata-filter` and the MCP `search_work_by_metadata` tool.
+
+Conventional keys (CLI flag shown in parens):
+
+- `success_test: "Y" | "N" | "skipped"` (`--success-test`) — did the success-test for this phase pass?
+- `blockers: number` (`--blockers`) — non-negative integer.
+- `verdicts: string[]` (`--verdicts a,b,c`) — e.g. `["adopt-v1", "monitor"]`. Matched on inclusion by the query tools, so `--metadata-filter verdicts=adopt-v1` hits articles tagged with either the single verdict or the compound list.
+- `fabrications: number` (`--fabrications`) — non-negative integer.
+- `verify_count: number` (`--verify-count`) — non-negative integer.
+
+Escape hatch: `--metadata-json '<json-object>'` / MCP `metadata` parameter accepts any extra fields. Explicit convention flags win on key collision, so `--blockers 0 --metadata-json '{"blockers": 99, "notes": "ok"}'` persists `{ blockers: 0, notes: "ok" }`.
+
+Two rules of thumb:
+
+1. Anything a future query might want to filter by belongs in `metadata`, not `--reason`.
+2. `--reason` is the free-text audit trail for the one-off story of this advance (who/why), not a key-value store. If you find yourself writing `foo=bar; baz=qux` in it, reach for structured flags instead.
+
+`monsthera work advance` default output is now a single success line plus an optional truncated reason line. Pass `--verbose` if you really want the full article dump, or `--format json` for a single-line `{ workId, from, to, advancedAt, reason? }` envelope.
+
 ## How to query the ref graph
 
 `monsthera knowledge refs` surfaces reference-graph edges across the whole corpus:
