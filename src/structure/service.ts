@@ -8,7 +8,7 @@ import type { StorageError } from "../core/errors.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
 import { resolveCodeRef } from "../core/code-refs.js";
-import { extractWikilinks } from "./wikilink.js";
+import { extractInlineArticleIds, extractWikilinks } from "./wikilink.js";
 
 /** Tags shared by up to this many articles get full pairwise edges. */
 const SHARED_TAG_DIRECT_THRESHOLD = 15;
@@ -89,6 +89,32 @@ export interface NeighborResult {
     readonly totalEdges: number;
     readonly byKind: Readonly<Record<string, number>>;
   };
+}
+
+/** Single edge returned by `getRefGraph`, always knowledge-or-work-typed. */
+export interface RefGraphEdge {
+  readonly id: string;
+  readonly title: string;
+  readonly kind: "knowledge" | "work";
+}
+
+/** All reference edges around a single article. Unbounded — audit-grade. */
+export interface RefGraphResult {
+  readonly articleId: string;
+  readonly incoming: readonly RefGraphEdge[];
+  readonly outgoing: readonly RefGraphEdge[];
+}
+
+/**
+ * A citation from some article to an ID that does not resolve to any known
+ * article. `sourcePath` is the markdown-root-relative path — stable enough
+ * for lint output and click-through in the dashboard, while keeping the
+ * absolute location (which may include `/tmp/...`) out of agent surfaces.
+ */
+export interface OrphanCitation {
+  readonly sourceArticleId: string;
+  readonly missingRefId: string;
+  readonly sourcePath?: string;
 }
 
 export interface StructureServiceDeps {
@@ -186,11 +212,14 @@ export class StructureService {
       bucketTags(nodeId, article.tags);
       rememberCodeRef(nodeId, article.codeRefs);
 
-      // Resolve explicit references + wikilinks from content
+      // Resolve explicit references + wikilinks + inline article IDs from content
       const explicitRefs = article.references ?? [];
       const wikilinks = extractWikilinks(article.content);
       const wikilinkSlugs = wikilinks.map((l) => l.slug);
-      const allRefs = [...new Set([...explicitRefs, ...wikilinkSlugs])];
+      const inlineIds = extractInlineArticleIds(article.content);
+      const allRefs = [...new Set([...explicitRefs, ...wikilinkSlugs, ...inlineIds])].filter(
+        (ref) => ref !== article.id,
+      );
       for (const ref of allRefs) {
         const knowledgeTarget = knowledgeById.get(ref) ?? knowledgeBySlug.get(ref);
         const workTarget = workById.get(ref);
@@ -267,7 +296,10 @@ export class StructureService {
 
       const workWikilinks = extractWikilinks(article.content);
       const workWikilinkSlugs = workWikilinks.map((l) => l.slug);
-      const allWorkRefs = [...new Set([...article.references, ...workWikilinkSlugs])];
+      const workInlineIds = extractInlineArticleIds(article.content);
+      const allWorkRefs = [...new Set([...article.references, ...workWikilinkSlugs, ...workInlineIds])].filter(
+        (ref) => ref !== article.id,
+      );
       for (const ref of allWorkRefs) {
         const knowledgeTarget = knowledgeById.get(ref) ?? knowledgeBySlug.get(ref);
         const workTarget = workById.get(ref);
@@ -506,6 +538,130 @@ export class StructureService {
       ...graphResult.value.summary,
       gaps: graphResult.value.gaps,
     });
+  }
+
+  /**
+   * Full reference edge set around a single article. Unlike `getNeighbors`,
+   * this is unbounded (no `limit` cap), filtered to `reference` edges only,
+   * and scoped to `knowledge | work` nodes — designed for audit use cases
+   * (`monsthera knowledge refs --to|--from`) where truncation would silently
+   * hide citations.
+   */
+  async getRefGraph(
+    articleIdOrSlug: string,
+  ): Promise<Result<RefGraphResult, NotFoundError | StorageError>> {
+    const graphResult = await this.getGraph();
+    if (!graphResult.ok) return graphResult;
+    const graph = graphResult.value;
+
+    const targetNode = this.resolveTargetNode(graph, articleIdOrSlug);
+    if (!targetNode) {
+      return err(new NotFoundError("StructureNode", articleIdOrSlug));
+    }
+
+    const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
+    const incoming: RefGraphEdge[] = [];
+    const outgoing: RefGraphEdge[] = [];
+
+    for (const edge of graph.edges) {
+      if (edge.kind !== "reference") continue;
+      const neighborNodeId =
+        edge.source === targetNode.id
+          ? edge.target
+          : edge.target === targetNode.id
+            ? edge.source
+            : undefined;
+      if (!neighborNodeId) continue;
+
+      const neighbor = nodeMap.get(neighborNodeId);
+      if (!neighbor) continue;
+      if (neighbor.kind !== "knowledge" && neighbor.kind !== "work") continue;
+
+      const refEdge: RefGraphEdge = {
+        id: neighbor.articleId ?? neighbor.id,
+        title: neighbor.label,
+        kind: neighbor.kind,
+      };
+      if (edge.source === targetNode.id) outgoing.push(refEdge);
+      else incoming.push(refEdge);
+    }
+
+    incoming.sort((a, b) => a.title.localeCompare(b.title));
+    outgoing.sort((a, b) => a.title.localeCompare(b.title));
+
+    return ok({
+      articleId: targetNode.articleId ?? targetNode.id,
+      incoming,
+      outgoing,
+    });
+  }
+
+  /**
+   * Enumerate every citation in the corpus whose target ID does not resolve.
+   * Reuses the `missingReferences` gap set that `getGraph` already populates
+   * — the widening from inline-ID extraction (ADR-010 / S4 commit 4) means
+   * raw `k-foo` / `w-bar` citations in prose also flow through here, not
+   * just frontmatter `references:` entries.
+   */
+  async getOrphanCitations(): Promise<Result<readonly OrphanCitation[], StorageError>> {
+    const graphResult = await this.getGraph();
+    if (!graphResult.ok) return graphResult;
+
+    const knowledge = await this.knowledgeRepo.findMany();
+    if (!knowledge.ok) return knowledge;
+    const work = await this.workRepo.findMany();
+    if (!work.ok) return work;
+
+    const sourcePaths = new Map<string, string>();
+    for (const a of knowledge.value) {
+      sourcePaths.set(a.id, path.join("notes", `${a.slug}.md`));
+    }
+    for (const a of work.value) {
+      sourcePaths.set(a.id, path.join("work-articles", `${a.id}.md`));
+    }
+
+    const orphans: OrphanCitation[] = [];
+    for (const entry of graphResult.value.gaps.missingReferences) {
+      const colonIdx = entry.indexOf(":");
+      if (colonIdx === -1) continue;
+      const sourceArticleId = entry.slice(0, colonIdx);
+      const missingRefId = entry.slice(colonIdx + 1);
+      const sourcePath = sourcePaths.get(sourceArticleId);
+      orphans.push({
+        sourceArticleId,
+        missingRefId,
+        ...(sourcePath ? { sourcePath } : {}),
+      });
+    }
+
+    orphans.sort((a, b) => {
+      const byPath = (a.sourcePath ?? "").localeCompare(b.sourcePath ?? "");
+      return byPath !== 0 ? byPath : a.missingRefId.localeCompare(b.missingRefId);
+    });
+
+    return ok(orphans);
+  }
+
+  /**
+   * Resolve `articleIdOrSlug` to a graph node via the same 4-tier fallback
+   * used by `getNeighbors`: exact node ID → `k:` prefix → `w:` prefix →
+   * slug match. Extracted to a private helper so `getRefGraph` can reuse it
+   * without going through the limited-by-default `getNeighbors` path.
+   */
+  private resolveTargetNode(
+    graph: StructureGraph,
+    articleIdOrSlug: string,
+  ): StructureGraphNode | undefined {
+    const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
+    let targetNode = nodeMap.get(articleIdOrSlug);
+    if (!targetNode) targetNode = nodeMap.get(`k:${articleIdOrSlug}`);
+    if (!targetNode) targetNode = nodeMap.get(`w:${articleIdOrSlug}`);
+    if (!targetNode) {
+      for (const node of graph.nodes) {
+        if (node.slug === articleIdOrSlug) return node;
+      }
+    }
+    return targetNode;
   }
 
   private async codeRefExists(codeRef: string): Promise<boolean> {

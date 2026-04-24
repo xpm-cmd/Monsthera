@@ -18,6 +18,7 @@ import { handleWork } from "./work-commands.js";
 import { handleIngest } from "./ingest-commands.js";
 import { handleDoctor } from "./doctor-commands.js";
 import { handlePack } from "./context-commands.js";
+import { handleLint } from "./lint-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -74,6 +75,7 @@ function handleHelp(): void {
       "  reindex                  Rebuild the search index",
       "  migrate                  Run v2 -> v3 migration from SQLite",
       "  doctor                   Run health checks and diagnostics",
+      "  lint                     Audit the corpus for canonical-value drift (and orphan citations)",
       "",
       "KNOWLEDGE SUBCOMMANDS",
       "  knowledge create  --title <t> --category <c> --content <body> [--tags t1,t2] [--code-refs r1,r2]",
@@ -81,6 +83,7 @@ function handleHelp(): void {
       "  knowledge list    [--category <c>] [--json]",
       "  knowledge update  <id> [--title <t>] [--category <c>] [--content <body>] [--tags t1,t2]",
       "  knowledge delete  <id>",
+      "  knowledge refs    (--to <id> | --from <id> | --orphans) [--format table|json]",
       "",
       "WORK SUBCOMMANDS",
       "  work create   --title <t> --template <template> --author <a> [--priority <p>] [--tags t1,t2]",
@@ -287,6 +290,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "pack":
         await handlePack(args.slice(1));
+        break;
+      case "lint":
+        await handleLint(args.slice(1));
         break;
       case "--version":
       case "-v":

@@ -1,5 +1,6 @@
 import type { WorkArticle } from "./repository.js";
 import type { SnapshotService } from "../context/snapshot-service.js";
+import type { CanonicalValue, Policy } from "./policy-loader.js";
 
 // ─── Content Guards ───
 
@@ -32,6 +33,169 @@ export function implementation_linked(article: WorkArticle): boolean {
 // Empty reviewers array returns false (no reviewers = not approved)
 export function all_reviewers_approved(article: WorkArticle): boolean {
   return article.reviewers.length > 0 && article.reviewers.every((r) => r.status === "approved");
+}
+
+// ─── Policy Guards ───
+
+/**
+ * Context for `policy_requirements_met`. The orchestrator pre-loads and
+ * pre-filters policies via `PolicyLoader.getApplicablePolicies` so this guard
+ * receives only the policies relevant to the current article + transition.
+ * Keeping the guard pure preserves its testability — no I/O here.
+ */
+export interface PolicyGuardContext {
+  readonly policies: readonly Policy[];
+}
+
+/** Per-policy breakdown of what a work article is missing. */
+export interface PolicyViolation {
+  readonly policySlug: string;
+  readonly missing: {
+    readonly enrichmentRoles?: readonly string[];
+    readonly referencedArticles?: readonly string[];
+  };
+}
+
+/**
+ * Returns true iff every applicable policy's `requires` are satisfied. Use
+ * `getPolicyViolations` to get a structured breakdown of what is missing for
+ * readiness reporting and error messages.
+ */
+export function policy_requirements_met(
+  article: WorkArticle,
+  context: PolicyGuardContext,
+): boolean {
+  return getPolicyViolations(article, context.policies).length === 0;
+}
+
+/**
+ * Compute the structured violations for a set of applicable policies. Separate
+ * from the boolean guard so the orchestrator can embed the "why" in log events
+ * and readiness reports without re-checking.
+ */
+export function getPolicyViolations(
+  article: WorkArticle,
+  policies: readonly Policy[],
+): readonly PolicyViolation[] {
+  const contributedOrSkipped = new Set(
+    article.enrichmentRoles
+      .filter((r) => r.status === "contributed" || r.status === "skipped")
+      .map((r) => r.role),
+  );
+  const referenced = new Set(article.references);
+
+  const violations: PolicyViolation[] = [];
+  for (const policy of policies) {
+    const missingRoles = policy.requires.enrichmentRoles.filter(
+      (role) => !contributedOrSkipped.has(role),
+    );
+    const missingRefs = policy.requires.referencedArticles.filter(
+      (ref) => !referenced.has(ref),
+    );
+
+    if (missingRoles.length === 0 && missingRefs.length === 0) continue;
+
+    const missing: PolicyViolation["missing"] = {
+      ...(missingRoles.length > 0 ? { enrichmentRoles: missingRoles } : {}),
+      ...(missingRefs.length > 0 ? { referencedArticles: missingRefs } : {}),
+    };
+    violations.push({ policySlug: policy.slug, missing });
+  }
+  return violations;
+}
+
+// ─── Canonical-Values Guards ───
+
+/**
+ * Window (in characters) after each name occurrence in which we look for a
+ * numeric token. Wide enough to span "c_rt = $0.010" or "c_rt is around
+ * $0.010" or a markdown table cell; narrow enough to avoid stealing a number
+ * from an unrelated paragraph.
+ */
+const CANONICAL_VALUE_NUMBER_WINDOW = 80;
+
+/** Structured violation used by lint output + readiness reports. */
+export interface CanonicalValueViolation {
+  readonly name: string;
+  readonly expected: string;
+  readonly found: string;
+  readonly lineHint: string;
+}
+
+export interface CanonicalValueGuardContext {
+  readonly canonicalValues: readonly CanonicalValue[];
+}
+
+/**
+ * Return true iff every canonical value referenced in the article body carries
+ * the expected numeric. Silent on names the article does not mention — a value
+ * registry can be large while any single article only touches a handful.
+ */
+export function content_matches_canonical_values(
+  article: WorkArticle,
+  context: CanonicalValueGuardContext,
+): boolean {
+  return getCanonicalValueViolations(article, context.canonicalValues).length === 0;
+}
+
+/**
+ * Pure helper consumed by both the guard and the lint CLI. Accepts any input
+ * with a `content` string so knowledge articles (which lack the broader
+ * `WorkArticle` shape) can flow through the same code path.
+ *
+ * Heuristic:
+ *   - For each canonical value `cv`, find word-bounded occurrences of `cv.name`.
+ *   - Within the following `CANONICAL_VALUE_NUMBER_WINDOW` characters, extract
+ *     the first numeric token (optional `$`, digits, optional comma-separated
+ *     thousands, optional decimal).
+ *   - Compare normalised forms (strip `$`, `,`, whitespace). A raw-string
+ *     compare is deliberate — float parsing would mask drift like "0.010" vs
+ *     "0.01" that auditors care about.
+ *
+ * When `cv.name` is mentioned without any nearby number, the occurrence is
+ * treated as descriptive and skipped. When the numbers match, no violation is
+ * emitted. Only a true mismatch surfaces.
+ */
+export function getCanonicalValueViolations(
+  article: { readonly content: string },
+  canonicalValues: readonly CanonicalValue[],
+): readonly CanonicalValueViolation[] {
+  if (canonicalValues.length === 0) return [];
+
+  const violations: CanonicalValueViolation[] = [];
+
+  for (const cv of canonicalValues) {
+    const expectedNormalised = normaliseNumericToken(cv.value);
+    const nameEscaped = cv.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matcher = new RegExp(
+      `\\b${nameEscaped}\\b([\\s\\S]{0,${CANONICAL_VALUE_NUMBER_WINDOW}}?)(\\$?-?\\d[\\d,]*(?:\\.\\d+)?)`,
+      "g",
+    );
+
+    for (const match of article.content.matchAll(matcher)) {
+      const found = match[2] ?? "";
+      if (normaliseNumericToken(found) === expectedNormalised) continue;
+
+      violations.push({
+        name: cv.name,
+        expected: cv.value,
+        found,
+        lineHint: extractLine(article.content, match.index ?? 0),
+      });
+    }
+  }
+
+  return violations;
+}
+
+function normaliseNumericToken(raw: string): string {
+  return raw.replace(/[$,\s]/g, "").trim();
+}
+
+function extractLine(text: string, index: number): string {
+  const lineStart = text.lastIndexOf("\n", index) + 1;
+  const lineEnd = text.indexOf("\n", index);
+  return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
 }
 
 // ─── Snapshot Guards (async) ───

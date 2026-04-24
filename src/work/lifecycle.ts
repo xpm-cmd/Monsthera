@@ -4,9 +4,19 @@ import { StateTransitionError, GuardFailedError } from "../core/errors.js";
 import { WorkPhase } from "../core/types.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import type { WorkArticle } from "./repository.js";
-import { has_objective, has_acceptance_criteria, min_enrichment_met, implementation_linked, all_reviewers_approved, snapshot_ready, SNAPSHOT_READY_RECOVERY_HINT } from "./guards.js";
+import {
+  has_objective,
+  has_acceptance_criteria,
+  min_enrichment_met,
+  implementation_linked,
+  all_reviewers_approved,
+  snapshot_ready,
+  SNAPSHOT_READY_RECOVERY_HINT,
+  policy_requirements_met,
+} from "./guards.js";
 import { WORK_TEMPLATES } from "./templates.js";
 import type { SnapshotService } from "../context/snapshot-service.js";
+import type { Policy } from "./policy-loader.js";
 
 // ─── State Machine ──────────────────────────────────────────────────────────
 
@@ -45,38 +55,73 @@ export interface GuardDeps {
   readonly headLockfileHashes?: Record<string, string>;
 }
 
+/**
+ * Extra per-call context for guard assembly. `policies` is the full set of
+ * loaded policies — `getGuardSet` filters to the ones that apply to this
+ * article + transition and appends a `policy_requirements_met` entry when
+ * any apply. Policies do not gate `planning->enrichment` because that
+ * transition runs before there is enough content to match against.
+ */
+export interface GuardSetDeps {
+  readonly policies?: readonly Policy[];
+  readonly applicablePolicyFilter?: (
+    policies: readonly Policy[],
+    article: WorkArticle,
+    transition: { from: WorkPhaseType; to: WorkPhaseType },
+  ) => readonly Policy[];
+}
+
 /** Get the guard set for a specific transition. Returns empty array for cancellation. */
-export function getGuardSet(article: WorkArticle, from: WorkPhaseType, to: WorkPhaseType): GuardEntry[] {
+export function getGuardSet(
+  article: WorkArticle,
+  from: WorkPhaseType,
+  to: WorkPhaseType,
+  deps?: GuardSetDeps,
+): GuardEntry[] {
   const key = `${from}:${to}`;
-  switch (key) {
-    case "planning:enrichment": {
-      const guards: GuardEntry[] = [
-        { name: "has_objective", check: has_objective },
-      ];
-      // Only require acceptance criteria if the template declares it
-      const templateConfig = WORK_TEMPLATES[article.template];
-      if (templateConfig.requiredSections.includes("Acceptance Criteria")) {
-        guards.push({ name: "has_acceptance_criteria", check: has_acceptance_criteria });
+  const baseGuards: GuardEntry[] = (() => {
+    switch (key) {
+      case "planning:enrichment": {
+        const guards: GuardEntry[] = [
+          { name: "has_objective", check: has_objective },
+        ];
+        const templateConfig = WORK_TEMPLATES[article.template];
+        if (templateConfig.requiredSections.includes("Acceptance Criteria")) {
+          guards.push({ name: "has_acceptance_criteria", check: has_acceptance_criteria });
+        }
+        return guards;
       }
-      return guards;
+      case "enrichment:implementation": {
+        const config = WORK_TEMPLATES[article.template];
+        return [
+          { name: "min_enrichment_met", check: (a) => min_enrichment_met(a, config.minEnrichmentCount) },
+        ];
+      }
+      case "implementation:review":
+        return [{ name: "implementation_linked", check: implementation_linked }];
+      case "review:done":
+        return [{ name: "all_reviewers_approved", check: all_reviewers_approved }];
+      default:
+        return [];
     }
-    case "enrichment:implementation": {
-      const config = WORK_TEMPLATES[article.template];
-      return [
-        { name: "min_enrichment_met", check: (a) => min_enrichment_met(a, config.minEnrichmentCount) },
-      ];
+  })();
+
+  // Policies gate every transition except planning→enrichment (not enough content yet).
+  const isPlanningToEnrichment = from === WorkPhase.PLANNING && to === WorkPhase.ENRICHMENT;
+  if (!isPlanningToEnrichment && deps?.policies && deps.policies.length > 0) {
+    const filter = deps.applicablePolicyFilter;
+    const applicable = filter
+      ? filter(deps.policies, article, { from, to })
+      : deps.policies;
+    if (applicable.length > 0) {
+      baseGuards.push({
+        name: "policy_requirements_met",
+        check: (a) => policy_requirements_met(a, { policies: applicable }),
+      });
     }
-    case "implementation:review":
-      return [
-        { name: "implementation_linked", check: implementation_linked },
-      ];
-    case "review:done":
-      return [
-        { name: "all_reviewers_approved", check: all_reviewers_approved },
-      ];
-    default:
-      return [];
   }
+
+  return baseGuards;
 }
 
 /**

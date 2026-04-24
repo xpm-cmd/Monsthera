@@ -69,6 +69,74 @@ Check with `ToolSearch query="monsthera" max_results=15` at the start. If tools 
 
 If the search doesn't return Monsthera tools, proceed with Grep/Glob/Read — you are likely working on the Monsthera source *without* a running Monsthera instance, which is normal during development.
 
+## How to author a policy (knowledge-driven orchestration rules)
+
+A *policy article* is a knowledge article with `category: policy` whose frontmatter tells the orchestrator what must be true before a work article is allowed to advance. No TypeScript edit or redeploy is needed — drop a Markdown file into `knowledge/notes/` and it applies on the next readiness check.
+
+Minimum shape:
+
+```markdown
+---
+id: k-policy-your-slug
+category: policy
+slug: policy-your-slug
+title: "Policy: <what it enforces>"
+tags: [policy]
+policy_applies_templates: [feature]
+policy_phase_transition: enrichment->implementation
+policy_content_matches: ["(?i)auth|oauth|session|token"]
+policy_requires_roles: [security]
+policy_requires_articles: []
+policy_rationale: "One-line summary of why this exists."
+createdAt: 2026-04-24T00:00:00Z
+updatedAt: 2026-04-24T00:00:00Z
+---
+(Prose expanding on the rationale — audit trail for future readers.)
+```
+
+Rules:
+
+- Every `policy_*` field is optional. Omitting `policy_applies_templates` means "applies to every template"; omitting `policy_content_matches` means "content is not inspected"; and so on.
+- `policy_phase_transition` is `"<from>-><to>"`. `planning->enrichment` is never gated by a policy — there is not enough content yet to match.
+- `policy_content_matches` uses JavaScript regex. The POSIX `(?i)` prefix is accepted and translated to the `i` flag for convenience.
+- A malformed policy logs a warning and loads as vacuous (never applies). Don't rely on this — check `knowledge/index.md` after authoring to confirm your policy appears in the table.
+
+See [`docs/adrs/007-policy-articles.md`](docs/adrs/007-policy-articles.md) for the full rationale and enforcement boundary. A working example lives at [`knowledge/notes/policy-example-security-enrichment.md`](knowledge/notes/policy-example-security-enrichment.md).
+
+## How to register a canonical value
+
+A *canonical value* is a numeric or monetary figure the corpus agrees on by name — `c_rt = $0.010`, `K_min = $1,815`, `ws11_bars = 22.35`. Registering a canonical value lets `monsthera lint` catch drift when another article mentions the same name with a different number.
+
+Add the value to the JSON array in [`knowledge/notes/canonical-values.md`](knowledge/notes/canonical-values.md) (or create a sibling `category: policy` article with its own `policy_canonical_values_json` — first-wins on name collisions):
+
+```yaml
+---
+# ... standard frontmatter ...
+category: policy
+policy_canonical_values_json: '[{"name":"c_rt","value":"$0.010","unit":"per_rt","source_article":"k-aristotle-c2-cpcv","valid_since_commit":"8012863","rationale":"Corrected from $0.10 in Wave-2 boundary review"}]'
+---
+```
+
+Fields:
+
+- `name` (required) — the token `monsthera lint` will look for in prose.
+- `value` (required) — the canonical string. Comparison is raw-string after stripping `$`, `,`, and whitespace, so `0.010` vs `0.01` counts as drift.
+- `unit`, `source_article`, `valid_since_commit`, `rationale` — all optional. `valid_since_commit` surfaces in lint findings.
+
+The field is a JSON string because the flat markdown parser does not round-trip nested YAML (see ADR-010). Keep the outer single quotes, use valid JSON inside. After editing, run `monsthera lint` to verify the registry parses — malformed JSON is logged and the registry silently drops the offending article.
+
+## How to query the ref graph
+
+`monsthera knowledge refs` surfaces reference-graph edges across the whole corpus:
+
+- `monsthera knowledge refs --to <id-or-slug>` — list every article that cites the target (incoming).
+- `monsthera knowledge refs --from <id-or-slug>` — list every article the target cites (outgoing).
+- `monsthera knowledge refs --orphans` — list citations whose target does not resolve to any existing article; reviewers can jump to the source via the reported `path`.
+
+Add `--format json` for programmatic consumption. The view is **unbounded** — use it for audits. The `get_article` MCP tool's `connections` block is capped at 10 and is the right tool for browsing; `refs_incoming` / `refs_outgoing` / `refs_orphans` MCP tools are the audit surface.
+
+Inline citations in prose (`k-some-id`, `w-some-id`) count as references alongside frontmatter `references:` entries, so an inline mention of a non-existent id shows up under `--orphans` and as a `warning` finding in `monsthera lint`.
+
 ## Where to look next
 
 - [`docs/CODING-STANDARDS.md`](docs/CODING-STANDARDS.md) — style, naming, formatting conventions.
