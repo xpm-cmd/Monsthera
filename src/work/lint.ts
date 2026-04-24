@@ -313,13 +313,27 @@ function scanPhraseAntiExamples(
   if (phrases.length === 0) return [];
 
   const findings: PhraseAntiExampleFinding[] = [];
-  const lines = body.split("\n");
+  // Strip fenced blocks at the body level (they span multiple lines, so
+  // a line-only strip cannot reach them) but leave HTML comments and
+  // inline code in place — the per-line pass below runs forward-guard
+  // on the original line so markers like `<!-- anti-example -->` keep
+  // working as intended.
+  const bodyWithoutFences = stripFencedBlocks(body);
+  const lines = bodyWithoutFences.split("\n");
 
-  for (const phrase of phrases) {
-    const needle = phrase.phrase.toLowerCase();
-    for (const line of lines) {
-      if (!line.toLowerCase().includes(needle)) continue;
-      if (lineHasForwardGuard(line)) continue;
+  for (const line of lines) {
+    // Forward-guard check runs on the ORIGINAL line so markers like
+    // `<!-- anti-example -->` stay visible. The match itself then runs
+    // on a line stripped of inline code so a registry article quoting
+    // the wrong form in backticks (markdown table cells) does not
+    // self-flag.
+    if (lineHasForwardGuard(line)) continue;
+    const stripped = stripInlineCode(line);
+    const stripLower = stripped.toLowerCase();
+
+    for (const phrase of phrases) {
+      const needle = phrase.phrase.toLowerCase();
+      if (!stripLower.includes(needle)) continue;
 
       findings.push({
         file,
@@ -334,6 +348,26 @@ function scanPhraseAntiExamples(
   }
 
   return findings;
+}
+
+/**
+ * Remove inline backtick-delimited code and HTML comments from a single
+ * line so phrases quoted as literals (e.g. in a markdown table) do not
+ * trigger the phrase matcher. Fenced blocks are handled separately at
+ * the body level by `stripFencedBlocks`.
+ */
+function stripInlineCode(line: string): string {
+  let out = line.replace(/<!--[\s\S]*?-->/g, "");
+  out = out.replace(/(`{1,3})(?:(?!\1).)+?\1/g, "");
+  return out;
+}
+
+/** Remove fenced code blocks only; preserves other text verbatim. */
+function stripFencedBlocks(content: string): string {
+  return content.replace(
+    /^([ \t]{0,3})(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1\2[ \t]*$/gm,
+    "",
+  );
 }
 
 function scanTokenDrift(
