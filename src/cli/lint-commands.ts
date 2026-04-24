@@ -2,26 +2,41 @@
 import * as path from "node:path";
 import { PolicyLoader } from "../work/policy-loader.js";
 import { scanCorpus } from "../work/lint.js";
-import type { LintFinding, LintInclude, OrphanCitationFinding } from "../work/lint.js";
+import type {
+  LintFinding,
+  LintInclude,
+  LintRegistry,
+  OrphanCitationFinding,
+} from "../work/lint.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
 
+const VALID_REGISTRIES: readonly LintRegistry[] = ["canonical-values", "anti-examples", "all"];
+
 /**
- * `monsthera lint` — scan the corpus for canonical-value drift (and, once
- * Part 2 lands, orphan citations). JSON-lines on stdout by default so the
- * output is pipe-friendly; logs stay on stderr through the shared logger.
- * Exit code 1 when any `severity: error` finding is produced.
+ * `monsthera lint` — scan the corpus for canonical-value drift,
+ * token-level anti-example drift, phrase-level anti-examples, and
+ * orphan citations. JSON-lines on stdout by default so the output is
+ * pipe-friendly; logs stay on stderr through the shared logger. Exit
+ * code 1 when any `severity: error` finding is produced.
  */
 export async function handleLint(args: string[]): Promise<void> {
   if (wantsHelp(args)) {
     printSubcommandHelp({
       command: "monsthera lint",
-      summary: "Audit the knowledge and work corpus for canonical-value drift.",
-      usage: "[--include knowledge|work|both] [--format json|text] [--repo <path>]",
+      summary:
+        "Audit the knowledge + work corpus for canonical-value drift, anti-example drift, and orphan citations.",
+      usage:
+        "[--include knowledge|work|both] [--registry canonical-values|anti-examples|all] [--format json|text] [--repo <path>]",
       flags: [
         {
           name: "--include <set>",
           description: "Which article kinds to scan. Default: both.",
+        },
+        {
+          name: "--registry <name>",
+          description:
+            "Which registry family to apply: canonical-values, anti-examples, or all (default).",
         },
         {
           name: "--format <fmt>",
@@ -30,22 +45,30 @@ export async function handleLint(args: string[]): Promise<void> {
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
       notes: [
-        "Exit code 1 when any canonical_value_mismatch is found; 0 otherwise.",
-        "Orphan citations (if present in later versions) are warnings and do not affect exit code.",
+        "Exit code 1 when any canonical_value_mismatch, token_drift, or phrase_anti_example is found; 0 otherwise.",
+        "Orphan citations are warnings and do not affect exit code.",
       ],
       examples: [
         "monsthera lint",
         "monsthera lint --include knowledge --format text",
+        "monsthera lint --registry anti-examples",
       ],
     });
     return;
   }
 
   const include = (parseFlag(args, "--include") as LintInclude | undefined) ?? "both";
+  const registry = (parseFlag(args, "--registry") as LintRegistry | undefined) ?? "all";
   const format = parseFlag(args, "--format") ?? "json";
 
   if (!["knowledge", "work", "both"].includes(include)) {
     console.error(`Invalid --include "${include}" (expected knowledge|work|both).`);
+    process.exit(1);
+  }
+  if (!VALID_REGISTRIES.includes(registry)) {
+    console.error(
+      `Invalid --registry "${registry}" (expected ${VALID_REGISTRIES.join("|")}).`,
+    );
     process.exit(1);
   }
   if (!["json", "text"].includes(format)) {
@@ -54,16 +77,18 @@ export async function handleLint(args: string[]): Promise<void> {
   }
 
   await withContainer(args, async (container) => {
-    const markdownRoot = path.resolve(
-      container.config.repoPath,
-      container.config.storage.markdownRoot,
-    );
+    const repoRoot = container.config.repoPath;
+    const markdownRoot = path.resolve(repoRoot, container.config.storage.markdownRoot);
 
     const policyLoader = new PolicyLoader({
       knowledgeRepo: container.knowledgeRepo,
       logger: container.logger,
     });
-    const canonicalValues = await policyLoader.getCanonicalValues();
+    const [canonicalValues, antiExampleTokens, antiExamplePhrases] = await Promise.all([
+      policyLoader.getCanonicalValues(),
+      policyLoader.getAntiExampleTokens(),
+      policyLoader.getAntiExamplePhrases(),
+    ]);
 
     const orphansResult = await container.structureService.getOrphanCitations();
     const orphanFindings: OrphanCitationFinding[] = orphansResult.ok
@@ -79,7 +104,11 @@ export async function handleLint(args: string[]): Promise<void> {
     const result = await scanCorpus({
       markdownRoot,
       include,
+      registry,
+      repoRoot,
       canonicalValues,
+      antiExampleTokens,
+      antiExamplePhrases,
       orphanFindings,
     });
 
