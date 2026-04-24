@@ -29,6 +29,11 @@ export async function handleKnowledge(args: string[]): Promise<void> {
         { name: "update", summary: "Update an article's fields." },
         { name: "delete", summary: "Delete an article by id." },
         { name: "refs", summary: "Query the reference graph (--to, --from, --orphans)." },
+        {
+          name: "verify-citations",
+          summary:
+            "Check that inline citation-with-number pairs match the cited article's content.",
+        },
       ],
     });
     return;
@@ -52,6 +57,9 @@ export async function handleKnowledge(args: string[]): Promise<void> {
       break;
     case "refs":
       await handleKnowledgeRefs(subArgs);
+      break;
+    case "verify-citations":
+      await handleKnowledgeVerifyCitations(subArgs);
       break;
     default:
       console.error(`Unknown knowledge subcommand: ${subcommand}`);
@@ -148,6 +156,118 @@ async function handleKnowledgeRefs(args: string[]): Promise<void> {
         edges.map((e) => [e.id, e.title, e.kind]),
       ) + "\n",
     );
+  });
+}
+
+async function handleKnowledgeVerifyCitations(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera knowledge verify-citations",
+      summary:
+        "Verify inline citation-with-number pairs against the cited article's content.",
+      usage: "(<id-or-slug> | --all) [--format table|json]",
+      flags: [
+        {
+          name: "<id-or-slug>",
+          description:
+            "Verify one article. Mutually exclusive with --all. The article is looked up by id first, then by slug.",
+        },
+        {
+          name: "--all",
+          description:
+            "Iterate every knowledge + work article. O(N*M) in citation pairs — use with intent.",
+        },
+        { name: "--format <fmt>", description: "table (default) or json (NDJSON)." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "Exit code 1 if any mismatch is reported; 0 otherwise.",
+        "Orphan citations (unknown target) are not reported here — use `knowledge refs --orphans`.",
+      ],
+      examples: [
+        "monsthera knowledge verify-citations k-wave-2-review",
+        "monsthera knowledge verify-citations --all --format json",
+      ],
+    });
+    return;
+  }
+
+  const all = args.includes("--all");
+  const target = parsePositional(args, 0);
+  const format = parseFlag(args, "--format") ?? "table";
+
+  if (all && target) {
+    console.error("Pass either <id-or-slug> or --all, not both.");
+    process.exit(1);
+  }
+  if (!all && !target) {
+    console.error("Provide <id-or-slug> or pass --all. See `--help` for usage.");
+    process.exit(1);
+  }
+  if (!["table", "json"].includes(format)) {
+    console.error(`Invalid --format "${format}" (expected table|json).`);
+    process.exit(1);
+  }
+
+  await withContainer(args, async (container) => {
+    const findings: Array<{
+      sourceArticle: string;
+      citedArticle: string;
+      claimedValue: string;
+      foundValues: readonly string[];
+      lineHint: string;
+    }> = [];
+
+    if (all) {
+      const [knowledge, work] = await Promise.all([
+        container.knowledgeRepo.findMany(),
+        container.workRepo.findMany(),
+      ]);
+      if (!knowledge.ok) {
+        console.error(formatError(knowledge.error));
+        process.exit(1);
+      }
+      if (!work.ok) {
+        console.error(formatError(work.error));
+        process.exit(1);
+      }
+      const ids = [...knowledge.value.map((a) => a.id), ...work.value.map((a) => a.id)];
+      for (const id of ids) {
+        const res = await container.structureService.verifyCitedValues(id);
+        if (!res.ok) continue;
+        findings.push(...res.value);
+      }
+    } else {
+      const res = await container.structureService.verifyCitedValues(target!);
+      if (!res.ok) {
+        console.error(formatError(res.error));
+        process.exit(1);
+      }
+      findings.push(...res.value);
+    }
+
+    if (format === "json") {
+      for (const f of findings) {
+        process.stdout.write(JSON.stringify(f) + "\n");
+      }
+    } else if (findings.length === 0) {
+      process.stdout.write("No citation-value mismatches.\n");
+    } else {
+      process.stdout.write(
+        formatTable(
+          ["Source", "Cited", "Claimed", "Found (sample)", "Line"],
+          findings.map((f) => [
+            f.sourceArticle,
+            f.citedArticle,
+            f.claimedValue,
+            f.foundValues.slice(0, 3).join(", "),
+            f.lineHint,
+          ]),
+        ) + "\n",
+      );
+    }
+
+    if (findings.length > 0) process.exit(1);
   });
 }
 
