@@ -442,7 +442,8 @@ describe("CLI main()", () => {
       const output = await captureStdout(() =>
         main(["work", "advance", id, "--phase", "done", "--skip-guard-reason", "no reviewer in this session", "--repo", repoPath]),
       );
-      expect(output).toContain("Phase:     done");
+      expect(output).toContain(`OK: ${id} advanced review → done`);
+      expect(output).toContain('reason: "no reviewer in this session"');
     });
 
     it("work advance --phase cancelled requires --reason", async () => {
@@ -471,7 +472,8 @@ describe("CLI main()", () => {
       const output = await captureStdout(() =>
         main(["work", "advance", id, "--phase", "cancelled", "--reason", "deferred indefinitely", "--repo", repoPath]),
       );
-      expect(output).toContain("Phase:     cancelled");
+      expect(output).toContain(`OK: ${id} advanced planning → cancelled`);
+      expect(output).toContain('reason: "deferred indefinitely"');
     });
 
     it("work create --content-file reads body from disk verbatim (backticks survive)", async () => {

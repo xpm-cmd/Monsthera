@@ -435,22 +435,42 @@ async function handleWorkUpdate(args: string[]): Promise<void> {
   });
 }
 
+const ADVANCE_REASON_TRUNCATE_LEN = 80;
+
 async function handleWorkAdvance(args: string[]): Promise<void> {
   if (wantsHelp(args)) {
     printSubcommandHelp({
       command: "monsthera work advance",
       summary: "Advance a work article to a new phase.",
-      usage: "<id> --phase <target> [--reason <text>] [--skip-guard-reason <text>]",
+      usage: "<id> --phase <target> [--reason <text>] [--skip-guard-reason <text>] [--verbose | --format json]",
       positional: [{ name: "<id>", description: "Work article id." }],
       flags: [
         { name: "--phase <target>", required: true, description: `One of: ${[...VALID_PHASES].join(" | ")}` },
         { name: "--reason <text>", description: "Free-text reason recorded in phase history." },
         { name: "--skip-guard-reason <text>", description: "Bypass phase guards with an audit reason." },
+        { name: "--verbose", description: "Dump the full article after advance (pre-3.0 default)." },
+        { name: "--format <fmt>", description: "text (default, 1-2 lines) or json (single-line JSON)." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "Default output is a single success line plus an optional truncated-reason line — stream-friendly.",
+        "`--verbose` and `--format json` are mutually exclusive.",
       ],
     });
     return;
   }
+
+  const verbose = args.includes("--verbose");
+  const formatFlag = parseFlag(args, "--format");
+  if (formatFlag !== undefined && !["text", "json"].includes(formatFlag)) {
+    console.error(`Invalid --format "${formatFlag}" (expected text|json).`);
+    process.exit(1);
+  }
+  if (verbose && formatFlag === "json") {
+    console.error("--verbose and --format json are mutually exclusive.");
+    process.exit(1);
+  }
+  const format: "text" | "json" = (formatFlag as "text" | "json" | undefined) ?? "text";
 
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
@@ -470,13 +490,51 @@ async function handleWorkAdvance(args: string[]): Promise<void> {
     const options: { reason?: string; skipGuard?: { reason: string } } = {};
     if (reason) options.reason = reason;
     if (skipGuardReason) options.skipGuard = { reason: skipGuardReason };
+
+    // Capture the pre-advance phase so the default output can report the
+    // transition as `<from> → <to>` without inferring it from phaseHistory.
+    const prev = await container.workService.getWork(id);
+    const fromPhase = prev.ok ? prev.value.phase : undefined;
+
     const result = await container.workService.advancePhase(id, phase, options);
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
     }
-    process.stdout.write(formatWorkArticle(result.value) + "\n");
+    const article = result.value;
+
+    if (verbose) {
+      process.stdout.write(formatWorkArticle(article) + "\n");
+      return;
+    }
+
+    const latest = article.phaseHistory[article.phaseHistory.length - 1];
+    const advancedAt = latest?.enteredAt ?? article.updatedAt;
+    const persistedReason = latest?.reason;
+
+    if (format === "json") {
+      process.stdout.write(
+        JSON.stringify({
+          workId: article.id,
+          from: fromPhase,
+          to: article.phase,
+          advancedAt,
+          ...(persistedReason ? { reason: persistedReason } : {}),
+        }) + "\n",
+      );
+      return;
+    }
+
+    process.stdout.write(`OK: ${article.id} advanced ${fromPhase ?? "?"} → ${article.phase}\n`);
+    if (persistedReason) {
+      process.stdout.write(`reason: ${JSON.stringify(truncateReason(persistedReason))}\n`);
+    }
   });
+}
+
+function truncateReason(reason: string): string {
+  if (reason.length <= ADVANCE_REASON_TRUNCATE_LEN) return reason;
+  return reason.slice(0, ADVANCE_REASON_TRUNCATE_LEN - 3) + "...";
 }
 
 async function handleWorkEnrich(args: string[]): Promise<void> {
