@@ -8,7 +8,7 @@ import type { StorageError } from "../core/errors.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
 import { resolveCodeRef } from "../core/code-refs.js";
-import { extractInlineArticleIds, extractWikilinks } from "./wikilink.js";
+import { extractInlineArticleIds, extractWikilinks, stripCodeRegions } from "./wikilink.js";
 
 /** Tags shared by up to this many articles get full pairwise edges. */
 const SHARED_TAG_DIRECT_THRESHOLD = 15;
@@ -115,6 +115,24 @@ export interface OrphanCitation {
   readonly sourceArticleId: string;
   readonly missingRefId: string;
   readonly sourcePath?: string;
+}
+
+/**
+ * A citation in some article's prose that claims a numeric value adjacent
+ * to a reference, where the referenced article's content does not contain
+ * that value. The reviewer signal: "you cited X saying Y, but X does not
+ * say Y — which side needs updating?".
+ *
+ * `foundValues` is a bounded list of numeric tokens observed in the cited
+ * article, offered as candidates the author may have meant. Empty when
+ * the cited article contains no numbers at all.
+ */
+export interface CitationValueFinding {
+  readonly sourceArticle: string;
+  readonly citedArticle: string;
+  readonly claimedValue: string;
+  readonly foundValues: readonly string[];
+  readonly lineHint: string;
 }
 
 export interface StructureServiceDeps {
@@ -664,6 +682,74 @@ export class StructureService {
     return targetNode;
   }
 
+  /**
+   * Verify every "citation-with-number" claim in an article against the
+   * content of the cited article. For each pair `(citation, claimedValue)`
+   * extracted from source prose, resolve the citation to a knowledge or
+   * work article and check whether `claimedValue` appears anywhere in
+   * that article's content or frontmatter fields. Mismatches surface as
+   * `CitationValueFinding` entries.
+   *
+   * Scope note: unlike `getRefGraph`, this method opens target articles
+   * and scans their text — the complexity grows with the number of
+   * citation-value pairs in the source. Callers that want corpus-wide
+   * verification should iterate at their layer; the CLI does this
+   * explicitly under `--all` to keep the signal bounded.
+   */
+  async verifyCitedValues(
+    articleIdOrSlug: string,
+  ): Promise<Result<readonly CitationValueFinding[], NotFoundError | StorageError>> {
+    const [knowledgeResult, workResult] = await Promise.all([
+      this.knowledgeRepo.findMany(),
+      this.workRepo.findMany(),
+    ]);
+    if (!knowledgeResult.ok) return knowledgeResult;
+    if (!workResult.ok) return workResult;
+
+    const knowledgeArticles = knowledgeResult.value;
+    const workArticles = workResult.value;
+
+    const source = resolveArticle(articleIdOrSlug, knowledgeArticles, workArticles);
+    if (!source) return err(new NotFoundError("Article", articleIdOrSlug));
+
+    const knowledgeById = new Map<string, string>(
+      knowledgeArticles.map((a) => [a.id, a.content]),
+    );
+    const knowledgeBySlug = new Map<string, string>(
+      knowledgeArticles.map((a) => [a.slug, a.content]),
+    );
+    const workById = new Map<string, string>(
+      workArticles.map((a) => [a.id, a.content]),
+    );
+
+    const resolveTargetContent = (ref: string): string | undefined =>
+      knowledgeById.get(ref) ?? knowledgeBySlug.get(ref) ?? workById.get(ref);
+
+    const pairs = extractCitationValuePairs(source.content);
+    const findings: CitationValueFinding[] = [];
+
+    for (const pair of pairs) {
+      if (pair.citationId === source.id) continue;
+
+      const targetContent = resolveTargetContent(pair.citationId);
+      // Unknown citation targets are the domain of `getOrphanCitations`,
+      // not of value verification.
+      if (targetContent === undefined) continue;
+
+      if (contentContainsValue(targetContent, pair.claimedValue)) continue;
+
+      findings.push({
+        sourceArticle: source.id,
+        citedArticle: pair.citationId,
+        claimedValue: pair.claimedValue,
+        foundValues: extractNumericTokens(targetContent, 10),
+        lineHint: pair.lineHint,
+      });
+    }
+
+    return ok(findings);
+  }
+
   private async codeRefExists(codeRef: string): Promise<boolean> {
     const resolved = resolveCodeRef(this.repoPath, codeRef);
 
@@ -674,4 +760,110 @@ export class StructureService {
       return false;
     }
   }
+}
+
+// ─── Helpers for verifyCitedValues ────────────────────────────────────────
+
+interface ResolvedArticleLike {
+  readonly id: string;
+  readonly content: string;
+}
+
+function resolveArticle(
+  idOrSlug: string,
+  knowledge: ReadonlyArray<{ id: string; slug: string; content: string }>,
+  work: ReadonlyArray<{ id: string; content: string }>,
+): ResolvedArticleLike | undefined {
+  const byId = knowledge.find((a) => a.id === idOrSlug) ?? work.find((a) => a.id === idOrSlug);
+  if (byId) return { id: byId.id, content: byId.content };
+  const bySlug = knowledge.find((a) => a.slug === idOrSlug);
+  if (bySlug) return { id: bySlug.id, content: bySlug.content };
+  return undefined;
+}
+
+/** Citation-value window: how far after a citation token we look for a number. */
+const CITATION_VALUE_WINDOW = 80;
+
+/** A numeric token with optional `$`, thousands separator, decimal, and `%`. */
+const NUMERIC_TOKEN = /-?\$?\d[\d,]*(?:\.\d+)?%?/g;
+
+interface CitationValuePair {
+  readonly citationId: string;
+  readonly claimedValue: string;
+  readonly lineHint: string;
+}
+
+/**
+ * Extract every `(citation, nearby-number)` pair in an article's prose.
+ * A citation is either an inline `k-*` / `w-*` id or a `[[slug]]`
+ * wikilink. Code regions are stripped first so example citations inside
+ * fenced blocks do not produce false pairs.
+ *
+ * Multiple numbers after a single citation each yield a separate pair
+ * — when the author wrote "see k-foo: 22.4% ($923 floor)", the verifier
+ * checks both numbers against the cited article.
+ */
+function extractCitationValuePairs(content: string): readonly CitationValuePair[] {
+  const stripped = stripCodeRegions(content);
+  const citationPattern = /(\b[kw]-[a-z0-9]+(?:-[a-z0-9]+)*\b|\[\[([^\]]+)\]\])/g;
+  const pairs: CitationValuePair[] = [];
+
+  for (const match of stripped.matchAll(citationPattern)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    const windowText = stripped.slice(end, end + CITATION_VALUE_WINDOW);
+    const citationId = match[2] !== undefined ? parseWikilinkSlug(match[2]) : match[0];
+    if (!citationId) continue;
+
+    for (const numMatch of windowText.matchAll(NUMERIC_TOKEN)) {
+      pairs.push({
+        citationId,
+        claimedValue: numMatch[0],
+        lineHint: extractLineAt(stripped, start),
+      });
+    }
+  }
+
+  return pairs;
+}
+
+function parseWikilinkSlug(inner: string): string | undefined {
+  const trimmed = inner.trim();
+  const pipe = trimmed.indexOf("|");
+  const slugPart = pipe >= 0 ? trimmed.slice(0, pipe) : trimmed;
+  const hash = slugPart.indexOf("#");
+  const slug = hash >= 0 ? slugPart.slice(0, hash).trim() : slugPart.trim();
+  return slug.length > 0 ? slug : undefined;
+}
+
+function contentContainsValue(content: string, claimed: string): boolean {
+  const normClaimed = normaliseNumericToken(claimed);
+  if (normClaimed === "") return false;
+  for (const match of content.matchAll(NUMERIC_TOKEN)) {
+    if (normaliseNumericToken(match[0]) === normClaimed) return true;
+  }
+  return false;
+}
+
+function normaliseNumericToken(raw: string): string {
+  return raw.replace(/[$,\s%]/g, "").trim();
+}
+
+function extractNumericTokens(content: string, limit: number): readonly string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const match of content.matchAll(NUMERIC_TOKEN)) {
+    const tok = match[0];
+    if (seen.has(tok)) continue;
+    seen.add(tok);
+    out.push(tok);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function extractLineAt(text: string, index: number): string {
+  const lineStart = text.lastIndexOf("\n", index) + 1;
+  const lineEnd = text.indexOf("\n", index);
+  return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
 }
