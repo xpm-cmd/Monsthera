@@ -2,7 +2,7 @@
 import * as path from "node:path";
 import { PolicyLoader } from "../work/policy-loader.js";
 import { scanCorpus } from "../work/lint.js";
-import type { LintFinding, LintInclude } from "../work/lint.js";
+import type { LintFinding, LintInclude, OrphanCitationFinding } from "../work/lint.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
 
@@ -65,10 +65,22 @@ export async function handleLint(args: string[]): Promise<void> {
     });
     const canonicalValues = await policyLoader.getCanonicalValues();
 
+    const orphansResult = await container.structureService.getOrphanCitations();
+    const orphanFindings: OrphanCitationFinding[] = orphansResult.ok
+      ? orphansResult.value.map((o) => ({
+          file: o.sourcePath ?? "",
+          severity: "warning" as const,
+          rule: "orphan_citation" as const,
+          sourceArticleId: o.sourceArticleId,
+          missingRefId: o.missingRefId,
+        }))
+      : [];
+
     const result = await scanCorpus({
       markdownRoot,
       include,
       canonicalValues,
+      orphanFindings,
     });
 
     if (format === "json") {

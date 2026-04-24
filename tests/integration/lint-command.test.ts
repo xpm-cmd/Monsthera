@@ -167,4 +167,53 @@ describe("Integration: monsthera lint", () => {
 
     await fs.rm(repoPath, { recursive: true, force: true });
   }, 120_000);
+
+  it("reports orphan citations as warnings without affecting exit code", async () => {
+    const repoPath = path.join("/tmp", `monsthera-lint-${randomUUID()}`);
+    const notesDir = path.join(repoPath, "knowledge", "notes");
+    await fs.mkdir(notesDir, { recursive: true });
+
+    const orphanSource = [
+      "---",
+      "id: k-orphan-source",
+      'title: "Has an orphan citation"',
+      "slug: orphan-source",
+      "category: context",
+      "tags: []",
+      "codeRefs: []",
+      "references: []",
+      "createdAt: 2026-04-24T00:00:00.000Z",
+      "updatedAt: 2026-04-24T00:00:00.000Z",
+      "---",
+      "",
+      "I mention k-does-not-exist in prose; lint should flag it as a warning.",
+      "",
+    ].join("\n");
+
+    await fs.writeFile(
+      path.join(notesDir, "orphan-source.md"),
+      orphanSource,
+      "utf-8",
+    );
+
+    const res = spawnSync("node", [binPath, "lint", "--repo", repoPath], {
+      encoding: "utf-8",
+      env: { ...process.env, NO_COLOR: "1" },
+    });
+
+    // No canonical_value_mismatch here, so exit code should stay 0 even
+    // though warnings are present — warnings must not break pipelines.
+    expect(res.status).toBe(0);
+
+    const lines = res.stdout.trim().split("\n").filter((l) => l.length > 0);
+    const parsed = lines.map((l) => JSON.parse(l));
+    const orphan = parsed.find(
+      (f) => f.rule === "orphan_citation" && f.missingRefId === "k-does-not-exist",
+    );
+    expect(orphan).toBeDefined();
+    expect(orphan.severity).toBe("warning");
+    expect(orphan.sourceArticleId).toBe("k-orphan-source");
+
+    await fs.rm(repoPath, { recursive: true, force: true });
+  }, 120_000);
 });

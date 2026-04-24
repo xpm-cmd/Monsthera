@@ -2,7 +2,7 @@ import * as path from "node:path";
 import type { MonstheraContainer } from "../core/container.js";
 import { PolicyLoader } from "../work/policy-loader.js";
 import { scanCorpus } from "../work/lint.js";
-import type { LintInclude } from "../work/lint.js";
+import type { LintInclude, OrphanCitationFinding } from "../work/lint.js";
 import type { ToolDefinition, ToolResponse } from "./knowledge-tools.js";
 import { successResponse, errorResponse } from "./validation.js";
 
@@ -14,7 +14,7 @@ export function lintToolDefinitions(): ToolDefinition[] {
     {
       name: "lint_corpus",
       description:
-        "Audit the knowledge + work corpus for canonical-value drift. Returns a `findings[]` array (one entry per violation) plus `errorCount` / `warningCount` tallies. `canonical_value_mismatch` findings are errors; `orphan_citation` findings are warnings and are only present once ref-graph auditing is wired. Read `knowledge/notes/canonical-values.md` first to see the registry that defines what drift means.",
+        "Audit the knowledge + work corpus for canonical-value drift and orphan citations. Returns a `findings[]` array (one entry per violation) plus `errorCount` / `warningCount` tallies. `canonical_value_mismatch` findings are errors (exit code 1 in the CLI); `orphan_citation` findings are warnings (a reference in frontmatter or inline prose that does not resolve to any existing article). Read `knowledge/notes/canonical-values.md` first to see the registry that defines what drift means.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -57,7 +57,18 @@ export async function handleLintTool(
   });
   const canonicalValues = await policyLoader.getCanonicalValues();
 
-  const result = await scanCorpus({ markdownRoot, include, canonicalValues });
+  const orphansResult = await container.structureService.getOrphanCitations();
+  const orphanFindings: OrphanCitationFinding[] = orphansResult.ok
+    ? orphansResult.value.map((o) => ({
+        file: o.sourcePath ?? "",
+        severity: "warning" as const,
+        rule: "orphan_citation" as const,
+        sourceArticleId: o.sourceArticleId,
+        missingRefId: o.missingRefId,
+      }))
+    : [];
+
+  const result = await scanCorpus({ markdownRoot, include, canonicalValues, orphanFindings });
 
   return successResponse(result);
 }
