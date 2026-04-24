@@ -76,6 +76,33 @@ export function extractWikilinks(content: string): ExtractedWikilink[] {
 }
 
 /**
+ * Extract inline article-ID citations (`k-xxx`, `w-xxx`) from markdown content
+ * in document order with duplicates removed. Code regions (fenced blocks,
+ * inline code, HTML comments) are stripped first so example IDs inside
+ * snippets don't leak into the ref graph.
+ *
+ * The pattern matches `[kw]-` followed by one or more hyphen-separated
+ * segments of `[a-z0-9]+`. This accepts both auto-generated IDs like
+ * `k-a1b2c3d4` and hand-authored ones like `k-policy-example-security`.
+ * Word boundaries on both ends prevent mid-word false positives (e.g. `block`
+ * does not match `k-...`).
+ */
+export function extractInlineArticleIds(content: string): readonly string[] {
+  const stripped = stripCodeRegions(content);
+  const matches = stripped.matchAll(/\b[kw]-[a-z0-9]+(?:-[a-z0-9]+)*\b/g);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of matches) {
+    const id = m[0];
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
+}
+
+/**
  * Walk `content` and produce a list of segments tagged as either "code"
  * (inside HTML comments, fenced code blocks, or inline code) or "text"
  * (everything else). Callers can safely mutate only the "text" segments

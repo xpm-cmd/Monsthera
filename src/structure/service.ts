@@ -8,7 +8,7 @@ import type { StorageError } from "../core/errors.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
 import { resolveCodeRef } from "../core/code-refs.js";
-import { extractWikilinks } from "./wikilink.js";
+import { extractInlineArticleIds, extractWikilinks } from "./wikilink.js";
 
 /** Tags shared by up to this many articles get full pairwise edges. */
 const SHARED_TAG_DIRECT_THRESHOLD = 15;
@@ -186,11 +186,14 @@ export class StructureService {
       bucketTags(nodeId, article.tags);
       rememberCodeRef(nodeId, article.codeRefs);
 
-      // Resolve explicit references + wikilinks from content
+      // Resolve explicit references + wikilinks + inline article IDs from content
       const explicitRefs = article.references ?? [];
       const wikilinks = extractWikilinks(article.content);
       const wikilinkSlugs = wikilinks.map((l) => l.slug);
-      const allRefs = [...new Set([...explicitRefs, ...wikilinkSlugs])];
+      const inlineIds = extractInlineArticleIds(article.content);
+      const allRefs = [...new Set([...explicitRefs, ...wikilinkSlugs, ...inlineIds])].filter(
+        (ref) => ref !== article.id,
+      );
       for (const ref of allRefs) {
         const knowledgeTarget = knowledgeById.get(ref) ?? knowledgeBySlug.get(ref);
         const workTarget = workById.get(ref);
@@ -267,7 +270,10 @@ export class StructureService {
 
       const workWikilinks = extractWikilinks(article.content);
       const workWikilinkSlugs = workWikilinks.map((l) => l.slug);
-      const allWorkRefs = [...new Set([...article.references, ...workWikilinkSlugs])];
+      const workInlineIds = extractInlineArticleIds(article.content);
+      const allWorkRefs = [...new Set([...article.references, ...workWikilinkSlugs, ...workInlineIds])].filter(
+        (ref) => ref !== article.id,
+      );
       for (const ref of allWorkRefs) {
         const knowledgeTarget = knowledgeById.get(ref) ?? knowledgeBySlug.get(ref);
         const workTarget = workById.get(ref);
