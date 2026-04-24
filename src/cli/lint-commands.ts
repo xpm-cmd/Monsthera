@@ -101,16 +101,27 @@ function formatFindingsTable(findings: readonly LintFinding[]): string {
   if (findings.length === 0) return "No findings.";
   const lines: string[] = [];
   for (const f of findings) {
-    if (f.rule === "canonical_value_mismatch") {
-      const since = f.sinceCommit ? ` (since ${f.sinceCommit})` : "";
-      lines.push(
-        `${f.severity.toUpperCase()} ${f.file}: ${f.name} expected ${f.expected}, found ${f.found}${since} — ${f.lineHint}`,
-      );
-    } else {
-      lines.push(
-        `${f.severity.toUpperCase()} ${f.file}: orphan citation ${f.missingRefId} from ${f.sourceArticleId}`,
-      );
-    }
+    lines.push(formatFinding(f));
   }
   return lines.join("\n");
+}
+
+function formatFinding(f: LintFinding): string {
+  const prefix = `${f.severity.toUpperCase()} ${f.file}`;
+  switch (f.rule) {
+    case "canonical_value_mismatch": {
+      const since = f.sinceCommit ? ` (since ${f.sinceCommit})` : "";
+      return `${prefix}: ${f.name} expected ${f.expected}, found ${f.found}${since} — ${f.lineHint}`;
+    }
+    case "orphan_citation":
+      return `${prefix}: orphan citation ${f.missingRefId} from ${f.sourceArticleId}`;
+    case "token_drift": {
+      const hint = f.suggestion ? ` (did you mean ${f.suggestion}?)` : "";
+      return `${prefix}: token drift "${f.token}" (pattern ${f.pattern})${hint} — ${f.lineHint}`;
+    }
+    case "phrase_anti_example": {
+      const since = f.sinceCommit ? ` (since ${f.sinceCommit})` : "";
+      return `${prefix}: anti-example "${f.phrase}" — use "${f.corrected}"${since} — ${f.lineHint}`;
+    }
+  }
 }
