@@ -179,56 +179,165 @@ async function handleWorkGet(args: string[]): Promise<void> {
   });
 }
 
+type WorkListFormat = "table" | "csv" | "tsv" | "json";
+
+const VALID_FORMATS: ReadonlySet<string> = new Set(["table", "csv", "tsv", "json"]);
+
 async function handleWorkList(args: string[]): Promise<void> {
   if (wantsHelp(args)) {
     printSubcommandHelp({
       command: "monsthera work list",
-      summary: "List work articles.",
-      usage: "[--phase <p>] [--json]",
+      summary: "List work articles with optional filters.",
+      usage: "[--phase <p>] [--tag <t>] [--wave <name>] [--phase-age-days <n>] [--format table|csv|tsv|json] [--json]",
       flags: [
         { name: "--phase <p>", description: `Filter by phase. One of: ${[...VALID_PHASES].join(" | ")}` },
-        { name: "--json", description: "Emit the full list as JSON." },
+        { name: "--tag <t>", description: "Filter by a single tag (article must carry it)." },
+        { name: "--wave <name>", description: "Shorthand: matches tag `wave-<name>` or the literal name." },
+        { name: "--phase-age-days <n>", description: "Only articles whose current phase is at least <n> days old (by latest phaseHistory.enteredAt)." },
+        { name: "--format <fmt>", description: "table (default) | csv | tsv | json (NDJSON).", default: "table" },
+        { name: "--json", description: "Alias for --format json. Kept for backwards compatibility." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "Filters are AND-combined. `--phase` goes through the repo's findByPhase; the rest are in-memory.",
+        "CSV/TSV/JSON output is stream-friendly (logs stay on stderr).",
       ],
     });
     return;
   }
 
-  await withContainer(args, async (container) => {
-    const phaseParam = parseFlag(args, "--phase");
-    if (phaseParam && !VALID_PHASES.has(phaseParam as WorkPhaseType)) {
-      console.error(`Invalid phase "${phaseParam}". Must be one of: ${[...VALID_PHASES].join(", ")}`);
+  const phaseParam = parseFlag(args, "--phase");
+  if (phaseParam && !VALID_PHASES.has(phaseParam as WorkPhaseType)) {
+    console.error(`Invalid phase "${phaseParam}". Must be one of: ${[...VALID_PHASES].join(", ")}`);
+    process.exit(1);
+  }
+
+  const tag = parseFlag(args, "--tag");
+  const wave = parseFlag(args, "--wave");
+  const phaseAgeDaysRaw = parseFlag(args, "--phase-age-days");
+  let phaseAgeDays: number | undefined;
+  if (phaseAgeDaysRaw !== undefined) {
+    const n = Number(phaseAgeDaysRaw);
+    if (!Number.isFinite(n) || n < 0) {
+      console.error(`Invalid --phase-age-days "${phaseAgeDaysRaw}" (expected a non-negative number).`);
       process.exit(1);
     }
+    phaseAgeDays = n;
+  }
+
+  const formatFlag = parseFlag(args, "--format");
+  let format: WorkListFormat = "table";
+  if (formatFlag !== undefined) {
+    if (!VALID_FORMATS.has(formatFlag)) {
+      console.error(`Invalid --format "${formatFlag}" (expected table|csv|tsv|json).`);
+      process.exit(1);
+    }
+    format = formatFlag as WorkListFormat;
+  } else if (args.includes("--json")) {
+    format = "json";
+  }
+
+  await withContainer(args, async (container) => {
     const phase = phaseParam as WorkPhaseType | undefined;
-    const asJson = args.includes("--json");
     const result = await container.workService.listWork(phase);
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
     }
 
-    if (asJson) {
-      process.stdout.write(JSON.stringify(result.value, null, 2) + "\n");
-      return;
-    }
+    const filtered = result.value.filter((w) => {
+      if (tag !== undefined && !w.tags.includes(tag)) return false;
+      if (wave !== undefined && !(w.tags.includes(`wave-${wave}`) || w.tags.includes(wave))) {
+        return false;
+      }
+      if (phaseAgeDays !== undefined && currentPhaseAgeDays(w) < phaseAgeDays) {
+        return false;
+      }
+      return true;
+    });
 
-    if (result.value.length === 0) {
-      process.stdout.write("No work articles found.\n");
-      return;
-    }
-
-    const headers = ["ID", "TITLE", "TEMPLATE", "PHASE", "PRIORITY", "UPDATED"];
-    const rows = result.value.map((w) => [
-      w.id,
-      w.title,
-      w.template,
-      w.phase,
-      w.priority,
-      w.updatedAt,
-    ]);
-    process.stdout.write(formatTable(headers, rows) + "\n");
+    process.stdout.write(formatWorkList(filtered, format) + (format === "table" ? "\n" : ""));
   });
+}
+
+function currentPhaseAgeDays(article: { phaseHistory: readonly { enteredAt: string }[] }): number {
+  const latest = article.phaseHistory[article.phaseHistory.length - 1];
+  if (!latest) return 0;
+  const enteredMs = Date.parse(latest.enteredAt);
+  if (!Number.isFinite(enteredMs)) return 0;
+  return (Date.now() - enteredMs) / (1000 * 60 * 60 * 24);
+}
+
+type WorkListRow = {
+  id: string;
+  title: string;
+  template: string;
+  phase: string;
+  priority: string;
+  updatedAt: string;
+};
+
+function toListRow(article: {
+  id: string;
+  title: string;
+  template: string;
+  phase: string;
+  priority: string;
+  updatedAt: string;
+}): WorkListRow {
+  return {
+    id: article.id,
+    title: article.title,
+    template: article.template,
+    phase: article.phase,
+    priority: article.priority,
+    updatedAt: article.updatedAt,
+  };
+}
+
+function formatWorkList(
+  articles: ReadonlyArray<Parameters<typeof toListRow>[0]>,
+  format: WorkListFormat,
+): string {
+  if (format === "json") {
+    // NDJSON of the full article shape so downstream callers get blockedBy,
+    // dependencies, tags, phaseHistory, etc. — CSV/TSV below stick to the
+    // summary columns since a flat table needs a flat shape.
+    return articles.map((a) => JSON.stringify(a)).join("\n") + (articles.length > 0 ? "\n" : "");
+  }
+
+  if (articles.length === 0 && format === "table") {
+    return "No work articles found.";
+  }
+
+  const headers = ["id", "title", "template", "phase", "priority", "updatedAt"];
+  const rows = articles.map((a) => {
+    const r = toListRow(a);
+    return [r.id, r.title, r.template, r.phase, r.priority, r.updatedAt];
+  });
+
+  if (format === "csv") {
+    return [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n") + (rows.length > 0 ? "\n" : "");
+  }
+  if (format === "tsv") {
+    return [headers, ...rows].map((row) => row.map(tsvEscape).join("\t")).join("\n") + (rows.length > 0 ? "\n" : "");
+  }
+
+  return formatTable(
+    ["ID", "TITLE", "TEMPLATE", "PHASE", "PRIORITY", "UPDATED"],
+    rows,
+  );
+}
+
+function csvEscape(field: string): string {
+  if (/[",\n\r]/.test(field)) {
+    return `"${field.replace(/"/g, '""')}"`;
+  }
+  return field;
+}
+
+function tsvEscape(field: string): string {
+  return field.replace(/[\t\n\r]/g, " ");
 }
 
 async function handleWorkUpdate(args: string[]): Promise<void> {

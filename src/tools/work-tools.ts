@@ -78,7 +78,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_work",
-      description: "List work articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_work to read full content. Filters: `phase`, `priority`, `assignee` (agent id), `tag` (single tag; matches if the work carries it), `blocked` (true = has unresolved dependencies, false = clear to pick up).",
+      description: "List work articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_work to read full content. Filters: `phase`, `priority`, `assignee` (agent id), `tag` (single tag; matches if the work carries it), `wave` (shorthand: matches tag `wave-<name>` or the literal name), `phaseAgeDays` (minimum days in current phase), `blocked` (true = has unresolved dependencies, false = clear to pick up).",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -94,6 +94,14 @@ export function workToolDefinitions(): ToolDefinition[] {
           },
           assignee: { type: "string", description: "Filter by assignee agent id" },
           tag: { type: "string", description: "Filter by a single tag (work must carry it)" },
+          wave: {
+            type: "string",
+            description: "Shorthand wave filter: matches if the article carries tag `wave-<name>` or the literal `<name>`.",
+          },
+          phaseAgeDays: {
+            type: "number",
+            description: "Minimum age of current phase in days (derived from latest phaseHistory.enteredAt).",
+          },
           blocked: {
             type: "boolean",
             description: "Filter by blocked state — true returns only work with unresolved `blockedBy` dependencies, false returns only unblocked work",
@@ -203,6 +211,8 @@ interface ListWorkFilters {
   readonly priority?: PriorityType;
   readonly assignee?: string;
   readonly tag?: string;
+  readonly wave?: string;
+  readonly phaseAgeDays?: number;
   readonly blocked?: boolean;
 }
 
@@ -215,10 +225,26 @@ function filterWorkArticles(
   articles: readonly WorkArticle[],
   filters: ListWorkFilters,
 ): WorkArticle[] {
+  const now = Date.now();
   return articles.filter((w) => {
     if (filters.priority !== undefined && w.priority !== filters.priority) return false;
     if (filters.assignee !== undefined && w.assignee !== filters.assignee) return false;
     if (filters.tag !== undefined && !w.tags.includes(filters.tag)) return false;
+    if (
+      filters.wave !== undefined &&
+      !w.tags.includes(`wave-${filters.wave}`) &&
+      !w.tags.includes(filters.wave)
+    ) {
+      return false;
+    }
+    if (filters.phaseAgeDays !== undefined) {
+      const latest = w.phaseHistory[w.phaseHistory.length - 1];
+      if (!latest) return false;
+      const enteredMs = Date.parse(latest.enteredAt);
+      if (!Number.isFinite(enteredMs)) return false;
+      const ageDays = (now - enteredMs) / (1000 * 60 * 60 * 24);
+      if (ageDays < filters.phaseAgeDays) return false;
+    }
     if (filters.blocked === true && w.blockedBy.length === 0) return false;
     if (filters.blocked === false && w.blockedBy.length > 0) return false;
     return true;
@@ -318,6 +344,15 @@ export async function handleWorkTool(
       if (isErrorResponse(assignee)) return assignee;
       const tag = optionalString(args, "tag");
       if (isErrorResponse(tag)) return tag;
+      const wave = optionalString(args, "wave");
+      if (isErrorResponse(wave)) return wave;
+      let phaseAgeDays: number | undefined;
+      if (args.phaseAgeDays !== undefined) {
+        if (typeof args.phaseAgeDays !== "number" || !Number.isFinite(args.phaseAgeDays) || args.phaseAgeDays < 0) {
+          return errorResponse("VALIDATION_FAILED", `"phaseAgeDays" must be a non-negative number`);
+        }
+        phaseAgeDays = args.phaseAgeDays;
+      }
       let blocked: boolean | undefined;
       if (args.blocked !== undefined) {
         if (typeof args.blocked !== "boolean") {
@@ -339,6 +374,8 @@ export async function handleWorkTool(
         priority: priority as PriorityType | undefined,
         assignee,
         tag,
+        wave,
+        phaseAgeDays,
         blocked,
       });
       const total = filtered.length;

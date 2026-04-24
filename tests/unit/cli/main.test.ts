@@ -273,12 +273,12 @@ describe("CLI main()", () => {
       expect(output.length).toBeGreaterThan(0);
     });
 
-    it("work list --json emits parseable JSON (empty corpus)", async () => {
+    it("work list --json emits empty stdout (NDJSON, empty corpus)", async () => {
       const output = await captureStdout(() => main(withTempRepo(["work", "list", "--json"])));
-      expect(JSON.parse(output)).toEqual([]);
+      expect(output.trim()).toBe("");
     });
 
-    it("work list --json emits full work shapes after create", async () => {
+    it("work list --json emits full work shapes as NDJSON after create", async () => {
       const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
       await main([
         "work", "create",
@@ -290,10 +290,11 @@ describe("CLI main()", () => {
       const output = await captureStdout(() =>
         main(["work", "list", "--json", "--repo", repoPath]),
       );
-      const parsed = JSON.parse(output) as Array<{ id: string; title: string; phase: string }>;
-      expect(parsed.length).toBe(1);
-      expect(parsed[0]?.title).toBe("Listable");
-      expect(parsed[0]?.phase).toBe("planning");
+      const lines = output.trim().split("\n").filter((l) => l.length > 0);
+      expect(lines.length).toBe(1);
+      const parsed = JSON.parse(lines[0]!) as { id: string; title: string; phase: string };
+      expect(parsed.title).toBe("Listable");
+      expect(parsed.phase).toBe("planning");
     });
 
     it("work get prints error for non-existent ID", async () => {
@@ -350,11 +351,15 @@ describe("CLI main()", () => {
       const listing = await captureStdout(() =>
         main(["work", "list", "--json", "--repo", repoPath]),
       );
-      const parsed = JSON.parse(listing) as Array<{
-        title: string;
-        blockedBy: string[];
-        dependencies: string[];
-      }>;
+      const parsed = listing
+        .trim()
+        .split("\n")
+        .filter((l) => l.length > 0)
+        .map((l) => JSON.parse(l) as {
+          title: string;
+          blockedBy: string[];
+          dependencies: string[];
+        });
       const w2 = parsed.find((w) => w.title === "W2");
       expect(w2).toBeDefined();
       expect(w2?.blockedBy).toEqual([w1Id]);
@@ -393,11 +398,15 @@ describe("CLI main()", () => {
       const listing = await captureStdout(() =>
         main(["work", "list", "--json", "--repo", repoPath]),
       );
-      const parsed = JSON.parse(listing) as Array<{
-        id: string;
-        blockedBy: string[];
-        dependencies: string[];
-      }>;
+      const parsed = listing
+        .trim()
+        .split("\n")
+        .filter((l) => l.length > 0)
+        .map((l) => JSON.parse(l) as {
+          id: string;
+          blockedBy: string[];
+          dependencies: string[];
+        });
       const a2 = parsed.find((w) => w.id === aId);
       // addDependency maintains the invariant that a new blocker is also in
       // `dependencies`, so the test doubles as a regression guard for that

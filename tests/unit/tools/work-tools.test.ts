@@ -422,6 +422,44 @@ describe("list_work combinable filters", () => {
     const body = JSON.parse(response.content[0]!.text) as { error: string };
     expect(body.error).toBe("VALIDATION_FAILED");
   });
+
+  it("filters by wave (matches `wave-<name>` or literal)", async () => {
+    const s = createService();
+    const wave2 = await seedWork(s, { title: "W2-A", tags: ["wave-2", "frontend"] });
+    const literalWave = await seedWork(s, { title: "W3", tags: ["wave-3"] });
+    await seedWork(s, { title: "No wave", tags: ["frontend"] });
+
+    const r2 = await handleWorkTool("list_work", { wave: "2" }, s);
+    const body2 = JSON.parse(r2.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body2.total).toBe(1);
+    expect(body2.items[0]!.id).toBe(wave2.id);
+
+    const r3 = await handleWorkTool("list_work", { wave: "wave-3" }, s);
+    const body3 = JSON.parse(r3.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body3.total).toBe(1);
+    expect(body3.items[0]!.id).toBe(literalWave.id);
+  });
+
+  it("rejects a negative phaseAgeDays", async () => {
+    const response = await handleWorkTool("list_work", { phaseAgeDays: -1 }, service);
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("phaseAgeDays: 0 matches every article that has any phase history", async () => {
+    const response = await handleWorkTool("list_work", { phaseAgeDays: 0 }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number };
+    expect(body.total).toBe(4);
+  });
+
+  it("phaseAgeDays: 1 filters out articles whose current phase is minutes old", async () => {
+    const response = await handleWorkTool("list_work", { phaseAgeDays: 1 }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number };
+    expect(body.total).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
