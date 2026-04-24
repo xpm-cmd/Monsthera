@@ -1,5 +1,6 @@
 import type { WorkArticle } from "./repository.js";
 import type { SnapshotService } from "../context/snapshot-service.js";
+import type { Policy } from "./policy-loader.js";
 
 // ─── Content Guards ───
 
@@ -32,6 +33,75 @@ export function implementation_linked(article: WorkArticle): boolean {
 // Empty reviewers array returns false (no reviewers = not approved)
 export function all_reviewers_approved(article: WorkArticle): boolean {
   return article.reviewers.length > 0 && article.reviewers.every((r) => r.status === "approved");
+}
+
+// ─── Policy Guards ───
+
+/**
+ * Context for `policy_requirements_met`. The orchestrator pre-loads and
+ * pre-filters policies via `PolicyLoader.getApplicablePolicies` so this guard
+ * receives only the policies relevant to the current article + transition.
+ * Keeping the guard pure preserves its testability — no I/O here.
+ */
+export interface PolicyGuardContext {
+  readonly policies: readonly Policy[];
+}
+
+/** Per-policy breakdown of what a work article is missing. */
+export interface PolicyViolation {
+  readonly policySlug: string;
+  readonly missing: {
+    readonly enrichmentRoles?: readonly string[];
+    readonly referencedArticles?: readonly string[];
+  };
+}
+
+/**
+ * Returns true iff every applicable policy's `requires` are satisfied. Use
+ * `getPolicyViolations` to get a structured breakdown of what is missing for
+ * readiness reporting and error messages.
+ */
+export function policy_requirements_met(
+  article: WorkArticle,
+  context: PolicyGuardContext,
+): boolean {
+  return getPolicyViolations(article, context.policies).length === 0;
+}
+
+/**
+ * Compute the structured violations for a set of applicable policies. Separate
+ * from the boolean guard so the orchestrator can embed the "why" in log events
+ * and readiness reports without re-checking.
+ */
+export function getPolicyViolations(
+  article: WorkArticle,
+  policies: readonly Policy[],
+): readonly PolicyViolation[] {
+  const contributedOrSkipped = new Set(
+    article.enrichmentRoles
+      .filter((r) => r.status === "contributed" || r.status === "skipped")
+      .map((r) => r.role),
+  );
+  const referenced = new Set(article.references);
+
+  const violations: PolicyViolation[] = [];
+  for (const policy of policies) {
+    const missingRoles = policy.requires.enrichmentRoles.filter(
+      (role) => !contributedOrSkipped.has(role),
+    );
+    const missingRefs = policy.requires.referencedArticles.filter(
+      (ref) => !referenced.has(ref),
+    );
+
+    if (missingRoles.length === 0 && missingRefs.length === 0) continue;
+
+    const missing: PolicyViolation["missing"] = {
+      ...(missingRoles.length > 0 ? { enrichmentRoles: missingRoles } : {}),
+      ...(missingRefs.length > 0 ? { referencedArticles: missingRefs } : {}),
+    };
+    violations.push({ policySlug: policy.slug, missing });
+  }
+  return violations;
 }
 
 // ─── Snapshot Guards (async) ───

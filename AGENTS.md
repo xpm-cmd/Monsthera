@@ -69,6 +69,40 @@ Check with `ToolSearch query="monsthera" max_results=15` at the start. If tools 
 
 If the search doesn't return Monsthera tools, proceed with Grep/Glob/Read — you are likely working on the Monsthera source *without* a running Monsthera instance, which is normal during development.
 
+## How to author a policy (knowledge-driven orchestration rules)
+
+A *policy article* is a knowledge article with `category: policy` whose frontmatter tells the orchestrator what must be true before a work article is allowed to advance. No TypeScript edit or redeploy is needed — drop a Markdown file into `knowledge/notes/` and it applies on the next readiness check.
+
+Minimum shape:
+
+```markdown
+---
+id: k-policy-your-slug
+category: policy
+slug: policy-your-slug
+title: "Policy: <what it enforces>"
+tags: [policy]
+policy_applies_templates: [feature]
+policy_phase_transition: enrichment->implementation
+policy_content_matches: ["(?i)auth|oauth|session|token"]
+policy_requires_roles: [security]
+policy_requires_articles: []
+policy_rationale: "One-line summary of why this exists."
+createdAt: 2026-04-24T00:00:00Z
+updatedAt: 2026-04-24T00:00:00Z
+---
+(Prose expanding on the rationale — audit trail for future readers.)
+```
+
+Rules:
+
+- Every `policy_*` field is optional. Omitting `policy_applies_templates` means "applies to every template"; omitting `policy_content_matches` means "content is not inspected"; and so on.
+- `policy_phase_transition` is `"<from>-><to>"`. `planning->enrichment` is never gated by a policy — there is not enough content yet to match.
+- `policy_content_matches` uses JavaScript regex. The POSIX `(?i)` prefix is accepted and translated to the `i` flag for convenience.
+- A malformed policy logs a warning and loads as vacuous (never applies). Don't rely on this — check `knowledge/index.md` after authoring to confirm your policy appears in the table.
+
+See [`docs/adrs/007-policy-articles.md`](docs/adrs/007-policy-articles.md) for the full rationale and enforcement boundary. A working example lives at [`knowledge/notes/policy-example-security-enrichment.md`](knowledge/notes/policy-example-security-enrichment.md).
+
 ## Where to look next
 
 - [`docs/CODING-STANDARDS.md`](docs/CODING-STANDARDS.md) — style, naming, formatting conventions.

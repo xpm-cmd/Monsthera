@@ -8,7 +8,9 @@ import type { WorkPhase } from "../core/types.js";
 import type { WorkArticleRepository, WorkArticle } from "../work/repository.js";
 import type { OrchestrationEventRepository } from "./repository.js";
 import { getGuardSet, getNextPhase } from "../work/lifecycle.js";
+import type { GuardSetDeps } from "../work/lifecycle.js";
 import { WORK_TEMPLATES } from "../work/templates.js";
+import type { PolicyLoader } from "../work/policy-loader.js";
 import type { ReadinessReport, AdvanceResult, WavePlan, WaveResult } from "./types.js";
 
 // ─── Dependencies ───────────────────────────────────────────────────────────
@@ -20,6 +22,11 @@ export interface OrchestrationServiceDeps {
   autoAdvance?: boolean;
   pollIntervalMs?: number;
   maxConcurrentAgents?: number;
+  /**
+   * Optional: consulted before every guard evaluation so knowledge-authored
+   * policies gate transitions. Absent = no policy enforcement (legacy behavior).
+   */
+  policyLoader?: PolicyLoader;
 }
 
 // ─── OrchestrationService ───────────────────────────────────────────────────
@@ -31,6 +38,7 @@ export class OrchestrationService {
   private readonly autoAdvance: boolean;
   private readonly pollIntervalMs: number;
   private readonly maxConcurrentAgents: number;
+  private readonly policyLoader?: PolicyLoader;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private running = false;
 
@@ -41,6 +49,24 @@ export class OrchestrationService {
     this.autoAdvance = deps.autoAdvance ?? false;
     this.pollIntervalMs = deps.pollIntervalMs ?? 30000;
     this.maxConcurrentAgents = Math.max(1, deps.maxConcurrentAgents ?? 5);
+    this.policyLoader = deps.policyLoader;
+  }
+
+  /**
+   * Build the deps object passed into `getGuardSet`. When a `PolicyLoader` is
+   * wired, all loaded policies are handed over along with the loader's
+   * `getApplicablePolicies` filter so `getGuardSet` can narrow to policies
+   * that match this article + transition. Called once per readiness check so
+   * the cache lookup is cheap.
+   */
+  private async buildGuardDeps(): Promise<GuardSetDeps | undefined> {
+    if (!this.policyLoader) return undefined;
+    const policies = await this.policyLoader.getAll();
+    return {
+      policies,
+      applicablePolicyFilter: (loaded, article, transition) =>
+        this.policyLoader!.getApplicablePolicies(loaded, article, transition),
+    };
   }
 
   // ─── Scanning ─────────────────────────────────────────────────────────────
@@ -72,7 +98,8 @@ export class OrchestrationService {
       return ok(report);
     }
 
-    const guards = getGuardSet(article, article.phase, nextPhase);
+    const guardDeps = await this.buildGuardDeps();
+    const guards = getGuardSet(article, article.phase, nextPhase, guardDeps);
     const guardResults = guards.map((g) => ({
       name: g.name,
       passed: g.check(article),
@@ -174,6 +201,7 @@ export class OrchestrationService {
       }
     }
 
+    const guardDeps = await this.buildGuardDeps();
     for (const article of articles) {
       // Check if blocked by unresolved dependencies
       const unresolvedDeps = article.blockedBy.filter((dep) => !terminalIds.has(dep));
@@ -194,7 +222,7 @@ export class OrchestrationService {
       const nextPhase = getNextPhase(article);
       if (nextPhase === null) continue;
 
-      const guards = getGuardSet(article, article.phase, nextPhase);
+      const guards = getGuardSet(article, article.phase, nextPhase, guardDeps);
       const allPassed = guards.every((g) => g.check(article));
 
       if (allPassed) {

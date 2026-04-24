@@ -134,9 +134,13 @@ export class WikiBookkeeper {
 
         lines.push(`### ${category}`);
         lines.push("");
-        for (const article of articles) {
-          const snippet = article.content.slice(0, 80).replace(/\n/g, " ").trim();
-          lines.push(`- [${article.title}](notes/${article.slug}.md) — ${snippet}`);
+        if (category === "policy") {
+          renderPolicySection(lines, articles);
+        } else {
+          for (const article of articles) {
+            const snippet = article.content.slice(0, 80).replace(/\n/g, " ").trim();
+            lines.push(`- [${article.title}](notes/${article.slug}.md) — ${snippet}`);
+          }
         }
         lines.push("");
       }
@@ -181,4 +185,32 @@ export class WikiBookkeeper {
       this.logger.warn("Failed to rebuild index.md", { error: String(error) });
     }
   }
+}
+
+/**
+ * Render the "policy" knowledge category as a table so auditors can scan the
+ * active control plane at a glance. Reads policy_* fields straight from
+ * `extraFrontmatter` — deliberately decoupled from `PolicyLoader` because the
+ * bookkeeper is a display layer, not a validator. Missing fields show as `—`.
+ */
+function renderPolicySection(lines: string[], articles: readonly KnowledgeArticle[]): void {
+  lines.push("| Policy | Templates | Transition | Requires Roles | Requires Articles |");
+  lines.push("|--------|-----------|------------|----------------|-------------------|");
+  for (const article of articles) {
+    const fm = article.extraFrontmatter ?? {};
+    const templates = formatList(fm.policy_applies_templates);
+    const transition = typeof fm.policy_phase_transition === "string"
+      ? fm.policy_phase_transition.replace("->", " → ")
+      : "—";
+    const roles = formatList(fm.policy_requires_roles);
+    const refs = formatList(fm.policy_requires_articles);
+    lines.push(
+      `| [${article.title}](notes/${article.slug}.md) | ${templates} | ${transition} | ${roles} | ${refs} |`,
+    );
+  }
+}
+
+function formatList(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return "—";
+  return value.map((v) => String(v)).join(", ");
 }
