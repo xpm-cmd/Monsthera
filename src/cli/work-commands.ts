@@ -179,56 +179,170 @@ async function handleWorkGet(args: string[]): Promise<void> {
   });
 }
 
+type WorkListFormat = "table" | "csv" | "tsv" | "json";
+
+const VALID_FORMATS: ReadonlySet<string> = new Set(["table", "csv", "tsv", "json"]);
+
 async function handleWorkList(args: string[]): Promise<void> {
   if (wantsHelp(args)) {
     printSubcommandHelp({
       command: "monsthera work list",
-      summary: "List work articles.",
-      usage: "[--phase <p>] [--json]",
+      summary: "List work articles with optional filters.",
+      usage: "[--phase <p>] [--tag <t>] [--wave <name>] [--phase-age-days <n>] [--metadata-filter field=value] [--format table|csv|tsv|json] [--json]",
       flags: [
         { name: "--phase <p>", description: `Filter by phase. One of: ${[...VALID_PHASES].join(" | ")}` },
-        { name: "--json", description: "Emit the full list as JSON." },
+        { name: "--tag <t>", description: "Filter by a single tag (article must carry it)." },
+        { name: "--wave <name>", description: "Shorthand: matches tag `wave-<name>` or the literal name." },
+        { name: "--phase-age-days <n>", description: "Only articles whose current phase is at least <n> days old (by latest phaseHistory.enteredAt)." },
+        { name: "--metadata-filter field=value", description: "Only articles whose phase_history has an entry where metadata[field] equals <value> (JSON-parsed; array-valued fields match on inclusion)." },
+        { name: "--format <fmt>", description: "table (default) | csv | tsv | json (NDJSON).", default: "table" },
+        { name: "--json", description: "Alias for --format json. Kept for backwards compatibility." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "Filters are AND-combined. `--phase` goes through the repo's findByPhase; the rest are in-memory.",
+        "CSV/TSV/JSON output is stream-friendly (logs stay on stderr).",
       ],
     });
     return;
   }
 
-  await withContainer(args, async (container) => {
-    const phaseParam = parseFlag(args, "--phase");
-    if (phaseParam && !VALID_PHASES.has(phaseParam as WorkPhaseType)) {
-      console.error(`Invalid phase "${phaseParam}". Must be one of: ${[...VALID_PHASES].join(", ")}`);
+  const phaseParam = parseFlag(args, "--phase");
+  if (phaseParam && !VALID_PHASES.has(phaseParam as WorkPhaseType)) {
+    console.error(`Invalid phase "${phaseParam}". Must be one of: ${[...VALID_PHASES].join(", ")}`);
+    process.exit(1);
+  }
+
+  const tag = parseFlag(args, "--tag");
+  const wave = parseFlag(args, "--wave");
+  const metadataFilter = parseMetadataFilterFlag(args);
+  const phaseAgeDaysRaw = parseFlag(args, "--phase-age-days");
+  let phaseAgeDays: number | undefined;
+  if (phaseAgeDaysRaw !== undefined) {
+    const n = Number(phaseAgeDaysRaw);
+    if (!Number.isFinite(n) || n < 0) {
+      console.error(`Invalid --phase-age-days "${phaseAgeDaysRaw}" (expected a non-negative number).`);
       process.exit(1);
     }
+    phaseAgeDays = n;
+  }
+
+  const formatFlag = parseFlag(args, "--format");
+  let format: WorkListFormat = "table";
+  if (formatFlag !== undefined) {
+    if (!VALID_FORMATS.has(formatFlag)) {
+      console.error(`Invalid --format "${formatFlag}" (expected table|csv|tsv|json).`);
+      process.exit(1);
+    }
+    format = formatFlag as WorkListFormat;
+  } else if (args.includes("--json")) {
+    format = "json";
+  }
+
+  await withContainer(args, async (container) => {
     const phase = phaseParam as WorkPhaseType | undefined;
-    const asJson = args.includes("--json");
     const result = await container.workService.listWork(phase);
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
     }
 
-    if (asJson) {
-      process.stdout.write(JSON.stringify(result.value, null, 2) + "\n");
-      return;
-    }
+    const filtered = result.value.filter((w) => {
+      if (tag !== undefined && !w.tags.includes(tag)) return false;
+      if (wave !== undefined && !(w.tags.includes(`wave-${wave}`) || w.tags.includes(wave))) {
+        return false;
+      }
+      if (phaseAgeDays !== undefined && currentPhaseAgeDays(w) < phaseAgeDays) {
+        return false;
+      }
+      if (metadataFilter !== undefined && !articleMetadataMatches(w, metadataFilter.field, metadataFilter.value)) {
+        return false;
+      }
+      return true;
+    });
 
-    if (result.value.length === 0) {
-      process.stdout.write("No work articles found.\n");
-      return;
-    }
-
-    const headers = ["ID", "TITLE", "TEMPLATE", "PHASE", "PRIORITY", "UPDATED"];
-    const rows = result.value.map((w) => [
-      w.id,
-      w.title,
-      w.template,
-      w.phase,
-      w.priority,
-      w.updatedAt,
-    ]);
-    process.stdout.write(formatTable(headers, rows) + "\n");
+    process.stdout.write(formatWorkList(filtered, format) + (format === "table" ? "\n" : ""));
   });
+}
+
+function currentPhaseAgeDays(article: { phaseHistory: readonly { enteredAt: string }[] }): number {
+  const latest = article.phaseHistory[article.phaseHistory.length - 1];
+  if (!latest) return 0;
+  const enteredMs = Date.parse(latest.enteredAt);
+  if (!Number.isFinite(enteredMs)) return 0;
+  return (Date.now() - enteredMs) / (1000 * 60 * 60 * 24);
+}
+
+type WorkListRow = {
+  id: string;
+  title: string;
+  template: string;
+  phase: string;
+  priority: string;
+  updatedAt: string;
+};
+
+function toListRow(article: {
+  id: string;
+  title: string;
+  template: string;
+  phase: string;
+  priority: string;
+  updatedAt: string;
+}): WorkListRow {
+  return {
+    id: article.id,
+    title: article.title,
+    template: article.template,
+    phase: article.phase,
+    priority: article.priority,
+    updatedAt: article.updatedAt,
+  };
+}
+
+function formatWorkList(
+  articles: ReadonlyArray<Parameters<typeof toListRow>[0]>,
+  format: WorkListFormat,
+): string {
+  if (format === "json") {
+    // NDJSON of the full article shape so downstream callers get blockedBy,
+    // dependencies, tags, phaseHistory, etc. — CSV/TSV below stick to the
+    // summary columns since a flat table needs a flat shape.
+    return articles.map((a) => JSON.stringify(a)).join("\n") + (articles.length > 0 ? "\n" : "");
+  }
+
+  if (articles.length === 0 && format === "table") {
+    return "No work articles found.";
+  }
+
+  const headers = ["id", "title", "template", "phase", "priority", "updatedAt"];
+  const rows = articles.map((a) => {
+    const r = toListRow(a);
+    return [r.id, r.title, r.template, r.phase, r.priority, r.updatedAt];
+  });
+
+  if (format === "csv") {
+    return [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n") + (rows.length > 0 ? "\n" : "");
+  }
+  if (format === "tsv") {
+    return [headers, ...rows].map((row) => row.map(tsvEscape).join("\t")).join("\n") + (rows.length > 0 ? "\n" : "");
+  }
+
+  return formatTable(
+    ["ID", "TITLE", "TEMPLATE", "PHASE", "PRIORITY", "UPDATED"],
+    rows,
+  );
+}
+
+function csvEscape(field: string): string {
+  if (/[",\n\r]/.test(field)) {
+    return `"${field.replace(/"/g, '""')}"`;
+  }
+  return field;
+}
+
+function tsvEscape(field: string): string {
+  return field.replace(/[\t\n\r]/g, " ");
 }
 
 async function handleWorkUpdate(args: string[]): Promise<void> {
@@ -326,22 +440,49 @@ async function handleWorkUpdate(args: string[]): Promise<void> {
   });
 }
 
+const ADVANCE_REASON_TRUNCATE_LEN = 80;
+
 async function handleWorkAdvance(args: string[]): Promise<void> {
   if (wantsHelp(args)) {
     printSubcommandHelp({
       command: "monsthera work advance",
       summary: "Advance a work article to a new phase.",
-      usage: "<id> --phase <target> [--reason <text>] [--skip-guard-reason <text>]",
+      usage: "<id> --phase <target> [--reason <text>] [--skip-guard-reason <text>] [structured flags] [--verbose | --format json]",
       positional: [{ name: "<id>", description: "Work article id." }],
       flags: [
         { name: "--phase <target>", required: true, description: `One of: ${[...VALID_PHASES].join(" | ")}` },
         { name: "--reason <text>", description: "Free-text reason recorded in phase history." },
         { name: "--skip-guard-reason <text>", description: "Bypass phase guards with an audit reason." },
+        { name: "--success-test <Y|N|skipped>", description: "Convention: whether the success-test for this phase passed." },
+        { name: "--blockers <n>", description: "Convention: number of blockers remaining." },
+        { name: "--verdicts <a,b,c>", description: "Convention: comma-separated verdict labels." },
+        { name: "--fabrications <n>", description: "Convention: count of fabrications detected." },
+        { name: "--verify-count <n>", description: "Convention: number of verification passes." },
+        { name: "--metadata-json <json>", description: "Escape hatch: arbitrary JSON object merged into metadata." },
+        { name: "--verbose", description: "Dump the full article after advance (pre-3.0 default)." },
+        { name: "--format <fmt>", description: "text (default, 1-2 lines) or json (single-line JSON)." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "Default output is a single success line plus an optional truncated-reason line — stream-friendly.",
+        "`--verbose` and `--format json` are mutually exclusive.",
+        "Structured flags feed `phaseHistory[*].metadata`; prefer them over packing everything into --reason.",
       ],
     });
     return;
   }
+
+  const verbose = args.includes("--verbose");
+  const formatFlag = parseFlag(args, "--format");
+  if (formatFlag !== undefined && !["text", "json"].includes(formatFlag)) {
+    console.error(`Invalid --format "${formatFlag}" (expected text|json).`);
+    process.exit(1);
+  }
+  if (verbose && formatFlag === "json") {
+    console.error("--verbose and --format json are mutually exclusive.");
+    process.exit(1);
+  }
+  const format: "text" | "json" = (formatFlag as "text" | "json" | undefined) ?? "text";
 
   await withContainer(args, async (container) => {
     const id = parsePositional(args, 0);
@@ -358,16 +499,177 @@ async function handleWorkAdvance(args: string[]): Promise<void> {
     const phase = phaseStr as WorkPhaseType;
     const reason = parseFlag(args, "--reason");
     const skipGuardReason = parseFlag(args, "--skip-guard-reason");
-    const options: { reason?: string; skipGuard?: { reason: string } } = {};
+    const metadata = parsePhaseAdvanceMetadata(args);
+    const options: {
+      reason?: string;
+      skipGuard?: { reason: string };
+      metadata?: Record<string, unknown>;
+    } = {};
     if (reason) options.reason = reason;
     if (skipGuardReason) options.skipGuard = { reason: skipGuardReason };
+    if (metadata) options.metadata = metadata;
+
+    // Capture the pre-advance phase so the default output can report the
+    // transition as `<from> → <to>` without inferring it from phaseHistory.
+    const prev = await container.workService.getWork(id);
+    const fromPhase = prev.ok ? prev.value.phase : undefined;
+
     const result = await container.workService.advancePhase(id, phase, options);
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
     }
-    process.stdout.write(formatWorkArticle(result.value) + "\n");
+    const article = result.value;
+
+    if (verbose) {
+      process.stdout.write(formatWorkArticle(article) + "\n");
+      return;
+    }
+
+    const latest = article.phaseHistory[article.phaseHistory.length - 1];
+    const advancedAt = latest?.enteredAt ?? article.updatedAt;
+    const persistedReason = latest?.reason;
+
+    if (format === "json") {
+      process.stdout.write(
+        JSON.stringify({
+          workId: article.id,
+          from: fromPhase,
+          to: article.phase,
+          advancedAt,
+          ...(persistedReason ? { reason: persistedReason } : {}),
+        }) + "\n",
+      );
+      return;
+    }
+
+    process.stdout.write(`OK: ${article.id} advanced ${fromPhase ?? "?"} → ${article.phase}\n`);
+    if (persistedReason) {
+      process.stdout.write(`reason: ${JSON.stringify(truncateReason(persistedReason))}\n`);
+    }
   });
+}
+
+function truncateReason(reason: string): string {
+  if (reason.length <= ADVANCE_REASON_TRUNCATE_LEN) return reason;
+  return reason.slice(0, ADVANCE_REASON_TRUNCATE_LEN - 3) + "...";
+}
+
+const VALID_SUCCESS_TEST = new Set(["Y", "N", "skipped"]);
+
+/**
+ * Assemble a structured metadata payload for `work advance` from the
+ * conventional flags + the `--metadata-json` escape hatch. `--metadata-json`
+ * is merged last, so explicit convention flags win on key collision.
+ * Returns undefined when no flags are present so the downstream builder can
+ * skip writing a `metadata` property entirely.
+ */
+function parsePhaseAdvanceMetadata(args: string[]): Record<string, unknown> | undefined {
+  const metadata: Record<string, unknown> = {};
+
+  const successTest = parseFlag(args, "--success-test");
+  if (successTest !== undefined) {
+    if (!VALID_SUCCESS_TEST.has(successTest)) {
+      console.error(`Invalid --success-test "${successTest}" (expected Y | N | skipped).`);
+      process.exit(1);
+    }
+    metadata["success_test"] = successTest;
+  }
+
+  metadata["blockers"] = parseOptionalNonNegativeInt(args, "--blockers");
+  metadata["fabrications"] = parseOptionalNonNegativeInt(args, "--fabrications");
+  metadata["verify_count"] = parseOptionalNonNegativeInt(args, "--verify-count");
+
+  const verdicts = parseCommaSeparated(args, "--verdicts");
+  if (verdicts) metadata["verdicts"] = verdicts;
+
+  const metadataJsonRaw = parseFlag(args, "--metadata-json");
+  if (metadataJsonRaw !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(metadataJsonRaw);
+    } catch (e) {
+      console.error(`Invalid --metadata-json: ${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      console.error("Invalid --metadata-json: expected a JSON object.");
+      process.exit(1);
+    }
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (metadata[k] === undefined) metadata[k] = v;
+    }
+  }
+
+  // Drop undefined placeholders from the optional int parser so the final map
+  // only contains keys the caller actually set.
+  for (const key of Object.keys(metadata)) {
+    if (metadata[key] === undefined) delete metadata[key];
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+/**
+ * Parse `--metadata-filter field=value`. Values round-trip through JSON.parse
+ * first so numbers / booleans / null come back as their JS types; on parse
+ * failure the raw string is used, which covers the common case of
+ * `--metadata-filter success_test=Y`.
+ */
+function parseMetadataFilterFlag(args: string[]): { field: string; value: unknown } | undefined {
+  const raw = parseFlag(args, "--metadata-filter");
+  if (raw === undefined) return undefined;
+  const eqIdx = raw.indexOf("=");
+  if (eqIdx === -1) {
+    console.error(`Invalid --metadata-filter "${raw}" (expected field=value).`);
+    process.exit(1);
+  }
+  const field = raw.slice(0, eqIdx).trim();
+  if (field.length === 0) {
+    console.error(`Invalid --metadata-filter: field name is empty.`);
+    process.exit(1);
+  }
+  const rawValue = raw.slice(eqIdx + 1);
+  let value: unknown = rawValue;
+  try {
+    value = JSON.parse(rawValue);
+  } catch {
+    // Treat as string literal.
+  }
+  return { field, value };
+}
+
+/**
+ * Mirror of the MCP-side check: scan every phase-history entry, and on the
+ * first one whose metadata carries `field`, compare. Array-valued fields
+ * match when the array includes the supplied value.
+ */
+function articleMetadataMatches(
+  article: { phaseHistory: readonly { metadata?: Readonly<Record<string, unknown>> }[] },
+  field: string,
+  value: unknown,
+): boolean {
+  for (const entry of article.phaseHistory) {
+    const stored = entry.metadata?.[field];
+    if (stored === undefined) continue;
+    if (Array.isArray(stored)) {
+      if (stored.some((item) => item === value)) return true;
+      continue;
+    }
+    if (stored === value) return true;
+  }
+  return false;
+}
+
+function parseOptionalNonNegativeInt(args: string[], flag: string): number | undefined {
+  const raw = parseFlag(args, flag);
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+    console.error(`Invalid ${flag} "${raw}" (expected a non-negative integer).`);
+    process.exit(1);
+  }
+  return n;
 }
 
 async function handleWorkEnrich(args: string[]): Promise<void> {

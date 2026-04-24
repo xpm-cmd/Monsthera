@@ -31,14 +31,17 @@ export function buildCancellationHistoryEntry(
     enteredAt,
     ...(reason ? { reason } : {}),
     ...(skippedGuards.length > 0 ? { skippedGuards: [...skippedGuards] } : {}),
+    ...(options?.metadata && Object.keys(options.metadata).length > 0
+      ? { metadata: { ...options.metadata } }
+      : {}),
   };
   return entry;
 }
 
 /**
- * Build the phase-history entry for a non-cancellation advance. Only records
- * `reason`/`skippedGuards` when the Tier 2.1 `skipGuard` escape hatch was
- * actually used to bypass a failing guard.
+ * Build the phase-history entry for a non-cancellation advance. Records the
+ * optional structured `metadata` alongside any Tier 2.1 `skipGuard` audit data
+ * — both are independent so an advance can carry either, both, or neither.
  */
 export function buildAdvanceHistoryEntry(
   phase: WorkPhaseType,
@@ -46,14 +49,18 @@ export function buildAdvanceHistoryEntry(
   options: AdvancePhaseOptions | undefined,
   skippedGuards: readonly string[],
 ): PhaseHistoryEntry {
-  if (skippedGuards.length === 0) {
+  const hasMetadata = !!options?.metadata && Object.keys(options.metadata).length > 0;
+
+  if (skippedGuards.length === 0 && !hasMetadata) {
     return { phase, enteredAt };
   }
+
   const skipReason = options?.skipGuard?.reason;
   return {
     phase,
     enteredAt,
     ...(skipReason ? { reason: skipReason } : {}),
-    skippedGuards: [...skippedGuards],
+    ...(skippedGuards.length > 0 ? { skippedGuards: [...skippedGuards] } : {}),
+    ...(hasMetadata ? { metadata: { ...options!.metadata! } } : {}),
   };
 }

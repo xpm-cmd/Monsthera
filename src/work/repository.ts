@@ -28,6 +28,15 @@ export interface PhaseHistoryEntry {
   readonly reason?: string;
   /** Tier 2.1 — names of guards bypassed via skip_guard */
   readonly skippedGuards?: readonly string[];
+  /**
+   * Structured payload set by the caller at advance time. The shape is
+   * deliberately open (`Record<string, unknown>`) so downstream repos can add
+   * their own fields without schema churn; a few conventional keys are
+   * documented in `docs/adrs/011-orchestrator-cli-ergonomics.md` and surfaced
+   * by the CLI flags `--success-test`, `--blockers`, `--verdicts`,
+   * `--fabrications`, `--verify-count`. Absent on historical entries.
+   */
+  readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
 /** Work article entity */
@@ -101,6 +110,13 @@ export interface AdvancePhaseOptions {
   readonly reason?: string;
   /** Auditable escape hatch that bypasses guard failures (but NOT structural transition validity). */
   readonly skipGuard?: SkipGuardOption;
+  /**
+   * Structured metadata persisted verbatim on the new phase-history entry.
+   * Opt-in: absence keeps the entry back-compatible. Typical fields
+   * (`success_test`, `blockers`, `verdicts`, `fabrications`, `verify_count`)
+   * are documented in ADR-011 and produced by the CLI advance flags.
+   */
+  readonly metadata?: Readonly<Record<string, unknown>>;
   /**
    * Per-call dependencies used by async guards (e.g. `snapshot_ready`). Supplied
    * by the service layer so the repo stays stateless w.r.t. the snapshot service

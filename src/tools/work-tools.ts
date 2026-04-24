@@ -78,7 +78,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_work",
-      description: "List work articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_work to read full content. Filters: `phase`, `priority`, `assignee` (agent id), `tag` (single tag; matches if the work carries it), `blocked` (true = has unresolved dependencies, false = clear to pick up).",
+      description: "List work articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_work to read full content. Filters: `phase`, `priority`, `assignee` (agent id), `tag` (single tag; matches if the work carries it), `wave` (shorthand: matches tag `wave-<name>` or the literal name), `phaseAgeDays` (minimum days in current phase), `blocked` (true = has unresolved dependencies, false = clear to pick up).",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -94,9 +94,24 @@ export function workToolDefinitions(): ToolDefinition[] {
           },
           assignee: { type: "string", description: "Filter by assignee agent id" },
           tag: { type: "string", description: "Filter by a single tag (work must carry it)" },
+          wave: {
+            type: "string",
+            description: "Shorthand wave filter: matches if the article carries tag `wave-<name>` or the literal `<name>`.",
+          },
+          phaseAgeDays: {
+            type: "number",
+            description: "Minimum age of current phase in days (derived from latest phaseHistory.enteredAt).",
+          },
           blocked: {
             type: "boolean",
             description: "Filter by blocked state — true returns only work with unresolved `blockedBy` dependencies, false returns only unblocked work",
+          },
+          metadataField: {
+            type: "string",
+            description: "Optional structured-metadata filter. Pass alongside `metadataValue` to keep only articles whose `phaseHistory` contains an entry with `metadata[field]` equal to that value (or an array containing it).",
+          },
+          metadataValue: {
+            description: "Value to match for `metadataField`. Scalars compare by strict equality; array-valued metadata matches on inclusion. Ignored unless `metadataField` is also set.",
           },
           limit: { type: "number", description: "Max results (1-100, default 20)" },
           offset: { type: "number", description: "Skip N results (default 0)" },
@@ -105,7 +120,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "advance_phase",
-      description: "Advance a work article to the next phase only when the guards pass and the next owner or review gate is explicit. Pass `reason` when cancelling; use `skip_guard: { reason }` for auditable guard bypass in legitimate edge cases.",
+      description: "Advance a work article to the next phase only when the guards pass and the next owner or review gate is explicit. Pass `reason` when cancelling; use `skip_guard: { reason }` for auditable guard bypass in legitimate edge cases. Use `metadata` to persist structured payload on the new phase-history entry (e.g. `success_test`, `blockers`, `verdicts`, `fabrications`, `verify_count`) instead of packing everything into `reason`.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -127,6 +142,11 @@ export function workToolDefinitions(): ToolDefinition[] {
             },
             required: ["reason"],
             additionalProperties: false,
+          },
+          metadata: {
+            type: "object",
+            description: "Optional structured payload persisted on the new phase-history entry. Open shape; conventional keys are documented in ADR-011 and searchable via `search_work_by_metadata`.",
+            additionalProperties: true,
           },
         },
         required: ["id", "targetPhase"],
@@ -171,6 +191,22 @@ export function workToolDefinitions(): ToolDefinition[] {
       },
     },
     {
+      name: "search_work_by_metadata",
+      description: "Find work articles whose `phaseHistory` contains at least one entry with `metadata[field] === value`. Useful for queries like 'which articles have `success_test: N`?' or 'which articles have a verdict of `adopt-v1`?'. Array-valued metadata fields match if the array includes `value`. Returns summaries (not full articles); combine with `get_work` for drill-down.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          field: { type: "string", description: "Metadata field name (e.g. `success_test`, `blockers`, `verdicts`)." },
+          value: {
+            description: "Value to match. Scalars compare by strict equality; if the stored field is an array, matches when the array includes this value.",
+          },
+          limit: { type: "number", description: "Max results (1-100, default 20)" },
+          offset: { type: "number", description: "Skip N results (default 0)" },
+        },
+        required: ["field", "value"],
+      },
+    },
+    {
       name: "add_dependency",
       description: "Add a blocking dependency to a work article so automation and humans can see why progress should wait.",
       inputSchema: {
@@ -203,7 +239,34 @@ interface ListWorkFilters {
   readonly priority?: PriorityType;
   readonly assignee?: string;
   readonly tag?: string;
+  readonly wave?: string;
+  readonly phaseAgeDays?: number;
   readonly blocked?: boolean;
+  readonly metadata?: { readonly field: string; readonly value: unknown };
+}
+
+/**
+ * True when some entry in the article's phase history carries a metadata
+ * field that satisfies the simple-equality test. When the stored field is
+ * an array, matching flips to inclusion semantics so a caller looking for
+ * `verdicts = "adopt-v1"` hits entries whose metadata holds
+ * `verdicts: ["adopt-v1", "monitor"]`.
+ */
+function articleHasMetadata(
+  article: WorkArticle,
+  field: string,
+  value: unknown,
+): boolean {
+  for (const entry of article.phaseHistory) {
+    if (!entry.metadata || !(field in entry.metadata)) continue;
+    const stored = entry.metadata[field];
+    if (Array.isArray(stored)) {
+      if (stored.some((item) => item === value)) return true;
+      continue;
+    }
+    if (stored === value) return true;
+  }
+  return false;
 }
 
 /**
@@ -215,12 +278,31 @@ function filterWorkArticles(
   articles: readonly WorkArticle[],
   filters: ListWorkFilters,
 ): WorkArticle[] {
+  const now = Date.now();
   return articles.filter((w) => {
     if (filters.priority !== undefined && w.priority !== filters.priority) return false;
     if (filters.assignee !== undefined && w.assignee !== filters.assignee) return false;
     if (filters.tag !== undefined && !w.tags.includes(filters.tag)) return false;
+    if (
+      filters.wave !== undefined &&
+      !w.tags.includes(`wave-${filters.wave}`) &&
+      !w.tags.includes(filters.wave)
+    ) {
+      return false;
+    }
+    if (filters.phaseAgeDays !== undefined) {
+      const latest = w.phaseHistory[w.phaseHistory.length - 1];
+      if (!latest) return false;
+      const enteredMs = Date.parse(latest.enteredAt);
+      if (!Number.isFinite(enteredMs)) return false;
+      const ageDays = (now - enteredMs) / (1000 * 60 * 60 * 24);
+      if (ageDays < filters.phaseAgeDays) return false;
+    }
     if (filters.blocked === true && w.blockedBy.length === 0) return false;
     if (filters.blocked === false && w.blockedBy.length > 0) return false;
+    if (filters.metadata !== undefined && !articleHasMetadata(w, filters.metadata.field, filters.metadata.value)) {
+      return false;
+    }
     return true;
   });
 }
@@ -318,12 +400,34 @@ export async function handleWorkTool(
       if (isErrorResponse(assignee)) return assignee;
       const tag = optionalString(args, "tag");
       if (isErrorResponse(tag)) return tag;
+      const wave = optionalString(args, "wave");
+      if (isErrorResponse(wave)) return wave;
+      let phaseAgeDays: number | undefined;
+      if (args.phaseAgeDays !== undefined) {
+        if (typeof args.phaseAgeDays !== "number" || !Number.isFinite(args.phaseAgeDays) || args.phaseAgeDays < 0) {
+          return errorResponse("VALIDATION_FAILED", `"phaseAgeDays" must be a non-negative number`);
+        }
+        phaseAgeDays = args.phaseAgeDays;
+      }
       let blocked: boolean | undefined;
       if (args.blocked !== undefined) {
         if (typeof args.blocked !== "boolean") {
           return errorResponse("VALIDATION_FAILED", `"blocked" must be a boolean`);
         }
         blocked = args.blocked;
+      }
+      let metadataFilter: { field: string; value: unknown } | undefined;
+      if (args.metadataField !== undefined) {
+        if (typeof args.metadataField !== "string" || args.metadataField.length === 0) {
+          return errorResponse("VALIDATION_FAILED", `"metadataField" must be a non-empty string`);
+        }
+        if (args.metadataValue === undefined) {
+          return errorResponse(
+            "VALIDATION_FAILED",
+            `"metadataField" requires a paired "metadataValue"`,
+          );
+        }
+        metadataFilter = { field: args.metadataField, value: args.metadataValue };
       }
       const rawLimit = typeof args.limit === "number" ? args.limit : 20;
       const limit = Math.max(1, Math.min(rawLimit, 100));
@@ -339,7 +443,10 @@ export async function handleWorkTool(
         priority: priority as PriorityType | undefined,
         assignee,
         tag,
+        wave,
+        phaseAgeDays,
         blocked,
+        metadata: metadataFilter,
       });
       const total = filtered.length;
       const page = filtered.slice(offset, offset + limit);
@@ -408,9 +515,22 @@ export async function handleWorkTool(
         skipGuard = { reason: sg.reason };
       }
 
-      const options = reason !== undefined || skipGuard !== undefined
-        ? { ...(reason !== undefined ? { reason } : {}), ...(skipGuard ? { skipGuard } : {}) }
-        : undefined;
+      let metadata: Record<string, unknown> | undefined;
+      if (args.metadata !== undefined) {
+        if (typeof args.metadata !== "object" || args.metadata === null || Array.isArray(args.metadata)) {
+          return errorResponse("VALIDATION_FAILED", `"metadata" must be a plain object`);
+        }
+        metadata = { ...(args.metadata as Record<string, unknown>) };
+      }
+
+      const options =
+        reason !== undefined || skipGuard !== undefined || metadata !== undefined
+          ? {
+              ...(reason !== undefined ? { reason } : {}),
+              ...(skipGuard ? { skipGuard } : {}),
+              ...(metadata ? { metadata } : {}),
+            }
+          : undefined;
       const result = await service.advancePhase(id, targetPhase as WorkPhaseType, options);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
@@ -449,6 +569,34 @@ export async function handleWorkTool(
       const result = await service.submitReview(id, agentIdVal, status as "approved" | "changes-requested");
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
+    }
+    case "search_work_by_metadata": {
+      const field = requireString(args, "field");
+      if (isErrorResponse(field)) return field;
+      if (args.value === undefined) {
+        return errorResponse("VALIDATION_FAILED", `"value" is required`);
+      }
+      const rawLimit = typeof args.limit === "number" ? args.limit : 20;
+      const limit = Math.max(1, Math.min(rawLimit, 100));
+      const rawOffset = typeof args.offset === "number" ? args.offset : 0;
+      const offset = Math.max(0, rawOffset);
+
+      const result = await service.listWork();
+      if (!result.ok) return errorResponse(result.error.code, result.error.message);
+
+      const matches = result.value.filter((w) => articleHasMetadata(w, field, args.value));
+      const total = matches.length;
+      const page = matches.slice(offset, offset + limit);
+      const summaries = page.map((w) => ({
+        id: w.id,
+        title: w.title,
+        template: w.template,
+        phase: w.phase,
+        priority: w.priority,
+        assignee: w.assignee,
+        updatedAt: w.updatedAt,
+      }));
+      return successResponse({ total, limit, offset, items: summaries });
     }
     case "add_dependency": {
       const id = requireString(args, "id");
