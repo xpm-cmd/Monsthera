@@ -130,12 +130,18 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
       const skippedGuards = Array.isArray(rawSkipped)
         ? rawSkipped.map((g) => String(g)).filter((g) => g.length > 0)
         : undefined;
+      const rawMetadata = (entry as { metadata?: unknown }).metadata;
+      const metadata =
+        rawMetadata && typeof rawMetadata === "object" && !Array.isArray(rawMetadata)
+          ? { ...(rawMetadata as Record<string, unknown>) }
+          : undefined;
       const base: PhaseHistoryEntry = {
         phase: entry.phase,
         enteredAt: timestamp(String(entry.enteredAt)),
         ...(entry.exitedAt ? { exitedAt: timestamp(String(entry.exitedAt)) } : {}),
         ...(typeof entry.reason === "string" && entry.reason.length > 0 ? { reason: entry.reason } : {}),
         ...(skippedGuards && skippedGuards.length > 0 ? { skippedGuards } : {}),
+        ...(metadata && Object.keys(metadata).length > 0 ? { metadata } : {}),
       };
       return base;
     });

@@ -442,12 +442,18 @@ async function handleWorkAdvance(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera work advance",
       summary: "Advance a work article to a new phase.",
-      usage: "<id> --phase <target> [--reason <text>] [--skip-guard-reason <text>] [--verbose | --format json]",
+      usage: "<id> --phase <target> [--reason <text>] [--skip-guard-reason <text>] [structured flags] [--verbose | --format json]",
       positional: [{ name: "<id>", description: "Work article id." }],
       flags: [
         { name: "--phase <target>", required: true, description: `One of: ${[...VALID_PHASES].join(" | ")}` },
         { name: "--reason <text>", description: "Free-text reason recorded in phase history." },
         { name: "--skip-guard-reason <text>", description: "Bypass phase guards with an audit reason." },
+        { name: "--success-test <Y|N|skipped>", description: "Convention: whether the success-test for this phase passed." },
+        { name: "--blockers <n>", description: "Convention: number of blockers remaining." },
+        { name: "--verdicts <a,b,c>", description: "Convention: comma-separated verdict labels." },
+        { name: "--fabrications <n>", description: "Convention: count of fabrications detected." },
+        { name: "--verify-count <n>", description: "Convention: number of verification passes." },
+        { name: "--metadata-json <json>", description: "Escape hatch: arbitrary JSON object merged into metadata." },
         { name: "--verbose", description: "Dump the full article after advance (pre-3.0 default)." },
         { name: "--format <fmt>", description: "text (default, 1-2 lines) or json (single-line JSON)." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
@@ -455,6 +461,7 @@ async function handleWorkAdvance(args: string[]): Promise<void> {
       notes: [
         "Default output is a single success line plus an optional truncated-reason line — stream-friendly.",
         "`--verbose` and `--format json` are mutually exclusive.",
+        "Structured flags feed `phaseHistory[*].metadata`; prefer them over packing everything into --reason.",
       ],
     });
     return;
@@ -487,9 +494,15 @@ async function handleWorkAdvance(args: string[]): Promise<void> {
     const phase = phaseStr as WorkPhaseType;
     const reason = parseFlag(args, "--reason");
     const skipGuardReason = parseFlag(args, "--skip-guard-reason");
-    const options: { reason?: string; skipGuard?: { reason: string } } = {};
+    const metadata = parsePhaseAdvanceMetadata(args);
+    const options: {
+      reason?: string;
+      skipGuard?: { reason: string };
+      metadata?: Record<string, unknown>;
+    } = {};
     if (reason) options.reason = reason;
     if (skipGuardReason) options.skipGuard = { reason: skipGuardReason };
+    if (metadata) options.metadata = metadata;
 
     // Capture the pre-advance phase so the default output can report the
     // transition as `<from> → <to>` without inferring it from phaseHistory.
@@ -535,6 +548,72 @@ async function handleWorkAdvance(args: string[]): Promise<void> {
 function truncateReason(reason: string): string {
   if (reason.length <= ADVANCE_REASON_TRUNCATE_LEN) return reason;
   return reason.slice(0, ADVANCE_REASON_TRUNCATE_LEN - 3) + "...";
+}
+
+const VALID_SUCCESS_TEST = new Set(["Y", "N", "skipped"]);
+
+/**
+ * Assemble a structured metadata payload for `work advance` from the
+ * conventional flags + the `--metadata-json` escape hatch. `--metadata-json`
+ * is merged last, so explicit convention flags win on key collision.
+ * Returns undefined when no flags are present so the downstream builder can
+ * skip writing a `metadata` property entirely.
+ */
+function parsePhaseAdvanceMetadata(args: string[]): Record<string, unknown> | undefined {
+  const metadata: Record<string, unknown> = {};
+
+  const successTest = parseFlag(args, "--success-test");
+  if (successTest !== undefined) {
+    if (!VALID_SUCCESS_TEST.has(successTest)) {
+      console.error(`Invalid --success-test "${successTest}" (expected Y | N | skipped).`);
+      process.exit(1);
+    }
+    metadata["success_test"] = successTest;
+  }
+
+  metadata["blockers"] = parseOptionalNonNegativeInt(args, "--blockers");
+  metadata["fabrications"] = parseOptionalNonNegativeInt(args, "--fabrications");
+  metadata["verify_count"] = parseOptionalNonNegativeInt(args, "--verify-count");
+
+  const verdicts = parseCommaSeparated(args, "--verdicts");
+  if (verdicts) metadata["verdicts"] = verdicts;
+
+  const metadataJsonRaw = parseFlag(args, "--metadata-json");
+  if (metadataJsonRaw !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(metadataJsonRaw);
+    } catch (e) {
+      console.error(`Invalid --metadata-json: ${e instanceof Error ? e.message : String(e)}`);
+      process.exit(1);
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      console.error("Invalid --metadata-json: expected a JSON object.");
+      process.exit(1);
+    }
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (metadata[k] === undefined) metadata[k] = v;
+    }
+  }
+
+  // Drop undefined placeholders from the optional int parser so the final map
+  // only contains keys the caller actually set.
+  for (const key of Object.keys(metadata)) {
+    if (metadata[key] === undefined) delete metadata[key];
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function parseOptionalNonNegativeInt(args: string[], flag: string): number | undefined {
+  const raw = parseFlag(args, flag);
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+    console.error(`Invalid ${flag} "${raw}" (expected a non-negative integer).`);
+    process.exit(1);
+  }
+  return n;
 }
 
 async function handleWorkEnrich(args: string[]): Promise<void> {

@@ -113,7 +113,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "advance_phase",
-      description: "Advance a work article to the next phase only when the guards pass and the next owner or review gate is explicit. Pass `reason` when cancelling; use `skip_guard: { reason }` for auditable guard bypass in legitimate edge cases.",
+      description: "Advance a work article to the next phase only when the guards pass and the next owner or review gate is explicit. Pass `reason` when cancelling; use `skip_guard: { reason }` for auditable guard bypass in legitimate edge cases. Use `metadata` to persist structured payload on the new phase-history entry (e.g. `success_test`, `blockers`, `verdicts`, `fabrications`, `verify_count`) instead of packing everything into `reason`.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -135,6 +135,11 @@ export function workToolDefinitions(): ToolDefinition[] {
             },
             required: ["reason"],
             additionalProperties: false,
+          },
+          metadata: {
+            type: "object",
+            description: "Optional structured payload persisted on the new phase-history entry. Open shape; conventional keys are documented in ADR-011 and searchable via `search_work_by_metadata`.",
+            additionalProperties: true,
           },
         },
         required: ["id", "targetPhase"],
@@ -445,9 +450,22 @@ export async function handleWorkTool(
         skipGuard = { reason: sg.reason };
       }
 
-      const options = reason !== undefined || skipGuard !== undefined
-        ? { ...(reason !== undefined ? { reason } : {}), ...(skipGuard ? { skipGuard } : {}) }
-        : undefined;
+      let metadata: Record<string, unknown> | undefined;
+      if (args.metadata !== undefined) {
+        if (typeof args.metadata !== "object" || args.metadata === null || Array.isArray(args.metadata)) {
+          return errorResponse("VALIDATION_FAILED", `"metadata" must be a plain object`);
+        }
+        metadata = { ...(args.metadata as Record<string, unknown>) };
+      }
+
+      const options =
+        reason !== undefined || skipGuard !== undefined || metadata !== undefined
+          ? {
+              ...(reason !== undefined ? { reason } : {}),
+              ...(skipGuard ? { skipGuard } : {}),
+              ...(metadata ? { metadata } : {}),
+            }
+          : undefined;
       const result = await service.advancePhase(id, targetPhase as WorkPhaseType, options);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
