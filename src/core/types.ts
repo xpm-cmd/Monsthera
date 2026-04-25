@@ -13,6 +13,9 @@ export type AgentId = Brand<string, "AgentId">;
 /** Unique identifier for sessions */
 export type SessionId = Brand<string, "SessionId">;
 
+/** Unique identifier for convoys (orchestration grouping of work articles) */
+export type ConvoyId = Brand<string, "ConvoyId">;
+
 /** URL-safe slug for articles */
 export type Slug = Brand<string, "Slug">;
 
@@ -34,6 +37,10 @@ export function agentId(id: string): AgentId {
 
 export function sessionId(id: string): SessionId {
   return id as SessionId;
+}
+
+export function convoyId(id: string): ConvoyId {
+  return id as ConvoyId;
 }
 
 export function slug(value: string): Slug {
@@ -58,6 +65,11 @@ export function generateWorkId(): WorkId {
 /** Generate an article ID */
 export function generateArticleId(): ArticleId {
   return articleId(generateId("k"));
+}
+
+/** Generate a convoy ID */
+export function generateConvoyId(): ConvoyId {
+  return convoyId(generateId("cv"));
 }
 
 /** Work article phases */

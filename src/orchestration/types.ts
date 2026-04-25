@@ -1,4 +1,4 @@
-import type { Timestamp, WorkPhase } from "../core/types.js";
+import type { ConvoyId, Timestamp, WorkId, WorkPhase } from "../core/types.js";
 import type { WorkArticle } from "../work/repository.js";
 
 export interface GuardResult {
@@ -71,8 +71,17 @@ export interface WaveResult {
  * Reason a dispatcher emits `agent_needed`. Tracks the *category* of trigger
  * so a harness can prioritise its queue: a policy-driven request is more
  * urgent than a freeform enrichment top-up.
+ *
+ * `requires_chain` is emitted when policy A has `policy_requires_articles: [B]`
+ * and B is not in `phase: done`. The slot targets B (not A) so the harness can
+ * advance B and unblock A on the next wave. Carries `triggeredBy.blockingArticle`
+ * pointing back at A.
  */
-export type AgentNeededReason = "policy" | "template_enrichment" | "reviewer_missing";
+export type AgentNeededReason =
+  | "policy"
+  | "template_enrichment"
+  | "reviewer_missing"
+  | "requires_chain";
 
 /**
  * Slim pointer to a context pack — the dispatcher does NOT serialise the
@@ -104,7 +113,12 @@ export interface AgentNeededDetails {
   readonly role: string;
   readonly transition: { readonly from: WorkPhase; readonly to: WorkPhase };
   readonly reason: AgentNeededReason;
-  readonly triggeredBy: { readonly policySlug?: string; readonly guardName?: string };
+  readonly triggeredBy: {
+    readonly policySlug?: string;
+    readonly guardName?: string;
+    /** Set on `requires_chain` slots: the article whose policy needs this referenced article advanced. */
+    readonly blockingArticle?: WorkId;
+  };
   readonly contextPackSummary: AgentContextPackSummary;
   readonly requestedAt: Timestamp;
 }
@@ -133,7 +147,67 @@ export interface DispatchedAgentRequest {
   readonly role: string;
   readonly transition: { readonly from: WorkPhase; readonly to: WorkPhase };
   readonly reason: AgentNeededReason;
-  readonly triggeredBy: { readonly policySlug?: string; readonly guardName?: string };
+  readonly triggeredBy: {
+    readonly policySlug?: string;
+    readonly guardName?: string;
+    readonly blockingArticle?: WorkId;
+  };
   /** True when an open `agent_needed` already covered this slot — no new event was emitted. */
   readonly deduped: boolean;
+}
+
+// ─── Convoys (ADR-009) ─────────────────────────────────────────────────────
+
+/** Lifecycle states for a convoy. */
+export type ConvoyStatus = "active" | "completed" | "cancelled";
+
+/**
+ * A named group of work articles that share a goal and follow a lead. The
+ * lead's progress past `targetPhase` is what unblocks members for wave
+ * planning. Convoys are orchestration state (no markdown source-of-truth);
+ * see ADR-009 for the carve-out from AGENTS.md §4.
+ */
+export interface Convoy {
+  readonly id: ConvoyId;
+  readonly leadWorkId: WorkId;
+  readonly memberWorkIds: readonly WorkId[];
+  readonly goal: string;
+  readonly status: ConvoyStatus;
+  /** Phase the lead must reach (or pass) before members are eligible. Defaults to `implementation`. */
+  readonly targetPhase: WorkPhase;
+  readonly createdAt: Timestamp;
+  readonly completedAt?: Timestamp;
+}
+
+// ─── Resync events (ADR-009) ───────────────────────────────────────────────
+
+/**
+ * Observational event: an active agent's snapshot has diverged from the
+ * latest captured snapshot. Emitted by the resync monitor on every drift
+ * tick. No `guidance[]` — the harness may correlate but is not required to
+ * act. The first drift past 2× resync interval escalates to an
+ * `agent_needs_resync` event, which IS dispatch-like.
+ */
+export interface ContextDriftEventDetails {
+  readonly role: string;
+  readonly originalSnapshotId: string;
+  readonly currentSnapshotId: string;
+  readonly ageMinutes: number;
+  readonly checkedAt: Timestamp;
+}
+
+/**
+ * Dispatch-like event: an active agent has been running long enough that the
+ * snapshot it started from is meaningfully stale, and the harness should
+ * either re-spawn with a fresh context pack or cancel the work. Carries
+ * `contextPackSummary` + `guidance[]` per ADR-008's contract for events the
+ * harness is expected to act on.
+ */
+export interface AgentNeedsResyncEventDetails {
+  readonly role: string;
+  readonly originalSnapshotId: string;
+  readonly currentSnapshotId: string;
+  readonly ageMinutes: number;
+  readonly contextPackSummary: AgentContextPackSummary;
+  readonly requestedAt: Timestamp;
 }
