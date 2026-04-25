@@ -1,6 +1,7 @@
 import type { WorkArticle } from "./repository.js";
 import type { SnapshotService } from "../context/snapshot-service.js";
 import type { CanonicalValue, Policy } from "./policy-loader.js";
+import type { WorkPhase } from "../core/types.js";
 
 // ─── Content Guards ───
 
@@ -42,9 +43,19 @@ export function all_reviewers_approved(article: WorkArticle): boolean {
  * pre-filters policies via `PolicyLoader.getApplicablePolicies` so this guard
  * receives only the policies relevant to the current article + transition.
  * Keeping the guard pure preserves its testability — no I/O here.
+ *
+ * `referencedArticlePhases` (ADR-009) is the orchestrator's pre-resolved
+ * map from referenced work-article id → current phase. Knowledge articles
+ * are not in the map (they have no phase). When a policy requires a work
+ * article reference and the map says it is not in `done`, the violation
+ * surfaces as `referencedArticlesNotDone` and the dispatcher converts it
+ * into a `requires_chain` agent_needed event targeting the referenced
+ * article. Optional: when omitted, the guard preserves legacy behavior
+ * (presence-only check).
  */
 export interface PolicyGuardContext {
   readonly policies: readonly Policy[];
+  readonly referencedArticlePhases?: ReadonlyMap<string, WorkPhase>;
 }
 
 /** Per-policy breakdown of what a work article is missing. */
@@ -53,6 +64,17 @@ export interface PolicyViolation {
   readonly missing: {
     readonly enrichmentRoles?: readonly string[];
     readonly referencedArticles?: readonly string[];
+    /**
+     * Referenced work articles that are present in `article.references` but
+     * whose current phase is not `done`. Populated only when
+     * `referencedArticlePhases` is supplied. Surfaces the work article id
+     * AND its current phase so the dispatcher can render a useful guidance
+     * message ("advance B from enrichment to done").
+     */
+    readonly referencedArticlesNotDone?: readonly {
+      readonly id: string;
+      readonly currentPhase: WorkPhase;
+    }[];
   };
 }
 
@@ -60,22 +82,31 @@ export interface PolicyViolation {
  * Returns true iff every applicable policy's `requires` are satisfied. Use
  * `getPolicyViolations` to get a structured breakdown of what is missing for
  * readiness reporting and error messages.
+ *
+ * When `context.referencedArticlePhases` is supplied (ADR-009), referenced
+ * work articles must additionally be in `phase: "done"` — a present-but-
+ * not-done reference is treated as a hard block.
  */
 export function policy_requirements_met(
   article: WorkArticle,
   context: PolicyGuardContext,
 ): boolean {
-  return getPolicyViolations(article, context.policies).length === 0;
+  return getPolicyViolations(article, context.policies, context.referencedArticlePhases).length === 0;
 }
 
 /**
  * Compute the structured violations for a set of applicable policies. Separate
  * from the boolean guard so the orchestrator can embed the "why" in log events
  * and readiness reports without re-checking.
+ *
+ * The optional `referencedArticlePhases` lifts the policy from a presence-only
+ * check to a hard block on referenced work articles being `done` (ADR-009).
+ * Knowledge-article references are not in the map and are silently exempt.
  */
 export function getPolicyViolations(
   article: WorkArticle,
   policies: readonly Policy[],
+  referencedArticlePhases?: ReadonlyMap<string, WorkPhase>,
 ): readonly PolicyViolation[] {
   const contributedOrSkipped = new Set(
     article.enrichmentRoles
@@ -93,11 +124,25 @@ export function getPolicyViolations(
       (ref) => !referenced.has(ref),
     );
 
-    if (missingRoles.length === 0 && missingRefs.length === 0) continue;
+    // Hard block: present references that are work articles must be done.
+    // Knowledge articles aren't in the map → silently exempt.
+    const notDone: { id: string; currentPhase: WorkPhase }[] = [];
+    if (referencedArticlePhases) {
+      for (const ref of policy.requires.referencedArticles) {
+        if (!referenced.has(ref)) continue;
+        const phase = referencedArticlePhases.get(ref);
+        if (phase !== undefined && phase !== "done") {
+          notDone.push({ id: ref, currentPhase: phase });
+        }
+      }
+    }
+
+    if (missingRoles.length === 0 && missingRefs.length === 0 && notDone.length === 0) continue;
 
     const missing: PolicyViolation["missing"] = {
       ...(missingRoles.length > 0 ? { enrichmentRoles: missingRoles } : {}),
       ...(missingRefs.length > 0 ? { referencedArticles: missingRefs } : {}),
+      ...(notDone.length > 0 ? { referencedArticlesNotDone: notDone } : {}),
     };
     violations.push({ policySlug: policy.slug, missing });
   }
@@ -196,6 +241,42 @@ function extractLine(text: string, index: number): string {
   const lineStart = text.lastIndexOf("\n", index) + 1;
   const lineEnd = text.indexOf("\n", index);
   return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
+}
+
+// ─── Convoy Guards (ADR-009) ───
+
+/**
+ * Per-call context for `convoy_lead_ready`. The orchestrator pre-resolves
+ * the convoy lead's current phase and passes the template's phase ordering
+ * (so `targetPhase` comparison is graph-aware, not string-comparison-based).
+ * Keeping the guard pure preserves its testability and the AGENTS.md §6
+ * "no I/O in guards" invariant.
+ */
+export interface ConvoyGuardContext {
+  readonly leadPhase: WorkPhase;
+  readonly targetPhase: WorkPhase;
+  /** Ordered list of phases for the lead's template, lowest index = earliest. */
+  readonly phaseOrder: readonly WorkPhase[];
+}
+
+/**
+ * Returns true iff the convoy lead's current phase is at-or-past the
+ * convoy's `targetPhase` per the lead's template `phaseOrder`. Members
+ * stay blocked until the lead reaches the target — this is the "lead
+ * unblocks the convoy" semantics from ADR-004 made executable.
+ *
+ * Phase comparison goes through the template's `phaseOrder` rather than
+ * string comparison: spike templates skip phases, so alphabetic ordering
+ * would lie. Returns false for unknown phases (fail-closed).
+ */
+export function convoy_lead_ready(
+  _article: WorkArticle,
+  context: ConvoyGuardContext,
+): boolean {
+  const leadIdx = context.phaseOrder.indexOf(context.leadPhase);
+  const targetIdx = context.phaseOrder.indexOf(context.targetPhase);
+  if (leadIdx < 0 || targetIdx < 0) return false;
+  return leadIdx >= targetIdx;
 }
 
 // ─── Snapshot Guards (async) ───

@@ -13,6 +13,7 @@ import {
   snapshot_ready,
   SNAPSHOT_READY_RECOVERY_HINT,
   policy_requirements_met,
+  convoy_lead_ready,
 } from "./guards.js";
 import { WORK_TEMPLATES } from "./templates.js";
 import type { SnapshotService } from "../context/snapshot-service.js";
@@ -61,6 +62,12 @@ export interface GuardDeps {
  * article + transition and appends a `policy_requirements_met` entry when
  * any apply. Policies do not gate `planning->enrichment` because that
  * transition runs before there is enough content to match against.
+ *
+ * `convoyLeadByMember` (ADR-009) is keyed by member work id; presence of
+ * an entry indicates the article belongs to an active convoy and the
+ * `convoy_lead_ready` guard should be prepended for non-terminal
+ * transitions. Absent for the lead itself — the lead's progress is what
+ * unblocks the rest, so its own guard set must not be self-blocking.
  */
 export interface GuardSetDeps {
   readonly policies?: readonly Policy[];
@@ -69,6 +76,23 @@ export interface GuardSetDeps {
     article: WorkArticle,
     transition: { from: WorkPhaseType; to: WorkPhaseType },
   ) => readonly Policy[];
+  readonly convoyLeadByMember?: ReadonlyMap<
+    string,
+    {
+      readonly convoyId: string;
+      readonly leadWorkId: string;
+      readonly leadPhase: WorkPhaseType;
+      readonly targetPhase: WorkPhaseType;
+      readonly phaseOrder: readonly WorkPhaseType[];
+    }
+  >;
+  /**
+   * Pre-resolved current phase per known work article id (ADR-009). Lets
+   * `policy_requires_articles` enforce "referenced article must be done"
+   * without the guard reaching for a repository. Knowledge-article ids are
+   * absent, which the guard treats as silently exempt from the phase check.
+   */
+  readonly referencedArticlePhases?: ReadonlyMap<string, WorkPhaseType>;
 }
 
 /** Get the guard set for a specific transition. Returns empty array for cancellation. */
@@ -114,9 +138,37 @@ export function getGuardSet(
       ? filter(deps.policies, article, { from, to })
       : deps.policies;
     if (applicable.length > 0) {
+      const refPhases = deps.referencedArticlePhases;
       baseGuards.push({
         name: "policy_requirements_met",
-        check: (a) => policy_requirements_met(a, { policies: applicable }),
+        check: (a) =>
+          policy_requirements_met(a, {
+            policies: applicable,
+            ...(refPhases ? { referencedArticlePhases: refPhases } : {}),
+          }),
+      });
+    }
+  }
+
+  // Convoy gate (ADR-009): convoy members must wait for the lead. Skipped on
+  // terminal transitions so cancellation and `done` are never gated by a
+  // distant lead. The lead itself is intentionally absent from the lookup
+  // and so reaches this branch with no entry — its guards stay unchanged.
+  const isCancellation = to === WorkPhase.CANCELLED;
+  const isFromTerminal = TERMINAL_PHASES.has(from);
+  if (!isCancellation && !isFromTerminal && deps?.convoyLeadByMember) {
+    const convoy = deps.convoyLeadByMember.get(article.id);
+    if (convoy) {
+      const ctx = {
+        leadPhase: convoy.leadPhase,
+        targetPhase: convoy.targetPhase,
+        phaseOrder: convoy.phaseOrder,
+      };
+      // Prepend so a member that hasn't even seen its lead reach target
+      // surfaces "convoy not ready" before any other failure noise.
+      baseGuards.unshift({
+        name: "convoy_lead_ready",
+        check: (a) => convoy_lead_ready(a, ctx),
       });
     }
   }

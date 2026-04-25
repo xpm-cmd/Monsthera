@@ -173,3 +173,65 @@ describe("AgentDispatcher: dedup", () => {
     expect(events.value).toHaveLength(2);
   });
 });
+
+/**
+ * Regression test (Codex review of S3 commit 4): when an article has
+ * multiple pending reviewers, `all_reviewers_approved` produces N slots
+ * sharing `(workId, role="reviewer", transition)`. The pre-loop dedup
+ * snapshot must be reused across the N slots so each one emits — if the
+ * snapshot is reloaded inside the slot loop, the second reviewer dedupes
+ * against the first reviewer's just-emitted event and gets dropped.
+ */
+describe("AgentDispatcher: per-target dedup snapshot semantics", () => {
+  it("emits one event per pending reviewer in a single dispatch pass", async () => {
+    const { workRepo, eventRepo, dispatcher } = await setup({ dedupWindowMs: 60 * 60 * 1000 });
+    const created = await workRepo.create({
+      title: "Article needing multiple reviewers",
+      template: WorkTemplate.FEATURE,
+      priority: Priority.MEDIUM,
+      author: agentId("author"),
+      content:
+        "## Objective\nx\n\n## Acceptance Criteria\n- ok\n\n## Implementation\n- y",
+      enrichmentRoles: [
+        { role: "architecture", agentId: agentId("a"), status: "contributed" },
+      ],
+      reviewers: [
+        { agentId: agentId("rev-1"), status: "pending" },
+        { agentId: agentId("rev-2"), status: "pending" },
+        { agentId: agentId("rev-3"), status: "pending" },
+      ],
+    });
+    if (!created.ok) throw new Error(created.error.message);
+    for (const phase of [
+      WorkPhase.ENRICHMENT,
+      WorkPhase.IMPLEMENTATION,
+      WorkPhase.REVIEW,
+    ]) {
+      const r = await workRepo.advancePhase(created.value.id, phase);
+      if (!r.ok) throw new Error(`advance → ${phase}: ${r.error.message}`);
+    }
+
+    const failure: GuardFailure = {
+      workId: created.value.id,
+      transition: { from: WorkPhase.REVIEW, to: WorkPhase.DONE },
+      failed: [{ name: "all_reviewers_approved", passed: false }],
+    };
+
+    const requests = await dispatcher.dispatchFor([failure]);
+    // Three pending reviewers → three reviewer_missing slots, none deduped
+    // against each other within the same dispatch pass.
+    expect(requests.filter((r) => r.role === "reviewer")).toHaveLength(3);
+    expect(requests.every((r) => r.deduped === false)).toBe(true);
+
+    // Three persisted agent_needed events on this article.
+    const events = await eventRepo.findByWorkId(workId(created.value.id));
+    expect(events.ok).toBe(true);
+    if (!events.ok) return;
+    const reviewerEvents = events.value.filter((e) => {
+      if (e.eventType !== "agent_needed") return false;
+      const d = e.details as Record<string, unknown>;
+      return (d.role as string) === "reviewer";
+    });
+    expect(reviewerEvents).toHaveLength(3);
+  });
+});
