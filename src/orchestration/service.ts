@@ -11,7 +11,15 @@ import { getGuardSet, getNextPhase } from "../work/lifecycle.js";
 import type { GuardSetDeps } from "../work/lifecycle.js";
 import { WORK_TEMPLATES } from "../work/templates.js";
 import type { PolicyLoader } from "../work/policy-loader.js";
-import type { ReadinessReport, AdvanceResult, WavePlan, WaveResult } from "./types.js";
+import type {
+  ReadinessReport,
+  AdvanceResult,
+  GuardFailure,
+  WavePlan,
+  WaveResult,
+  DispatchedAgentRequest,
+} from "./types.js";
+import type { AgentDispatcher } from "./agent-dispatcher.js";
 
 // ─── Dependencies ───────────────────────────────────────────────────────────
 
@@ -27,6 +35,12 @@ export interface OrchestrationServiceDeps {
    * policies gate transitions. Absent = no policy enforcement (legacy behavior).
    */
   policyLoader?: PolicyLoader;
+  /**
+   * Optional: when wired, every wave execution converts `guardFailures` into
+   * `agent_needed` events via the dispatcher. Absent = no dispatch (legacy
+   * behavior; tests that pre-date ADR-008 still pass).
+   */
+  agentDispatcher?: AgentDispatcher;
 }
 
 // ─── OrchestrationService ───────────────────────────────────────────────────
@@ -39,6 +53,7 @@ export class OrchestrationService {
   private readonly pollIntervalMs: number;
   private readonly maxConcurrentAgents: number;
   private readonly policyLoader?: PolicyLoader;
+  private readonly agentDispatcher?: AgentDispatcher;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private running = false;
 
@@ -50,6 +65,7 @@ export class OrchestrationService {
     this.pollIntervalMs = deps.pollIntervalMs ?? 30000;
     this.maxConcurrentAgents = Math.max(1, deps.maxConcurrentAgents ?? 5);
     this.policyLoader = deps.policyLoader;
+    this.agentDispatcher = deps.agentDispatcher;
   }
 
   /**
@@ -202,6 +218,7 @@ export class OrchestrationService {
     }
 
     const guardDeps = await this.buildGuardDeps();
+    const guardFailures: GuardFailure[] = [];
     for (const article of articles) {
       // Check if blocked by unresolved dependencies
       const unresolvedDeps = article.blockedBy.filter((dep) => !terminalIds.has(dep));
@@ -223,14 +240,21 @@ export class OrchestrationService {
       if (nextPhase === null) continue;
 
       const guards = getGuardSet(article, article.phase, nextPhase, guardDeps);
-      const allPassed = guards.every((g) => g.check(article));
+      const guardResults = guards.map((g) => ({ name: g.name, passed: g.check(article) }));
+      const allPassed = guardResults.every((g) => g.passed);
 
       if (allPassed) {
         items.push({ workId: article.id, from: article.phase, to: nextPhase });
+      } else {
+        guardFailures.push({
+          workId: article.id,
+          transition: { from: article.phase, to: nextPhase },
+          failed: guardResults.filter((g) => !g.passed),
+        });
       }
     }
 
-    const plan: WavePlan = { items, blockedItems };
+    const plan: WavePlan = { items, blockedItems, guardFailures };
 
     // Log wave planning event
     await this.eventRepo.logEvent({
@@ -257,6 +281,21 @@ export class OrchestrationService {
   async executeWave(plan: WavePlan): Promise<Result<WaveResult, StorageError>> {
     const advanced: AdvanceResult[] = [];
     const failed: Array<{ workId: string; error: string }> = [];
+    let dispatched: readonly DispatchedAgentRequest[] = [];
+
+    // Dispatch BEFORE advancing — surfaces "this article is blocked, here's
+    // what's missing" even when the wave advances zero items. Failures here
+    // are logged and swallowed: a dispatcher fault must not block the wave.
+    if (this.agentDispatcher && plan.guardFailures.length > 0) {
+      try {
+        dispatched = await this.agentDispatcher.dispatchFor(plan.guardFailures);
+      } catch (e) {
+        this.logger.error("Agent dispatch failed mid-wave; continuing", {
+          operation: "executeWave",
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
 
     const processItem = async (item: WavePlan["items"][number]): Promise<void> => {
       // Verify the article is still in the expected phase (guard against stale plans)
@@ -306,10 +345,11 @@ export class OrchestrationService {
       operation: "executeWave",
       advancedCount: advanced.length,
       failedCount: failed.length,
+      dispatchedCount: dispatched.length,
       maxConcurrentAgents: this.maxConcurrentAgents,
     });
 
-    return ok({ advanced, failed });
+    return ok({ advanced, failed, dispatched });
   }
 
   // ─── Auto-Advance Loop ────────────────────────────────────────────────────
