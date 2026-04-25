@@ -25,6 +25,11 @@ import { StubEmbeddingProvider, OllamaEmbeddingProvider } from "../search/embedd
 import type { EmbeddingProvider } from "../search/embedding.js";
 import { SearchService } from "../search/service.js";
 import { OrchestrationService } from "../orchestration/service.js";
+import {
+  AgentDispatcher,
+  readDedupWindowFromEnv,
+  readWorktreePathFromEnv,
+} from "../orchestration/agent-dispatcher.js";
 import { PolicyLoader } from "../work/policy-loader.js";
 import { MigrationService } from "../migration/service.js";
 import type { V2SourceReader } from "../migration/types.js";
@@ -49,6 +54,7 @@ export interface MonstheraContainer extends Disposable {
   readonly searchService: SearchService;
   readonly orchestrationRepo: OrchestrationEventRepository;
   readonly orchestrationService: OrchestrationService;
+  readonly agentDispatcher: AgentDispatcher;
   readonly structureService: StructureService;
   readonly agentsService: AgentService;
   readonly ingestService: IngestService;
@@ -253,6 +259,14 @@ export async function createContainer(
     knowledgeRepo: knowledgeRepo!,
     logger,
   });
+  const agentDispatcher = new AgentDispatcher({
+    workRepo: workRepo!,
+    eventRepo: orchestrationRepo!,
+    logger,
+    policyLoader,
+    dedupWindowMs: readDedupWindowFromEnv(),
+    ...(readWorktreePathFromEnv() ? { worktreePath: readWorktreePathFromEnv()! } : {}),
+  });
   const orchestrationService = new OrchestrationService({
     workRepo: workRepo!,
     orchestrationRepo: orchestrationRepo!,
@@ -261,6 +275,7 @@ export async function createContainer(
     pollIntervalMs: config.orchestration.pollIntervalMs,
     maxConcurrentAgents: config.orchestration.maxConcurrentAgents,
     policyLoader,
+    agentDispatcher,
   });
   const structureService = new StructureService({
     knowledgeRepo: knowledgeRepo!,
@@ -400,6 +415,7 @@ export async function createContainer(
     searchService,
     orchestrationRepo: orchestrationRepo!,
     orchestrationService,
+    agentDispatcher,
     structureService,
     agentsService,
     ingestService,

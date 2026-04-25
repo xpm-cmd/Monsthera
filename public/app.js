@@ -68,6 +68,7 @@ router
   .add("/guide", () => loadPage("./pages/guide.js"))
   .add("/flow", () => loadPage("./pages/flow.js"))
   .add("/work", () => loadPage("./pages/work.js"))
+  .add("/events", () => loadPage("./pages/events.js"))
   .add("/knowledge", () => loadPage("./pages/knowledge.js"))
   .add("/knowledge/graph", () => loadPage("./pages/knowledge-graph.js"))
   .add("/search", () => loadPage("./pages/search.js"))

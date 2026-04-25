@@ -490,7 +490,7 @@ describe("executeWave", () => {
     // Manually construct a wave plan with an item that will fail guards
     const fakePlan = {
       items: [{ workId: article.id as string, from: WorkPhase.PLANNING, to: WorkPhase.ENRICHMENT }],
-      blockedItems: [],
+      blockedItems: [], guardFailures: [],
     };
 
     const waveResult = await service.executeWave(fakePlan);
@@ -502,7 +502,7 @@ describe("executeWave", () => {
   });
 
   it("returns empty results for empty plan", async () => {
-    const emptyPlan = { items: [], blockedItems: [] };
+    const emptyPlan = { items: [], blockedItems: [], guardFailures: [] };
 
     const waveResult = await service.executeWave(emptyPlan);
     expect(waveResult.ok).toBe(true);
@@ -526,7 +526,7 @@ describe("executeWave", () => {
         { workId: ready.id as string, from: WorkPhase.PLANNING, to: WorkPhase.ENRICHMENT },
         { workId: notReady.id as string, from: WorkPhase.PLANNING, to: WorkPhase.ENRICHMENT },
       ],
-      blockedItems: [],
+      blockedItems: [], guardFailures: [],
     };
 
     const waveResult = await service.executeWave(fakePlan);
@@ -575,7 +575,7 @@ describe("executeWave", () => {
         from: WorkPhase.PLANNING,
         to: WorkPhase.ENRICHMENT,
       })),
-      blockedItems: [],
+      blockedItems: [], guardFailures: [],
     });
 
     expect(waveResult.ok).toBe(true);
