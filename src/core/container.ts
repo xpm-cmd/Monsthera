@@ -263,6 +263,7 @@ export async function createContainer(
     bookkeeper,
     snapshotService,
     repoPath: config.repoPath,
+    convoyRepo: convoyRepo!,
   });
   // Cross-wire: both services need the opposite repo to keep index.md in sync.
   knowledgeService.setWorkRepo(workRepo!);
