@@ -6,11 +6,46 @@ import type { StorageError } from "../core/errors.js";
 export type OrchestrationEventType =
   | "phase_advanced"
   | "agent_spawned"
+  | "agent_needed"
+  | "agent_started"
   | "agent_completed"
+  | "agent_failed"
   | "dependency_blocked"
   | "dependency_resolved"
   | "guard_evaluated"
   | "error_occurred";
+
+/**
+ * Subset of event types that describe the agent-dispatch lifecycle. The
+ * dispatcher emits `agent_needed`; an external harness emits the rest. Kept
+ * in one place so CLI/MCP validation reuses the same source of truth.
+ */
+export const AGENT_LIFECYCLE_EVENT_TYPES = [
+  "agent_needed",
+  "agent_started",
+  "agent_completed",
+  "agent_failed",
+] as const satisfies readonly OrchestrationEventType[];
+
+export type AgentLifecycleEventType = (typeof AGENT_LIFECYCLE_EVENT_TYPES)[number];
+
+/**
+ * Full set of event types accepted by `events emit` / `events_emit`. Snapshot
+ * of the union as a runtime-iterable Set so validation does not drift if the
+ * union grows in unrelated work.
+ */
+export const VALID_ORCHESTRATION_EVENT_TYPES: ReadonlySet<OrchestrationEventType> = new Set<OrchestrationEventType>([
+  "phase_advanced",
+  "agent_spawned",
+  "agent_needed",
+  "agent_started",
+  "agent_completed",
+  "agent_failed",
+  "dependency_blocked",
+  "dependency_resolved",
+  "guard_evaluated",
+  "error_occurred",
+]);
 
 /** Orchestration event */
 export interface OrchestrationEvent {
