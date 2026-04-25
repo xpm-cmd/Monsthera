@@ -104,6 +104,20 @@ export interface AgentContextPackSummary {
 }
 
 /**
+ * Provenance for an `agent_needed` event. Shared between the public
+ * event detail payload and the dispatcher's internal slot type so a
+ * future field addition stays in one place. `policySlug` is set for
+ * policy-driven slots; `guardName` for template/reviewer guards;
+ * `blockingArticle` for `requires_chain` slots (ADR-009) — the article
+ * whose policy is waiting on the referenced article to be `done`.
+ */
+export interface AgentTriggeredBy {
+  readonly policySlug?: string;
+  readonly guardName?: string;
+  readonly blockingArticle?: WorkId;
+}
+
+/**
  * Structured payload for `agent_needed` events. Stored as the `details`
  * blob on `OrchestrationEvent` so existing repos do not need new columns;
  * the typed shape is enforced at the dispatcher and at the CLI/MCP
@@ -113,12 +127,7 @@ export interface AgentNeededDetails {
   readonly role: string;
   readonly transition: { readonly from: WorkPhase; readonly to: WorkPhase };
   readonly reason: AgentNeededReason;
-  readonly triggeredBy: {
-    readonly policySlug?: string;
-    readonly guardName?: string;
-    /** Set on `requires_chain` slots: the article whose policy needs this referenced article advanced. */
-    readonly blockingArticle?: WorkId;
-  };
+  readonly triggeredBy: AgentTriggeredBy;
   readonly contextPackSummary: AgentContextPackSummary;
   readonly requestedAt: Timestamp;
 }
@@ -147,11 +156,7 @@ export interface DispatchedAgentRequest {
   readonly role: string;
   readonly transition: { readonly from: WorkPhase; readonly to: WorkPhase };
   readonly reason: AgentNeededReason;
-  readonly triggeredBy: {
-    readonly policySlug?: string;
-    readonly guardName?: string;
-    readonly blockingArticle?: WorkId;
-  };
+  readonly triggeredBy: AgentTriggeredBy;
   /** True when an open `agent_needed` already covered this slot — no new event was emitted. */
   readonly deduped: boolean;
 }

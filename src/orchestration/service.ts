@@ -90,10 +90,22 @@ export class OrchestrationService {
    * Called once per readiness check / wave so the convoy + policy lookups
    * cost O(scan) per pass instead of O(scan × articles).
    */
-  private async buildGuardDeps(): Promise<GuardSetDeps | undefined> {
+  /**
+   * Build the deps wired into `getGuardSet`. Returns a Result so the
+   * referenced-article phase lookup (ADR-009 hard block) can fail closed
+   * — degrading silently to legacy presence-only would let a work
+   * article advance past a policy that should have blocked it. Convoy
+   * lookup failures stay non-fatal (they only ever block, never unblock).
+   */
+  private async buildGuardDeps(): Promise<Result<GuardSetDeps | undefined, StorageError>> {
     const convoyLookup = await this.buildConvoyLookup();
-    const referencedPhases = this.policyLoader ? await this.buildReferencedArticlePhases() : undefined;
-    if (!this.policyLoader && !convoyLookup) return undefined;
+    let referencedPhases: ReadonlyMap<string, WorkPhase> | undefined;
+    if (this.policyLoader) {
+      const phasesResult = await this.buildReferencedArticlePhases();
+      if (!phasesResult.ok) return phasesResult;
+      referencedPhases = phasesResult.value;
+    }
+    if (!this.policyLoader && !convoyLookup) return ok(undefined);
 
     const out: { -readonly [K in keyof GuardSetDeps]: GuardSetDeps[K] } = {};
     if (this.policyLoader) {
@@ -108,7 +120,7 @@ export class OrchestrationService {
     if (referencedPhases) {
       out.referencedArticlePhases = referencedPhases;
     }
-    return out;
+    return ok(out);
   }
 
   /**
@@ -119,24 +131,26 @@ export class OrchestrationService {
    * Knowledge-article ids are deliberately absent so the guard treats them
    * as exempt.
    *
-   * Returns undefined when the work repo cannot be enumerated (logged and
-   * fail-open: legacy presence-only behavior preserved rather than blocking
-   * every wave on an unrelated infra error).
+   * Fails CLOSED on enumeration errors: the alternative (returning
+   * undefined and letting the guard run in legacy presence-only mode)
+   * silently downgrades the hard-block contract — a transient storage
+   * blip could let A advance even though B is not done. Surfacing the
+   * error halts the wave; the next pass retries.
    */
-  private async buildReferencedArticlePhases(): Promise<ReadonlyMap<string, WorkPhase> | undefined> {
+  private async buildReferencedArticlePhases(): Promise<Result<ReadonlyMap<string, WorkPhase>, StorageError>> {
     const allResult = await this.workRepo.findMany();
     if (!allResult.ok) {
-      this.logger.warn("Failed to load work articles for referenced-phase lookup; hard-block disabled this wave", {
+      this.logger.error("Failed to load work articles for referenced-phase lookup; failing wave closed", {
         operation: "buildReferencedArticlePhases",
         error: allResult.error.message,
       });
-      return undefined;
+      return allResult;
     }
     const map = new Map<string, WorkPhase>();
     for (const article of allResult.value) {
       map.set(article.id, article.phase);
     }
-    return map;
+    return ok(map);
   }
 
   /**
@@ -217,8 +231,9 @@ export class OrchestrationService {
       return ok(report);
     }
 
-    const guardDeps = await this.buildGuardDeps();
-    const guards = getGuardSet(article, article.phase, nextPhase, guardDeps);
+    const guardDepsResult = await this.buildGuardDeps();
+    if (!guardDepsResult.ok) return guardDepsResult;
+    const guards = getGuardSet(article, article.phase, nextPhase, guardDepsResult.value);
     const guardResults = guards.map((g) => ({
       name: g.name,
       passed: g.check(article),
@@ -320,7 +335,9 @@ export class OrchestrationService {
       }
     }
 
-    const guardDeps = await this.buildGuardDeps();
+    const guardDepsResult = await this.buildGuardDeps();
+    if (!guardDepsResult.ok) return guardDepsResult;
+    const guardDeps = guardDepsResult.value;
     const guardFailures: GuardFailure[] = [];
     for (const article of articles) {
       // Check if blocked by unresolved dependencies

@@ -13,9 +13,12 @@ import type {
   AgentContextPackSummary,
   AgentNeededDetails,
   AgentNeededReason,
+  AgentTriggeredBy,
   DispatchedAgentRequest,
   GuardFailure,
 } from "./types.js";
+import { NotFoundError } from "../core/errors.js";
+import type { OrchestrationEvent as OrchestrationEventForCache } from "./repository.js";
 
 /**
  * Default lookback window for deduplicating `agent_needed` events. One
@@ -54,7 +57,7 @@ interface DispatcherSlot {
   readonly role: string;
   readonly transition: { readonly from: WorkPhase; readonly to: WorkPhase };
   readonly reason: AgentNeededReason;
-  readonly triggeredBy: AgentNeededDetails["triggeredBy"];
+  readonly triggeredBy: AgentTriggeredBy;
 }
 
 /**
@@ -109,6 +112,33 @@ export class AgentDispatcher {
   async dispatchFor(failures: readonly GuardFailure[]): Promise<DispatchedAgentRequest[]> {
     const requests: DispatchedAgentRequest[] = [];
 
+    // Per-target dedup snapshot cache. The original (pre-S3) dispatcher
+    // loaded `findByWorkId` ONCE per article and reused the snapshot for
+    // every slot — so when `all_reviewers_approved` produced N slots with
+    // the same `(role="reviewer", transition)` they all emitted (none
+    // could see the others' just-logged event). Reloading per-slot would
+    // collapse those N reviewer slots into 1. We restore the original
+    // semantics by snapshotting once per *target article* and reusing
+    // across the whole `dispatchFor` call. The cache also avoids redundant
+    // I/O when multiple failures (or multiple slots) target the same
+    // article (e.g., several requires_chain slots all pointing at B).
+    const dedupCache = new Map<string, readonly OrchestrationEventForCache[]>();
+    const getDedupSnapshot = async (targetId: string): Promise<readonly OrchestrationEventForCache[]> => {
+      const cached = dedupCache.get(targetId);
+      if (cached) return cached;
+      const result = await this.eventRepo.findByWorkId(workId(targetId));
+      if (!result.ok) {
+        this.logger.warn("Failed to load events for dedup; emitting without dedup", {
+          workId: targetId,
+          error: result.error.message,
+        });
+        dedupCache.set(targetId, []);
+        return [];
+      }
+      dedupCache.set(targetId, result.value);
+      return result.value;
+    };
+
     for (const failure of failures) {
       const articleResult = await this.workRepo.findById(failure.workId);
       if (!articleResult.ok) {
@@ -133,14 +163,7 @@ export class AgentDispatcher {
           : await this.resolveSlotTarget(slot.workId);
         if (!targetArticle) continue;
 
-        const dedupEvents = await this.eventRepo.findByWorkId(workId(targetArticle.id));
-        if (!dedupEvents.ok) {
-          this.logger.warn("Failed to load events for dedup; emitting without dedup", {
-            workId: targetArticle.id,
-            error: dedupEvents.error.message,
-          });
-        }
-        const recentEvents = dedupEvents.ok ? dedupEvents.value : [];
+        const recentEvents = await getDedupSnapshot(targetArticle.id);
 
         const dedupHit = this.findOpenAgentNeeded(recentEvents, slot.role, slot.transition);
         if (dedupHit) {
@@ -195,17 +218,27 @@ export class AgentDispatcher {
    * Look up the work article a slot is targeted at. Used by `dispatchFor`
    * to handle `requires_chain` slots whose `workId` is the referenced
    * article, not the one whose guard failed.
+   *
+   * `NotFoundError` is silently dropped (the referenced article was
+   * deleted or never existed — operator can't act on a ghost). Any other
+   * `StorageError` is logged at warn level and the slot is dropped to
+   * avoid wedging the wave on a transient infra glitch — the dedup
+   * window will let us retry on the next pass.
    */
   private async resolveSlotTarget(targetId: string): Promise<WorkArticle | null> {
     const result = await this.workRepo.findById(targetId);
-    if (!result.ok) {
-      this.logger.warn("Slot target work article not found; dropping slot", {
+    if (result.ok) return result.value;
+    if (result.error instanceof NotFoundError) {
+      this.logger.warn("Slot target work article does not exist; dropping slot", {
+        targetId,
+      });
+    } else {
+      this.logger.warn("Slot target lookup failed; dropping slot (will retry next dispatch pass)", {
         targetId,
         error: result.error.message,
       });
-      return null;
     }
-    return result.value;
+    return null;
   }
 
   /**
