@@ -15,7 +15,11 @@ export type OrchestrationEventType =
   | "guard_evaluated"
   | "error_occurred"
   | "context_drift_detected"
-  | "agent_needs_resync";
+  | "agent_needs_resync"
+  | "convoy_created"
+  | "convoy_completed"
+  | "convoy_cancelled"
+  | "convoy_lead_cancelled_warning";
 
 /**
  * Subset of event types that describe the agent-dispatch lifecycle. The
@@ -49,6 +53,10 @@ export const VALID_ORCHESTRATION_EVENT_TYPES: ReadonlySet<OrchestrationEventType
   "error_occurred",
   "context_drift_detected",
   "agent_needs_resync",
+  "convoy_created",
+  "convoy_completed",
+  "convoy_cancelled",
+  "convoy_lead_cancelled_warning",
 ]);
 
 /**
@@ -60,6 +68,10 @@ export const VALID_ORCHESTRATION_EVENT_TYPES: ReadonlySet<OrchestrationEventType
 export const INTERNAL_ONLY_EVENT_TYPES = [
   "context_drift_detected",
   "agent_needs_resync",
+  "convoy_created",
+  "convoy_completed",
+  "convoy_cancelled",
+  "convoy_lead_cancelled_warning",
 ] as const satisfies readonly OrchestrationEventType[];
 
 export type InternalOnlyEventType = (typeof INTERNAL_ONLY_EVENT_TYPES)[number];

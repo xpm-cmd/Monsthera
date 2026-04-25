@@ -172,6 +172,31 @@ describe("Integration: monsthera convoy CLI", () => {
     expect(res.stderr).toMatch(/Invalid --target-phase/);
   });
 
+  it("convoy get --id <unknown> exits non-zero with stderr message", async () => {
+    const repoPath = path.join("/tmp", `monsthera-convoy-get-missing-${randomUUID()}`);
+    await fs.mkdir(repoPath, { recursive: true });
+    const res = cli(repoPath, ["convoy", "get", "--id", "cv-doesnt-exist"]);
+    expect(res.status).not.toBe(0);
+    expect(res.stderr).toMatch(/Failed to get convoy/i);
+  });
+
+  it("convoy get without --id exits non-zero with stderr message", async () => {
+    const repoPath = path.join("/tmp", `monsthera-convoy-get-noid-${randomUUID()}`);
+    await fs.mkdir(repoPath, { recursive: true });
+    const res = cli(repoPath, ["convoy", "get"]);
+    expect(res.status).not.toBe(0);
+    expect(res.stderr).toMatch(/Missing required flag: --id/);
+  });
+
+  it("convoy get --help prints usage on stderr-clean stdout", async () => {
+    const repoPath = path.join("/tmp", `monsthera-convoy-get-help-${randomUUID()}`);
+    await fs.mkdir(repoPath, { recursive: true });
+    const res = cli(repoPath, ["convoy", "get", "--help"]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toMatch(/monsthera convoy/i);
+    expect(res.stdout).toMatch(/get --id/);
+  });
+
   it("convoy --help prints usage on stderr-clean stdout", async () => {
     const repoPath = path.join("/tmp", `monsthera-convoy-help-${randomUUID()}`);
     await fs.mkdir(repoPath, { recursive: true });

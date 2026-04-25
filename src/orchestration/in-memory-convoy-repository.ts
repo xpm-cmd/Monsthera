@@ -1,11 +1,12 @@
 import { err, ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import {
+  AlreadyExistsError,
   NotFoundError,
   StateTransitionError,
   ValidationError,
 } from "../core/errors.js";
-import type { AlreadyExistsError, StorageError } from "../core/errors.js";
+import type { StorageError } from "../core/errors.js";
 import {
   generateConvoyId,
   timestamp,
@@ -14,8 +15,11 @@ import {
 import type { ConvoyId, Timestamp, WorkId, WorkPhase } from "../core/types.js";
 import type { Convoy } from "./types.js";
 import {
+  emitConvoyEvent,
   TERMINAL_CONVOY_STATUSES,
+  type ConvoyRepoDeps,
   type ConvoyRepository,
+  type ConvoyTerminationOptions,
   type CreateConvoyInput,
 } from "./convoy-repository.js";
 
@@ -23,6 +27,11 @@ const DEFAULT_TARGET_PHASE: WorkPhase = "implementation";
 
 export class InMemoryConvoyRepository implements ConvoyRepository {
   private readonly convoys = new Map<ConvoyId, Convoy>();
+  private readonly deps?: ConvoyRepoDeps;
+
+  constructor(deps?: ConvoyRepoDeps) {
+    this.deps = deps;
+  }
 
   async create(
     input: CreateConvoyInput,
@@ -31,18 +40,56 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
     const validation = validateCreateInput(input);
     if (validation) return err(validation);
 
+    const dedupedMembers = dedupWorkIds(input.memberWorkIds);
+    const conflict = this.findActiveMembershipConflict(input.leadWorkId, dedupedMembers);
+    if (conflict) return err(conflict);
+
     const id = generateConvoyId();
     const convoy: Convoy = {
       id,
       leadWorkId: input.leadWorkId,
-      memberWorkIds: dedupWorkIds(input.memberWorkIds),
+      memberWorkIds: dedupedMembers,
       goal: input.goal,
       status: "active",
       targetPhase: input.targetPhase ?? DEFAULT_TARGET_PHASE,
       createdAt: createdAt ?? timestamp(),
     };
     this.convoys.set(id, convoy);
+    await emitConvoyEvent(this.deps, "convoy_created", convoy.leadWorkId, {
+      convoyId: convoy.id,
+      leadWorkId: convoy.leadWorkId,
+      memberWorkIds: convoy.memberWorkIds,
+      goal: convoy.goal,
+      targetPhase: convoy.targetPhase,
+      ...(input.actor ? { actor: input.actor } : {}),
+    });
     return ok(convoy);
+  }
+
+  /**
+   * Single-convoy invariant (ADR-013): a work article must not appear as
+   * lead or member in two active convoys at the same time. Scans the
+   * proposed lead + every deduped member against active convoys; the
+   * first hit is reported as `AlreadyExistsError("ConvoyMembership", id)`.
+   * Returns `null` when the proposed convoy is conflict-free.
+   */
+  private findActiveMembershipConflict(
+    leadWorkId: WorkId,
+    memberWorkIds: readonly WorkId[],
+  ): AlreadyExistsError | null {
+    const candidates: readonly WorkId[] = [leadWorkId, ...memberWorkIds];
+    for (const candidate of candidates) {
+      for (const convoy of this.convoys.values()) {
+        if (convoy.status !== "active") continue;
+        if (
+          convoy.leadWorkId === candidate ||
+          convoy.memberWorkIds.includes(candidate)
+        ) {
+          return new AlreadyExistsError("ConvoyMembership", candidate);
+        }
+      }
+    }
+    return null;
   }
 
   async findById(id: ConvoyId): Promise<Result<Convoy, NotFoundError | StorageError>> {
@@ -71,23 +118,26 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
 
   async complete(
     id: ConvoyId,
+    options?: ConvoyTerminationOptions,
     completedAt?: Timestamp,
   ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
-    return this.transitionTerminal(id, "completed", completedAt);
+    return this.transitionTerminal(id, "completed", options, completedAt);
   }
 
   async cancel(
     id: ConvoyId,
+    options?: ConvoyTerminationOptions,
     completedAt?: Timestamp,
   ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
-    return this.transitionTerminal(id, "cancelled", completedAt);
+    return this.transitionTerminal(id, "cancelled", options, completedAt);
   }
 
-  private transitionTerminal(
+  private async transitionTerminal(
     id: ConvoyId,
     target: "completed" | "cancelled",
+    options: ConvoyTerminationOptions | undefined,
     completedAt?: Timestamp,
-  ): Result<Convoy, NotFoundError | StateTransitionError | StorageError> {
+  ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
     const found = this.convoys.get(id);
     if (!found) return err(new NotFoundError("Convoy", id));
     if (TERMINAL_CONVOY_STATUSES.has(found.status)) {
@@ -105,6 +155,14 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
       completedAt: completedAt ?? timestamp(),
     };
     this.convoys.set(id, updated);
+    const eventType = target === "completed" ? "convoy_completed" : "convoy_cancelled";
+    await emitConvoyEvent(this.deps, eventType, updated.leadWorkId, {
+      convoyId: updated.id,
+      leadWorkId: updated.leadWorkId,
+      memberWorkIds: updated.memberWorkIds,
+      ...(options?.terminationReason ? { terminationReason: options.terminationReason } : {}),
+      ...(options?.actor ? { actor: options.actor } : {}),
+    });
     return ok(updated);
   }
 }

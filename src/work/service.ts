@@ -7,6 +7,8 @@ import type { StatusReporter } from "../core/status.js";
 import type { WorkPhase as WorkPhaseType } from "../core/types.js";
 import { workId, agentId, WorkPhase } from "../core/types.js";
 import type { OrchestrationEventRepository, OrchestrationEventType } from "../orchestration/repository.js";
+import type { ConvoyRepository } from "../orchestration/convoy-repository.js";
+import type { ConvoyLeadCancelledWarningEventDetails } from "../orchestration/types.js";
 import type { WorkArticle, WorkArticleRepository, CreateWorkArticleInput, UpdateWorkArticleInput, AdvancePhaseOptions } from "./repository.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { SearchMutationSync } from "../search/sync.js";
@@ -29,6 +31,14 @@ export interface WorkServiceDeps {
   snapshotService?: SnapshotService;
   /** Absolute path to the repo root; used to hash HEAD lockfiles for the guard. */
   repoPath?: string;
+  /**
+   * Optional: when wired, cancelling a work article that is the lead of any
+   * active convoy emits a `convoy_lead_cancelled_warning` event per affected
+   * convoy (ADR-013). Members are NOT auto-cancelled; the event is the
+   * operator's signal to decide. Decoupled so existing tests that don't
+   * care about convoys keep passing without a fake repo.
+   */
+  convoyRepo?: ConvoyRepository;
 }
 
 export class WorkService {
@@ -40,6 +50,7 @@ export class WorkService {
   private readonly bookkeeper?: WikiBookkeeper;
   private readonly snapshotService?: SnapshotService;
   private readonly repoPath?: string;
+  private readonly convoyRepo?: ConvoyRepository;
 
   constructor(deps: WorkServiceDeps) {
     this.repo = deps.workRepo;
@@ -50,6 +61,7 @@ export class WorkService {
     this.bookkeeper = deps.bookkeeper;
     this.snapshotService = deps.snapshotService;
     this.repoPath = deps.repoPath;
+    this.convoyRepo = deps.convoyRepo;
   }
 
   async createWork(
@@ -145,10 +157,52 @@ export class WorkService {
         to: result.value.phase,
         phaseHistory: result.value.phaseHistory,
       });
+      if (targetPhase === WorkPhase.CANCELLED) {
+        await this.emitConvoyLeadCancelledWarnings(result.value.id, options?.reason ?? "");
+      }
       await this.bookkeeper?.appendLog("advance", "work", `${result.value.title} → ${result.value.phase}`, result.value.id);
       await this.rebuildIndex();
     }
     return result;
+  }
+
+  /**
+   * After a successful cancellation, emit one `convoy_lead_cancelled_warning`
+   * per active convoy where the cancelled article is the lead (ADR-013).
+   * This is the observable signal that members are now blocked on a dead
+   * lead — the operator decides whether to cancel the convoy, reassign the
+   * lead, or do nothing. We deliberately do NOT auto-cancel members; that
+   * would invert the "decision is human" framing from ADR-009.
+   *
+   * Fail-open: any lookup or emit error is warn-logged and swallowed; the
+   * cancellation itself already succeeded and must not be undone by an
+   * observability hiccup.
+   */
+  private async emitConvoyLeadCancelledWarnings(
+    cancelledWorkId: string,
+    reason: string,
+  ): Promise<void> {
+    if (!this.convoyRepo || !this.orchestrationRepo) return;
+    const convoysResult = await this.convoyRepo.findByMember(workId(cancelledWorkId));
+    if (!convoysResult.ok) {
+      this.logger.warn("Failed to look up convoys for lead-cancellation warning", {
+        operation: "emitConvoyLeadCancelledWarnings",
+        cancelledWorkId,
+        error: convoysResult.error.message,
+      });
+      return;
+    }
+    for (const convoy of convoysResult.value) {
+      if (convoy.status !== "active") continue;
+      if (convoy.leadWorkId !== cancelledWorkId) continue;
+      const details: ConvoyLeadCancelledWarningEventDetails = {
+        convoyId: convoy.id,
+        leadWorkId: convoy.leadWorkId,
+        memberWorkIds: convoy.memberWorkIds,
+        reason,
+      };
+      await this.logEvent(cancelledWorkId, "convoy_lead_cancelled_warning", details as unknown as Record<string, unknown>);
+    }
   }
 
   // ─── Enrichment & Review ───────────────────────────────────────────────────

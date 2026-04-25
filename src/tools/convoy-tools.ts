@@ -1,5 +1,5 @@
-import { convoyId, workId, VALID_PHASES } from "../core/types.js";
-import type { ConvoyId, WorkId, WorkPhase } from "../core/types.js";
+import { agentId as toAgentId, convoyId, workId, VALID_PHASES } from "../core/types.js";
+import type { AgentId, ConvoyId, WorkId, WorkPhase } from "../core/types.js";
 import type { ConvoyRepository } from "../orchestration/convoy-repository.js";
 import type { ToolDefinition, ToolResponse } from "./knowledge-tools.js";
 import {
@@ -32,6 +32,8 @@ export async function handleConvoyTool(
       return handleCreate(args, deps);
     case "convoy_list":
       return handleList(deps);
+    case "convoy_get":
+      return handleGet(args, deps);
     case "convoy_complete":
       return handleComplete(args, deps);
     case "convoy_cancel":
@@ -41,13 +43,24 @@ export async function handleConvoyTool(
   }
 }
 
+async function handleGet(
+  args: Record<string, unknown>,
+  deps: ConvoyToolDeps,
+): Promise<ToolResponse> {
+  const id = requireString(args, "id");
+  if (isErrorResponse(id)) return id;
+  const result = await deps.convoyRepo.findById(convoyId(id) as ConvoyId);
+  if (!result.ok) return errorResponse(result.error.code, result.error.message);
+  return successResponse(result.value);
+}
+
 async function handleCreate(
   args: Record<string, unknown>,
   deps: ConvoyToolDeps,
 ): Promise<ToolResponse> {
   const lead = requireString(args, "leadWorkId");
   if (isErrorResponse(lead)) return lead;
-  const goal = requireString(args, "goal");
+  const goal = requireString(args, "goal", 1000);
   if (isErrorResponse(goal)) return goal;
   const membersRaw = args["memberWorkIds"];
   if (!Array.isArray(membersRaw) || membersRaw.length === 0) {
@@ -68,12 +81,15 @@ async function handleCreate(
       `\`targetPhase\` must be one of: ${VALID_TARGET_PHASES.join(", ")}`,
     );
   }
+  const actor = optionalString(args, "actor");
+  if (isErrorResponse(actor)) return actor;
 
   const result = await deps.convoyRepo.create({
     leadWorkId: workId(lead),
     memberWorkIds: members,
     goal,
     ...(targetPhase ? { targetPhase: targetPhase as WorkPhase } : {}),
+    ...(actor ? { actor: toAgentId(actor) as AgentId } : {}),
   });
   if (!result.ok) return errorResponse(result.error.code, result.error.message);
   return successResponse(result.value);
@@ -91,7 +107,9 @@ async function handleComplete(
 ): Promise<ToolResponse> {
   const id = requireString(args, "id");
   if (isErrorResponse(id)) return id;
-  const result = await deps.convoyRepo.complete(convoyId(id) as ConvoyId);
+  const options = parseTerminationOptions(args);
+  if (isErrorResponse(options)) return options;
+  const result = await deps.convoyRepo.complete(convoyId(id) as ConvoyId, options);
   if (!result.ok) return errorResponse(result.error.code, result.error.message);
   return successResponse(result.value);
 }
@@ -102,9 +120,24 @@ async function handleCancel(
 ): Promise<ToolResponse> {
   const id = requireString(args, "id");
   if (isErrorResponse(id)) return id;
-  const result = await deps.convoyRepo.cancel(convoyId(id) as ConvoyId);
+  const options = parseTerminationOptions(args);
+  if (isErrorResponse(options)) return options;
+  const result = await deps.convoyRepo.cancel(convoyId(id) as ConvoyId, options);
   if (!result.ok) return errorResponse(result.error.code, result.error.message);
   return successResponse(result.value);
+}
+
+function parseTerminationOptions(
+  args: Record<string, unknown>,
+): { actor?: AgentId; terminationReason?: string } | ToolResponse {
+  const actor = optionalString(args, "actor");
+  if (isErrorResponse(actor)) return actor;
+  const terminationReason = optionalString(args, "terminationReason", 1000);
+  if (isErrorResponse(terminationReason)) return terminationReason;
+  return {
+    ...(actor ? { actor: toAgentId(actor) as AgentId } : {}),
+    ...(terminationReason ? { terminationReason } : {}),
+  };
 }
 
 /** MCP tool definitions for the convoy surface (ADR-009). */
@@ -113,14 +146,14 @@ export function convoyToolDefinitions(): ToolDefinition[] {
     {
       name: "convoy_create",
       description:
-        "Create a convoy: a named group of work articles where the lead's progress past `targetPhase` unblocks members. Default targetPhase is `implementation`.",
+        "Create a convoy: a named group of work articles where the lead's progress past `targetPhase` unblocks members. Default targetPhase is `implementation`. Emits a `convoy_created` provenance event (envelope `workId` = lead).",
       inputSchema: {
         type: "object" as const,
         properties: {
           leadWorkId: { type: "string", description: "Work id of the convoy lead." },
           memberWorkIds: {
             type: "array",
-            description: "Work ids of the convoy members. Must not include the lead.",
+            description: "Work ids of the convoy members. Must not include the lead. A work id already participating in another active convoy is rejected with ALREADY_EXISTS (ADR-013).",
             items: { type: "string" },
           },
           goal: { type: "string", description: "Free-text rationale for the grouping." },
@@ -128,6 +161,10 @@ export function convoyToolDefinitions(): ToolDefinition[] {
             type: "string",
             description: "Phase the lead must reach before members are eligible. Default: implementation.",
             enum: VALID_TARGET_PHASES,
+          },
+          actor: {
+            type: "string",
+            description: "Optional agent id forming the convoy. Captured in the convoy_created event for provenance.",
           },
         },
         required: ["leadWorkId", "memberWorkIds", "goal"],
@@ -142,8 +179,8 @@ export function convoyToolDefinitions(): ToolDefinition[] {
       },
     },
     {
-      name: "convoy_complete",
-      description: "Mark an active convoy as completed. Re-completion of a terminal convoy is rejected.",
+      name: "convoy_get",
+      description: "Get a single convoy by id (active OR terminal). Returns NOT_FOUND if no convoy with that id exists.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -153,12 +190,27 @@ export function convoyToolDefinitions(): ToolDefinition[] {
       },
     },
     {
-      name: "convoy_cancel",
-      description: "Mark an active convoy as cancelled. Re-cancellation of a terminal convoy is rejected.",
+      name: "convoy_complete",
+      description: "Mark an active convoy as completed. Re-completion of a terminal convoy is rejected. Emits a `convoy_completed` provenance event.",
       inputSchema: {
         type: "object" as const,
         properties: {
           id: { type: "string", description: "Convoy id." },
+          actor: { type: "string", description: "Optional agent id completing the convoy. Captured in the event." },
+          terminationReason: { type: "string", description: "Optional free-text reason. Captured in the event." },
+        },
+        required: ["id"],
+      },
+    },
+    {
+      name: "convoy_cancel",
+      description: "Mark an active convoy as cancelled. Re-cancellation of a terminal convoy is rejected. Emits a `convoy_cancelled` provenance event.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          id: { type: "string", description: "Convoy id." },
+          actor: { type: "string", description: "Optional agent id cancelling the convoy. Captured in the event." },
+          terminationReason: { type: "string", description: "Optional free-text reason. Captured in the event." },
         },
         required: ["id"],
       },
