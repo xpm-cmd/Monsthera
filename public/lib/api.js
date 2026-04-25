@@ -128,3 +128,12 @@ export function search(q, limit) {
   return get(`/api/search?${params}`);
 }
 export function reindexSearch() { return post("/api/search/reindex", {}); }
+export function getEvents({ type, workId, limit } = {}) {
+  const params = new URLSearchParams();
+  if (type) params.set("type", type);
+  if (workId) params.set("workId", workId);
+  if (limit) params.set("limit", String(limit));
+  const qs = params.toString();
+  return get(`/api/events${qs ? `?${qs}` : ""}`);
+}
+export function emitEvent(payload) { return post("/api/events/emit", payload); }
