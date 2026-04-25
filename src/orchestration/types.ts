@@ -1,4 +1,4 @@
-import type { ConvoyId, Timestamp, WorkId, WorkPhase } from "../core/types.js";
+import type { AgentId, ConvoyId, Timestamp, WorkId, WorkPhase } from "../core/types.js";
 import type { WorkArticle } from "../work/repository.js";
 
 export interface GuardResult {
@@ -215,4 +215,54 @@ export interface AgentNeedsResyncEventDetails {
   readonly ageMinutes: number;
   readonly contextPackSummary: AgentContextPackSummary;
   readonly requestedAt: Timestamp;
+}
+
+// ─── Convoy lifecycle events (ADR-010) ─────────────────────────────────────
+
+/**
+ * Provenance event emitted by `ConvoyRepository.create`. Captures the
+ * convoy shape at birth so `events tail --type convoy_created` answers
+ * "who formed this convoy and when" without scanning the convoys table.
+ * Internal-only — refused by the external `events_emit` whitelist (see
+ * `INTERNAL_ONLY_EVENT_TYPES`). The envelope's `workId` is the lead so
+ * `events tail --work <lead>` surfaces the convoy birth alongside the
+ * lead's lifecycle.
+ */
+export interface ConvoyCreatedEventDetails {
+  readonly convoyId: ConvoyId;
+  readonly leadWorkId: WorkId;
+  readonly memberWorkIds: readonly WorkId[];
+  readonly goal: string;
+  readonly targetPhase: WorkPhase;
+  /** Optional agent that initiated the convoy. CLI fills it from `--actor`. */
+  readonly actor?: AgentId;
+}
+
+/**
+ * Provenance event emitted by `ConvoyRepository.complete` or
+ * `ConvoyRepository.cancel`. Both terminal transitions share the same
+ * shape so a single `details` decoder covers them. Internal-only.
+ */
+export interface ConvoyTerminalEventDetails {
+  readonly convoyId: ConvoyId;
+  readonly leadWorkId: WorkId;
+  readonly memberWorkIds: readonly WorkId[];
+  /** Free-text rationale supplied by the operator (when surfaced by CLI/MCP). */
+  readonly terminationReason?: string;
+  readonly actor?: AgentId;
+}
+
+/**
+ * Warning event emitted when a convoy lead transitions to `cancelled`.
+ * S4 deliberately does NOT auto-cascade: members stay in their current
+ * phase and the operator decides whether to cancel the convoy, reassign
+ * the lead, or leave members where they are. The warning is the
+ * observable signal that the decision is theirs to make. Internal-only.
+ */
+export interface ConvoyLeadCancelledWarningEventDetails {
+  readonly convoyId: ConvoyId;
+  readonly leadWorkId: WorkId;
+  readonly memberWorkIds: readonly WorkId[];
+  /** Reason captured at cancel time (required by `WorkService.advancePhase`). */
+  readonly reason: string;
 }

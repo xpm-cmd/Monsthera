@@ -16,6 +16,7 @@ import type { Convoy } from "./types.js";
 import {
   TERMINAL_CONVOY_STATUSES,
   type ConvoyRepository,
+  type ConvoyTerminationOptions,
   type CreateConvoyInput,
 } from "./convoy-repository.js";
 
@@ -71,21 +72,24 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
 
   async complete(
     id: ConvoyId,
+    options?: ConvoyTerminationOptions,
     completedAt?: Timestamp,
   ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
-    return this.transitionTerminal(id, "completed", completedAt);
+    return this.transitionTerminal(id, "completed", options, completedAt);
   }
 
   async cancel(
     id: ConvoyId,
+    options?: ConvoyTerminationOptions,
     completedAt?: Timestamp,
   ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
-    return this.transitionTerminal(id, "cancelled", completedAt);
+    return this.transitionTerminal(id, "cancelled", options, completedAt);
   }
 
   private transitionTerminal(
     id: ConvoyId,
     target: "completed" | "cancelled",
+    _options: ConvoyTerminationOptions | undefined,
     completedAt?: Timestamp,
   ): Result<Convoy, NotFoundError | StateTransitionError | StorageError> {
     const found = this.convoys.get(id);

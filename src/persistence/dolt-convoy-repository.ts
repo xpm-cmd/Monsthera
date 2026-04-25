@@ -18,6 +18,7 @@ import type { Convoy, ConvoyStatus } from "../orchestration/types.js";
 import {
   TERMINAL_CONVOY_STATUSES,
   type ConvoyRepository,
+  type ConvoyTerminationOptions,
   type CreateConvoyInput,
 } from "../orchestration/convoy-repository.js";
 import { executeMutation, executeQuery } from "./connection.js";
@@ -114,21 +115,24 @@ export class DoltConvoyRepository implements ConvoyRepository {
 
   async complete(
     id: ConvoyId,
+    options?: ConvoyTerminationOptions,
     completedAt?: Timestamp,
   ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
-    return this.transitionTerminal(id, "completed", completedAt);
+    return this.transitionTerminal(id, "completed", options, completedAt);
   }
 
   async cancel(
     id: ConvoyId,
+    options?: ConvoyTerminationOptions,
     completedAt?: Timestamp,
   ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
-    return this.transitionTerminal(id, "cancelled", completedAt);
+    return this.transitionTerminal(id, "cancelled", options, completedAt);
   }
 
   private async transitionTerminal(
     id: ConvoyId,
     target: "completed" | "cancelled",
+    _options: ConvoyTerminationOptions | undefined,
     completedAt?: Timestamp,
   ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
     const existing = await this.findById(id);
