@@ -214,6 +214,17 @@ async function handleEmit(args: string[]): Promise<void> {
       console.error(`Failed to emit event: ${result.error.message}`);
       process.exit(1);
     }
+    // Notify the resync monitor so agent_started kicks off tracking and
+    // agent_completed/agent_failed cleans it up. Failure here must NOT
+    // block the emit — log to stderr and proceed; the next tick will
+    // self-correct via cold-start rehydration.
+    try {
+      await container.resyncMonitor.onEvent(result.value);
+    } catch (e) {
+      container.logger.warn("Resync monitor onEvent threw", {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
     process.stdout.write(JSON.stringify(result.value) + "\n");
   });
 }

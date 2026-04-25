@@ -10,10 +10,19 @@ import type { SnapshotRepository } from "./snapshot-repository.js";
  * Bounded in-memory snapshot store. Snapshots are small but unbounded callers
  * (noisy agents, test loops) could exhaust memory; cap at MAX_SNAPSHOTS and
  * evict oldest-first once the cap is reached.
+ *
+ * Optional `now` injection (ADR-009) lets the resync monitor's tests
+ * record multiple snapshots at distinct simulated timestamps without
+ * hitting millisecond-resolution races on the real clock.
  */
 export class InMemorySnapshotRepository implements SnapshotRepository {
   private static readonly MAX_SNAPSHOTS = 5_000;
   private snapshots: EnvironmentSnapshot[] = [];
+  private readonly now: () => number;
+
+  constructor(deps?: { now?: () => number }) {
+    this.now = deps?.now ?? (() => Date.now());
+  }
 
   async record(input: RecordSnapshotInput): Promise<Result<EnvironmentSnapshot, StorageError>> {
     if (this.snapshots.length >= InMemorySnapshotRepository.MAX_SNAPSHOTS) {
@@ -24,7 +33,7 @@ export class InMemorySnapshotRepository implements SnapshotRepository {
     const stored: EnvironmentSnapshot = {
       ...input,
       id: generateId("s"),
-      capturedAt: timestamp(),
+      capturedAt: timestamp(new Date(this.now()).toISOString()),
     };
     this.snapshots.push(stored);
     return ok(stored);

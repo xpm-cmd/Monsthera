@@ -32,6 +32,7 @@ import {
   readDedupWindowFromEnv,
   readWorktreePathFromEnv,
 } from "../orchestration/agent-dispatcher.js";
+import { ResyncMonitor, readResyncIntervalFromEnv } from "../orchestration/resync-monitor.js";
 import { PolicyLoader } from "../work/policy-loader.js";
 import { MigrationService } from "../migration/service.js";
 import type { V2SourceReader } from "../migration/types.js";
@@ -58,6 +59,7 @@ export interface MonstheraContainer extends Disposable {
   readonly convoyRepo: ConvoyRepository;
   readonly orchestrationService: OrchestrationService;
   readonly agentDispatcher: AgentDispatcher;
+  readonly resyncMonitor: ResyncMonitor;
   readonly structureService: StructureService;
   readonly agentsService: AgentService;
   readonly ingestService: IngestService;
@@ -414,6 +416,22 @@ export async function createContainer(
     stack.defer(() => { orchestrationService.stop(); });
   }
 
+  // Resync monitor (ADR-009): observes agent_started events, ticks at the
+  // configured cadence, and emits context_drift_detected /
+  // agent_needs_resync as the snapshot ages. Hooked into the events_emit
+  // code paths (CLI + MCP) downstream so external lifecycle writes
+  // notify the monitor synchronously.
+  const resyncMonitor = new ResyncMonitor({
+    eventRepo: orchestrationRepo!,
+    snapshotService,
+    workRepo: workRepo!,
+    logger,
+    intervalMs: readResyncIntervalFromEnv(),
+    ...(readWorktreePathFromEnv() ? { worktreePath: readWorktreePathFromEnv()! } : {}),
+  });
+  await resyncMonitor.start();
+  stack.defer(() => { resyncMonitor.stop(); });
+
   return {
     config,
     logger,
@@ -428,6 +446,7 @@ export async function createContainer(
     convoyRepo: convoyRepo!,
     orchestrationService,
     agentDispatcher,
+    resyncMonitor,
     structureService,
     agentsService,
     ingestService,

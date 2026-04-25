@@ -34,6 +34,14 @@ void AGENT_LIFECYCLE_EVENT_TYPES;
 export interface EventsToolDeps {
   readonly eventRepo: OrchestrationEventRepository;
   readonly workRepo: WorkArticleRepository;
+  /**
+   * Optional resync monitor (ADR-009). When wired, every successful
+   * `events_emit` call notifies the monitor so `agent_started` kicks
+   * off tracking and `agent_completed`/`agent_failed` clears it. The
+   * monitor is best-effort: notify failures must not block the event
+   * write or surface to the caller.
+   */
+  readonly resyncMonitor?: { onEvent(event: OrchestrationEvent): Promise<void> };
 }
 
 /**
@@ -171,6 +179,14 @@ async function handleEmit(
     details: details as unknown as Record<string, unknown>,
   });
   if (!result.ok) return errorResponse(result.error.code, result.error.message);
+  if (deps.resyncMonitor) {
+    // Best-effort notify; never fail the emit on monitor failure.
+    try {
+      await deps.resyncMonitor.onEvent(result.value);
+    } catch {
+      // Swallow — the monitor itself logs internally.
+    }
+  }
   return successResponse(result.value);
 }
 

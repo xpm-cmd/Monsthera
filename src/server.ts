@@ -195,6 +195,7 @@ export async function dispatchToolCall(
     return handleEventsTool(name, args, {
       eventRepo: container.orchestrationRepo,
       workRepo: container.workRepo,
+      resyncMonitor: container.resyncMonitor,
     });
   }
 
