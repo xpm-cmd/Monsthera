@@ -22,6 +22,7 @@ import { snapshotToolDefinitions, handleSnapshotTool } from "./tools/snapshot-to
 import { migrationToolDefinitions, handleMigrationTool } from "./migration/tools.js";
 import { lintToolDefinitions, handleLintTool } from "./tools/lint-tools.js";
 import { refsToolDefinitions, handleRefsTool } from "./tools/refs-tools.js";
+import { eventsToolDefinitions, handleEventsTool } from "./tools/events-tools.js";
 
 /**
  * Per-group tool registry. Exposed for tests and for the dispatch function
@@ -45,6 +46,7 @@ export interface ToolRegistry {
     readonly migration: ReadonlySet<string>;
     readonly lint: ReadonlySet<string>;
     readonly refs: ReadonlySet<string>;
+    readonly events: ReadonlySet<string>;
   };
 }
 
@@ -68,6 +70,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
   const migrationTools = container.migrationService ? migrationToolDefinitions() : [];
   const lintTools = lintToolDefinitions();
   const refsTools = refsToolDefinitions();
+  const eventsTools = eventsToolDefinitions();
 
   return {
     definitions: [
@@ -85,6 +88,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       ...migrationTools,
       ...lintTools,
       ...refsTools,
+      ...eventsTools,
     ],
     names: {
       knowledge: new Set(knowledgeTools.map((t) => t.name)),
@@ -101,6 +105,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       migration: new Set(migrationTools.map((t) => t.name)),
       lint: new Set(lintTools.map((t) => t.name)),
       refs: new Set(refsTools.map((t) => t.name)),
+      events: new Set(eventsTools.map((t) => t.name)),
     },
   };
 }
@@ -185,6 +190,12 @@ export async function dispatchToolCall(
   }
   if (names.refs.has(name)) {
     return handleRefsTool(name, args, container.structureService);
+  }
+  if (names.events.has(name)) {
+    return handleEventsTool(name, args, {
+      eventRepo: container.orchestrationRepo,
+      workRepo: container.workRepo,
+    });
   }
 
   return {

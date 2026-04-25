@@ -20,6 +20,7 @@ import { handleDoctor } from "./doctor-commands.js";
 import { handlePack } from "./context-commands.js";
 import { handleLint } from "./lint-commands.js";
 import { handleInstallHook, handleUninstallHook } from "./hook-commands.js";
+import { handleEvents } from "./events-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -79,6 +80,7 @@ function handleHelp(): void {
       "  lint                     Audit the corpus for drift (canonical values, anti-examples, planning sections, orphan citations)",
       "  install-hook             Install a pre-commit hook that runs `monsthera lint` on staged knowledge/work .md files",
       "  uninstall-hook           Remove a previously-installed monsthera pre-commit hook",
+      "  events <subcommand>      Tail or emit orchestration events (agent dispatch contract, ADR-008)",
       "",
       "KNOWLEDGE SUBCOMMANDS",
       "  knowledge create  --title <t> --category <c> --content <body> [--tags t1,t2] [--code-refs r1,r2]",
@@ -303,6 +305,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "uninstall-hook":
         await handleUninstallHook(args.slice(1));
+        break;
+      case "events":
+        await handleEvents(args.slice(1));
         break;
       case "--version":
       case "-v":
