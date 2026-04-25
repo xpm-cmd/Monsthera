@@ -8,6 +8,7 @@ import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
 import type { SearchIndexRepository } from "../search/repository.js";
 import type { OrchestrationEventRepository } from "../orchestration/repository.js";
+import type { ConvoyRepository } from "../orchestration/convoy-repository.js";
 import type { Disposable } from "./lifecycle.js";
 
 import { createLogger } from "./logger.js";
@@ -21,6 +22,7 @@ import { FileSystemWorkArticleRepository } from "../work/file-repository.js";
 import { WorkService } from "../work/service.js";
 import { InMemorySearchIndexRepository } from "../search/in-memory-repository.js";
 import { InMemoryOrchestrationEventRepository } from "../orchestration/in-memory-repository.js";
+import { InMemoryConvoyRepository } from "../orchestration/in-memory-convoy-repository.js";
 import { StubEmbeddingProvider, OllamaEmbeddingProvider } from "../search/embedding.js";
 import type { EmbeddingProvider } from "../search/embedding.js";
 import { SearchService } from "../search/service.js";
@@ -53,6 +55,7 @@ export interface MonstheraContainer extends Disposable {
   readonly searchRepo: SearchIndexRepository;
   readonly searchService: SearchService;
   readonly orchestrationRepo: OrchestrationEventRepository;
+  readonly convoyRepo: ConvoyRepository;
   readonly orchestrationService: OrchestrationService;
   readonly agentDispatcher: AgentDispatcher;
   readonly structureService: StructureService;
@@ -90,6 +93,7 @@ export async function createContainer(
   let workRepo: WorkArticleRepository | undefined;
   let searchRepo: SearchIndexRepository | undefined;
   let orchestrationRepo: OrchestrationEventRepository | undefined;
+  let convoyRepo: ConvoyRepository | undefined;
   let snapshotRepo: SnapshotRepository | undefined;
   const markdownRoot = path.resolve(config.repoPath, config.storage.markdownRoot);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -108,6 +112,7 @@ export async function createContainer(
         DoltSearchIndexRepository,
         DoltOrchestrationRepository,
         DoltSnapshotRepository,
+        DoltConvoyRepository,
       } = await import("../persistence/index.js");
 
       doltPool = createDoltPool({
@@ -133,6 +138,7 @@ export async function createContainer(
         searchRepo = new DoltSearchIndexRepository(doltPool);
         orchestrationRepo = new DoltOrchestrationRepository(doltPool);
         snapshotRepo = new DoltSnapshotRepository(doltPool);
+        convoyRepo = new DoltConvoyRepository(doltPool);
 
         stack.defer(() => closePool(doltPool));
 
@@ -181,6 +187,7 @@ export async function createContainer(
   if (!searchRepo) {
     searchRepo = new InMemorySearchIndexRepository();
     orchestrationRepo = new InMemoryOrchestrationEventRepository();
+    convoyRepo = new InMemoryConvoyRepository();
 
     const degraded = config.storage.doltEnabled;
     status.register("storage", () => ({
@@ -236,6 +243,9 @@ export async function createContainer(
   });
   if (!snapshotRepo) {
     snapshotRepo = new InMemorySnapshotRepository();
+  }
+  if (!convoyRepo) {
+    convoyRepo = new InMemoryConvoyRepository();
   }
   const snapshotService = new SnapshotService({
     repo: snapshotRepo,
@@ -414,6 +424,7 @@ export async function createContainer(
     searchRepo: searchRepo!,
     searchService,
     orchestrationRepo: orchestrationRepo!,
+    convoyRepo: convoyRepo!,
     orchestrationService,
     agentDispatcher,
     structureService,

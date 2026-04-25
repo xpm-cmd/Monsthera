@@ -69,6 +69,21 @@ export const SCHEMA_STATEMENTS = [
     INDEX idx_work_id (work_id),
     INDEX idx_captured_at (captured_at)
   )`,
+
+  // Convoys - named groups of work articles with a lead whose progress unblocks members (ADR-009)
+  `CREATE TABLE IF NOT EXISTS convoys (
+    id VARCHAR(255) PRIMARY KEY,
+    lead_work_id VARCHAR(255) NOT NULL,
+    member_work_ids JSON NOT NULL,
+    goal TEXT NOT NULL,
+    status ENUM('active','completed','cancelled') NOT NULL DEFAULT 'active',
+    target_phase VARCHAR(50) NOT NULL DEFAULT 'implementation',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP NULL,
+    INDEX idx_status (status),
+    INDEX idx_lead (lead_work_id),
+    INDEX idx_created_at (created_at)
+  )`,
 ] as const;
 
 /**
