@@ -9,8 +9,9 @@ import type { WorkArticleRepository, WorkArticle } from "../work/repository.js";
 import type { OrchestrationEventRepository } from "./repository.js";
 import { getGuardSet, getNextPhase } from "../work/lifecycle.js";
 import type { GuardSetDeps } from "../work/lifecycle.js";
-import { WORK_TEMPLATES } from "../work/templates.js";
+import { WORK_TEMPLATES, getPhaseOrder } from "../work/templates.js";
 import type { PolicyLoader } from "../work/policy-loader.js";
+import type { ConvoyRepository } from "./convoy-repository.js";
 import type {
   ReadinessReport,
   AdvanceResult,
@@ -41,6 +42,13 @@ export interface OrchestrationServiceDeps {
    * behavior; tests that pre-date ADR-008 still pass).
    */
   agentDispatcher?: AgentDispatcher;
+  /**
+   * Optional: when wired, planWave loads active convoys and prepends a
+   * `convoy_lead_ready` guard for members. Absent = legacy behavior, no
+   * convoy gating. Decoupled from the work repo so existing tests that
+   * construct an OrchestrationService without convoys keep passing.
+   */
+  convoyRepo?: ConvoyRepository;
 }
 
 // ─── OrchestrationService ───────────────────────────────────────────────────
@@ -54,6 +62,7 @@ export class OrchestrationService {
   private readonly maxConcurrentAgents: number;
   private readonly policyLoader?: PolicyLoader;
   private readonly agentDispatcher?: AgentDispatcher;
+  private readonly convoyRepo?: ConvoyRepository;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private running = false;
 
@@ -66,23 +75,85 @@ export class OrchestrationService {
     this.maxConcurrentAgents = Math.max(1, deps.maxConcurrentAgents ?? 5);
     this.policyLoader = deps.policyLoader;
     this.agentDispatcher = deps.agentDispatcher;
+    this.convoyRepo = deps.convoyRepo;
   }
 
   /**
    * Build the deps object passed into `getGuardSet`. When a `PolicyLoader` is
    * wired, all loaded policies are handed over along with the loader's
    * `getApplicablePolicies` filter so `getGuardSet` can narrow to policies
-   * that match this article + transition. Called once per readiness check so
-   * the cache lookup is cheap.
+   * that match this article + transition. When a `ConvoyRepository` is wired,
+   * active convoys are pre-loaded and a `convoyLeadByMember` lookup is built
+   * so the lifecycle layer can prepend `convoy_lead_ready` for members
+   * without re-scanning the convoy table per article.
+   *
+   * Called once per readiness check / wave so the convoy + policy lookups
+   * cost O(scan) per pass instead of O(scan × articles).
    */
   private async buildGuardDeps(): Promise<GuardSetDeps | undefined> {
-    if (!this.policyLoader) return undefined;
-    const policies = await this.policyLoader.getAll();
-    return {
-      policies,
-      applicablePolicyFilter: (loaded, article, transition) =>
-        this.policyLoader!.getApplicablePolicies(loaded, article, transition),
-    };
+    const convoyLookup = await this.buildConvoyLookup();
+    if (!this.policyLoader && !convoyLookup) return undefined;
+
+    const out: { -readonly [K in keyof GuardSetDeps]: GuardSetDeps[K] } = {};
+    if (this.policyLoader) {
+      const policies = await this.policyLoader.getAll();
+      out.policies = policies;
+      out.applicablePolicyFilter = (loaded, article, transition) =>
+        this.policyLoader!.getApplicablePolicies(loaded, article, transition);
+    }
+    if (convoyLookup) {
+      out.convoyLeadByMember = convoyLookup;
+    }
+    return out;
+  }
+
+  /**
+   * Build the per-member convoy lookup consumed by `getGuardSet`. Returns
+   * undefined when no `ConvoyRepository` is wired or no active convoys
+   * exist — both conditions short-circuit the convoy guard and keep the
+   * legacy code path clean for tests that don't care about convoys.
+   *
+   * For each active convoy, fetches the lead's current phase from the work
+   * repo (a convoy referencing a deleted/unknown lead is logged and
+   * skipped — fail open rather than block the entire wave).
+   */
+  private async buildConvoyLookup(): Promise<GuardSetDeps["convoyLeadByMember"] | undefined> {
+    if (!this.convoyRepo) return undefined;
+    const activeResult = await this.convoyRepo.findActive();
+    if (!activeResult.ok) {
+      this.logger.warn("Failed to load active convoys; convoy guard disabled this wave", {
+        operation: "buildConvoyLookup",
+        error: activeResult.error.message,
+      });
+      return undefined;
+    }
+    if (activeResult.value.length === 0) return undefined;
+
+    const lookup = new Map<string, NonNullable<GuardSetDeps["convoyLeadByMember"]> extends ReadonlyMap<string, infer V> ? V : never>();
+    for (const convoy of activeResult.value) {
+      const leadResult = await this.workRepo.findById(convoy.leadWorkId);
+      if (!leadResult.ok) {
+        this.logger.warn("Convoy lead not found; skipping convoy", {
+          operation: "buildConvoyLookup",
+          convoyId: convoy.id,
+          leadWorkId: convoy.leadWorkId,
+          error: leadResult.error.message,
+        });
+        continue;
+      }
+      const lead = leadResult.value;
+      const phaseOrder = getPhaseOrder(lead.template);
+      for (const memberId of convoy.memberWorkIds) {
+        lookup.set(memberId, {
+          convoyId: convoy.id,
+          leadWorkId: convoy.leadWorkId,
+          leadPhase: lead.phase,
+          targetPhase: convoy.targetPhase,
+          phaseOrder,
+        });
+      }
+    }
+    return lookup.size > 0 ? lookup : undefined;
   }
 
   // ─── Scanning ─────────────────────────────────────────────────────────────

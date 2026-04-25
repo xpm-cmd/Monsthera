@@ -85,6 +85,34 @@ export function getTemplateConfig(template: WorkTemplateType): WorkTemplateConfi
   return WORK_TEMPLATES[template];
 }
 
+/**
+ * Derive the linear phase order for a template by walking its `phaseGraph`
+ * forward edges. The first `from` is the entry phase; the last `to` with no
+ * outgoing edge is terminal. Used by the convoy guard (ADR-009) so phase
+ * comparisons go through the template's actual ordering — string compare
+ * would mis-handle spike templates that skip phases.
+ *
+ * Falls back to inserting any nodes mentioned only as `to` (terminals) at the
+ * tail. Cancellation is omitted by convention (it is an implicit terminal).
+ */
+export function getPhaseOrder(template: WorkTemplateType): readonly WorkPhaseType[] {
+  const graph = WORK_TEMPLATES[template].phaseGraph;
+  const order: WorkPhaseType[] = [];
+  const seen = new Set<WorkPhaseType>();
+  for (const edge of graph) {
+    const [from, to] = edge.split(":") as [WorkPhaseType, WorkPhaseType];
+    if (!seen.has(from)) {
+      seen.add(from);
+      order.push(from);
+    }
+    if (!seen.has(to)) {
+      seen.add(to);
+      order.push(to);
+    }
+  }
+  return order;
+}
+
 /** Generate initial markdown content with section headings for a template */
 export function generateInitialContent(template: WorkTemplateType): string {
   const config = WORK_TEMPLATES[template];

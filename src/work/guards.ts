@@ -1,6 +1,7 @@
 import type { WorkArticle } from "./repository.js";
 import type { SnapshotService } from "../context/snapshot-service.js";
 import type { CanonicalValue, Policy } from "./policy-loader.js";
+import type { WorkPhase } from "../core/types.js";
 
 // ─── Content Guards ───
 
@@ -196,6 +197,42 @@ function extractLine(text: string, index: number): string {
   const lineStart = text.lastIndexOf("\n", index) + 1;
   const lineEnd = text.indexOf("\n", index);
   return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
+}
+
+// ─── Convoy Guards (ADR-009) ───
+
+/**
+ * Per-call context for `convoy_lead_ready`. The orchestrator pre-resolves
+ * the convoy lead's current phase and passes the template's phase ordering
+ * (so `targetPhase` comparison is graph-aware, not string-comparison-based).
+ * Keeping the guard pure preserves its testability and the AGENTS.md §6
+ * "no I/O in guards" invariant.
+ */
+export interface ConvoyGuardContext {
+  readonly leadPhase: WorkPhase;
+  readonly targetPhase: WorkPhase;
+  /** Ordered list of phases for the lead's template, lowest index = earliest. */
+  readonly phaseOrder: readonly WorkPhase[];
+}
+
+/**
+ * Returns true iff the convoy lead's current phase is at-or-past the
+ * convoy's `targetPhase` per the lead's template `phaseOrder`. Members
+ * stay blocked until the lead reaches the target — this is the "lead
+ * unblocks the convoy" semantics from ADR-004 made executable.
+ *
+ * Phase comparison goes through the template's `phaseOrder` rather than
+ * string comparison: spike templates skip phases, so alphabetic ordering
+ * would lie. Returns false for unknown phases (fail-closed).
+ */
+export function convoy_lead_ready(
+  _article: WorkArticle,
+  context: ConvoyGuardContext,
+): boolean {
+  const leadIdx = context.phaseOrder.indexOf(context.leadPhase);
+  const targetIdx = context.phaseOrder.indexOf(context.targetPhase);
+  if (leadIdx < 0 || targetIdx < 0) return false;
+  return leadIdx >= targetIdx;
 }
 
 // ─── Snapshot Guards (async) ───

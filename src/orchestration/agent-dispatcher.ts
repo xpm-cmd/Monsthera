@@ -219,6 +219,11 @@ export class AgentDispatcher {
           }
           break;
         }
+        // `convoy_lead_ready` (ADR-009) is a passive wait — no agent
+        // dispatch on the member. The lead is independently scanned by
+        // planWave and dispatched on its own merits when its guards fail.
+        case "convoy_lead_ready":
+          break;
         // Content-shape guards have no role to dispatch — author task.
         default:
           break;

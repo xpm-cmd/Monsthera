@@ -286,6 +286,7 @@ export async function createContainer(
     maxConcurrentAgents: config.orchestration.maxConcurrentAgents,
     policyLoader,
     agentDispatcher,
+    convoyRepo: convoyRepo!,
   });
   const structureService = new StructureService({
     knowledgeRepo: knowledgeRepo!,
