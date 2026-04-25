@@ -140,7 +140,7 @@ export async function createContainer(
         searchRepo = new DoltSearchIndexRepository(doltPool);
         orchestrationRepo = new DoltOrchestrationRepository(doltPool);
         snapshotRepo = new DoltSnapshotRepository(doltPool);
-        convoyRepo = new DoltConvoyRepository(doltPool);
+        convoyRepo = new DoltConvoyRepository(doltPool, { eventRepo: orchestrationRepo, logger });
 
         stack.defer(() => closePool(doltPool));
 
@@ -189,7 +189,7 @@ export async function createContainer(
   if (!searchRepo) {
     searchRepo = new InMemorySearchIndexRepository();
     orchestrationRepo = new InMemoryOrchestrationEventRepository();
-    convoyRepo = new InMemoryConvoyRepository();
+    convoyRepo = new InMemoryConvoyRepository({ eventRepo: orchestrationRepo, logger });
 
     const degraded = config.storage.doltEnabled;
     status.register("storage", () => ({
@@ -247,7 +247,7 @@ export async function createContainer(
     snapshotRepo = new InMemorySnapshotRepository();
   }
   if (!convoyRepo) {
-    convoyRepo = new InMemoryConvoyRepository();
+    convoyRepo = new InMemoryConvoyRepository({ eventRepo: orchestrationRepo!, logger });
   }
   const snapshotService = new SnapshotService({
     repo: snapshotRepo,

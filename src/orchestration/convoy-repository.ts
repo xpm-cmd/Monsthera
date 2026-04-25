@@ -1,5 +1,6 @@
 import type { Result } from "../core/result.js";
 import type { AgentId, ConvoyId, Timestamp, WorkId } from "../core/types.js";
+import type { Logger } from "../core/logger.js";
 import type {
   AlreadyExistsError,
   NotFoundError,
@@ -7,7 +8,13 @@ import type {
   StorageError,
   ValidationError,
 } from "../core/errors.js";
-import type { Convoy, ConvoyStatus } from "./types.js";
+import type { OrchestrationEventRepository, OrchestrationEventType } from "./repository.js";
+import type {
+  Convoy,
+  ConvoyCreatedEventDetails,
+  ConvoyStatus,
+  ConvoyTerminalEventDetails,
+} from "./types.js";
 
 /**
  * Input for `create`. The repository assigns `id`, `status` (always `active`
@@ -74,3 +81,54 @@ export interface ConvoyRepository {
 
 /** Set of statuses that cannot transition out (mirrors the work-article terminal-phase set). */
 export const TERMINAL_CONVOY_STATUSES: ReadonlySet<ConvoyStatus> = new Set<ConvoyStatus>(["completed", "cancelled"]);
+
+/**
+ * Optional dependencies shared by every `ConvoyRepository` implementation.
+ * `eventRepo` enables provenance — when wired, `create` / `complete` /
+ * `cancel` emit a typed orchestration event after each successful mutation.
+ * `logger` is used to warn-log emission failures without unwinding the
+ * mutation. Both are optional so test code can construct a bare repository.
+ */
+export interface ConvoyRepoDeps {
+  readonly eventRepo?: OrchestrationEventRepository;
+  readonly logger?: Logger;
+}
+
+/**
+ * Best-effort emission of a convoy lifecycle event. `eventRepo` is optional:
+ * when omitted, this is a no-op so existing test code that constructs a
+ * bare repository keeps passing. When wired, a `logEvent` failure is
+ * warn-logged and swallowed — provenance is fail-open, not fail-closed.
+ * The successful mutation it accompanies must not be undone by an
+ * observability hiccup.
+ */
+export async function emitConvoyEvent(
+  deps: ConvoyRepoDeps | undefined,
+  eventType: OrchestrationEventType,
+  workId: WorkId,
+  details: ConvoyCreatedEventDetails | ConvoyTerminalEventDetails,
+): Promise<void> {
+  if (!deps?.eventRepo) return;
+  try {
+    const result = await deps.eventRepo.logEvent({
+      workId,
+      eventType,
+      details: details as unknown as Record<string, unknown>,
+    });
+    if (!result.ok) {
+      deps.logger?.warn("Failed to emit convoy lifecycle event", {
+        operation: "emitConvoyEvent",
+        eventType,
+        workId,
+        error: result.error.message,
+      });
+    }
+  } catch (e) {
+    deps.logger?.warn("Convoy lifecycle event emission threw", {
+      operation: "emitConvoyEvent",
+      eventType,
+      workId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}

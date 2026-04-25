@@ -15,7 +15,9 @@ import {
 import type { ConvoyId, Timestamp, WorkId, WorkPhase } from "../core/types.js";
 import type { Convoy } from "./types.js";
 import {
+  emitConvoyEvent,
   TERMINAL_CONVOY_STATUSES,
+  type ConvoyRepoDeps,
   type ConvoyRepository,
   type ConvoyTerminationOptions,
   type CreateConvoyInput,
@@ -25,6 +27,11 @@ const DEFAULT_TARGET_PHASE: WorkPhase = "implementation";
 
 export class InMemoryConvoyRepository implements ConvoyRepository {
   private readonly convoys = new Map<ConvoyId, Convoy>();
+  private readonly deps?: ConvoyRepoDeps;
+
+  constructor(deps?: ConvoyRepoDeps) {
+    this.deps = deps;
+  }
 
   async create(
     input: CreateConvoyInput,
@@ -48,6 +55,14 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
       createdAt: createdAt ?? timestamp(),
     };
     this.convoys.set(id, convoy);
+    await emitConvoyEvent(this.deps, "convoy_created", convoy.leadWorkId, {
+      convoyId: convoy.id,
+      leadWorkId: convoy.leadWorkId,
+      memberWorkIds: convoy.memberWorkIds,
+      goal: convoy.goal,
+      targetPhase: convoy.targetPhase,
+      ...(input.actor ? { actor: input.actor } : {}),
+    });
     return ok(convoy);
   }
 
@@ -117,12 +132,12 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
     return this.transitionTerminal(id, "cancelled", options, completedAt);
   }
 
-  private transitionTerminal(
+  private async transitionTerminal(
     id: ConvoyId,
     target: "completed" | "cancelled",
-    _options: ConvoyTerminationOptions | undefined,
+    options: ConvoyTerminationOptions | undefined,
     completedAt?: Timestamp,
-  ): Result<Convoy, NotFoundError | StateTransitionError | StorageError> {
+  ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
     const found = this.convoys.get(id);
     if (!found) return err(new NotFoundError("Convoy", id));
     if (TERMINAL_CONVOY_STATUSES.has(found.status)) {
@@ -140,6 +155,14 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
       completedAt: completedAt ?? timestamp(),
     };
     this.convoys.set(id, updated);
+    const eventType = target === "completed" ? "convoy_completed" : "convoy_cancelled";
+    await emitConvoyEvent(this.deps, eventType, updated.leadWorkId, {
+      convoyId: updated.id,
+      leadWorkId: updated.leadWorkId,
+      memberWorkIds: updated.memberWorkIds,
+      ...(options?.terminationReason ? { terminationReason: options.terminationReason } : {}),
+      ...(options?.actor ? { actor: options.actor } : {}),
+    });
     return ok(updated);
   }
 }

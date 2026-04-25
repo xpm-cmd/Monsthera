@@ -1,9 +1,20 @@
 /* eslint-disable no-console */
-import { convoyId as toConvoyId, workId as toWorkId } from "../core/types.js";
-import type { ConvoyId, WorkPhase } from "../core/types.js";
+import {
+  agentId as toAgentId,
+  convoyId as toConvoyId,
+  workId as toWorkId,
+} from "../core/types.js";
+import type { AgentId, ConvoyId, WorkPhase } from "../core/types.js";
 import { VALID_PHASES } from "../core/types.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
+
+function resolveActor(args: string[]): AgentId | undefined {
+  const flag = parseFlag(args, "--actor");
+  const raw = flag ?? process.env.MONSTHERA_ACTOR;
+  if (!raw || raw.trim().length === 0) return undefined;
+  return toAgentId(raw);
+}
 
 const VALID_TARGET_PHASES = [...VALID_PHASES];
 
@@ -70,12 +81,14 @@ async function handleCreate(args: string[]): Promise<void> {
     targetPhase = targetPhaseFlag as WorkPhase;
   }
 
+  const actor = resolveActor(args);
   await withContainer(args, async (container) => {
     const result = await container.convoyRepo.create({
       leadWorkId: toWorkId(lead),
       memberWorkIds: members.map((m) => toWorkId(m)),
       goal,
       ...(targetPhase ? { targetPhase } : {}),
+      ...(actor ? { actor } : {}),
     });
     if (!result.ok) {
       console.error(`Failed to create convoy: ${result.error.message}`);
@@ -124,8 +137,14 @@ async function handleComplete(args: string[]): Promise<void> {
     console.error("Missing required flag: --id <convoy-id>");
     process.exit(1);
   }
+  const actor = resolveActor(args);
+  const reason = parseFlag(args, "--reason");
+  const options = {
+    ...(actor ? { actor } : {}),
+    ...(reason ? { terminationReason: reason } : {}),
+  };
   await withContainer(args, async (container) => {
-    const result = await container.convoyRepo.complete(toConvoyId(id) as ConvoyId);
+    const result = await container.convoyRepo.complete(toConvoyId(id) as ConvoyId, options);
     if (!result.ok) {
       console.error(`Failed to complete convoy: ${result.error.message}`);
       process.exit(1);
@@ -141,8 +160,14 @@ async function handleCancel(args: string[]): Promise<void> {
     console.error("Missing required flag: --id <convoy-id>");
     process.exit(1);
   }
+  const actor = resolveActor(args);
+  const reason = parseFlag(args, "--reason");
+  const options = {
+    ...(actor ? { actor } : {}),
+    ...(reason ? { terminationReason: reason } : {}),
+  };
   await withContainer(args, async (container) => {
-    const result = await container.convoyRepo.cancel(toConvoyId(id) as ConvoyId);
+    const result = await container.convoyRepo.cancel(toConvoyId(id) as ConvoyId, options);
     if (!result.ok) {
       console.error(`Failed to cancel convoy: ${result.error.message}`);
       process.exit(1);
@@ -159,26 +184,27 @@ function printConvoyHelp(): void {
     usage: "<create|list|complete|cancel> [options]",
     flags: [
       {
-        name: "create --lead W --members W1,W2,... --goal TEXT [--target-phase PHASE]",
-        description: "Create a convoy. Default target phase is `implementation`.",
+        name: "create --lead W --members W1,W2,... --goal TEXT [--target-phase PHASE] [--actor AGENT]",
+        description: "Create a convoy. Default target phase is `implementation`. `--actor` flows into the convoy_created event (default: $MONSTHERA_ACTOR).",
       },
       {
         name: "list [--active]",
         description: "List convoys (currently always active-only — terminal convoys are not surfaced).",
       },
-      { name: "complete --id CONVOY", description: "Mark a convoy completed." },
-      { name: "cancel --id CONVOY", description: "Mark a convoy cancelled." },
+      { name: "complete --id CONVOY [--actor AGENT] [--reason TEXT]", description: "Mark a convoy completed. `--actor` and `--reason` flow into the convoy_completed event." },
+      { name: "cancel --id CONVOY [--actor AGENT] [--reason TEXT]", description: "Mark a convoy cancelled. `--actor` and `--reason` flow into the convoy_cancelled event." },
       { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
     ],
     notes: [
       "stdout emits one JSON record per matched convoy or per mutation; logs stay on stderr.",
       "Convoys are Dolt-only (orchestration state). The convoy_lead_ready guard is prepended to every non-terminal transition for members.",
+      "ADR-010: lifecycle events (convoy_created/completed/cancelled) carry actor + reason as provenance — the convoys table itself stays slim.",
     ],
     examples: [
       "monsthera convoy create --lead w-lead-1 --members w-a,w-b --goal 'Ship X'",
-      "monsthera convoy create --lead w-lead-1 --members w-a --goal 'Ship Y' --target-phase review",
+      "monsthera convoy create --lead w-lead-1 --members w-a --goal 'Ship Y' --target-phase review --actor agent-sarah",
       "monsthera convoy list --active",
-      "monsthera convoy complete --id cv-abc12345",
+      "monsthera convoy complete --id cv-abc12345 --reason 'lead reached implementation'",
     ],
   });
 }

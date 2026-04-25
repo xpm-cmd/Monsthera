@@ -17,7 +17,9 @@ import {
 import type { ConvoyId, Timestamp, WorkId, WorkPhase } from "../core/types.js";
 import type { Convoy, ConvoyStatus } from "../orchestration/types.js";
 import {
+  emitConvoyEvent,
   TERMINAL_CONVOY_STATUSES,
+  type ConvoyRepoDeps,
   type ConvoyRepository,
   type ConvoyTerminationOptions,
   type CreateConvoyInput,
@@ -38,7 +40,10 @@ interface ConvoyRow extends RowDataPacket {
 }
 
 export class DoltConvoyRepository implements ConvoyRepository {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly deps?: ConvoyRepoDeps,
+  ) {}
 
   async create(
     input: CreateConvoyInput,
@@ -83,6 +88,14 @@ export class DoltConvoyRepository implements ConvoyRepository {
       ],
     );
     if (!insertResult.ok) return insertResult;
+    await emitConvoyEvent(this.deps, "convoy_created", convoy.leadWorkId, {
+      convoyId: convoy.id,
+      leadWorkId: convoy.leadWorkId,
+      memberWorkIds: convoy.memberWorkIds,
+      goal: convoy.goal,
+      targetPhase: convoy.targetPhase,
+      ...(input.actor ? { actor: input.actor } : {}),
+    });
     return ok(convoy);
   }
 
@@ -169,7 +182,7 @@ export class DoltConvoyRepository implements ConvoyRepository {
   private async transitionTerminal(
     id: ConvoyId,
     target: "completed" | "cancelled",
-    _options: ConvoyTerminationOptions | undefined,
+    options: ConvoyTerminationOptions | undefined,
     completedAt?: Timestamp,
   ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
     const existing = await this.findById(id);
@@ -190,7 +203,16 @@ export class DoltConvoyRepository implements ConvoyRepository {
       [target, now, id],
     );
     if (!updateResult.ok) return updateResult;
-    return ok({ ...existing.value, status: target, completedAt: now });
+    const updated: Convoy = { ...existing.value, status: target, completedAt: now };
+    const eventType = target === "completed" ? "convoy_completed" : "convoy_cancelled";
+    await emitConvoyEvent(this.deps, eventType, updated.leadWorkId, {
+      convoyId: updated.id,
+      leadWorkId: updated.leadWorkId,
+      memberWorkIds: updated.memberWorkIds,
+      ...(options?.terminationReason ? { terminationReason: options.terminationReason } : {}),
+      ...(options?.actor ? { actor: options.actor } : {}),
+    });
+    return ok(updated);
   }
 }
 
