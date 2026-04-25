@@ -1,11 +1,12 @@
 import { err, ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import {
+  AlreadyExistsError,
   NotFoundError,
   StateTransitionError,
   ValidationError,
 } from "../core/errors.js";
-import type { AlreadyExistsError, StorageError } from "../core/errors.js";
+import type { StorageError } from "../core/errors.js";
 import {
   generateConvoyId,
   timestamp,
@@ -32,11 +33,15 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
     const validation = validateCreateInput(input);
     if (validation) return err(validation);
 
+    const dedupedMembers = dedupWorkIds(input.memberWorkIds);
+    const conflict = this.findActiveMembershipConflict(input.leadWorkId, dedupedMembers);
+    if (conflict) return err(conflict);
+
     const id = generateConvoyId();
     const convoy: Convoy = {
       id,
       leadWorkId: input.leadWorkId,
-      memberWorkIds: dedupWorkIds(input.memberWorkIds),
+      memberWorkIds: dedupedMembers,
       goal: input.goal,
       status: "active",
       targetPhase: input.targetPhase ?? DEFAULT_TARGET_PHASE,
@@ -44,6 +49,32 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
     };
     this.convoys.set(id, convoy);
     return ok(convoy);
+  }
+
+  /**
+   * Single-convoy invariant (ADR-010): a work article must not appear as
+   * lead or member in two active convoys at the same time. Scans the
+   * proposed lead + every deduped member against active convoys; the
+   * first hit is reported as `AlreadyExistsError("ConvoyMembership", id)`.
+   * Returns `null` when the proposed convoy is conflict-free.
+   */
+  private findActiveMembershipConflict(
+    leadWorkId: WorkId,
+    memberWorkIds: readonly WorkId[],
+  ): AlreadyExistsError | null {
+    const candidates: readonly WorkId[] = [leadWorkId, ...memberWorkIds];
+    for (const candidate of candidates) {
+      for (const convoy of this.convoys.values()) {
+        if (convoy.status !== "active") continue;
+        if (
+          convoy.leadWorkId === candidate ||
+          convoy.memberWorkIds.includes(candidate)
+        ) {
+          return new AlreadyExistsError("ConvoyMembership", candidate);
+        }
+      }
+    }
+    return null;
   }
 
   async findById(id: ConvoyId): Promise<Result<Convoy, NotFoundError | StorageError>> {

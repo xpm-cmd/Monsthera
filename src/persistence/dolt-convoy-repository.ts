@@ -2,11 +2,12 @@ import type { Pool, RowDataPacket } from "mysql2/promise";
 import { err, ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import {
+  AlreadyExistsError,
   NotFoundError,
   StateTransitionError,
   ValidationError,
 } from "../core/errors.js";
-import type { AlreadyExistsError, StorageError } from "../core/errors.js";
+import type { StorageError } from "../core/errors.js";
 import {
   convoyId,
   generateConvoyId,
@@ -46,12 +47,20 @@ export class DoltConvoyRepository implements ConvoyRepository {
     const validation = validateCreateInput(input);
     if (validation) return err(validation);
 
+    const dedupedMembers = dedupWorkIds(input.memberWorkIds);
+    const conflictResult = await this.findActiveMembershipConflict(
+      input.leadWorkId,
+      dedupedMembers,
+    );
+    if (!conflictResult.ok) return conflictResult;
+    if (conflictResult.value !== null) return err(conflictResult.value);
+
     const id = generateConvoyId();
     const now = createdAt ?? timestamp();
     const convoy: Convoy = {
       id,
       leadWorkId: input.leadWorkId,
-      memberWorkIds: dedupWorkIds(input.memberWorkIds),
+      memberWorkIds: dedupedMembers,
       goal: input.goal,
       status: "active",
       targetPhase: input.targetPhase ?? DEFAULT_TARGET_PHASE,
@@ -127,6 +136,34 @@ export class DoltConvoyRepository implements ConvoyRepository {
     completedAt?: Timestamp,
   ): Promise<Result<Convoy, NotFoundError | StateTransitionError | StorageError>> {
     return this.transitionTerminal(id, "cancelled", options, completedAt);
+  }
+
+  /**
+   * Single-convoy invariant (ADR-010): a work article must not appear as
+   * lead or member in two active convoys at once. Loads all active
+   * convoys (one query) and matches in process — typical convoy counts
+   * are small enough that scanning beats per-candidate JSON_CONTAINS
+   * round-trips. A storage failure here is propagated unchanged so the
+   * caller sees the same `Result` shape they would on any other lookup.
+   */
+  private async findActiveMembershipConflict(
+    leadWorkId: WorkId,
+    memberWorkIds: readonly WorkId[],
+  ): Promise<Result<AlreadyExistsError | null, StorageError>> {
+    const activeResult = await this.findActive();
+    if (!activeResult.ok) return activeResult;
+    const candidates: readonly WorkId[] = [leadWorkId, ...memberWorkIds];
+    for (const candidate of candidates) {
+      for (const convoy of activeResult.value) {
+        if (
+          convoy.leadWorkId === candidate ||
+          convoy.memberWorkIds.includes(candidate)
+        ) {
+          return ok(new AlreadyExistsError("ConvoyMembership", candidate));
+        }
+      }
+    }
+    return ok(null);
   }
 
   private async transitionTerminal(

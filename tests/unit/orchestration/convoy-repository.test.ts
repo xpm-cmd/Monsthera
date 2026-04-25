@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { workId } from "../../../src/core/types.js";
+import { AlreadyExistsError } from "../../../src/core/errors.js";
 import { InMemoryConvoyRepository } from "../../../src/orchestration/in-memory-convoy-repository.js";
 
 describe("InMemoryConvoyRepository", () => {
@@ -63,6 +64,88 @@ describe("InMemoryConvoyRepository", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.value.memberWorkIds).toEqual([workId("w-a"), workId("w-b")]);
+    });
+
+    it("rejects creation when a member is already in another active convoy", async () => {
+      const r = repo();
+      const first = await r.create({
+        leadWorkId: workId("w-lead-1"),
+        memberWorkIds: [workId("w-shared"), workId("w-only-a")],
+        goal: "first",
+      });
+      expect(first.ok).toBe(true);
+
+      const second = await r.create({
+        leadWorkId: workId("w-lead-2"),
+        memberWorkIds: [workId("w-shared")],
+        goal: "second",
+      });
+      expect(second.ok).toBe(false);
+      if (second.ok) return;
+      expect(second.error).toBeInstanceOf(AlreadyExistsError);
+      expect(second.error.code).toBe("ALREADY_EXISTS");
+      // entity is "ConvoyMembership", id is the offending member work id
+      expect(second.error.details).toMatchObject({
+        entity: "ConvoyMembership",
+        id: workId("w-shared"),
+      });
+    });
+
+    it("rejects creation when the proposed lead is already a lead in another active convoy", async () => {
+      const r = repo();
+      const first = await r.create({
+        leadWorkId: workId("w-shared-lead"),
+        memberWorkIds: [workId("w-a")],
+        goal: "first",
+      });
+      expect(first.ok).toBe(true);
+
+      const second = await r.create({
+        leadWorkId: workId("w-shared-lead"),
+        memberWorkIds: [workId("w-b")],
+        goal: "second",
+      });
+      expect(second.ok).toBe(false);
+      if (second.ok) return;
+      expect(second.error).toBeInstanceOf(AlreadyExistsError);
+    });
+
+    it("allows reusing a member after the conflicting convoy completes", async () => {
+      const r = repo();
+      const first = await r.create({
+        leadWorkId: workId("w-lead-1"),
+        memberWorkIds: [workId("w-shared")],
+        goal: "first",
+      });
+      if (!first.ok) throw new Error("setup failed");
+      const completed = await r.complete(first.value.id);
+      expect(completed.ok).toBe(true);
+
+      const second = await r.create({
+        leadWorkId: workId("w-lead-2"),
+        memberWorkIds: [workId("w-shared")],
+        goal: "second",
+      });
+      expect(second.ok).toBe(true);
+    });
+
+    it("allows reusing a member after the conflicting convoy is cancelled", async () => {
+      const r = repo();
+      const first = await r.create({
+        leadWorkId: workId("w-lead-1"),
+        memberWorkIds: [workId("w-shared")],
+        goal: "first",
+      });
+      if (!first.ok) throw new Error("setup failed");
+      const cancelled = await r.cancel(first.value.id);
+      expect(cancelled.ok).toBe(true);
+
+      const second = await r.create({
+        leadWorkId: workId("w-lead-2"),
+        memberWorkIds: [workId("w-shared")],
+        goal: "second",
+      });
+      expect(second.ok).toBe(true);
     });
   });
 
