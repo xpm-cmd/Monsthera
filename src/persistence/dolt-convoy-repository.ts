@@ -152,7 +152,7 @@ export class DoltConvoyRepository implements ConvoyRepository {
   }
 
   /**
-   * Single-convoy invariant (ADR-010): a work article must not appear as
+   * Single-convoy invariant (ADR-013): a work article must not appear as
    * lead or member in two active convoys at once. Loads all active
    * convoys (one query) and matches in process — typical convoy counts
    * are small enough that scanning beats per-candidate JSON_CONTAINS

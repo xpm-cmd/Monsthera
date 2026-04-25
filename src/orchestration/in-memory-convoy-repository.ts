@@ -67,7 +67,7 @@ export class InMemoryConvoyRepository implements ConvoyRepository {
   }
 
   /**
-   * Single-convoy invariant (ADR-010): a work article must not appear as
+   * Single-convoy invariant (ADR-013): a work article must not appear as
    * lead or member in two active convoys at the same time. Scans the
    * proposed lead + every deduped member against active convoys; the
    * first hit is reported as `AlreadyExistsError("ConvoyMembership", id)`.

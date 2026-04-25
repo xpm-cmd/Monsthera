@@ -221,7 +221,7 @@ function printConvoyHelp(): void {
     notes: [
       "stdout emits one JSON record per matched convoy or per mutation; logs stay on stderr.",
       "Convoys are Dolt-only (orchestration state). The convoy_lead_ready guard is prepended to every non-terminal transition for members.",
-      "ADR-010: lifecycle events (convoy_created/completed/cancelled) carry actor + reason as provenance — the convoys table itself stays slim.",
+      "ADR-013: lifecycle events (convoy_created/completed/cancelled) carry actor + reason as provenance — the convoys table itself stays slim.",
     ],
     examples: [
       "monsthera convoy create --lead w-lead-1 --members w-a,w-b --goal 'Ship X'",

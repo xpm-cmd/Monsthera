@@ -217,7 +217,7 @@ export interface AgentNeedsResyncEventDetails {
   readonly requestedAt: Timestamp;
 }
 
-// ─── Convoy lifecycle events (ADR-010) ─────────────────────────────────────
+// ─── Convoy lifecycle events (ADR-013) ─────────────────────────────────────
 
 /**
  * Provenance event emitted by `ConvoyRepository.create`. Captures the

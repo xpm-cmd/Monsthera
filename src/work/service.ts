@@ -34,7 +34,7 @@ export interface WorkServiceDeps {
   /**
    * Optional: when wired, cancelling a work article that is the lead of any
    * active convoy emits a `convoy_lead_cancelled_warning` event per affected
-   * convoy (ADR-010). Members are NOT auto-cancelled; the event is the
+   * convoy (ADR-013). Members are NOT auto-cancelled; the event is the
    * operator's signal to decide. Decoupled so existing tests that don't
    * care about convoys keep passing without a fake repo.
    */
@@ -168,7 +168,7 @@ export class WorkService {
 
   /**
    * After a successful cancellation, emit one `convoy_lead_cancelled_warning`
-   * per active convoy where the cancelled article is the lead (ADR-010).
+   * per active convoy where the cancelled article is the lead (ADR-013).
    * This is the observable signal that members are now blocked on a dead
    * lead — the operator decides whether to cancel the convoy, reassign the
    * lead, or do nothing. We deliberately do NOT auto-cancel members; that

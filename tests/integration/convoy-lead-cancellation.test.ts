@@ -3,7 +3,7 @@ import { createTestContainer } from "../../src/core/container.js";
 import { workId } from "../../src/core/types.js";
 
 /**
- * ADR-010 §3 — when the lead of an active convoy is cancelled, the work
+ * ADR-013 §3 — when the lead of an active convoy is cancelled, the work
  * service emits a `convoy_lead_cancelled_warning` event carrying the
  * convoy id, lead, members, and the cancellation reason. Members are NOT
  * auto-cancelled; the warning IS the operator's signal to decide.

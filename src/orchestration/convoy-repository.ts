@@ -24,7 +24,7 @@ import type {
  * `actor` is optional because the caller is not always a human-driven agent
  * (the orchestrator can form convoys autonomously). When provided it is
  * propagated to the `convoy_created` provenance event but not persisted on
- * the convoy row itself — see ADR-010 for why provenance lives in events.
+ * the convoy row itself — see ADR-013 for why provenance lives in events.
  */
 export interface CreateConvoyInput {
   readonly leadWorkId: WorkId;

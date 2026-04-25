@@ -153,7 +153,7 @@ export function convoyToolDefinitions(): ToolDefinition[] {
           leadWorkId: { type: "string", description: "Work id of the convoy lead." },
           memberWorkIds: {
             type: "array",
-            description: "Work ids of the convoy members. Must not include the lead. A work id already participating in another active convoy is rejected with ALREADY_EXISTS (ADR-010).",
+            description: "Work ids of the convoy members. Must not include the lead. A work id already participating in another active convoy is rejected with ALREADY_EXISTS (ADR-013).",
             items: { type: "string" },
           },
           goal: { type: "string", description: "Free-text rationale for the grouping." },
