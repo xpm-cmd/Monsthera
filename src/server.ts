@@ -23,6 +23,7 @@ import { migrationToolDefinitions, handleMigrationTool } from "./migration/tools
 import { lintToolDefinitions, handleLintTool } from "./tools/lint-tools.js";
 import { refsToolDefinitions, handleRefsTool } from "./tools/refs-tools.js";
 import { eventsToolDefinitions, handleEventsTool } from "./tools/events-tools.js";
+import { convoyToolDefinitions, handleConvoyTool } from "./tools/convoy-tools.js";
 
 /**
  * Per-group tool registry. Exposed for tests and for the dispatch function
@@ -47,6 +48,7 @@ export interface ToolRegistry {
     readonly lint: ReadonlySet<string>;
     readonly refs: ReadonlySet<string>;
     readonly events: ReadonlySet<string>;
+    readonly convoy: ReadonlySet<string>;
   };
 }
 
@@ -71,6 +73,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
   const lintTools = lintToolDefinitions();
   const refsTools = refsToolDefinitions();
   const eventsTools = eventsToolDefinitions();
+  const convoyTools = convoyToolDefinitions();
 
   return {
     definitions: [
@@ -89,6 +92,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       ...lintTools,
       ...refsTools,
       ...eventsTools,
+      ...convoyTools,
     ],
     names: {
       knowledge: new Set(knowledgeTools.map((t) => t.name)),
@@ -106,6 +110,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       lint: new Set(lintTools.map((t) => t.name)),
       refs: new Set(refsTools.map((t) => t.name)),
       events: new Set(eventsTools.map((t) => t.name)),
+      convoy: new Set(convoyTools.map((t) => t.name)),
     },
   };
 }
@@ -197,6 +202,9 @@ export async function dispatchToolCall(
       workRepo: container.workRepo,
       resyncMonitor: container.resyncMonitor,
     });
+  }
+  if (names.convoy.has(name)) {
+    return handleConvoyTool(name, args, { convoyRepo: container.convoyRepo });
   }
 
   return {

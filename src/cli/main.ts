@@ -21,6 +21,7 @@ import { handlePack } from "./context-commands.js";
 import { handleLint } from "./lint-commands.js";
 import { handleInstallHook, handleUninstallHook } from "./hook-commands.js";
 import { handleEvents } from "./events-commands.js";
+import { handleConvoy } from "./convoy-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -308,6 +309,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "events":
         await handleEvents(args.slice(1));
+        break;
+      case "convoy":
+        await handleConvoy(args.slice(1));
         break;
       case "--version":
       case "-v":
