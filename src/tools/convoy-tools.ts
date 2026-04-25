@@ -32,6 +32,8 @@ export async function handleConvoyTool(
       return handleCreate(args, deps);
     case "convoy_list":
       return handleList(deps);
+    case "convoy_get":
+      return handleGet(args, deps);
     case "convoy_complete":
       return handleComplete(args, deps);
     case "convoy_cancel":
@@ -39,6 +41,17 @@ export async function handleConvoyTool(
     default:
       return errorResponse("NOT_FOUND", `Unknown tool: ${name}`);
   }
+}
+
+async function handleGet(
+  args: Record<string, unknown>,
+  deps: ConvoyToolDeps,
+): Promise<ToolResponse> {
+  const id = requireString(args, "id");
+  if (isErrorResponse(id)) return id;
+  const result = await deps.convoyRepo.findById(convoyId(id) as ConvoyId);
+  if (!result.ok) return errorResponse(result.error.code, result.error.message);
+  return successResponse(result.value);
 }
 
 async function handleCreate(
@@ -163,6 +176,17 @@ export function convoyToolDefinitions(): ToolDefinition[] {
       inputSchema: {
         type: "object" as const,
         properties: {},
+      },
+    },
+    {
+      name: "convoy_get",
+      description: "Get a single convoy by id (active OR terminal). Returns NOT_FOUND if no convoy with that id exists.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          id: { type: "string", description: "Convoy id." },
+        },
+        required: ["id"],
       },
     },
     {

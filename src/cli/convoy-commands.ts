@@ -35,6 +35,8 @@ export async function handleConvoy(args: string[]): Promise<void> {
       return handleCreate(args.slice(1));
     case "list":
       return handleList(args.slice(1));
+    case "get":
+      return handleGet(args.slice(1));
     case "complete":
       return handleComplete(args.slice(1));
     case "cancel":
@@ -44,6 +46,23 @@ export async function handleConvoy(args: string[]): Promise<void> {
       console.error('Run "monsthera convoy --help" for usage.');
       process.exit(1);
   }
+}
+
+async function handleGet(args: string[]): Promise<void> {
+  if (wantsHelp(args)) return printConvoyHelp();
+  const id = parseFlag(args, "--id");
+  if (!id) {
+    console.error("Missing required flag: --id <convoy-id>");
+    process.exit(1);
+  }
+  await withContainer(args, async (container) => {
+    const result = await container.convoyRepo.findById(toConvoyId(id) as ConvoyId);
+    if (!result.ok) {
+      console.error(`Failed to get convoy: ${result.error.message}`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify(result.value) + "\n");
+  });
 }
 
 async function handleCreate(args: string[]): Promise<void> {
@@ -181,7 +200,7 @@ function printConvoyHelp(): void {
     command: "monsthera convoy",
     summary:
       "Manage convoys: named groups of work articles where the lead's progress unblocks members (ADR-009).",
-    usage: "<create|list|complete|cancel> [options]",
+    usage: "<create|list|get|complete|cancel> [options]",
     flags: [
       {
         name: "create --lead W --members W1,W2,... --goal TEXT [--target-phase PHASE] [--actor AGENT]",
@@ -190,6 +209,10 @@ function printConvoyHelp(): void {
       {
         name: "list [--active]",
         description: "List convoys (currently always active-only — terminal convoys are not surfaced).",
+      },
+      {
+        name: "get --id CONVOY",
+        description: "Get a single convoy by id. Exits non-zero with stderr message if the id is unknown.",
       },
       { name: "complete --id CONVOY [--actor AGENT] [--reason TEXT]", description: "Mark a convoy completed. `--actor` and `--reason` flow into the convoy_completed event." },
       { name: "cancel --id CONVOY [--actor AGENT] [--reason TEXT]", description: "Mark a convoy cancelled. `--actor` and `--reason` flow into the convoy_cancelled event." },
