@@ -112,3 +112,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-04-18 07:40:31]** update knowledge | Monsthera Agent Operating Guide (k-uuz80fga)
 - **[2026-04-18 07:40:33]** reindex knowledge | Reindex: 44 knowledge, 0 work
 - **[2026-04-18 07:48:45]** reindex knowledge | Reindex: 44 knowledge, 0 work
+- **[2026-04-25 09:49:36]** create knowledge | S5 plan: convoy dashboard (k-91f42ekj)

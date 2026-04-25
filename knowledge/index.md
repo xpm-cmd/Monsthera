@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 44 knowledge articles and 0 work articles.
-> Last updated: 2026-04-18 07:48:45
+> Auto-generated catalog of 55 knowledge articles and 8 work articles.
+> Last updated: 2026-04-25 09:49:36
 
 ## Knowledge
 
@@ -26,8 +26,9 @@
 - [Dashboard knowledge page UX flow](notes/dashboard-knowledge-page-ux-flow.md) — # Dashboard knowledge page UX flow  The knowledge page (`public/pages/knowledge.
 - [Dashboard UI component library](notes/dashboard-ui-component-library.md) — # Dashboard UI Component Library  ## Overview  All reusable UI primitives live i
 - [Dashboard work page UX flow](notes/dashboard-work-page-ux-flow.md) — # Dashboard work page UX flow  The work page (`public/pages/work.js`) manages wo
+- [Demo: Hedera v1 drift sample](notes/demo-drift-hedera.md) — # Demo article — intentional anti-example  This article exists so `pnpm demo:loc
 - [Dolt persistence layer: connection, schema, and health monitoring](notes/dolt-persistence-layer-connection-schema-and-health-monitoring.md) — ## Overview  Monsthera uses Dolt (a MySQL-compatible version-controlled database
-- [Dolt repositories: search index and orchestration events](notes/dolt-repositories-search-index-and-orchestration-events.md) — ## Overview  After Phase 3 cleanup, only two Dolt repository classes remain: `Do
+- [Dolt repositories: search index and orchestration events](notes/dolt-repositories-search-index-and-orchestration-events.md) — ## Overview  There are now three Dolt repository classes: `DoltSearchIndexReposi
 - [In-memory repositories and degraded-mode fallbacks](notes/in-memory-repositories-and-degraded-mode-fallbacks.md) — ## Overview  Monsthera's in-memory repositories serve two roles at once:  - dete
 - [In-Memory Search Index: BM25 Scoring and Fallback Behavior](notes/in-memory-search-index-bm25-scoring-and-fallback-behavior.md) — ## Overview  `InMemorySearchIndexRepository` is the fallback search implementati
 - [KnowledgeService: CRUD, search sync, and wiki integration](notes/knowledgeservice-crud-search-sync-and-wiki-integration.md) — # KnowledgeService  The `KnowledgeService` class is the central orchestrator fo
@@ -46,8 +47,11 @@
 
 ### decision
 
+- [Decision: agent dispatch contract — events, not spawning](notes/agent-dispatch-design-decisions.md) — ADR-008 captures the formal decision (event lifecycle, dispatcher shape). This n
+- [Decision: convoys, requires-as-hard-block, mid-session resync](notes/convoy-requires-resync-design-decisions.md) — ADR-009 captures the formal decision (convoy types, hard-block guard, new event
 - [Monsthera stale code ref repair and orchestration audit](notes/monsthera-stale-code-ref-repair-and-orchestration-audit.md) — ## Summary Dead-code cleanup removed the unused wiki bookkeeper constructor fiel
 - [Monsthera trust ranking and current-docs ingest](notes/monsthera-trust-ranking-and-current-docs-ingest.md) — ## Summary Monsthera reliability was improved by importing the current Monsthera
+- [S5 plan: convoy dashboard](notes/s5-plan-convoy-dashboard.md) — # S5 plan: convoy dashboard (S4 v2)  S4 v1 (PR #86) closed the operational loop
 
 ### design
 
@@ -56,18 +60,47 @@
 ### guide
 
 - [Dashboard pages and features](notes/dashboard-pages-and-features.md) — # Dashboard Pages and Features  ## Page Module Contract  Every page module expor
-- [MCP Tool Catalog — Complete Reference](notes/mcp-tool-catalog-complete-reference.md) — ## Overview  Monsthera exposes **28 MCP tools** via stdio transport, organized i
+- [Drift Prevention — Design](notes/drift-prevention-design.md) — # Drift Prevention — Design  Closure note for the Hedera v1 retrospective. Pairs
+- [MCP Tool Catalog — Complete Reference](notes/mcp-tool-catalog-complete-reference.md) — ## Overview  Monsthera exposes **31 MCP tools** via stdio transport, organized i
 - [Monsthera Agent Operating Guide](notes/monsthera-agent-operating-guide.md) — Monsthera works best when agents use it as an operational memory and coordinatio
 - [Monsthera usage guide for humans and agents](notes/monsthera-usage-guide-for-humans-and-agents.md) — ## Mental model  Monsthera is a shared brain with an integrated backlog. It has
-- [MonstheraV3 Docs](notes/monstherav3-docs.md) — ## Source - Path: `MonstheraV3/README.md` - Import mode: `summary`  ## Summary T
+- [MonstheraV3 Docs](notes/monstherav3-docs.md) — ## ⚠️ Status snapshot  This article is an imported summary of the original v3 de
 
 ### plan
 
-- [Monsthera v3: Implementation Plan](notes/monsthera-v3-implementation-plan.md) — ## Source - Path: `MonstheraV3/monsthera-v3-implementation-plan-final.md` - Impo
+- [Monsthera v3: Implementation Plan](notes/monsthera-v3-implementation-plan.md) — ## ⚠️ Status snapshot  This plan reflects the alpha.3 / alpha.4 implementation a
+
+### policy
+
+| Policy | Templates | Transition | Requires Roles | Requires Articles |
+|--------|-----------|------------|----------------|-------------------|
+| [Anti-Example Registry](notes/anti-example-registry.md) | — | — | — | — |
+| [Canonical Values Registry](notes/canonical-values.md) | — | — | — | — |
+| [Policy: feature articles touching auth require security enrichment](notes/policy-example-security-enrichment.md) | feature | enrichment → implementation | security | — |
 
 ### reference
 
 - [Dashboard REST API endpoints](notes/dashboard-rest-api-endpoints.md) — # Dashboard REST API Endpoints  ## Overview  All API routes are handled by `src/
+- [Monsthera CLI Command Cheatsheet](notes/monsthera-cli-command-cheatsheet.md) — # Monsthera CLI Command Cheatsheet  Complete reference for the `monsthera` CLI s
 - [Package entrypoints and barrel exports](notes/package-entrypoints-and-barrel-exports.md) — ## Overview  Monsthera uses barrel files as public-module boundaries. They are n
 
+### research
+
+- [Benchmark Methodology — Environment Snapshot + build_context_pack Impact](notes/monsthera-snapshot-benchmark-methodology.md) — Companion methodology for the benchmark spike `w-uvp3azdf`. Explains how to run
+- [IRIS Meta-Harness — Environment Bootstrapping and Implications for Monsthera](notes/iris-meta-harness-environment-bootstrapping-and-implications-for-monsthera.md) — Research note comparing Stanford IRIS Lab's `meta-harness-tbench2-artifact` ag
+
 ## Work
+
+### done (7)
+
+- [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
+- [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
+- [Close out snapshot follow-ups + cut 3.0.0-alpha.5](work-articles/w-21c2n6q5.md) [medium] — ## Objective  Close the open lifecycle state across the five
+- [Dashboard snapshot-diff endpoint and drift banner](work-articles/w-r85lzqhv.md) [medium] — ## Objective  Give an agent resuming a work article in \`imp
+- [Dolt persistence for environment snapshots](work-articles/w-guptmc33.md) [high] — ## Objective  Make environment snapshots persist across Mons
+- [Observational benchmark: Monsthera retrieval paths vs. grep](work-articles/w-dzur84o8.md) [medium] — ## Objective  Capture an observational data point comparing
+- [Opt-in ready_to_implement guard consuming environment snapshots](work-articles/w-y988ky96.md) [medium] — ## Objective  Add a template-opt-in guard that blocks the `e
+
+### cancelled (1)
+
+- [Benchmark: snapshot + build_context_pack cold-start impact](work-articles/w-uvp3azdf.md) [medium] — ## Objective  Quantify whether the environment-snapshot + `b
