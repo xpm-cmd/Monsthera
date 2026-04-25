@@ -61,6 +61,16 @@ export interface WorkArticle {
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   readonly completedAt?: Timestamp;
+  /**
+   * Hex-encoded SHA-256 of the article's `## Planning` section content,
+   * captured the moment the article advanced past `planning`. Cleared on
+   * any rollback into `planning`. Drives the `planning_section_tampered`
+   * lint rule — silent edits to the planning section after enrichment are
+   * what the Hedera v1 retrospective surfaced as the most common drift
+   * vector. Absent on articles still in `planning` and on historical
+   * articles authored before the field existed.
+   */
+  readonly planningHash?: string;
 }
 
 /** Input for creating a work article */

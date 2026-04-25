@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parseMarkdown } from "../knowledge/markdown.js";
 import { getCanonicalValueViolations } from "./guards.js";
+import { computePlanningHash } from "./planning-hash.js";
 import type { AntiExamplePhrase, AntiExampleToken, CanonicalValue } from "./policy-loader.js";
 
 /**
@@ -101,18 +102,38 @@ export type VerifyDensityFinding = {
   readonly oldestMarker?: { readonly line: string };
 };
 
+/**
+ * Planning-section drift finding: a work article advanced past `planning`
+ * carries a `planning_hash` captured at the time of that transition, and
+ * the current `## Planning` section content no longer matches. Surfaces
+ * silent post-planning edits, the most common drift vector identified
+ * by the Hedera v1 retrospective. Always opt-in via `--registry all` or
+ * `--registry planning-hash`; relevant only to work articles, never to
+ * knowledge notes.
+ */
+export type PlanningSectionTamperedFinding = {
+  readonly file: string;
+  readonly severity: "error";
+  readonly rule: "planning_section_tampered";
+  readonly articleId: string;
+  readonly phase: string;
+  readonly expectedHash: string;
+  readonly actualHash: string | null;
+};
+
 export type LintFinding =
   | CanonicalValueMismatchFinding
   | OrphanCitationFinding
   | TokenDriftFinding
   | PhraseAntiExampleFinding
   | CitationValueMismatchFinding
-  | VerifyDensityFinding;
+  | VerifyDensityFinding
+  | PlanningSectionTamperedFinding;
 
 export type LintInclude = "knowledge" | "work" | "both";
 
 /** Which registry families are active during a scan. */
-export type LintRegistry = "canonical-values" | "anti-examples" | "all";
+export type LintRegistry = "canonical-values" | "anti-examples" | "planning-hash" | "all";
 
 export interface LintScanInput {
   readonly markdownRoot: string;
@@ -162,15 +183,16 @@ const WORK_DIR = "work-articles";
 
 /**
  * Scan a markdown corpus for canonical-value drift, token drift,
- * phrase anti-examples, and (optionally) merge pre-computed orphan
- * findings. Pure w.r.t. the repo graph — callers supply the registries
- * and any orphan set; the scanner owns file traversal and the per-file
- * heuristics.
+ * phrase anti-examples, planning-section drift, and (optionally) merge
+ * pre-computed orphan findings. Pure w.r.t. the repo graph — callers
+ * supply the registries and any orphan set; the scanner owns file
+ * traversal and the per-file heuristics.
  *
  * Registry filter (`input.registry`):
  * - `all` (default) — run every active family.
  * - `canonical-values` — only the canonical-value mismatch rule.
  * - `anti-examples` — only token drift + phrase anti-examples.
+ * - `planning-hash` — only the planning-section-tampered rule (work only).
  *
  * `orphanFindings` are always passed through regardless of filter; they
  * are produced outside the scanner and the filter does not own them.
@@ -180,6 +202,7 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
   const registry: LintRegistry = input.registry ?? "all";
   const runCanonical = registry === "all" || registry === "canonical-values";
   const runAntiExamples = registry === "all" || registry === "anti-examples";
+  const runPlanningHash = registry === "all" || registry === "planning-hash";
 
   const findings: LintFinding[] = [];
 
@@ -238,6 +261,11 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
           input.verifyDensityThreshold,
         );
         if (densityFinding) findings.push(densityFinding);
+      }
+
+      if (runPlanningHash && dir === WORK_DIR) {
+        const tamper = scanPlanningHash(parsed.value.frontmatter, body, relFile);
+        if (tamper) findings.push(tamper);
       }
     }
   }
@@ -584,5 +612,38 @@ function scanVerifyDensity(
     densityPercent: Math.round(density * 1000) / 10, // one decimal
     threshold,
     ...(oldestLine ? { oldestMarker: { line: oldestLine } } : {}),
+  };
+}
+
+/**
+ * Compare a work article's stored `planning_hash` against the current
+ * content of its `## Planning` section. Skip when the article is still
+ * in planning (no hash to pin yet), when the hash is absent (historical
+ * article authored before the rule existed), or when the article lacks a
+ * planning section entirely. Otherwise emit an error finding on mismatch.
+ */
+function scanPlanningHash(
+  frontmatter: Record<string, unknown>,
+  body: string,
+  file: string,
+): PlanningSectionTamperedFinding | undefined {
+  const expected = frontmatter["planning_hash"];
+  if (typeof expected !== "string" || expected.length === 0) return undefined;
+
+  const phase = typeof frontmatter["phase"] === "string" ? frontmatter["phase"] : "";
+  if (phase === "planning") return undefined;
+
+  const id = typeof frontmatter["id"] === "string" ? frontmatter["id"] : "";
+  const actual = computePlanningHash(body);
+  if (actual === expected) return undefined;
+
+  return {
+    file,
+    severity: "error",
+    rule: "planning_section_tampered",
+    articleId: id,
+    phase,
+    expectedHash: expected,
+    actualHash: actual,
   };
 }

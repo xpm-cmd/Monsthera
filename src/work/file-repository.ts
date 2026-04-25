@@ -12,6 +12,7 @@ import { generateWorkId, timestamp, workId, agentId, WorkPhase } from "../core/t
 import type { WorkId, AgentId, WorkPhase as WorkPhaseType } from "../core/types.js";
 import { parseMarkdown, serializeMarkdown } from "../knowledge/markdown.js";
 import { checkTransition, evaluateAsyncGuards } from "./lifecycle.js";
+import { computePlanningHash } from "./planning-hash.js";
 import { WORK_TEMPLATES, generateInitialContent } from "./templates.js";
 import { validateWorkFrontmatter } from "./schemas.js";
 import type {
@@ -167,6 +168,7 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
       createdAt: timestamp(frontmatter.createdAt),
       updatedAt: timestamp(frontmatter.updatedAt),
       completedAt: frontmatter.completedAt ? timestamp(frontmatter.completedAt) : undefined,
+      ...(frontmatter.planning_hash ? { planningHash: frontmatter.planning_hash } : {}),
     });
   }
 
@@ -221,6 +223,7 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
     if (article.lead) frontmatter["lead"] = article.lead;
     if (article.assignee) frontmatter["assignee"] = article.assignee;
     if (article.completedAt) frontmatter["completedAt"] = article.completedAt;
+    if (article.planningHash) frontmatter["planning_hash"] = article.planningHash;
     if (aliases.length > 0) frontmatter["aliases"] = aliases;
     if (migrationHash) frontmatter["migrationHash"] = migrationHash;
 
@@ -412,12 +415,26 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
       ? buildCancellationHistoryEntry(targetPhase, now, options, skippedGuards)
       : buildAdvanceHistoryEntry(targetPhase, now, options, skippedGuards);
 
+    // Capture the planning section hash on first exit from `planning`; clear it
+    // on any rollback into `planning`. The lint rule treats absence-of-hash as
+    // "not yet pinned" rather than "drift detected", so a cleared hash quietly
+    // resets the gate for the next forward transition.
+    const fromPlanning = existing.value.phase === WorkPhase.PLANNING;
+    const goingBackToPlanning = targetPhase === WorkPhase.PLANNING;
+    let nextPlanningHash = existing.value.planningHash;
+    if (fromPlanning && !goingBackToPlanning && targetPhase !== WorkPhase.CANCELLED) {
+      nextPlanningHash = computePlanningHash(existing.value.content) ?? undefined;
+    } else if (goingBackToPlanning) {
+      nextPlanningHash = undefined;
+    }
+
     const updated: WorkArticle = {
       ...existing.value,
       phase: targetPhase,
       phaseHistory: [...updatedHistory, newEntry],
       updatedAt: now,
       completedAt: targetPhase === WorkPhase.DONE ? now : existing.value.completedAt,
+      planningHash: nextPlanningHash,
     };
 
     return this.writeArticle(updated);

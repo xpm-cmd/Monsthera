@@ -23,6 +23,10 @@ export const WorkArticleFrontmatterSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   completedAt: z.string().optional(),
+  planning_hash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/, "planning_hash must be a 64-char lowercase hex SHA-256")
+    .optional(),
 });
 
 /** Schema for create input (from MCP tool / service caller) */

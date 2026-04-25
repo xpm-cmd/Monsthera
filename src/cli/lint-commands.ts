@@ -13,7 +13,12 @@ import type {
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
 
-const VALID_REGISTRIES: readonly LintRegistry[] = ["canonical-values", "anti-examples", "all"];
+const VALID_REGISTRIES: readonly LintRegistry[] = [
+  "canonical-values",
+  "anti-examples",
+  "planning-hash",
+  "all",
+];
 
 /**
  * `monsthera lint` — scan the corpus for canonical-value drift,
@@ -27,9 +32,9 @@ export async function handleLint(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera lint",
       summary:
-        "Audit the knowledge + work corpus for canonical-value drift, anti-example drift, and orphan citations.",
+        "Audit the knowledge + work corpus for canonical-value drift, anti-example drift, planning-section drift, and orphan citations.",
       usage:
-        "[--include knowledge|work|both] [--registry canonical-values|anti-examples|all] [--format json|text] [--repo <path>]",
+        "[--include knowledge|work|both] [--registry canonical-values|anti-examples|planning-hash|all] [--format json|text] [--repo <path>]",
       flags: [
         {
           name: "--include <set>",
@@ -38,7 +43,7 @@ export async function handleLint(args: string[]): Promise<void> {
         {
           name: "--registry <name>",
           description:
-            "Which registry family to apply: canonical-values, anti-examples, or all (default).",
+            "Which registry family to apply: canonical-values, anti-examples, planning-hash, or all (default).",
         },
         {
           name: "--with-citation-values",
@@ -57,13 +62,14 @@ export async function handleLint(args: string[]): Promise<void> {
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
       notes: [
-        "Exit code 1 when any canonical_value_mismatch, token_drift, phrase_anti_example, or citation_value_mismatch is found; 0 otherwise.",
-        "Orphan citations are warnings and do not affect exit code.",
+        "Exit code 1 when any canonical_value_mismatch, token_drift, phrase_anti_example, citation_value_mismatch, or planning_section_tampered is found; 0 otherwise.",
+        "Orphan citations and verify_density_exceeded are warnings and do not affect exit code.",
       ],
       examples: [
         "monsthera lint",
         "monsthera lint --include knowledge --format text",
         "monsthera lint --registry anti-examples",
+        "monsthera lint --registry planning-hash",
         "monsthera lint --with-citation-values",
       ],
     });
@@ -256,6 +262,11 @@ function formatFinding(f: LintFinding): string {
       const pct = `${f.densityPercent}%`;
       const thr = `${Math.round(f.threshold * 1000) / 10}%`;
       return `${prefix}: [verify]-density ${pct} (${f.verifyCount} markers / ${f.citationCount} citations) exceeds ${thr}`;
+    }
+    case "planning_section_tampered": {
+      const expected = f.expectedHash.slice(0, 8);
+      const actual = f.actualHash ? f.actualHash.slice(0, 8) : "(missing)";
+      return `${prefix}: planning section drift on ${f.articleId} (phase=${f.phase}, expected=${expected}, actual=${actual})`;
     }
   }
 }
