@@ -92,6 +92,7 @@ export class OrchestrationService {
    */
   private async buildGuardDeps(): Promise<GuardSetDeps | undefined> {
     const convoyLookup = await this.buildConvoyLookup();
+    const referencedPhases = this.policyLoader ? await this.buildReferencedArticlePhases() : undefined;
     if (!this.policyLoader && !convoyLookup) return undefined;
 
     const out: { -readonly [K in keyof GuardSetDeps]: GuardSetDeps[K] } = {};
@@ -104,7 +105,38 @@ export class OrchestrationService {
     if (convoyLookup) {
       out.convoyLeadByMember = convoyLookup;
     }
+    if (referencedPhases) {
+      out.referencedArticlePhases = referencedPhases;
+    }
     return out;
+  }
+
+  /**
+   * Build the {workId → phase} lookup that lets `policy_requires_articles`
+   * enforce "referenced article must be done" without giving guards a
+   * repository handle (ADR-009). Snapshots ALL known work articles in one
+   * pass — cheaper than a per-policy fetch when policies cluster references.
+   * Knowledge-article ids are deliberately absent so the guard treats them
+   * as exempt.
+   *
+   * Returns undefined when the work repo cannot be enumerated (logged and
+   * fail-open: legacy presence-only behavior preserved rather than blocking
+   * every wave on an unrelated infra error).
+   */
+  private async buildReferencedArticlePhases(): Promise<ReadonlyMap<string, WorkPhase> | undefined> {
+    const allResult = await this.workRepo.findMany();
+    if (!allResult.ok) {
+      this.logger.warn("Failed to load work articles for referenced-phase lookup; hard-block disabled this wave", {
+        operation: "buildReferencedArticlePhases",
+        error: allResult.error.message,
+      });
+      return undefined;
+    }
+    const map = new Map<string, WorkPhase>();
+    for (const article of allResult.value) {
+      map.set(article.id, article.phase);
+    }
+    return map;
   }
 
   /**

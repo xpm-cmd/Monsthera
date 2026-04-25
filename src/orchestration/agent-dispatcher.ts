@@ -4,6 +4,7 @@ import type { WorkPhase } from "../core/types.js";
 import type { WorkArticle, WorkArticleRepository } from "../work/repository.js";
 import type { PolicyLoader } from "../work/policy-loader.js";
 import { getPolicyViolations } from "../work/guards.js";
+import { getNextPhase } from "../work/lifecycle.js";
 import type {
   OrchestrationEvent,
   OrchestrationEventRepository,
@@ -53,7 +54,7 @@ interface DispatcherSlot {
   readonly role: string;
   readonly transition: { readonly from: WorkPhase; readonly to: WorkPhase };
   readonly reason: AgentNeededReason;
-  readonly triggeredBy: { readonly policySlug?: string; readonly guardName?: string };
+  readonly triggeredBy: AgentNeededDetails["triggeredBy"];
 }
 
 /**
@@ -121,39 +122,55 @@ export class AgentDispatcher {
       const slots = await this.collectSlots(article, failure);
       if (slots.length === 0) continue;
 
-      const events = await this.eventRepo.findByWorkId(workId(article.id));
-      if (!events.ok) {
-        this.logger.warn("Failed to load events for dedup; emitting without dedup", {
-          workId: article.id,
-          error: events.error.message,
-        });
-      }
-      const recentEvents = events.ok ? events.value : [];
-
       for (const slot of slots) {
+        // ADR-009: a requires_chain slot targets a DIFFERENT article (the
+        // referenced one, not the one whose guard failed). Resolve the
+        // target article so the context pack, the event's workId, and the
+        // dedup lookup are all keyed on whoever actually needs the work.
+        const targetIsSame = slot.workId === article.id;
+        const targetArticle = targetIsSame
+          ? article
+          : await this.resolveSlotTarget(slot.workId);
+        if (!targetArticle) continue;
+
+        const dedupEvents = await this.eventRepo.findByWorkId(workId(targetArticle.id));
+        if (!dedupEvents.ok) {
+          this.logger.warn("Failed to load events for dedup; emitting without dedup", {
+            workId: targetArticle.id,
+            error: dedupEvents.error.message,
+          });
+        }
+        const recentEvents = dedupEvents.ok ? dedupEvents.value : [];
+
         const dedupHit = this.findOpenAgentNeeded(recentEvents, slot.role, slot.transition);
         if (dedupHit) {
           requests.push({ ...slot, deduped: true });
           continue;
         }
 
+        const extraGuidance = slot.reason === "requires_chain" && slot.triggeredBy.blockingArticle
+          ? [
+              `Advance ${targetArticle.id} so ${slot.triggeredBy.blockingArticle} can pass policy "${slot.triggeredBy.policySlug ?? "(unknown)"}".`,
+            ]
+          : undefined;
+
         const details: AgentNeededDetails = {
           role: slot.role,
           transition: slot.transition,
           reason: slot.reason,
           triggeredBy: slot.triggeredBy,
-          contextPackSummary: this.buildContextPackSummary(article, slot.role),
+          contextPackSummary: this.buildContextPackSummary(targetArticle, slot.role, extraGuidance),
           requestedAt: timestamp(),
         };
 
         const logged = await this.eventRepo.logEvent({
-          workId: workId(article.id),
+          workId: workId(targetArticle.id),
           eventType: "agent_needed",
           details: details as unknown as Record<string, unknown>,
         });
         if (!logged.ok) {
           this.logger.error("Failed to persist agent_needed event", {
-            workId: article.id,
+            workId: targetArticle.id,
             role: slot.role,
             error: logged.error.message,
           });
@@ -172,6 +189,23 @@ export class AgentDispatcher {
     }
 
     return requests;
+  }
+
+  /**
+   * Look up the work article a slot is targeted at. Used by `dispatchFor`
+   * to handle `requires_chain` slots whose `workId` is the referenced
+   * article, not the one whose guard failed.
+   */
+  private async resolveSlotTarget(targetId: string): Promise<WorkArticle | null> {
+    const result = await this.workRepo.findById(targetId);
+    if (!result.ok) {
+      this.logger.warn("Slot target work article not found; dropping slot", {
+        targetId,
+        error: result.error.message,
+      });
+      return null;
+    }
+    return result.value;
   }
 
   /**
@@ -233,9 +267,17 @@ export class AgentDispatcher {
   }
 
   /**
-   * Compute one slot per missing role per applicable policy. Re-uses
-   * `getPolicyViolations` so the dispatcher and the lint pipeline see
-   * identical "what is missing" answers.
+   * Compute one slot per missing role per applicable policy, plus one
+   * `requires_chain` slot per referenced work article that exists but is
+   * not yet `done` (ADR-009). Re-uses `getPolicyViolations` so the
+   * dispatcher and the lint pipeline see identical "what is missing"
+   * answers.
+   *
+   * The `requires_chain` slot targets the referenced article (NOT the
+   * article that triggered the guard) with `role: "author"` and
+   * `triggeredBy.blockingArticle = article.id`. The harness reads this
+   * as "advance B so A can proceed" — the assignment is to whoever owns
+   * B, not to a fresh enrichment slot on A.
    */
   private async collectPolicySlots(
     article: WorkArticle,
@@ -246,7 +288,11 @@ export class AgentDispatcher {
     const applicable = this.policyLoader.getApplicablePolicies(all, article, failure.transition);
     if (applicable.length === 0) return [];
 
-    const violations = getPolicyViolations(article, applicable);
+    // Re-resolve referenced phases here so the dispatcher and the guard
+    // agree on which articles are "not done" — matters when the dispatcher
+    // is invoked outside a wave (e.g., a CLI ad-hoc evaluation).
+    const refPhases = await this.resolveReferencedArticlePhases(article, applicable);
+    const violations = getPolicyViolations(article, applicable, refPhases);
     const slots: DispatcherSlot[] = [];
     for (const violation of violations) {
       const missingRoles = violation.missing.enrichmentRoles ?? [];
@@ -259,10 +305,70 @@ export class AgentDispatcher {
           triggeredBy: { policySlug: violation.policySlug },
         });
       }
-      // Missing referenced articles do not map to a role — author task,
-      // surfaced via lint, not via dispatch.
+
+      // ADR-009: present-but-not-done references → dispatch on the
+      // referenced article so the harness can advance it. The transition
+      // surfaces the referenced article's NEXT forward edge so the
+      // harness has a concrete target ("from enrichment to implementation").
+      // Articles already at terminal phases or with no forward edge are
+      // skipped (no productive work for an agent).
+      const notDone = violation.missing.referencedArticlesNotDone ?? [];
+      for (const entry of notDone) {
+        const refResult = await this.workRepo.findById(entry.id);
+        if (!refResult.ok) {
+          this.logger.warn("requires_chain dispatch skipped: referenced article not found", {
+            workId: article.id,
+            referencedId: entry.id,
+            error: refResult.error.message,
+          });
+          continue;
+        }
+        const refArticle = refResult.value;
+        const next = getNextPhase(refArticle);
+        if (next === null) continue;
+        slots.push({
+          workId: refArticle.id,
+          role: "author",
+          transition: { from: refArticle.phase, to: next },
+          reason: "requires_chain",
+          triggeredBy: {
+            policySlug: violation.policySlug,
+            blockingArticle: workId(article.id),
+          },
+        });
+      }
     }
     return slots;
+  }
+
+  /**
+   * Build the {workId → phase} map needed by `getPolicyViolations` to
+   * detect not-done references. Scoped to references touched by the
+   * applicable policies (not all work articles) — the dispatcher is
+   * invoked off the hot path so a focused fetch reads cleaner than a
+   * full enumerate. Falls back to an empty map on infra errors so
+   * presence-only checks still pass.
+   */
+  private async resolveReferencedArticlePhases(
+    article: WorkArticle,
+    policies: ReadonlyArray<{ requires: { referencedArticles: readonly string[] } }>,
+  ): Promise<ReadonlyMap<string, WorkPhase>> {
+    const referenced = new Set(article.references);
+    const ids = new Set<string>();
+    for (const policy of policies) {
+      for (const ref of policy.requires.referencedArticles) {
+        if (referenced.has(ref)) ids.add(ref);
+      }
+    }
+    const map = new Map<string, WorkPhase>();
+    for (const id of ids) {
+      const result = await this.workRepo.findById(id);
+      if (result.ok) {
+        map.set(id, result.value.phase);
+      }
+      // Knowledge articles or unknown ids: silently absent → exempt from phase check.
+    }
+    return map;
   }
 
   /**
@@ -299,7 +405,11 @@ export class AgentDispatcher {
     return mostRecent;
   }
 
-  private buildContextPackSummary(article: WorkArticle, role: string): AgentContextPackSummary {
+  private buildContextPackSummary(
+    article: WorkArticle,
+    role: string,
+    extraGuidance?: readonly string[],
+  ): AgentContextPackSummary {
     const cdLine = this.worktreePath
       ? `cd ${this.worktreePath} && pwd # safe-parallel-dispatch invariant from ADR-012`
       : "cd <target-worktree> && pwd # safe-parallel-dispatch invariant from ADR-012; alt: monsthera ... --assert-worktree <path>";
@@ -307,6 +417,7 @@ export class AgentDispatcher {
       `Read context pack: build_context_pack({ work_id: "${article.id}", query: "${article.id}" })`,
       cdLine,
       `Acting as ${role}, contribute the ${role} Perspective section to ${article.id}.`,
+      ...(extraGuidance ?? []),
     ];
     return {
       workArticleSlug: article.id,

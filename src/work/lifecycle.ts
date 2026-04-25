@@ -86,6 +86,13 @@ export interface GuardSetDeps {
       readonly phaseOrder: readonly WorkPhaseType[];
     }
   >;
+  /**
+   * Pre-resolved current phase per known work article id (ADR-009). Lets
+   * `policy_requires_articles` enforce "referenced article must be done"
+   * without the guard reaching for a repository. Knowledge-article ids are
+   * absent, which the guard treats as silently exempt from the phase check.
+   */
+  readonly referencedArticlePhases?: ReadonlyMap<string, WorkPhaseType>;
 }
 
 /** Get the guard set for a specific transition. Returns empty array for cancellation. */
@@ -131,9 +138,14 @@ export function getGuardSet(
       ? filter(deps.policies, article, { from, to })
       : deps.policies;
     if (applicable.length > 0) {
+      const refPhases = deps.referencedArticlePhases;
       baseGuards.push({
         name: "policy_requirements_met",
-        check: (a) => policy_requirements_met(a, { policies: applicable }),
+        check: (a) =>
+          policy_requirements_met(a, {
+            policies: applicable,
+            ...(refPhases ? { referencedArticlePhases: refPhases } : {}),
+          }),
       });
     }
   }
