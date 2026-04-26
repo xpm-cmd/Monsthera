@@ -5,6 +5,7 @@
 // innerHTML usage is safe in this context as there is no untrusted input.
 
 import { navigate } from "./router.js";
+import { getConvoys } from "./api.js";
 
 const NAV_ITEMS = [
   { icon: "layout-dashboard", label: "Overview", path: "/" },
@@ -12,6 +13,7 @@ const NAV_ITEMS = [
   { icon: "activity", label: "Flow", path: "/flow" },
   { icon: "list-todo", label: "Work", path: "/work" },
   { icon: "radio", label: "Events", path: "/events" },
+  { icon: "git-fork", label: "Convoys", path: "/convoys" },
   { icon: "book-open", label: "Knowledge", path: "/knowledge" },
   { icon: "search", label: "Search", path: "/search" },
   { icon: "settings", label: "System", path: "/system" },
@@ -39,6 +41,7 @@ export function renderSidebar(currentPath) {
       <a href="${item.path}" data-link class="${active ? "active" : ""}">
         <i data-lucide="${item.icon}"></i>
         ${item.label}
+        ${item.path === "/convoys" ? '<span class="nav-badge" id="convoy-warning-badge" hidden></span>' : ""}
       </a>
       ${item.path === "/system" ? renderSubnav(currentPath, isSystemActive) : ""}
     </li>`;
@@ -104,4 +107,32 @@ export function updateSidebar(currentPath) {
   // Safe: all content is from hardcoded nav items, no user/API input
   sidebar.innerHTML = renderSidebar(currentPath);
   if (typeof lucide !== "undefined") lucide.createIcons({ nodes: [sidebar] });
+  refreshConvoyWarningBadge();
+}
+
+let badgeRefreshInFlight = null;
+
+export async function refreshConvoyWarningBadge() {
+  if (badgeRefreshInFlight) return badgeRefreshInFlight;
+  badgeRefreshInFlight = (async () => {
+    try {
+      const data = await getConvoys();
+      const count = (data?.warnings || []).length;
+      const badge = document.getElementById("convoy-warning-badge");
+      if (!badge) return;
+      if (count > 0) {
+        badge.textContent = String(count);
+        badge.hidden = false;
+        badge.setAttribute("aria-label", `${count} unresolved convoy warning${count === 1 ? "" : "s"}`);
+      } else {
+        badge.hidden = true;
+        badge.removeAttribute("aria-label");
+      }
+    } catch {
+      // Silent — previous count preserved.
+    } finally {
+      badgeRefreshInFlight = null;
+    }
+  })();
+  return badgeRefreshInFlight;
 }

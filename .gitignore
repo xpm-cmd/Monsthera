@@ -25,6 +25,7 @@ tmp/
 .claude/
 .gemini/
 .copilot/
+.superpowers/
 .cursorrules
 .cursorignore
 GEMINI.md

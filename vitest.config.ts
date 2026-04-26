@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     passWithNoTests: true,
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.ts", "tests/**/*.test.js"],
     exclude: ["tests/benchmark/**"],
     testTimeout: 10_000,
     coverage: {

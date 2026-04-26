@@ -19,6 +19,8 @@ import {
 } from "../orchestration/repository.js";
 import type { AgentLifecycleDetails } from "../orchestration/types.js";
 import { workId, agentId } from "../core/types.js";
+import { buildConvoyDashboardSummary, buildConvoyDetail } from "./convoy-projection.js";
+import type { ConvoyId } from "../core/types.js";
 
 // ─── Static file serving ────────────────────────────────────────────────────
 
@@ -272,6 +274,8 @@ async function handleRequest(
   const { pathname, searchParams } = url;
   const knowledgeMatch = pathname.match(/^\/api\/knowledge\/([^/]+)$/);
   const workMatch = pathname.match(/^\/api\/work\/([^/]+)$/);
+  const convoyMatch = pathname.match(/^\/api\/convoys\/([^/]+)$/);
+  const convoysListPath = pathname === "/api/convoys";
   const workAdvanceMatch = pathname.match(/^\/api\/work\/([^/]+)\/advance$/);
   const workEnrichmentMatch = pathname.match(/^\/api\/work\/([^/]+)\/enrichment$/);
   const workReviewersMatch = pathname.match(/^\/api\/work\/([^/]+)\/reviewers$/);
@@ -1331,6 +1335,47 @@ async function handleRequest(
       const { status, code } = mapErrorToHttp(result.error);
       errorResponse(res, status, code, result.error.message);
     }
+    return;
+  }
+
+  // ── GET /api/convoys ─────────────────────────────────────────────────────
+  if (convoysListPath) {
+    if (req.method !== "GET") {
+      errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+      return;
+    }
+    const result = await buildConvoyDashboardSummary({
+      convoyRepo: container.convoyRepo,
+      orchestrationRepo: container.orchestrationRepo,
+      workService: container.workService,
+    });
+    if (!result.ok) {
+      const { status, code } = mapErrorToHttp(result.error);
+      errorResponse(res, status, code, result.error.message);
+      return;
+    }
+    jsonResponse(res, 200, result.value);
+    return;
+  }
+
+  // ── GET /api/convoys/:id ─────────────────────────────────────────────────
+  if (convoyMatch) {
+    if (req.method !== "GET") {
+      errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+      return;
+    }
+    const id = decodeURIComponent(convoyMatch[1]!) as ConvoyId;
+    const result = await buildConvoyDetail(id, {
+      convoyRepo: container.convoyRepo,
+      orchestrationRepo: container.orchestrationRepo,
+      workService: container.workService,
+    });
+    if (!result.ok) {
+      const { status, code } = mapErrorToHttp(result.error);
+      errorResponse(res, status, code, result.error.message);
+      return;
+    }
+    jsonResponse(res, 200, result.value);
     return;
   }
 

@@ -137,3 +137,5 @@ export function getEvents({ type, workId, limit } = {}) {
   return get(`/api/events${qs ? `?${qs}` : ""}`);
 }
 export function emitEvent(payload) { return post("/api/events/emit", payload); }
+export function getConvoys() { return get("/api/convoys"); }
+export function getConvoyById(id) { return get(`/api/convoys/${encodeURIComponent(id)}`); }

@@ -253,3 +253,9 @@ export function phaseVariant(phase) {
     default: return "secondary";
   }
 }
+
+export function renderPhaseChip(phase, count) {
+  const variant = phaseVariant(phase) || "outline";
+  const label = count != null ? `${phase} ×${count}` : phase;
+  return renderBadge(label, variant);
+}

@@ -1,6 +1,7 @@
 import {
   executeOrchestrationWave,
   getAgents,
+  getConvoys,
   getHealth,
   getKnowledge,
   getOrchestrationWave,
@@ -47,24 +48,26 @@ function renderAgentDirectoryEmptyState() {
 }
 
 export async function render(container) {
-  let [health, workArticles, knowledgeArticles, wave, runtime, directory] = await Promise.all([
+  let [health, workArticles, knowledgeArticles, wave, runtime, directory, convoys] = await Promise.all([
     getHealth().catch(() => null),
     getWork().catch(() => []),
     getKnowledge().catch(() => []),
     getOrchestrationWave().catch(() => null),
     getSystemRuntime().catch(() => null),
     getAgents().catch(() => ({ agents: [], summary: {} })),
+    getConvoys().catch(() => ({ active: [], terminal: [], warnings: [] })),
   ]);
   let flash = null;
 
   async function refresh() {
-    [health, workArticles, knowledgeArticles, wave, runtime, directory] = await Promise.all([
+    [health, workArticles, knowledgeArticles, wave, runtime, directory, convoys] = await Promise.all([
       getHealth().catch(() => null),
       getWork().catch(() => []),
       getKnowledge().catch(() => []),
       getOrchestrationWave().catch(() => null),
       getSystemRuntime().catch(() => null),
       getAgents().catch(() => ({ agents: [], summary: {} })),
+      getConvoys().catch(() => ({ active: [], terminal: [], warnings: [] })),
     ]);
   }
 
@@ -204,6 +207,7 @@ export async function render(container) {
       '</div><div class="col-side">',
       renderStatCard("Ready wave", readyItems.length, readyItems.length > 0 ? renderBadge("safe to advance", "success") : renderBadge("no ready items", "outline")),
       renderStatCard("Blocked articles", blockedArticles.length, blockedArticles.length > 0 ? renderBadge("needs unblock", "warning") : renderBadge("clear", "success")),
+      renderStatCard("Convoys", convoys.active.length, convoys.active.length > 0 ? renderBadge(`${convoys.active.length} active`, "primary") : renderBadge("none active", "outline")),
       renderStatCard("Agents", totalAgents, totalAgents > 0 ? renderBadge(`${activeAgents} active`, activeAgents > 0 ? "primary" : "outline") : renderBadge("none yet", "outline")),
       renderStatCard("Automation mode", autoAdvance ? "Auto" : "Manual", renderBadge(autoAdvance ? "loop enabled" : "supervised", autoAdvance ? "success" : "secondary")),
       '<div class="stat-card"><div class="stat-label">System health</div>',
