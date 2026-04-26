@@ -7,7 +7,7 @@ priority: high
 author: codex
 tags: [workspace, self-update, process-registry, dolt, portability]
 references: [k-acodv9lb, k-8dsb3up8, k-rksv8m51, k-2njgnd6v]
-codeRefs: [src/cli/main.ts, src/cli/workspace-commands.ts, src/cli/self-commands.ts, src/workspace/manifest.ts, src/workspace/service.ts, src/ops/process-registry.ts, src/ops/self-service.ts, src/ops/command-runner.ts, src/ops/doctor.ts, scripts/dolt/start-local.sh, scripts/dolt/stop-local.sh, tests/unit/workspace/service.test.ts, tests/unit/ops/process-registry.test.ts, tests/unit/ops/process-registry-adopt.test.ts, tests/unit/ops/self-service.test.ts, tests/unit/ops/self-service-update.test.ts, tests/unit/ops/doctor.test.ts, tests/unit/cli/main.test.ts, docs/adrs/014-portable-workspace-operations.md, docs/adrs/015-self-update-rollback-and-doctor.md, docs/self-update-runbook.md, README.md, docs/consumer-setup.md, docs/dolt-local.md]
+codeRefs: [src/cli/main.ts, src/cli/workspace-commands.ts, src/cli/self-commands.ts, src/workspace/manifest.ts, src/workspace/service.ts, src/ops/process-registry.ts, src/ops/self-service.ts, src/ops/command-runner.ts, src/ops/doctor.ts, scripts/dolt/start-local.sh, scripts/dolt/stop-local.sh, tests/unit/workspace/service.test.ts, tests/unit/ops/process-registry.test.ts, tests/unit/ops/process-registry-adopt.test.ts, tests/unit/ops/self-service.test.ts, tests/unit/ops/self-service-update.test.ts, tests/unit/ops/doctor.test.ts, tests/unit/cli/main.test.ts, docs/adrs/014-portable-workspace-operations.md, docs/adrs/016-self-update-rollback-and-doctor.md, docs/self-update-runbook.md, README.md, docs/consumer-setup.md, docs/dolt-local.md]
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T04:51:35.550Z
@@ -54,7 +54,7 @@ Crear una superficie operacional oficial para Monsthera que haga instalación, a
   - dolt.stale-metadata → `cleanupStaleMetadata`.
   - blockers como `install.dirty` o `dolt.untrusted` quedan en blocker (no auto-fix); doctor sale con código 2 si hay blockers.
 - CLI de `self update --execute` ahora imprime el reporte de rollback en stderr cuando falla.
-- Documentación: `docs/self-update-runbook.md` (runbook completo: install / status / dry-run / prepare / execute / rollback / doctor / restart / restore / troubleshooting matrix) y ADR-015 `docs/adrs/015-self-update-rollback-and-doctor.md`.
+- Documentación: `docs/self-update-runbook.md` (runbook completo: install / status / dry-run / prepare / execute / rollback / doctor / restart / restore / troubleshooting matrix) y ADR-016 `docs/adrs/016-self-update-rollback-and-doctor.md`.
 
 ## Validación local fase 3
 - `pnpm vitest run tests/unit/ops/command-runner.test.ts tests/unit/ops/doctor.test.ts tests/unit/ops/process-registry-adopt.test.ts tests/unit/ops/process-registry.test.ts tests/unit/ops/self-service-update.test.ts tests/unit/ops/self-service.test.ts tests/unit/workspace/service.test.ts tests/unit/cli/main.test.ts` (ver bloque de validación final del PR).

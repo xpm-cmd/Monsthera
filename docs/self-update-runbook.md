@@ -219,6 +219,6 @@ monsthera workspace restore .monsthera/backups/<backup-id> --force
 ## Related references
 
 - ADR-014: `docs/adrs/014-portable-workspace-operations.md`
-- ADR-015: `docs/adrs/015-self-update-rollback-and-doctor.md`
+- ADR-016: `docs/adrs/016-self-update-rollback-and-doctor.md`
 - Dolt local: `docs/dolt-local.md`
 - Consumer setup: `docs/consumer-setup.md`

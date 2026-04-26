@@ -1,4 +1,4 @@
-# ADR-015: Self update rollback and doctor
+# ADR-016: Self update rollback and doctor
 
 ## Status
 
