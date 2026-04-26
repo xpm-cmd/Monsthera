@@ -116,12 +116,42 @@ export interface DashboardServer {
   close(): Promise<void>;
 }
 
+// ─── CORS policy ─────────────────────────────────────────────────────────────
+
+/**
+ * Allow only same-origin and localhost-variant browser origins. The dashboard
+ * binds to localhost by default; any cross-origin request from a non-localhost
+ * page (a hostile rendered Markdown article, an external site exploiting a
+ * leaked token, a malicious browser extension) is treated as hostile and gets
+ * no `Access-Control-Allow-Origin` header back, so the browser blocks the
+ * response.
+ *
+ * Direct callers without an `Origin` header (curl, fetch from Node tests,
+ * native MCP clients) are unaffected because they don't rely on CORS.
+ */
+export function isAllowedDashboardOrigin(origin: string | undefined): boolean {
+  if (!origin) return true; // same-origin or non-browser caller
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]" || url.hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function applyCorsHeaders(res: ServerResponse, origin: string | undefined): void {
+  if (origin && isAllowedDashboardOrigin(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+}
+
 // ─── Response helpers ────────────────────────────────────────────────────────
 
 function jsonResponse(res: ServerResponse, status: number, data: unknown): void {
   res.writeHead(status, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
   });
   res.end(JSON.stringify(data, null, 2));
 }
@@ -130,9 +160,13 @@ function errorResponse(res: ServerResponse, status: number, code: string, messag
   jsonResponse(res, status, { error: code, message });
 }
 
-function corsHeaders(res: ServerResponse): void {
+function corsHeaders(res: ServerResponse, origin: string | undefined): void {
+  if (origin && !isAllowedDashboardOrigin(origin)) {
+    res.writeHead(403, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "FORBIDDEN_ORIGIN", message: "cross-origin requests outside localhost are not allowed" }));
+    return;
+  }
   res.writeHead(204, {
-    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
@@ -258,9 +292,21 @@ async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
+  const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+
+  // Reject browser cross-origin requests early. Origin-less requests
+  // (curl, fetch from Node, MCP-style direct clients) are unaffected.
+  if (origin && !isAllowedDashboardOrigin(origin)) {
+    errorResponse(res, 403, "FORBIDDEN_ORIGIN", "cross-origin requests outside localhost are not allowed");
+    return;
+  }
+
+  // Echo the allowed origin back for browser CORS, on every response.
+  applyCorsHeaders(res, origin);
+
   // CORS preflight
   if (req.method === "OPTIONS") {
-    corsHeaders(res);
+    corsHeaders(res, origin);
     return;
   }
 

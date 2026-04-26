@@ -5,6 +5,7 @@ import { DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_FILE, VERSION } from "../core/consta
 import { StorageError, ValidationError } from "../core/errors.js";
 import type { Result } from "../core/result.js";
 import { err, ok } from "../core/result.js";
+import { inspectManagedProcess, type ManagedProcessKind } from "../ops/process-registry.js";
 import {
   CURRENT_WORKSPACE_SCHEMA_VERSION,
   ensureWorkspaceManifest,
@@ -12,6 +13,40 @@ import {
   manifestPath,
   type WorkspaceManifest,
 } from "./manifest.js";
+
+const QUIESCED_KINDS: readonly ManagedProcessKind[] = ["dolt"];
+
+/**
+ * Refuse to back up or restore a workspace while a managed process is still
+ * running with trusted metadata. Dolt holds memory-mapped files in
+ * `.monsthera/dolt/` and a filesystem-level copy/replace of that directory
+ * while the daemon is alive captures or installs an inconsistent snapshot.
+ *
+ * Callers that intend to coordinate the daemon themselves (e.g.
+ * `executeSelfUpdate` already stops Dolt before invoking these operations)
+ * see no error because the inspection reports `running: false` after the
+ * stop.
+ */
+async function ensureManagedProcessesQuiesced(
+  repoPath: string,
+  operation: "backup" | "restore",
+): Promise<Result<void, StorageError | ValidationError>> {
+  for (const kind of QUIESCED_KINDS) {
+    const status = await inspectManagedProcess(repoPath, kind);
+    if (!status.ok) return status;
+    if (status.value.running && status.value.trusted) {
+      return err(
+        new ValidationError(
+          `Refusing to ${operation} workspace while managed ${kind} process is running (pid ${status.value.pid}). ` +
+            `Stop it first with "monsthera self restart ${kind}" or restart the daemon after operating, ` +
+            `then retry.`,
+          { kind, pid: status.value.pid, operation },
+        ),
+      );
+    }
+  }
+  return ok(undefined);
+}
 
 export interface WorkspaceStatus {
   readonly repoPath: string;
@@ -117,6 +152,9 @@ export async function migrateWorkspace(repoPath: string): Promise<Result<{ manif
 }
 
 export async function backupWorkspace(repoPath: string): Promise<Result<WorkspaceBackup, StorageError | ValidationError>> {
+  const quiesced = await ensureManagedProcessesQuiesced(repoPath, "backup");
+  if (!quiesced.ok) return quiesced;
+
   const migrated = await migrateWorkspace(repoPath);
   if (!migrated.ok) return migrated;
 
@@ -164,6 +202,9 @@ export async function restoreWorkspace(
   if (!options.force) {
     return err(new ValidationError("workspace restore requires --force to overwrite local workspace files"));
   }
+
+  const quiesced = await ensureManagedProcessesQuiesced(repoPath, "restore");
+  if (!quiesced.ok) return quiesced;
 
   const resolvedRepo = path.resolve(repoPath);
   const backupPath = path.resolve(backupPathInput);

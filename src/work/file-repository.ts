@@ -8,6 +8,7 @@ import {
   StateTransitionError,
   StorageError,
 } from "../core/errors.js";
+import { withFileLock } from "../core/file-lock.js";
 import { generateWorkId, timestamp, workId, agentId, WorkPhase } from "../core/types.js";
 import type { WorkId, AgentId, WorkPhase as WorkPhaseType } from "../core/types.js";
 import { parseMarkdown, serializeMarkdown } from "../knowledge/markdown.js";
@@ -293,23 +294,25 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
     id: string,
     input: UpdateWorkArticleInput,
   ): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>> {
-    const existing = await this.getMutable(id);
-    if (!existing.ok) return existing;
+    return withFileLock(this.articlePath(id), async () => {
+      const existing = await this.getMutable(id);
+      if (!existing.ok) return existing;
 
-    const updated: WorkArticle = {
-      ...existing.value,
-      title: input.title ?? existing.value.title,
-      priority: input.priority ?? existing.value.priority,
-      lead: input.lead !== undefined ? input.lead : existing.value.lead,
-      assignee: input.assignee !== undefined ? input.assignee : existing.value.assignee,
-      tags: input.tags ?? existing.value.tags,
-      references: input.references ?? existing.value.references,
-      codeRefs: input.codeRefs ?? existing.value.codeRefs,
-      content: input.content ?? existing.value.content,
-      updatedAt: timestamp(),
-    };
+      const updated: WorkArticle = {
+        ...existing.value,
+        title: input.title ?? existing.value.title,
+        priority: input.priority ?? existing.value.priority,
+        lead: input.lead !== undefined ? input.lead : existing.value.lead,
+        assignee: input.assignee !== undefined ? input.assignee : existing.value.assignee,
+        tags: input.tags ?? existing.value.tags,
+        references: input.references ?? existing.value.references,
+        codeRefs: input.codeRefs ?? existing.value.codeRefs,
+        content: input.content ?? existing.value.content,
+        updatedAt: timestamp(),
+      };
 
-    return this.writeArticle(updated);
+      return this.writeArticle(updated);
+    });
   }
 
   async delete(id: string): Promise<Result<void, NotFoundError | StateTransitionError | StorageError>> {
@@ -384,6 +387,14 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
     targetPhase: WorkPhaseType,
     options?: AdvancePhaseOptions,
   ): Promise<Result<WorkArticle, StateTransitionError | NotFoundError | StorageError>> {
+    return withFileLock(this.articlePath(id), async () => this.advancePhaseLocked(id, targetPhase, options));
+  }
+
+  private async advancePhaseLocked(
+    id: WorkId,
+    targetPhase: WorkPhaseType,
+    options?: AdvancePhaseOptions,
+  ): Promise<Result<WorkArticle, StateTransitionError | NotFoundError | StorageError>> {
     const existing = await this.findById(id);
     if (!existing.ok) return existing;
 
@@ -441,6 +452,14 @@ export class FileSystemWorkArticleRepository implements WorkArticleRepository {
   }
 
   async contributeEnrichment(
+    id: WorkId,
+    role: string,
+    status: "contributed" | "skipped",
+  ): Promise<Result<WorkArticle, NotFoundError | ValidationError | StateTransitionError | StorageError>> {
+    return withFileLock(this.articlePath(id), async () => this.contributeEnrichmentLocked(id, role, status));
+  }
+
+  private async contributeEnrichmentLocked(
     id: WorkId,
     role: string,
     status: "contributed" | "skipped",

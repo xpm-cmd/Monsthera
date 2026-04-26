@@ -9,6 +9,8 @@ import {
   restoreWorkspace,
 } from "../../../src/workspace/service.js";
 import { CURRENT_WORKSPACE_SCHEMA_VERSION } from "../../../src/workspace/manifest.js";
+import { writeProcessMetadata } from "../../../src/ops/process-registry.js";
+import { ErrorCode } from "../../../src/core/errors.js";
 
 async function tempRepo(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "monsthera-workspace-"));
@@ -63,5 +65,50 @@ describe("workspace service", () => {
     expect(restored.ok).toBe(true);
     expect(await fs.readFile(path.join(repo, "knowledge", "notes", "one.md"), "utf-8")).toBe("hello\n");
     expect(await fs.readFile(path.join(repo, ".monsthera", "dolt", "monsthera", "db.txt"), "utf-8")).toBe("dolt\n");
+  });
+
+  it("refuses to back up while a managed Dolt process is running with trusted metadata", async () => {
+    const repo = await tempRepo();
+    await writeProcessMetadata(repo, {
+      kind: "dolt",
+      pid: process.pid,
+      command: [process.execPath],
+      cwd: process.cwd(),
+      startedAt: new Date().toISOString(),
+    });
+
+    const result = await backupWorkspace(repo);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.VALIDATION_FAILED);
+    expect(result.error.message).toContain("dolt");
+    expect(result.error.message).toContain("backup");
+  });
+
+  it("refuses to restore while a managed Dolt process is running with trusted metadata", async () => {
+    const repo = await tempRepo();
+    await fs.mkdir(path.join(repo, "knowledge", "notes"), { recursive: true });
+    await fs.writeFile(path.join(repo, "knowledge", "notes", "one.md"), "hi\n", "utf-8");
+
+    // Create a backup with no Dolt running yet.
+    const backup = await backupWorkspace(repo);
+    expect(backup.ok).toBe(true);
+    if (!backup.ok) return;
+
+    // Now register Dolt as running, attempt restore — must refuse.
+    await writeProcessMetadata(repo, {
+      kind: "dolt",
+      pid: process.pid,
+      command: [process.execPath],
+      cwd: process.cwd(),
+      startedAt: new Date().toISOString(),
+    });
+
+    const result = await restoreWorkspace(repo, backup.value.path, { force: true });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.VALIDATION_FAILED);
+    expect(result.error.message).toContain("dolt");
+    expect(result.error.message).toContain("restore");
   });
 });

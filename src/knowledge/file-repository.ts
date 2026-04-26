@@ -4,6 +4,7 @@ import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import { NotFoundError, StorageError } from "../core/errors.js";
 import type { ValidationError } from "../core/errors.js";
+import { withFileLock } from "../core/file-lock.js";
 import { generateArticleId, articleId, slug, timestamp } from "../core/types.js";
 import type { ArticleId, Slug } from "../core/types.js";
 import { parseMarkdown, serializeMarkdown } from "./markdown.js";
@@ -201,42 +202,51 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     id: string,
     input: UpdateKnowledgeArticleInput,
   ): Promise<Result<KnowledgeArticle, NotFoundError | ValidationError | StorageError>> {
-    const existingResult = await this.findById(id);
-    if (!existingResult.ok) return existingResult;
+    // Read once outside the lock just to discover the current slug — the
+    // lock is keyed on the article's filesystem path, so we need to know
+    // which path to lock. We re-read inside the lock to get a consistent
+    // view of the article state in the presence of concurrent writers.
+    const lookup = await this.findById(id);
+    if (!lookup.ok) return lookup;
 
-    const existing = existingResult.value;
-    let nextSlug = existing.slug;
+    return withFileLock(this.articlePath(lookup.value.slug), async () => {
+      const existingResult = await this.findById(id);
+      if (!existingResult.ok) return existingResult;
 
-    if (input.title !== undefined && input.title !== existing.title) {
-      const allResult = await this.loadAll();
-      if (!allResult.ok) return allResult;
-      const existingSlugs = new Set(
-        allResult.value
-          .filter((article) => article.id !== id)
-          .map((article) => article.slug),
-      );
-      nextSlug = uniqueSlug(input.title, existingSlugs);
-    }
+      const existing = existingResult.value;
+      let nextSlug = existing.slug;
 
-    const updated: KnowledgeArticle = {
-      ...existing,
-      title: input.title ?? existing.title,
-      slug: nextSlug,
-      category: input.category ?? existing.category,
-      content: input.content ?? existing.content,
-      tags: input.tags ?? existing.tags,
-      codeRefs: input.codeRefs ?? existing.codeRefs,
-      references: input.references ?? existing.references,
-      sourcePath: input.sourcePath ?? existing.sourcePath,
-      ...(input.extraFrontmatter !== undefined
-        ? { extraFrontmatter: { ...input.extraFrontmatter } }
-        : existing.extraFrontmatter
-          ? { extraFrontmatter: existing.extraFrontmatter }
-          : {}),
-      updatedAt: timestamp(),
-    };
+      if (input.title !== undefined && input.title !== existing.title) {
+        const allResult = await this.loadAll();
+        if (!allResult.ok) return allResult;
+        const existingSlugs = new Set(
+          allResult.value
+            .filter((article) => article.id !== id)
+            .map((article) => article.slug),
+        );
+        nextSlug = uniqueSlug(input.title, existingSlugs);
+      }
 
-    return this.writeArticle(updated, existing.slug);
+      const updated: KnowledgeArticle = {
+        ...existing,
+        title: input.title ?? existing.title,
+        slug: nextSlug,
+        category: input.category ?? existing.category,
+        content: input.content ?? existing.content,
+        tags: input.tags ?? existing.tags,
+        codeRefs: input.codeRefs ?? existing.codeRefs,
+        references: input.references ?? existing.references,
+        sourcePath: input.sourcePath ?? existing.sourcePath,
+        ...(input.extraFrontmatter !== undefined
+          ? { extraFrontmatter: { ...input.extraFrontmatter } }
+          : existing.extraFrontmatter
+            ? { extraFrontmatter: existing.extraFrontmatter }
+            : {}),
+        updatedAt: timestamp(),
+      };
+
+      return this.writeArticle(updated, existing.slug);
+    });
   }
 
   async writeWithSlug(
