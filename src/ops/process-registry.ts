@@ -272,18 +272,38 @@ async function readProcessFromPs(
   }
 }
 
+/**
+ * Validate that `pid` is actually running the command recorded in metadata.
+ *
+ * Previous implementation used `actual.includes(expected)` plus a basename
+ * substring fallback, which was trivially spoofable: any process whose
+ * `ps` output happened to contain the basename token (e.g. a script named
+ * `dolt-fake.sh`) passed validation and could be killed by
+ * `stopManagedProcess --force`, or laundered into a "trusted" status.
+ *
+ * The new check requires an exact basename match between the metadata's
+ * recorded executable and the basename reported by `ps -o comm=`. `comm`
+ * is just the executable basename (no args, no path), so equality is
+ * meaningful and not subject to spoofing via padded args.
+ *
+ * Trade-off: a process invoked by absolute path under one binary name
+ * (e.g. `/usr/local/bin/dolt`) and the metadata's basename `dolt` still
+ * match, so legitimate setups continue to pass. A process running under
+ * a renamed binary (`exec -a fake-dolt /usr/bin/dolt`) won't match —
+ * intentional; we trust `ps` over user-supplied metadata.
+ */
 async function validateProcessCommand(metadata: ManagedProcessMetadata): Promise<Result<boolean, StorageError>> {
-  const expected = metadata.command.join(" ");
-  if (!expected) return ok(false);
+  const expectedExecutable = path.basename(metadata.command[0] ?? "");
+  if (!expectedExecutable) return ok(false);
   try {
-    const { stdout } = await execFileAsync("ps", ["-p", String(metadata.pid), "-o", "command="], {
+    const { stdout } = await execFileAsync("ps", ["-p", String(metadata.pid), "-o", "comm="], {
       timeout: 1000,
       maxBuffer: 64 * 1024,
+      encoding: "utf-8",
     });
-    const actual = stdout.trim();
-    if (!actual) return ok(false);
-    const executable = path.basename(metadata.command[0] ?? "");
-    return ok(actual.includes(expected) || (executable.length > 0 && actual.includes(executable)));
+    const actualBasename = path.basename(stdout.trim());
+    if (!actualBasename) return ok(false);
+    return ok(actualBasename === expectedExecutable);
   } catch (error) {
     return err(new StorageError("Failed to inspect process command", { pid: metadata.pid, cause: String(error) }));
   }

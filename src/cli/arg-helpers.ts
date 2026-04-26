@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../core/config.js";
-import { createContainer } from "../core/container.js";
+import { createContainer, DoltUnavailableError } from "../core/container.js";
 import type { MonstheraContainer } from "../core/container.js";
 
 // ─── Arg-parsing helpers ─────────────────────────────────────────────────────
@@ -146,7 +146,20 @@ export async function withContainer<T>(args: string[], fn: (container: Monsthera
     console.error("Fix .monsthera/config.json or use 'monsthera serve' which falls back to defaults.");
     process.exit(1);
   }
-  const container = await createContainer(configResult.value);
+  const allowDegraded = args.includes("--allow-degraded");
+  let container: MonstheraContainer;
+  try {
+    container = await createContainer(configResult.value, { allowDegraded });
+  } catch (e) {
+    if (e instanceof DoltUnavailableError) {
+      console.error(`Error [${e.code}]: ${e.message}`);
+      process.exit(1);
+    }
+    throw e;
+  }
+  if (allowDegraded) {
+    console.error("WARN: running with --allow-degraded; mutations may not persist if Dolt is unavailable.");
+  }
   try {
     return await fn(container);
   } finally {

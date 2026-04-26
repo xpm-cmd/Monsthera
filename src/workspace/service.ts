@@ -11,8 +11,10 @@ import {
   ensureWorkspaceManifest,
   loadWorkspaceManifest,
   manifestPath,
+  writeWorkspaceManifest,
   type WorkspaceManifest,
 } from "./manifest.js";
+import { runMigrations, WORKSPACE_MIGRATIONS, type WorkspaceMigration } from "./migrations.js";
 
 const QUIESCED_KINDS: readonly ManagedProcessKind[] = ["dolt"];
 
@@ -129,7 +131,10 @@ export async function inspectWorkspace(repoPath: string): Promise<Result<Workspa
   });
 }
 
-export async function migrateWorkspace(repoPath: string): Promise<Result<{ manifest: WorkspaceManifest; created: boolean }, StorageError | ValidationError>> {
+export async function migrateWorkspace(
+  repoPath: string,
+  options: { readonly migrations?: Record<number, WorkspaceMigration> } = {},
+): Promise<Result<{ manifest: WorkspaceManifest; created: boolean }, StorageError | ValidationError>> {
   const resolvedRepo = path.resolve(repoPath);
   const configResult = loadConfig(resolvedRepo);
   const config = configResult.ok ? configResult.value : defaultConfig(resolvedRepo);
@@ -148,6 +153,27 @@ export async function migrateWorkspace(repoPath: string): Promise<Result<{ manif
       }),
     );
   }
+
+  // Run any registered migrations needed to bring this workspace up to
+  // the version supported by the running binary. v1 → v1 is a no-op
+  // because no migrations are registered yet, but the runner is in
+  // place so future schema bumps can ship a migration alongside the
+  // version constant change rather than as a follow-up.
+  if (result.value.manifest.workspaceSchemaVersion < CURRENT_WORKSPACE_SCHEMA_VERSION) {
+    const migrated = await runMigrations(
+      result.value.manifest,
+      resolvedRepo,
+      CURRENT_WORKSPACE_SCHEMA_VERSION,
+      options.migrations ?? WORKSPACE_MIGRATIONS,
+    );
+    if (!migrated.ok) {
+      return err(new StorageError(migrated.error.message, migrated.error.details));
+    }
+    const persisted = await writeWorkspaceManifest(resolvedRepo, migrated.value);
+    if (!persisted.ok) return persisted;
+    return ok({ manifest: persisted.value, created: result.value.created });
+  }
+
   return ok(result.value);
 }
 

@@ -55,6 +55,40 @@ describe("FileSystemKnowledgeArticleRepository — concurrent updates", () => {
     expect(final.value.content).toMatch(/^update-\d+\n$/);
   });
 
+  it("rejects concurrent creates that race on the same slug (no silent overwrite)", async () => {
+    const root = await tempRoot();
+    const repo = new FileSystemKnowledgeArticleRepository(root);
+
+    // Force the same slug request from many parallel callers. Without
+    // the O_EXCL guard, all of them call loadAll() before any has
+    // written, all see the slug as free, and the last writer silently
+    // overwrites the earlier ones — articles are lost.
+    const creates = Array.from({ length: 10 }, (_, i) =>
+      repo.create({
+        title: "Same Title",
+        category: "guide",
+        content: `body-${i}\n`,
+        tags: [],
+      }),
+    );
+    const results = await Promise.all(creates);
+
+    const succeeded = results.filter((r) => r.ok);
+    // Every successful create must end up with a unique slug. A retry
+    // path inside `create` resolves single-digit collisions; bursts
+    // that exceed the retry budget surface as ValidationError, which
+    // is the desired no-silent-loss behavior.
+    const slugs = new Set(succeeded.map((r) => (r.ok ? r.value.slug : "")));
+    expect(slugs.size).toBe(succeeded.length);
+
+    // Verify on disk: count the .md files actually present and confirm
+    // the count matches `succeeded`. A race that overwrote files would
+    // leave fewer files than successes.
+    const notesDir = path.join(root, "notes");
+    const filesOnDisk = (await fs.readdir(notesDir)).filter((n) => n.endsWith(".md"));
+    expect(filesOnDisk.length).toBe(succeeded.length);
+  });
+
   it("recomputes slug consistently under concurrent renames", async () => {
     const root = await tempRoot();
     const repo = new FileSystemKnowledgeArticleRepository(root);

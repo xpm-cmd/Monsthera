@@ -2,8 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
-import { NotFoundError, StorageError } from "../core/errors.js";
-import type { ValidationError } from "../core/errors.js";
+import { AlreadyExistsError, NotFoundError, StorageError, ValidationError } from "../core/errors.js";
 import { withFileLock } from "../core/file-lock.js";
 import { generateArticleId, articleId, slug, timestamp } from "../core/types.js";
 import type { ArticleId, Slug } from "../core/types.js";
@@ -128,7 +127,10 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     return ok(articles);
   }
 
-  private async writeArticle(article: KnowledgeArticle, previousSlug?: Slug): Promise<Result<KnowledgeArticle, StorageError>> {
+  private async writeArticle(
+    article: KnowledgeArticle,
+    previousSlug?: Slug,
+  ): Promise<Result<KnowledgeArticle, AlreadyExistsError | StorageError>> {
     await this.ensureDirectory();
 
     const frontmatter = {
@@ -145,13 +147,37 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       ...(article.extraFrontmatter ?? {}),
     };
 
+    const targetPath = this.articlePath(article.slug);
+    const serialized = serializeMarkdown(frontmatter, article.content);
+    // A target slug different from `previousSlug` (or no previousSlug at
+    // all, which is the create path) means we expect the destination
+    // file NOT to exist yet. Use O_EXCL via the `wx` flag so the kernel
+    // refuses the write atomically if a concurrent caller raced us to
+    // the same slug — this closes the slug TOCTOU between `loadAll()`
+    // and `writeFile`.
+    const exclusive = !previousSlug || previousSlug !== article.slug;
+
     try {
-      await fs.writeFile(this.articlePath(article.slug), serializeMarkdown(frontmatter, article.content), "utf-8");
+      if (exclusive) {
+        const handle = await fs.open(targetPath, "wx");
+        try {
+          await handle.writeFile(serialized, "utf-8");
+        } finally {
+          await handle.close();
+        }
+      } else {
+        await fs.writeFile(targetPath, serialized, "utf-8");
+      }
       if (previousSlug && previousSlug !== article.slug) {
         await fs.rm(this.articlePath(previousSlug), { force: true });
       }
       return ok(article);
     } catch (error) {
+      if (isNodeError(error) && error.code === "EEXIST") {
+        return err(
+          new AlreadyExistsError("KnowledgeArticle", article.slug),
+        );
+      }
       return err(new StorageError(`Failed to write knowledge article: ${article.id}`, { cause: String(error) }));
     }
   }
@@ -169,33 +195,59 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
   }
 
   async create(input: CreateKnowledgeArticleInput): Promise<Result<KnowledgeArticle, ValidationError | StorageError>> {
-    const allResult = await this.loadAll();
-    if (!allResult.ok) return allResult;
+    // Two-attempt loop: a parallel create that races us on the same slug
+    // (`loadAll()` returns stale data, both pick the same free slug, both
+    // call writeArticle) is detected atomically by the EEXIST flag in
+    // writeArticle. We retry once with a fresh `loadAll()` so the second
+    // call computes a slug that observes the first writer's file. If
+    // even the retry collides (extremely unlikely — would need a third
+    // racing creator with the same title), the operator gets a clear
+    // ValidationError instead of a silent overwrite.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const allResult = await this.loadAll();
+      if (!allResult.ok) return allResult;
 
-    const existingSlugs = new Set(allResult.value.map((article) => article.slug));
-    const requestedSlug = input.slug;
-    const articleSlug = requestedSlug && !existingSlugs.has(requestedSlug)
-      ? requestedSlug
-      : uniqueSlug(input.title, existingSlugs);
-    const createdAt = timestamp(input.createdAt);
-    const updatedAt = timestamp(input.updatedAt ?? input.createdAt);
+      const existingSlugs = new Set(allResult.value.map((article) => article.slug));
+      const requestedSlug = input.slug;
+      const articleSlug = requestedSlug && !existingSlugs.has(requestedSlug)
+        ? requestedSlug
+        : uniqueSlug(input.title, existingSlugs);
+      const createdAt = timestamp(input.createdAt);
+      const updatedAt = timestamp(input.updatedAt ?? input.createdAt);
 
-    const article: KnowledgeArticle = {
-      id: (input.id ?? generateArticleId()) as ArticleId,
-      title: input.title,
-      slug: articleSlug,
-      category: input.category,
-      content: input.content,
-      tags: input.tags ?? [],
-      codeRefs: input.codeRefs ?? [],
-      references: input.references ?? [],
-      sourcePath: input.sourcePath,
-      createdAt,
-      updatedAt,
-      ...(input.extraFrontmatter ? { extraFrontmatter: { ...input.extraFrontmatter } } : {}),
-    };
+      const article: KnowledgeArticle = {
+        id: (input.id ?? generateArticleId()) as ArticleId,
+        title: input.title,
+        slug: articleSlug,
+        category: input.category,
+        content: input.content,
+        tags: input.tags ?? [],
+        codeRefs: input.codeRefs ?? [],
+        references: input.references ?? [],
+        sourcePath: input.sourcePath,
+        createdAt,
+        updatedAt,
+        ...(input.extraFrontmatter ? { extraFrontmatter: { ...input.extraFrontmatter } } : {}),
+      };
 
-    return this.writeArticle(article);
+      const result = await this.writeArticle(article);
+      if (result.ok) return result;
+      if (result.error instanceof AlreadyExistsError && attempt === 0) {
+        // Race lost; retry with a fresh slug view.
+        continue;
+      }
+      if (result.error instanceof AlreadyExistsError) {
+        return err(
+          new ValidationError(
+            `Knowledge article slug "${article.slug}" already exists after retry; refusing to overwrite`,
+            { slug: article.slug, id: article.id },
+          ),
+        );
+      }
+      return result;
+    }
+    /* istanbul ignore next — loop above always returns within 2 iterations */
+    return err(new StorageError("Knowledge create exceeded retry budget"));
   }
 
   async update(
@@ -324,4 +376,8 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       ),
     );
   }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return typeof error === "object" && error !== null && "code" in error;
 }
