@@ -6,6 +6,7 @@ import {
   createWork,
   deleteWork,
   getAgents,
+  getConvoys,
   getOrchestrationWave,
   getWork,
   getWorkSnapshotDiff,
@@ -219,6 +220,31 @@ function buildEnrichmentPanel(article) {
   ].join("");
 }
 
+function buildConvoyLeadMap(convoys) {
+  const map = new Map();
+  const all = [...(convoys.active || []), ...(convoys.terminal || [])];
+  for (const c of all) {
+    const list = map.get(c.leadWorkId) || [];
+    list.push(c);
+    map.set(c.leadWorkId, list);
+  }
+  return map;
+}
+
+function renderConvoyRibbon(convoys) {
+  if (!convoys || convoys.length === 0) return "";
+  const pills = convoys.map((c) => {
+    const cls = c.status === "active" ? "convoy-pill convoy-pill--active"
+      : c.status === "completed" ? "convoy-pill convoy-pill--completed"
+      : "convoy-pill convoy-pill--cancelled";
+    const meta = c.status === "active"
+      ? ` · ${c.members.length} member${c.members.length === 1 ? "" : "s"}`
+      : "";
+    return `<a href="/convoys/${esc(c.id)}" data-link class="${cls}">${esc(c.id)} · ${esc(c.status)}${meta}</a>`;
+  }).join(" ");
+  return `<div class="convoy-ribbon"><span class="text-label">lead of</span> ${pills}</div>`;
+}
+
 function buildExpandedActions(article, readySet) {
   const actions = [];
   const nextPhase = NEXT_PHASE[article.phase];
@@ -245,7 +271,7 @@ function buildExpandedActions(article, readySet) {
   return actions.join("");
 }
 
-function buildQueueCard(article, expandedId, workArticles, readySet) {
+function buildQueueCard(article, expandedId, workArticles, readySet, convoyLeadMap) {
   const expanded = article.id === expandedId;
   const tagsValue = (article.tags || []).join(", ");
   const referencesValue = (article.references || []).join(", ");
@@ -274,6 +300,7 @@ function buildQueueCard(article, expandedId, workArticles, readySet) {
       ? [
           `<div class="work-card__expanded" id="work-detail-${esc(article.id)}">`,
           `<div class="work-card__actions">${buildExpandedActions(article, readySet)}</div>`,
+          renderConvoyRibbon(convoyLeadMap ? convoyLeadMap.get(article.id) : null),
           '<form class="form-stack mt-8" data-work-edit="' + esc(article.id) + '">',
           '<div class="form-grid form-grid--three">',
           `<label class="field"><span class="text-label">Title</span><input class="input" name="title" value="${esc(article.title)}" required></label>`,
@@ -302,11 +329,13 @@ function buildQueueCard(article, expandedId, workArticles, readySet) {
 }
 
 export async function render(container) {
-  let [workArticles, directory, wave] = await Promise.all([
+  let [workArticles, directory, wave, convoys] = await Promise.all([
     getWork().catch(() => []),
     getAgents().catch(() => ({ agents: [], summary: {} })),
     getOrchestrationWave().catch(() => null),
+    getConvoys().catch(() => ({ active: [], terminal: [], warnings: [] })),
   ]);
+  let convoyLeadMap = buildConvoyLeadMap(convoys);
   let viewMode = "queue";
   let expandedId = null;
   let showCreate = true;
@@ -321,11 +350,13 @@ export async function render(container) {
   const snapshotDiffCache = new Map();
 
   async function refresh(preferredId = expandedId) {
-    [workArticles, directory, wave] = await Promise.all([
+    [workArticles, directory, wave, convoys] = await Promise.all([
       getWork().catch(() => []),
       getAgents().catch(() => ({ agents: [], summary: {} })),
       getOrchestrationWave().catch(() => null),
+      getConvoys().catch(() => ({ active: [], terminal: [], warnings: [] })),
     ]);
+    convoyLeadMap = buildConvoyLeadMap(convoys);
     if (preferredId && workArticles.some((article) => article.id === preferredId)) {
       expandedId = preferredId;
     } else {
@@ -419,7 +450,7 @@ export async function render(container) {
       if (filteredArticles.length === 0) {
         return '<p class="text-sm text-muted" style="padding:20px">No work articles match the current filters.</p>';
       }
-      return filteredArticles.map((article) => buildQueueCard(article, expandedId, workArticles, readySet)).join("\n");
+      return filteredArticles.map((article) => buildQueueCard(article, expandedId, workArticles, readySet, convoyLeadMap)).join("\n");
     }
 
     if (viewMode === "board") {
