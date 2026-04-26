@@ -71,7 +71,7 @@ export interface ConvoyLifecycleEntry {
 
 export interface RecentLeadActivity {
   readonly eventType: "phase_advanced";
-  readonly from: WorkPhase;
+  readonly from?: WorkPhase;
   readonly to: WorkPhase;
   readonly createdAt: Timestamp;
 }
@@ -93,7 +93,6 @@ export interface ConvoyProjectionDeps {
   readonly convoyRepo: ConvoyRepository;
   readonly orchestrationRepo: OrchestrationEventRepository;
   readonly workService: Pick<WorkService, "getWork">;
-  readonly now?: () => Date;
 }
 
 const TERMINAL_PHASE = new Set<WorkPhase>(["done", "cancelled"]);
@@ -102,6 +101,16 @@ const TERMINAL_SCAN_WINDOW = 50;
 const RECENT_LEAD_ACTIVITY_LIMIT = 5;
 
 const PHASE_ORDER: readonly WorkPhase[] = ["planning", "enrichment", "implementation", "review", "done"] as const;
+
+function isWarningDetails(d: unknown): d is ConvoyLeadCancelledWarningEventDetails {
+  return (
+    typeof d === "object" && d !== null &&
+    typeof (d as { convoyId?: unknown }).convoyId === "string" &&
+    typeof (d as { leadWorkId?: unknown }).leadWorkId === "string" &&
+    Array.isArray((d as { memberWorkIds?: unknown }).memberWorkIds) &&
+    typeof (d as { reason?: unknown }).reason === "string"
+  );
+}
 
 function phaseGte(actual: WorkPhase, target: WorkPhase): boolean {
   const a = PHASE_ORDER.indexOf(actual);
@@ -148,7 +157,8 @@ async function computeUnresolvedWarnings(
 ): Promise<UnresolvedWarning[]> {
   const out: UnresolvedWarning[] = [];
   for (const event of events) {
-    const d = event.details as unknown as ConvoyLeadCancelledWarningEventDetails;
+    if (!isWarningDetails(event.details)) continue;
+    const d = event.details;
     const convoyResult = await deps.convoyRepo.findById(d.convoyId);
     if (!convoyResult.ok || convoyResult.value.status !== "active") continue;
     const members = await Promise.all(
@@ -201,7 +211,8 @@ async function deriveDetailWarning(
   const newest = [...warningEvents].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   )[0]!;
-  const d = newest.details as unknown as ConvoyLeadCancelledWarningEventDetails;
+  if (!isWarningDetails(newest.details)) return null;
+  const d = newest.details;
   const members = await Promise.all(
     d.memberWorkIds.map((id) => deps.workService.getWork(id)),
   );
@@ -236,8 +247,13 @@ function buildLifecycle(
     out.push({ eventType: "convoy_cancelled", createdAt: e.createdAt, actor: d.actor, terminationReason: d.terminationReason });
   }
   for (const e of warnings) {
-    const d = e.details as { reason: string };
-    out.push({ eventType: "convoy_lead_cancelled_warning", createdAt: e.createdAt, warningReason: d.reason });
+    const d = e.details as { convoyId?: ConvoyId; reason?: string };
+    if (d.convoyId !== convoyId) continue;
+    out.push({
+      eventType: "convoy_lead_cancelled_warning",
+      createdAt: e.createdAt,
+      warningReason: typeof d.reason === "string" ? d.reason : undefined,
+    });
   }
   return out.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 }
@@ -297,15 +313,20 @@ export async function buildConvoyDetail(
     createdR.ok ? createdR.value : [],
     completedR.ok ? completedR.value : [],
     cancelledR.ok ? cancelledR.value : [],
-    matchingWarnings,
+    warningsR.ok ? warningsR.value : [],
   );
   const recentLeadActivity = (leadEventsR.ok ? leadEventsR.value : [])
     .filter((e) => e.eventType === "phase_advanced")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, RECENT_LEAD_ACTIVITY_LIMIT)
     .map((e) => {
-      const d = e.details as { from: WorkPhase; to: WorkPhase };
-      return { eventType: "phase_advanced" as const, from: d.from, to: d.to, createdAt: e.createdAt };
+      const d = e.details as {
+        from?: WorkPhase;
+        to: WorkPhase;
+        phaseHistory?: ReadonlyArray<{ readonly phase: WorkPhase }>;
+      };
+      const from = d.from ?? d.phaseHistory?.[d.phaseHistory.length - 2]?.phase;
+      return { eventType: "phase_advanced" as const, from, to: d.to, createdAt: e.createdAt };
     });
 
   const enriched = await enrichConvoy(convoy, deps, warning !== null);

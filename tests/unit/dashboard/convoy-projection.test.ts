@@ -14,7 +14,6 @@ async function setupContainer() {
     convoyRepo: container.convoyRepo,
     orchestrationRepo: container.orchestrationRepo,
     workService: container.workService,
-    now: () => new Date("2026-04-26T10:00:00Z"),
   };
   return { container, deps };
 }
@@ -234,6 +233,43 @@ describe("buildConvoyDetail", () => {
       // lead is in planning, target is implementation → guard should not pass
       expect(detail.value.guard).toMatchObject({ name: "convoy_lead_ready", passing: false, targetPhase: "implementation" });
       expect(detail.value.lifecycle.some((l) => l.eventType === "convoy_created")).toBe(true);
+    } finally {
+      await container.dispose();
+    }
+  });
+
+  it("recentLeadActivity[0].from comes from phaseHistory when not in event details", async () => {
+    const { container, deps } = await setupContainer();
+    try {
+      const lead = await createWork(container, "lead phase-history");
+      const member = await createWork(container, "member phase-history");
+
+      const convoy = await container.convoyRepo.create({
+        leadWorkId: workId(lead.id),
+        memberWorkIds: [workId(member.id)],
+        goal: "phase history test",
+      });
+      if (!convoy.ok) throw new Error("convoy");
+
+      // Advance via WorkService (emits { to, phaseHistory } — no `from`).
+      // planning → enrichment (no guards on this transition).
+      const after1 = await container.workService.advancePhase(lead.id, "enrichment");
+      if (!after1.ok) throw new Error(`advance 1 failed: ${after1.error.message}`);
+      // enrichment → implementation (guards may fire, bypass with skipGuard).
+      const after2 = await container.workService.advancePhase(lead.id, "implementation", {
+        skipGuard: { reason: "test" },
+      });
+      if (!after2.ok) throw new Error(`advance 2 failed: ${after2.error.message}`);
+
+      const detail = await buildConvoyDetail(convoy.value.id, deps);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      // newest first — the most recent advance was to "implementation"
+      const acts = detail.value.recentLeadActivity;
+      expect(acts.length).toBeGreaterThanOrEqual(1);
+      expect(acts[0]!.to).toBe("implementation");
+      // `from` must be derived from phaseHistory since WorkService does not emit it directly
+      expect(acts[0]!.from).toBe("enrichment");
     } finally {
       await container.dispose();
     }
