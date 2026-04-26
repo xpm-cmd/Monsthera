@@ -91,6 +91,28 @@ The helper script creates a local Dolt data dir at:
 
 And initializes a database directory named after `MONSTHERA_DOLT_DATABASE`.
 
+## 6. Backing up the portable workspace
+
+Before updating Monsthera or running workspace migrations, create a workspace backup:
+
+```bash
+pnpm exec tsx src/bin.ts workspace backup
+```
+
+The backup is written under:
+
+```text
+.monsthera/backups/
+```
+
+It includes `knowledge/`, `.monsthera/config.json`, `.monsthera/manifest.json`, and `.monsthera/dolt/` when those paths exist. Runtime files such as `.monsthera/run/` are not part of the portable workspace.
+
+Restore requires an explicit overwrite flag:
+
+```bash
+pnpm exec tsx src/bin.ts workspace restore .monsthera/backups/<backup-id> --force
+```
+
 ## Notes
 
 - The first launch initializes the Dolt database directory automatically.

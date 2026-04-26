@@ -67,6 +67,25 @@ pnpm exec tsx src/bin.ts status
 
 See [Local Dolt Guide](docs/dolt-local.md) for the full setup and runtime commands.
 
+## Portable Workspace Operations
+
+The Monsthera executable can be updated independently from a repo's portable workspace. The workspace data is:
+
+- `knowledge/` — Markdown source of truth
+- `.monsthera/config.json` and `.monsthera/manifest.json` — local config and schema metadata
+- `.monsthera/dolt/` — local Dolt data for search, events, and snapshots
+
+Useful commands:
+
+```bash
+pnpm exec tsx src/bin.ts workspace status
+pnpm exec tsx src/bin.ts workspace migrate
+pnpm exec tsx src/bin.ts workspace backup
+pnpm exec tsx src/bin.ts workspace restore .monsthera/backups/<backup-id> --force
+```
+
+`workspace backup` is the safe first step before upgrades or schema migrations.
+
 ## Local Demo
 
 You can now run the V3 demo flow from this repository directly:
