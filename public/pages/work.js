@@ -299,8 +299,8 @@ function buildQueueCard(article, expandedId, workArticles, readySet, convoyLeadM
     expanded
       ? [
           `<div class="work-card__expanded" id="work-detail-${esc(article.id)}">`,
+          renderConvoyRibbon(convoyLeadMap.get(article.id)),
           `<div class="work-card__actions">${buildExpandedActions(article, readySet)}</div>`,
-          renderConvoyRibbon(convoyLeadMap ? convoyLeadMap.get(article.id) : null),
           '<form class="form-stack mt-8" data-work-edit="' + esc(article.id) + '">',
           '<div class="form-grid form-grid--three">',
           `<label class="field"><span class="text-label">Title</span><input class="input" name="title" value="${esc(article.title)}" required></label>`,

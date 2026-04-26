@@ -1439,6 +1439,6 @@ button.board-card {
 /* Convoy lifecycle ribbon — work card */
 .convoy-ribbon { margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .convoy-pill { padding:3px 10px; border-radius:12px; font-size:11px; text-decoration:none; border:1px solid; }
-.convoy-pill--active { background:rgba(80,160,100,0.15); color:var(--color-success-fg); border-color:rgba(80,160,100,0.4); }
-.convoy-pill--completed { background:rgba(100,130,180,0.15); color:var(--muted-foreground); border-color:rgba(100,130,180,0.4); }
-.convoy-pill--cancelled { background:rgba(180,100,100,0.15); color:var(--color-error-fg); border-color:rgba(180,100,100,0.4); text-decoration:line-through; }
+.convoy-pill--active { background:var(--color-success); color:var(--color-success-fg); border-color:var(--color-success); }
+.convoy-pill--completed { background:var(--secondary); color:var(--secondary-foreground); border-color:var(--border); }
+.convoy-pill--cancelled { background:var(--color-error); color:var(--color-error-fg); border-color:var(--color-error); text-decoration:line-through; }
