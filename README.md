@@ -82,9 +82,16 @@ pnpm exec tsx src/bin.ts workspace status
 pnpm exec tsx src/bin.ts workspace migrate
 pnpm exec tsx src/bin.ts workspace backup
 pnpm exec tsx src/bin.ts workspace restore .monsthera/backups/<backup-id> --force
+pnpm exec tsx src/bin.ts self status
+pnpm exec tsx src/bin.ts self update --dry-run
+pnpm exec tsx src/bin.ts self update --prepare
+pnpm exec tsx src/bin.ts self update --execute
+pnpm exec tsx src/bin.ts self restart dolt
 ```
 
 `workspace backup` is the safe first step before upgrades or schema migrations.
+`self update --prepare` creates that backup and prints the remaining update steps.
+`self update --execute` runs the guarded local update when there are no blockers.
 
 ## Local Demo
 

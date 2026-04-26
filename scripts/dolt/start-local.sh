@@ -11,6 +11,7 @@ HOST="${MONSTHERA_DOLT_HOST:-127.0.0.1}"
 PORT="${MONSTHERA_DOLT_PORT:-3306}"
 LOG_LEVEL="${MONSTHERA_DOLT_LOG_LEVEL:-info}"
 PID_FILE="$RUN_DIR/dolt.pid"
+METADATA_FILE="$RUN_DIR/dolt.json"
 LOG_FILE="$RUN_DIR/dolt.log"
 
 if [[ -x "${DOLT_BIN:-}" ]]; then
@@ -35,6 +36,15 @@ if [[ ! -d "$DB_DIR/.dolt" ]]; then
 fi
 
 if [[ "${1:-}" == "--daemon" ]]; then
+  if [[ -f "$METADATA_FILE" ]]; then
+    EXISTING_PID="$(node -e "try{const fs=require('fs');const x=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); if (Number.isInteger(x.pid)) console.log(x.pid)}catch{}" "$METADATA_FILE")"
+    if [[ -n "$EXISTING_PID" ]] && kill -0 "$EXISTING_PID" 2>/dev/null; then
+      echo "Dolt sql-server is already running (pid $EXISTING_PID)"
+      exit 0
+    fi
+    rm -f "$METADATA_FILE"
+  fi
+
   if [[ -f "$PID_FILE" ]]; then
     EXISTING_PID="$(cat "$PID_FILE")"
     if kill -0 "$EXISTING_PID" 2>/dev/null; then
@@ -52,6 +62,22 @@ if [[ "${1:-}" == "--daemon" ]]; then
   sleep 1
 
   if kill -0 "$PID" 2>/dev/null; then
+    PID="$PID" DOLT_BIN="$DOLT_BIN" DATA_DIR="$DATA_DIR" HOST="$HOST" PORT="$PORT" LOG_LEVEL="$LOG_LEVEL" ROOT_DIR="$ROOT_DIR" LOG_FILE="$LOG_FILE" METADATA_FILE="$METADATA_FILE" node -e "
+const fs = require('fs');
+const data = {
+  schemaVersion: 1,
+  kind: 'dolt',
+  pid: Number(process.env.PID),
+  command: [process.env.DOLT_BIN, 'sql-server', '--data-dir', process.env.DATA_DIR, '-H', process.env.HOST, '-P', process.env.PORT, '-l', process.env.LOG_LEVEL],
+  cwd: process.env.ROOT_DIR,
+  startedAt: new Date().toISOString(),
+  version: process.env.MONSTHERA_VERSION || 'unknown',
+  port: Number(process.env.PORT),
+  dataDir: process.env.DATA_DIR,
+  logFile: process.env.LOG_FILE
+};
+fs.writeFileSync(process.env.METADATA_FILE, JSON.stringify(data, null, 2) + '\n');
+"
     echo "Dolt sql-server started (pid $PID)"
     echo "Database: $DB_NAME"
     echo "Log: $LOG_FILE"
@@ -59,7 +85,7 @@ if [[ "${1:-}" == "--daemon" ]]; then
   fi
 
   echo "Dolt sql-server failed to start. Check $LOG_FILE" >&2
-  rm -f "$PID_FILE"
+  rm -f "$PID_FILE" "$METADATA_FILE"
   exit 1
 fi
 

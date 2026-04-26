@@ -23,6 +23,7 @@ import { handleInstallHook, handleUninstallHook } from "./hook-commands.js";
 import { handleEvents } from "./events-commands.js";
 import { handleConvoy } from "./convoy-commands.js";
 import { handleWorkspace } from "./workspace-commands.js";
+import { handleSelf } from "./self-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -81,6 +82,7 @@ function handleHelp(): void {
       "  doctor                   Run health checks and diagnostics",
       "  lint                     Audit the corpus for drift (canonical values, anti-examples, planning sections, orphan citations)",
       "  workspace <subcommand>   Inspect, migrate, back up, and restore the portable workspace",
+      "  self <subcommand>        Inspect and operate this Monsthera installation",
       "  install-hook             Install a pre-commit hook that runs `monsthera lint` on staged knowledge/work .md files",
       "  uninstall-hook           Remove a previously-installed monsthera pre-commit hook",
       "  events <subcommand>      Tail or emit orchestration events (agent dispatch contract, ADR-008)",
@@ -114,6 +116,13 @@ function handleHelp(): void {
       "  workspace migrate                 Create or update .monsthera/manifest.json",
       "  workspace backup                  Copy portable workspace data into .monsthera/backups/",
       "  workspace restore <backup-path>   Restore a backup; requires --force",
+      "",
+      "SELF SUBCOMMANDS",
+      "  self status                       Inspect install, workspace, and managed process state",
+      "  self update --dry-run             Print safe update steps and blockers",
+      "  self update --prepare             Backup workspace, migrate manifest, and print update plan",
+      "  self update --execute             Run safe update steps when there are no blockers",
+      "  self restart [dolt]               Restart managed local Dolt daemon",
       "",
       "MIGRATION",
       "  migrate [--mode <dry-run|validate|execute>] [--scope <work|knowledge|all>] [--source <sqlite-path>] [--force] [--json]",
@@ -323,6 +332,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "workspace":
         await handleWorkspace(args.slice(1));
+        break;
+      case "self":
+        await handleSelf(args.slice(1));
         break;
       case "--version":
       case "-v":

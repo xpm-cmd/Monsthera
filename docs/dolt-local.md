@@ -32,7 +32,8 @@ pnpm dolt:start:daemon
 
 Daemon mode writes:
 
-- PID: `.monsthera/run/dolt.pid`
+- Process metadata: `.monsthera/run/dolt.json`
+- Legacy PID: `.monsthera/run/dolt.pid`
 - Log: `.monsthera/run/dolt.log`
 
 Stop it with:
@@ -40,6 +41,8 @@ Stop it with:
 ```bash
 pnpm dolt:stop
 ```
+
+The stop script validates the recorded process command before sending `SIGTERM`. Legacy `.pid` files are still accepted for one transition period when `ps` confirms the process command looks like `dolt sql-server`.
 
 ## 3. Run Monsthera against Dolt
 
@@ -111,6 +114,15 @@ Restore requires an explicit overwrite flag:
 
 ```bash
 pnpm exec tsx src/bin.ts workspace restore .monsthera/backups/<backup-id> --force
+```
+
+Operational self checks combine workspace status with managed process status:
+
+```bash
+pnpm exec tsx src/bin.ts self status
+pnpm exec tsx src/bin.ts self update --dry-run
+pnpm exec tsx src/bin.ts self update --execute
+pnpm exec tsx src/bin.ts self restart dolt
 ```
 
 ## Notes

@@ -123,6 +123,27 @@ describe("CLI main()", () => {
     expect(manifest.workspaceSchemaVersion).toBe(1);
   });
 
+  it("self status --json emits installation and process status", async () => {
+    const output = await captureStdout(() => main(withTempRepo(["self", "status", "--json"])));
+    const parsed = JSON.parse(output);
+    expect(parsed).toHaveProperty("version");
+    expect(parsed.install).toHaveProperty("path");
+    expect(parsed.workspace).toHaveProperty("repoPath");
+    expect(parsed.processes.dolt).toHaveProperty("running");
+  });
+
+  it("self update --dry-run prints an update plan", async () => {
+    const output = await captureStdout(() => main(withTempRepo(["self", "update", "--dry-run"])));
+    expect(output).toContain("Self update plan");
+    expect(output).toContain("workspace backup");
+    expect(output).toContain("git pull --ff-only");
+  });
+
+  it("self help includes execute mode", async () => {
+    const output = await captureStdout(() => main(["self", "--help"]));
+    expect(output).toContain("update --execute");
+  });
+
   // ─── Knowledge subcommand ────────────────────────────────────────────────
 
   describe("knowledge subcommand", () => {

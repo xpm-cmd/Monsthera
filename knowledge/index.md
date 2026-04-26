@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 56 knowledge articles and 9 work articles.
-> Last updated: 2026-04-26 04:57:37
+> Auto-generated catalog of 57 knowledge articles and 9 work articles.
+> Last updated: 2026-04-26 10:46:41
 
 ## Knowledge
 
@@ -48,6 +48,7 @@
 ### decision
 
 - [Decision: agent dispatch contract — events, not spawning](notes/agent-dispatch-design-decisions.md) — ADR-008 captures the formal decision (event lifecycle, dispatcher shape). This n
+- [Decision: convoy dashboard — panel, sidebar badge, ribbon](notes/convoy-dashboard-design-decisions.md) — ADR-014 captures the formal decisions: dedicated page, sidebar badge as the sing
 - [Decision: convoy hardening — get, provenance events, single-convoy invariant](notes/convoy-hardening-design-decisions.md) — ADR-013 captures the formal decision (event types, the single-convoy invariant,
 - [Decision: convoys, requires-as-hard-block, mid-session resync](notes/convoy-requires-resync-design-decisions.md) — ADR-009 captures the formal decision (convoy types, hard-block guard, new event
 - [Monsthera stale code ref repair and orchestration audit](notes/monsthera-stale-code-ref-repair-and-orchestration-audit.md) — ## Summary Dead-code cleanup removed the unused wiki bookkeeper constructor fiel
@@ -92,7 +93,7 @@
 
 ### planning (1)
 
-- [Simplificar instalación, actualización y portabilidad del workspace](work-articles/w-zxi617cw.md) [high] — ## Objective  Diseñar e implementar una capa operacional ofi
+- [Simplificar instalación, actualización y portabilidad del workspace](work-articles/w-zxi617cw.md) [high] — ## Objetivo Crear una superficie operacional oficial para Mo
 
 ### done (7)
 

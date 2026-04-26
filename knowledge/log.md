@@ -115,3 +115,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-04-25 09:49:36]** create knowledge | S5 plan: convoy dashboard (k-91f42ekj)
 - **[2026-04-26 04:51:35]** create work | Simplificar instalación, actualización y portabilidad del workspace (w-zxi617cw)
 - **[2026-04-26 04:57:37]** update work | Simplificar instalación, actualización y portabilidad del workspace (w-zxi617cw)
+- **[2026-04-26 10:46:41]** update work | Simplificar instalación, actualización y portabilidad del workspace (w-zxi617cw)
