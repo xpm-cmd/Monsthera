@@ -104,6 +104,23 @@ describe("CLI main()", () => {
     expect(output).toContain("ingest");
     expect(output).toContain("search");
     expect(output).toContain("reindex");
+    expect(output).toContain("workspace");
+  });
+
+  it("workspace status --json emits portable workspace status", async () => {
+    const output = await captureStdout(() => main(withTempRepo(["workspace", "status", "--json"])));
+    const parsed = JSON.parse(output);
+    expect(parsed.schema.manifestExists).toBe(false);
+    expect(parsed.schema.compatible).toBe(true);
+    expect(parsed.paths.knowledgeRoot).toContain("knowledge");
+  });
+
+  it("workspace migrate creates a manifest", async () => {
+    const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+    const output = await captureStdout(() => main(["workspace", "migrate", "--repo", repoPath]));
+    expect(output).toContain("workspace manifest");
+    const manifest = JSON.parse(await fs.readFile(path.join(repoPath, ".monsthera", "manifest.json"), "utf-8"));
+    expect(manifest.workspaceSchemaVersion).toBe(1);
   });
 
   // ─── Knowledge subcommand ────────────────────────────────────────────────

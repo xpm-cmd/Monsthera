@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 55 knowledge articles and 8 work articles.
-> Last updated: 2026-04-25 09:49:36
+> Auto-generated catalog of 56 knowledge articles and 9 work articles.
+> Last updated: 2026-04-26 04:57:37
 
 ## Knowledge
 
@@ -48,6 +48,7 @@
 ### decision
 
 - [Decision: agent dispatch contract — events, not spawning](notes/agent-dispatch-design-decisions.md) — ADR-008 captures the formal decision (event lifecycle, dispatcher shape). This n
+- [Decision: convoy hardening — get, provenance events, single-convoy invariant](notes/convoy-hardening-design-decisions.md) — ADR-013 captures the formal decision (event types, the single-convoy invariant,
 - [Decision: convoys, requires-as-hard-block, mid-session resync](notes/convoy-requires-resync-design-decisions.md) — ADR-009 captures the formal decision (convoy types, hard-block guard, new event
 - [Monsthera stale code ref repair and orchestration audit](notes/monsthera-stale-code-ref-repair-and-orchestration-audit.md) — ## Summary Dead-code cleanup removed the unused wiki bookkeeper constructor fiel
 - [Monsthera trust ranking and current-docs ingest](notes/monsthera-trust-ranking-and-current-docs-ingest.md) — ## Summary Monsthera reliability was improved by importing the current Monsthera
@@ -72,11 +73,9 @@
 
 ### policy
 
-| Policy | Templates | Transition | Requires Roles | Requires Articles |
-|--------|-----------|------------|----------------|-------------------|
-| [Anti-Example Registry](notes/anti-example-registry.md) | — | — | — | — |
-| [Canonical Values Registry](notes/canonical-values.md) | — | — | — | — |
-| [Policy: feature articles touching auth require security enrichment](notes/policy-example-security-enrichment.md) | feature | enrichment → implementation | security | — |
+- [Anti-Example Registry](notes/anti-example-registry.md) — # Anti-example registry  Two kinds of entries live here; each is carried as a JS
+- [Canonical Values Registry](notes/canonical-values.md) — # Canonical values  This article is the canonical registry of values the Monsthe
+- [Policy: feature articles touching auth require security enrichment](notes/policy-example-security-enrichment.md) — # Policy: auth features require security enrichment  ## What this policy enforce
 
 ### reference
 
@@ -90,6 +89,10 @@
 - [IRIS Meta-Harness — Environment Bootstrapping and Implications for Monsthera](notes/iris-meta-harness-environment-bootstrapping-and-implications-for-monsthera.md) — Research note comparing Stanford IRIS Lab's `meta-harness-tbench2-artifact` ag
 
 ## Work
+
+### planning (1)
+
+- [Simplificar instalación, actualización y portabilidad del workspace](work-articles/w-zxi617cw.md) [high] — ## Objective  Diseñar e implementar una capa operacional ofi
 
 ### done (7)
 

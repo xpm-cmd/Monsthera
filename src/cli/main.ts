@@ -22,6 +22,7 @@ import { handleLint } from "./lint-commands.js";
 import { handleInstallHook, handleUninstallHook } from "./hook-commands.js";
 import { handleEvents } from "./events-commands.js";
 import { handleConvoy } from "./convoy-commands.js";
+import { handleWorkspace } from "./workspace-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -79,6 +80,7 @@ function handleHelp(): void {
       "  migrate                  Run v2 -> v3 migration from SQLite",
       "  doctor                   Run health checks and diagnostics",
       "  lint                     Audit the corpus for drift (canonical values, anti-examples, planning sections, orphan citations)",
+      "  workspace <subcommand>   Inspect, migrate, back up, and restore the portable workspace",
       "  install-hook             Install a pre-commit hook that runs `monsthera lint` on staged knowledge/work .md files",
       "  uninstall-hook           Remove a previously-installed monsthera pre-commit hook",
       "  events <subcommand>      Tail or emit orchestration events (agent dispatch contract, ADR-008)",
@@ -106,6 +108,12 @@ function handleHelp(): void {
       "",
       "INGEST SUBCOMMANDS",
       "  ingest local  --path <file-or-dir> [--category <c>] [--tags t1,t2] [--code-refs r1,r2] [--summary] [--no-recursive] [--no-replace]",
+      "",
+      "WORKSPACE SUBCOMMANDS",
+      "  workspace status                  Inspect portable workspace paths and schema compatibility",
+      "  workspace migrate                 Create or update .monsthera/manifest.json",
+      "  workspace backup                  Copy portable workspace data into .monsthera/backups/",
+      "  workspace restore <backup-path>   Restore a backup; requires --force",
       "",
       "MIGRATION",
       "  migrate [--mode <dry-run|validate|execute>] [--scope <work|knowledge|all>] [--source <sqlite-path>] [--force] [--json]",
@@ -312,6 +320,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "convoy":
         await handleConvoy(args.slice(1));
+        break;
+      case "workspace":
+        await handleWorkspace(args.slice(1));
         break;
       case "--version":
       case "-v":
