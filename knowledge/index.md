@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 62 knowledge articles and 9 work articles.
-> Last updated: 2026-04-27 10:15:08
+> Auto-generated catalog of 62 knowledge articles and 19 work articles.
+> Last updated: 2026-04-27 10:16:35
 
 ## Knowledge
 
@@ -101,8 +101,18 @@
 
 ## Work
 
-### planning (1)
+### planning (11)
 
+- [feat: workspace schema migration runner for future schema bumps](work-articles/w-z0o5hfx9.md) [high] — ## Issue  The workspace manifest carries a `workspaceSchemaV
+- [fix: $EDITOR command injection via whitespace split](work-articles/w-49aol9fa.md) [critical] — ## Issue  `$EDITOR` / `$VISUAL` are split on whitespace and
+- [fix: dashboard wildcard CORS + token in <meta> enables CSRF](work-articles/w-pd3211af.md) [critical] — ## Issue  The dashboard HTTP server returns `Access-Control-
+- [fix: knowledge create slug TOCTOU loses articles on parallel create](work-articles/w-5zsmz0f7.md) [high] — ## Issue  `FileSystemKnowledgeArticleRepository.create()` ch
+- [fix: make Dolt → in-memory fallback opt-in instead of silent](work-articles/w-qqzud6wf.md) [high] — ## Issue  When `config.storage.doltEnabled = true` but Dolt
+- [fix: process command validation by substring is spoofable](work-articles/w-8qeo1wwj.md) [high] — ## Issue  `validateProcessCommand()` matches a managed proce
+- [fix: workspace backup captures inconsistent Dolt snapshot](work-articles/w-df869qxf.md) [critical] — ## Issue  `workspace backup` calls `fs.cp(.monsthera/dolt, b
+- [fix: workspace restore corrupts Dolt when daemon is running](work-articles/w-kppfuyle.md) [critical] — ## Issue  `workspace restore --force` deletes and recreates
+- [refactor: lock file-repository read-modify-write to prevent lost updates](work-articles/w-mc21yp9s.md) [critical] — ## Issue  `FileSystemKnowledgeArticleRepository.update` and
+- [refactor: replace throw new Error in CLI doctor commands with Result propagation](work-articles/w-zuxnfk7f.md) [high] — ## Issue  Several CLI command modules throw raw `Error` inst
 - [Simplificar instalación, actualización y portabilidad del workspace](work-articles/w-zxi617cw.md) [high] — ## Objetivo Crear una superficie operacional oficial para Mo
 
 ### done (7)
