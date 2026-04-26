@@ -30,6 +30,11 @@ The first operational slice adds:
 - `monsthera workspace migrate` — create or update `.monsthera/manifest.json`.
 - `monsthera workspace backup` — copy portable workspace data into `.monsthera/backups/<backup-id>/`.
 - `monsthera workspace restore <backup-path> --force` — restore a backup after an explicit overwrite flag.
+- `monsthera self status` — inspect install git state, workspace state, and managed Dolt process state.
+- `monsthera self update --dry-run` — print the safe update plan and blockers.
+- `monsthera self update --prepare` — create a workspace backup, migrate the manifest, and print the update plan.
+- `monsthera self update --execute` — run the guarded update plan: backup, stop managed Dolt, `git pull --ff-only`, install, build, migrate, reindex, and restart Dolt if needed.
+- `monsthera self restart dolt` — restart the managed local Dolt daemon.
 
 Backups include:
 
@@ -43,6 +48,6 @@ Missing paths are recorded as skipped instead of causing failure. Restore is int
 
 ## Consequences
 
-`monsthera self update` can now be built as a thin operational workflow on top of workspace backup/migrate/health checks. It should not mutate workspace data directly except through the workspace service.
+`monsthera self update --execute` is guarded by the same blockers as `--dry-run`: it refuses to run outside a git checkout, refuses dirty installs, refuses newer workspace schemas, and refuses untrusted running Dolt metadata. It does not restart stdio MCP clients; operators still need to restart their client after the executable changes.
 
-PID files and process control remain a follow-up. They should use metadata JSON and validate command/cwd before stopping a process.
+Managed process metadata is stored as JSON under `.monsthera/run/*.json`. Dolt still writes the legacy `.pid` file for compatibility, but safe process operations prefer JSON metadata and command validation before stopping a process.

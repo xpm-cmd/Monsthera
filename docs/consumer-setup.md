@@ -164,17 +164,14 @@ When a new alpha ships:
 
 ```bash
 cd ~/Code/Monsthera
-node dist/bin.js workspace backup --repo /path/to/consumer-repo
-git pull
-pnpm install
-pnpm build
-node dist/bin.js workspace migrate --repo /path/to/consumer-repo
-node dist/bin.js reindex --repo /path/to/consumer-repo
+node dist/bin.js self status --repo /path/to/consumer-repo
+node dist/bin.js self update --dry-run --repo /path/to/consumer-repo
+node dist/bin.js self update --execute --repo /path/to/consumer-repo
 ```
 
 No change required in the consumer repo — `.mcp.json` keeps pointing at the same `dist/bin.js`, which is now newer. Restart your MCP client once so it reloads the server.
 
-The backup preserves the consumer workspace (`knowledge/`, `.monsthera/config.json`, `.monsthera/manifest.json`, and `.monsthera/dolt/`) under `.monsthera/backups/` before the executable changes. If a migration goes wrong, restore explicitly:
+`self update --execute` creates the workspace backup, stops managed local Dolt when needed, runs `git pull --ff-only`, installs dependencies, builds, migrates the workspace, reindexes, and restarts Dolt if it was running before the update. The backup preserves the consumer workspace (`knowledge/`, `.monsthera/config.json`, `.monsthera/manifest.json`, and `.monsthera/dolt/`) under `.monsthera/backups/` before the executable changes. If a migration goes wrong, restore explicitly:
 
 ```bash
 node dist/bin.js workspace restore /path/to/consumer-repo/.monsthera/backups/<backup-id> \
