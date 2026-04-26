@@ -54,7 +54,7 @@ and the convoy groupings), and the panel interaction model competes
 for horizontal space with existing snapshot-diff and enrichment
 details. A separate page has zero coupling to the work panel's layout.
 
-### 2. Sidebar nav badge as the sole warning channel — not a home banner
+### 2. Sidebar nav badge as the persistent cross-page warning channel — not a home banner
 
 The original brainstorm included a top-of-home banner: a prominent
 strip that appears when at least one active convoy has a cancelled
@@ -67,29 +67,43 @@ cancellations — more frequent as operators use the cancel/reassign
 cycle that ADR-013 deliberately kept manual — would erode operator
 reflex over time.
 
-The sidebar badge is persistent across pages: it is rendered as part
-of the layout shell, not as part of any individual page's content
-area. It is visible from `/work`, `/events`, `/convoys`, everywhere.
-Critically, it is **silent when clean**: when no active convoys have
-a cancelled lead, the badge is absent entirely. Absence conveys
-health; that is the negative-space convention from chat application
-unread counts, and it requires no explanation for operators who have
-ever used a messaging app.
+The sidebar badge is the **persistent cross-page ambient signal**: it
+is rendered as part of the layout shell, not as part of any individual
+page's content area. It is visible from `/work`, `/events`, `/convoys`,
+everywhere. Critically, it is **silent when clean**: when no active
+convoys have a cancelled lead, the badge is absent entirely. Absence
+conveys health; that is the negative-space convention from chat
+application unread counts, and it requires no explanation for operators
+who have ever used a messaging app.
 
 The home stat card continues to show convoy count (active convoys,
 no ornamentation) because count alone is ambient context, not an
 alert. It does not add warning styling — that would be a double
-signal that trains operators to look in two places. The sidebar badge
-is the single source of truth for warning visibility.
+signal that trains operators to look in two places.
 
-A per-convoy-card warning highlight only (no badge, just the table
-row on `/convoys` turns red) was also considered. It was rejected
-because it requires the operator to be on `/convoys` to see any
-warning signal at all. A warning that requires navigating to a
-specific page to discover is not ambient — it defeats the purpose of
-an alerting mechanism. The sidebar badge provides ambient coverage;
-the table row on `/convoys` provides the same signal at higher
-resolution once the operator investigates.
+On the `/convoys` page itself, warnings are surfaced through two
+additional reinforcing surfaces that complement the sidebar badge:
+
+1. A dedicated **"Unresolved warnings (N)"** card rendered at the top
+   of the page, above the active convoy stream. Each row in this card
+   shows the lead title, convoy id (linked to `/convoys/:id`), active
+   member count, and cancellation reason. This is the high-resolution
+   investigation view — the operator can see every warning at a glance
+   without scrolling through the full convoy list.
+2. A small inline **warning pill** (`warning` badge in error variant)
+   rendered next to the lead's title on each affected convoy card in
+   the stream. Active convoys stay in `findActive()` order — they are
+   NOT re-sorted by warning state. The pill is a secondary signal: an
+   operator scanning the stream will notice it even if the dedicated
+   warning card has scrolled out of view.
+
+The three surfaces are intentionally redundant. An operator may
+notice a warning via any of: (a) the sidebar badge from any page,
+(b) the dedicated "Unresolved warnings" card when they open `/convoys`,
+or (c) the inline pill on the affected convoy's card in the stream.
+The sidebar badge is the only signal visible cross-page; the other two
+are scoped to `/convoys` and provide increasing resolution for an
+operator who is already investigating.
 
 ### 3. Lifecycle ribbon on the lead's work card, not on `/convoys`
 
@@ -231,10 +245,14 @@ usage signals it is needed.
 - Renaming a convoy event type breaks `convoy-projection.ts` at the
   call site. The failure is local (one module) and surfaces via test,
   not silently through a missing badge.
-- Single-channel warning (sidebar badge only) means an operator who
-  never glances at the sidebar misses warnings. Acceptable: the
-  sidebar is page chrome, visible everywhere, not a separate
-  destination requiring an explicit navigation step.
+- Three-surface warning redundancy (sidebar badge cross-page, dedicated
+  "Unresolved warnings" card at the top of `/convoys`, inline pill on
+  each affected convoy card) means most operators will encounter a
+  warning via whichever surface they happen to be looking at. An
+  operator who never glances at the sidebar will still see the warning
+  card and inline pill when they open `/convoys`. Acceptable trade-off:
+  the sidebar is the only ambient channel, but `/convoys` itself
+  provides two reinforcing signals for investigators.
 - The lifecycle ribbon scales to approximately five convoys per lead
   before pills wrap onto a second line. Not a problem at current
   scale; a "Lead of N convoys (expand)" collapse pattern is the
@@ -250,9 +268,13 @@ usage signals it is needed.
 - **Top-of-home banner for warnings**: rejected for alarm fatigue.
   Banner is invisible off the home page; degrades operator reflex
   for routine cancellations.
-- **Per-convoy-card warning highlight only, no sidebar badge**:
-  rejected. Requires being on `/convoys` to see any warning signal.
-  Defeats the ambient alerting purpose.
+- **Per-convoy-card warning highlight as the ONLY channel, no sidebar
+  badge**: rejected. A per-card pill or row highlight requires the
+  operator to be on `/convoys` to see any warning signal at all —
+  it defeats the ambient alerting purpose. The shipped design keeps the
+  per-card inline pill as a secondary signal (within `/convoys`) but
+  adds the sidebar badge as the primary cross-page channel so warnings
+  are visible regardless of which page the operator is on.
 - **Workspace layout (list + side panel) for `/convoys`**: rejected.
   Duplicates selection state (URL hash + side panel) and competes
   with the dedicated `/convoys/:id` detail page already implemented

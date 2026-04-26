@@ -42,10 +42,9 @@ without replacing the chip model.
 ## Why the sidebar badge instead of home banner or per-card highlight
 
 Three candidate warning surfaces made it to the decision table: top-of-home
-banner, per-row highlight on `/convoys`, and sidebar badge. The per-row
-highlight survived — it exists in the final design, as warning rows sort to
-the top of the `/convoys` table and get a visual indicator. The question was
-whether that alone was sufficient, or whether a more ambient channel was needed.
+banner, per-row highlight on `/convoys`, and sidebar badge. The question was
+whether a per-card approach alone was sufficient, or whether a more ambient
+cross-page channel was needed.
 
 The home banner failed the persistence test: navigate to `/work` and the
 banner disappears. An operator deep in a backlog session can miss a warning
@@ -62,6 +61,18 @@ convention already has 15 years of muscle memory from chat apps. We got it for
 free by matching the pattern. The trade-off is obvious: an operator who hides
 the sidebar or uses a narrow viewport could miss the badge. Acceptable, because
 the sidebar is not a separate destination — it is part of the frame.
+
+The final design ships **three reinforcing surfaces** — not a single channel.
+The sidebar badge is the cross-page ambient signal. On `/convoys` itself, there
+are two additional surfaces: a dedicated "Unresolved warnings (N)" card rendered
+at the TOP of the page (above the active stream), showing each warning's lead
+title, convoy id, active member count, and reason; and a small inline warning
+pill on each affected convoy card in the active stream. Active convoys are NOT
+re-sorted — they stay in `findActive()` order; the dedicated warning card above
+the stream is how warnings are prominently surfaced. The inline pill is a
+secondary "catch it while scanning" signal for operators who scroll past the
+warning section. An operator may encounter the warning via whichever surface
+they happen to be looking at first.
 
 ## Why navigation-driven refresh instead of polling
 
@@ -153,6 +164,29 @@ The recurring rookie mistake is adding a new constant file rather than checking
 what the existing templates import. The project's convention is
 `phaseVariant(phase)` — that function existed since the work panel shipped
 in S1. The new dashboard's job was to call it, not reimplement it.
+
+## Why `RecentLeadActivity.from` is optional and derived from `phaseHistory`
+
+The spec assumed `phase_advanced` events had a `{ from, to }` payload — a
+natural shape for a transition event. In practice, only
+`OrchestrationService.tryAdvance` emits that shape. `WorkService.advancePhase`
+— the path operators actually use when they run `monsthera work advance` from
+the CLI — emits `{ to, phaseHistory }` with no `from` field. The convoy detail
+page's "Recent lead activity" section would have rendered `undefined → planning`
+for every transition the CLI produced, which is most of them. Not a test failure
+in the traditional sense; just silently wrong output that would have been
+confusing in production.
+
+Rather than unify the event payload at emission (which would have required
+touching both services and their tests, out of scope for dashboard work), the
+projection derives `from` from `phaseHistory[length - 2].phase` when
+`details.from` is missing. The `RecentLeadActivity` interface field was made
+optional (`from?: WorkPhase`), and the UI handles the absent case gracefully
+(`from ? \`${from} → ${to}\` : \`→ ${to}\``). The test "recentLeadActivity[0].from
+comes from phaseHistory when not in event details" pins this behavior. Future
+work that touches `phase_advanced` event consumers should not trust
+`details.from` alone — always check `phaseHistory` as well, or take the
+opportunity to unify the emission shape so both service paths include `from`.
 
 ## What we deliberately punted
 
