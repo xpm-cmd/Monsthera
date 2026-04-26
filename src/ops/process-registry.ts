@@ -123,11 +123,16 @@ export async function stopManagedProcess(
 
   try {
     process.kill(status.value.pid, "SIGTERM");
-    await removeProcessFiles(repoPath, kind);
-    return ok({ ...status.value, running: false });
   } catch (error) {
+    if (isNodeError(error) && error.code === "ESRCH") {
+      // Process already dead; treat as a clean stop.
+      await removeProcessFiles(repoPath, kind);
+      return ok({ ...status.value, running: false });
+    }
     return err(new StorageError(`Failed to stop ${kind} process`, { pid: status.value.pid, cause: String(error) }));
   }
+  await removeProcessFiles(repoPath, kind);
+  return ok({ ...status.value, running: false });
 }
 
 export async function removeProcessFiles(repoPath: string, kind: ManagedProcessKind): Promise<void> {
@@ -135,6 +140,59 @@ export async function removeProcessFiles(repoPath: string, kind: ManagedProcessK
     fs.rm(processMetadataPath(repoPath, kind), { force: true }),
     fs.rm(legacyPidPath(repoPath, kind), { force: true }),
   ]);
+}
+
+export interface AdoptLegacyResult {
+  readonly metadata: ManagedProcessMetadata;
+  readonly previousPidFile: string;
+}
+
+export async function adoptLegacyPidFile(
+  repoPath: string,
+  kind: ManagedProcessKind,
+): Promise<Result<AdoptLegacyResult, StorageError | ValidationError>> {
+  const legacy = await readLegacyPid(repoPath, kind);
+  if (!legacy.ok) return legacy;
+  if (legacy.value === null) {
+    return err(new ValidationError(`No legacy ${kind}.pid file to adopt`));
+  }
+  const pid = legacy.value;
+  if (!isProcessRunning(pid)) {
+    await fs.rm(legacyPidPath(repoPath, kind), { force: true });
+    return err(
+      new ValidationError(`Legacy ${kind}.pid points at a dead process (pid ${pid}); removed stale file`, {
+        pid,
+        action: "removed",
+      }),
+    );
+  }
+
+  const inspected = await readProcessFromPs(pid);
+  if (!inspected.ok) return inspected;
+
+  const metadata = await writeProcessMetadata(repoPath, {
+    kind,
+    pid,
+    command: inspected.value.command,
+    cwd: inspected.value.cwd ?? repoPath,
+    startedAt: new Date().toISOString(),
+  });
+  if (!metadata.ok) return metadata;
+
+  await fs.rm(legacyPidPath(repoPath, kind), { force: true });
+  return ok({ metadata: metadata.value, previousPidFile: legacyPidPath(repoPath, kind) });
+}
+
+export async function cleanupStaleMetadata(
+  repoPath: string,
+  kind: ManagedProcessKind,
+): Promise<Result<{ removed: boolean; source: ManagedProcessStatus["source"] }, StorageError>> {
+  const status = await inspectManagedProcess(repoPath, kind);
+  if (!status.ok) return status;
+  if (status.value.pid === null) return ok({ removed: false, source: status.value.source });
+  if (status.value.running) return ok({ removed: false, source: status.value.source });
+  await removeProcessFiles(repoPath, kind);
+  return ok({ removed: true, source: status.value.source });
 }
 
 async function readJsonMetadata(
@@ -191,6 +249,26 @@ function isProcessRunning(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function readProcessFromPs(
+  pid: number,
+): Promise<Result<{ command: string[]; cwd?: string }, StorageError>> {
+  try {
+    const { stdout } = await execFileAsync("ps", ["-p", String(pid), "-o", "command="], {
+      timeout: 1000,
+      maxBuffer: 64 * 1024,
+      encoding: "utf-8",
+    });
+    const trimmed = stdout.trim();
+    if (!trimmed) {
+      return err(new StorageError(`ps returned empty command for pid ${pid}`));
+    }
+    const tokens = trimmed.split(/\s+/);
+    return ok({ command: tokens });
+  } catch (error) {
+    return err(new StorageError(`Failed to inspect process ${pid} via ps`, { cause: String(error) }));
   }
 }
 

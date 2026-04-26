@@ -1,14 +1,27 @@
-import { execFile } from "node:child_process";
 import * as path from "node:path";
-import { promisify } from "node:util";
 import { VERSION } from "../core/constants.js";
 import { StorageError, ValidationError } from "../core/errors.js";
 import type { Result } from "../core/result.js";
 import { err, ok } from "../core/result.js";
-import { backupWorkspace, inspectWorkspace, migrateWorkspace, type WorkspaceBackup, type WorkspaceStatus } from "../workspace/service.js";
-import { inspectManagedProcess, stopManagedProcess, type ManagedProcessStatus } from "./process-registry.js";
-
-const execFileAsync = promisify(execFile);
+import {
+  backupWorkspace,
+  inspectWorkspace,
+  migrateWorkspace,
+  restoreWorkspace,
+  type WorkspaceBackup,
+  type WorkspaceRestore,
+  type WorkspaceStatus,
+} from "../workspace/service.js";
+import {
+  combineOutput,
+  realCommandRunner,
+  type CommandRunner,
+} from "./command-runner.js";
+import {
+  inspectManagedProcess,
+  stopManagedProcess,
+  type ManagedProcessStatus,
+} from "./process-registry.js";
 
 export interface GitInstallStatus {
   readonly path: string;
@@ -39,8 +52,17 @@ export interface SelfUpdatePlan {
 
 export interface SelfUpdateStepResult {
   readonly name: string;
-  readonly status: "completed" | "skipped";
+  readonly status: "completed" | "skipped" | "failed";
   readonly output?: string;
+}
+
+export interface SelfUpdateRollback {
+  readonly performed: boolean;
+  readonly backupPath: string;
+  readonly restored: readonly string[];
+  readonly skipped: readonly string[];
+  readonly doltRestarted: boolean;
+  readonly errors: readonly string[];
 }
 
 export interface SelfUpdateExecution {
@@ -59,14 +81,20 @@ export interface SelfRestartResult {
   readonly output: string;
 }
 
-export async function inspectSelf(options: {
+export interface SelfServiceOptions {
   readonly installPath?: string;
   readonly repoPath?: string;
-} = {}): Promise<Result<SelfStatus, StorageError>> {
+  readonly runner?: CommandRunner;
+}
+
+export async function inspectSelf(
+  options: SelfServiceOptions = {},
+): Promise<Result<SelfStatus, StorageError>> {
   const installPath = path.resolve(options.installPath ?? process.cwd());
   const repoPath = path.resolve(options.repoPath ?? process.cwd());
+  const runner = options.runner ?? realCommandRunner;
   const [install, workspace, dolt] = await Promise.all([
-    inspectGitInstall(installPath),
+    inspectGitInstall(installPath, runner),
     inspectWorkspace(repoPath),
     inspectManagedProcess(installPath, "dolt"),
   ]);
@@ -83,17 +111,17 @@ export async function inspectSelf(options: {
   });
 }
 
-export async function planSelfUpdate(options: {
-  readonly installPath?: string;
-  readonly repoPath?: string;
-} = {}): Promise<Result<SelfUpdatePlan, StorageError>> {
+export async function planSelfUpdate(
+  options: SelfServiceOptions = {},
+): Promise<Result<SelfUpdatePlan, StorageError>> {
   const status = await inspectSelf(options);
   if (!status.ok) return status;
 
   const blockers: string[] = [];
   if (!status.value.install.isGitCheckout) blockers.push("installation is not a git checkout");
   if (status.value.install.dirty) blockers.push("installation working tree is dirty");
-  if (status.value.workspace.schema.compatible === false) blockers.push("workspace schema is newer than this Monsthera version");
+  if (status.value.workspace.schema.compatible === false)
+    blockers.push("workspace schema is newer than this Monsthera version");
   if (status.value.processes.dolt.running && !status.value.processes.dolt.trusted) {
     blockers.push("Dolt process is running but metadata is not trusted");
   }
@@ -117,16 +145,15 @@ export async function planSelfUpdate(options: {
   });
 }
 
-export async function restartDolt(options: {
-  readonly installPath?: string;
-  readonly force?: boolean;
-} = {}): Promise<Result<SelfRestartResult, StorageError | ValidationError>> {
+export async function restartDolt(
+  options: SelfServiceOptions & { readonly force?: boolean } = {},
+): Promise<Result<SelfRestartResult, StorageError | ValidationError>> {
   const installPath = path.resolve(options.installPath ?? process.cwd());
+  const runner = options.runner ?? realCommandRunner;
   const stopped = await stopManagedProcess(installPath, "dolt", { force: options.force });
   if (!stopped.ok) return stopped;
 
-  const script = path.join(installPath, "scripts", "dolt", "start-local.sh");
-  const started = await startDoltDaemon(installPath, script);
+  const started = await startDoltDaemon(installPath, runner);
   if (!started.ok) return started;
   return ok({
     service: "dolt",
@@ -136,100 +163,11 @@ export async function restartDolt(options: {
   });
 }
 
-export async function executeSelfUpdate(options: {
-  readonly installPath?: string;
-  readonly repoPath?: string;
-} = {}): Promise<Result<SelfUpdateExecution, StorageError | ValidationError>> {
-  const plan = await planSelfUpdate(options);
-  if (!plan.ok) return plan;
-  if (plan.value.blockers.length > 0) {
-    return err(new ValidationError("self update has blockers", { blockers: plan.value.blockers }));
-  }
-
-  const initial = await inspectSelf(options);
-  if (!initial.ok) return initial;
-
-  const installPath = plan.value.installPath;
-  const repoPath = plan.value.repoPath;
-  const steps: SelfUpdateStepResult[] = [];
-
-  const backup = await backupWorkspace(repoPath);
-  if (!backup.ok) return backup;
-  steps.push({ name: "workspace backup", status: "completed", output: backup.value.path });
-
-  const shouldRestartDolt = initial.value.processes.dolt.running;
-  if (shouldRestartDolt) {
-    const stopped = await stopManagedProcess(installPath, "dolt");
-    if (!stopped.ok) return stopped;
-    steps.push({ name: "stop managed Dolt", status: "completed", output: stopped.value.pid ? `pid ${stopped.value.pid}` : "not running" });
-  } else {
-    steps.push({ name: "stop managed Dolt", status: "skipped", output: "not running" });
-  }
-
-  const commands: Array<{ readonly name: string; readonly command: string; readonly args: string[]; readonly cwd: string; readonly timeoutMs: number }> = [
-    { name: "git pull --ff-only", command: "git", args: ["pull", "--ff-only"], cwd: installPath, timeoutMs: 60000 },
-    { name: "pnpm install --frozen-lockfile", command: "pnpm", args: ["install", "--frozen-lockfile"], cwd: installPath, timeoutMs: 120000 },
-    { name: "pnpm build", command: "pnpm", args: ["build"], cwd: installPath, timeoutMs: 120000 },
-  ];
-
-  for (const command of commands) {
-    const result = await runCommand(command.command, command.args, command.cwd, command.timeoutMs);
-    if (!result.ok) return result;
-    steps.push({ name: command.name, status: "completed", output: result.value });
-  }
-
-  const migrated = await migrateWorkspace(repoPath);
-  if (!migrated.ok) return migrated;
-  steps.push({
-    name: "workspace migrate",
-    status: "completed",
-    output: migrated.value.created ? "created manifest" : "updated manifest",
-  });
-
-  const reindex = await runCommand(process.execPath, [path.join(installPath, "dist", "bin.js"), "reindex", "--repo", repoPath], installPath, 120000);
-  if (!reindex.ok) return reindex;
-  steps.push({ name: "reindex", status: "completed", output: reindex.value });
-
-  let doltRestarted = false;
-  if (shouldRestartDolt) {
-    const started = await startDoltDaemon(installPath, path.join(installPath, "scripts", "dolt", "start-local.sh"));
-    if (!started.ok) return started;
-    steps.push({ name: "restart Dolt", status: "completed", output: started.value });
-    doltRestarted = true;
-  } else {
-    steps.push({ name: "restart Dolt", status: "skipped", output: "was not running before update" });
-  }
-
-  steps.push({ name: "restart MCP client", status: "skipped", output: "manual restart required for stdio clients" });
-
-  return ok({
-    mode: "execute",
-    installPath,
-    repoPath,
-    backup: backup.value,
-    steps,
-    doltRestarted,
-  });
-}
-
-async function startDoltDaemon(installPath: string, script: string): Promise<Result<string, StorageError>> {
-  try {
-    const { stdout, stderr } = await execFileAsync(script, ["--daemon"], {
-      cwd: installPath,
-      env: { ...process.env, MONSTHERA_VERSION: VERSION },
-      timeout: 10000,
-      maxBuffer: 256 * 1024,
-    });
-    return ok([stdout.trim(), stderr.trim()].filter(Boolean).join("\n"));
-  } catch (error) {
-    return err(new StorageError("Failed to start Dolt daemon", { cause: String(error) }));
-  }
-}
-
-export async function prepareSelfUpdate(options: {
-  readonly installPath?: string;
-  readonly repoPath?: string;
-} = {}): Promise<Result<{ backup: WorkspaceBackup; plan: SelfUpdatePlan }, StorageError | ValidationError>> {
+export async function prepareSelfUpdate(
+  options: SelfServiceOptions = {},
+): Promise<
+  Result<{ backup: WorkspaceBackup; plan: SelfUpdatePlan }, StorageError | ValidationError>
+> {
   const repoPath = path.resolve(options.repoPath ?? process.cwd());
   const backup = await backupWorkspace(repoPath);
   if (!backup.ok) return backup;
@@ -240,19 +178,273 @@ export async function prepareSelfUpdate(options: {
   return ok({ backup: backup.value, plan: plan.value });
 }
 
-async function inspectGitInstall(installPath: string): Promise<Result<GitInstallStatus, StorageError>> {
+interface UpdateStep {
+  readonly name: string;
+  readonly run: () => Promise<Result<string, StorageError | ValidationError>>;
+}
+
+interface UpdateContext {
+  readonly installPath: string;
+  readonly repoPath: string;
+  readonly runner: CommandRunner;
+  readonly backup: WorkspaceBackup;
+  readonly doltWasRunning: boolean;
+}
+
+export async function executeSelfUpdate(
+  options: SelfServiceOptions = {},
+): Promise<Result<SelfUpdateExecution, StorageError | ValidationError>> {
+  const runner = options.runner ?? realCommandRunner;
+  const plan = await planSelfUpdate({ ...options, runner });
+  if (!plan.ok) return plan;
+  if (plan.value.blockers.length > 0) {
+    return err(
+      new ValidationError("self update has blockers", {
+        blockers: plan.value.blockers,
+      }),
+    );
+  }
+
+  const initial = await inspectSelf({ ...options, runner });
+  if (!initial.ok) return initial;
+
+  const installPath = plan.value.installPath;
+  const repoPath = plan.value.repoPath;
+
+  const backup = await backupWorkspace(repoPath);
+  if (!backup.ok) return backup;
+
+  const completed: SelfUpdateStepResult[] = [
+    { name: "workspace backup", status: "completed", output: backup.value.path },
+  ];
+
+  const doltWasRunning = initial.value.processes.dolt.running;
+  if (doltWasRunning) {
+    const stopped = await stopManagedProcess(installPath, "dolt");
+    if (!stopped.ok) {
+      return failExecution(stopped.error, "stop managed Dolt", completed, {
+        installPath,
+        repoPath,
+        runner,
+        backup: backup.value,
+        doltWasRunning,
+      });
+    }
+    completed.push({
+      name: "stop managed Dolt",
+      status: "completed",
+      output: stopped.value.pid ? `pid ${stopped.value.pid}` : "not running",
+    });
+  } else {
+    completed.push({ name: "stop managed Dolt", status: "skipped", output: "not running" });
+  }
+
+  const context: UpdateContext = {
+    installPath,
+    repoPath,
+    runner,
+    backup: backup.value,
+    doltWasRunning,
+  };
+
+  const steps: UpdateStep[] = [
+    {
+      name: "git pull --ff-only",
+      run: async () => {
+        const result = await runner({
+          command: "git",
+          args: ["pull", "--ff-only"],
+          cwd: installPath,
+          timeoutMs: 60000,
+        });
+        return mapCommand(result);
+      },
+    },
+    {
+      name: "pnpm install --frozen-lockfile",
+      run: async () => {
+        const result = await runner({
+          command: "pnpm",
+          args: ["install", "--frozen-lockfile"],
+          cwd: installPath,
+          timeoutMs: 120000,
+        });
+        return mapCommand(result);
+      },
+    },
+    {
+      name: "pnpm build",
+      run: async () => {
+        const result = await runner({
+          command: "pnpm",
+          args: ["build"],
+          cwd: installPath,
+          timeoutMs: 120000,
+        });
+        return mapCommand(result);
+      },
+    },
+    {
+      name: "workspace migrate",
+      run: async () => {
+        const migrated = await migrateWorkspace(repoPath);
+        if (!migrated.ok) return migrated;
+        return ok(migrated.value.created ? "created manifest" : "updated manifest");
+      },
+    },
+    {
+      name: "reindex",
+      run: async () => {
+        const result = await runner({
+          command: process.execPath,
+          args: [path.join(installPath, "dist", "bin.js"), "reindex", "--repo", repoPath],
+          cwd: installPath,
+          timeoutMs: 120000,
+        });
+        return mapCommand(result);
+      },
+    },
+  ];
+
+  for (const step of steps) {
+    const result = await step.run();
+    if (!result.ok) {
+      return failExecution(result.error, step.name, completed, context);
+    }
+    completed.push({ name: step.name, status: "completed", output: result.value });
+  }
+
+  let doltRestarted = false;
+  if (doltWasRunning) {
+    const started = await startDoltDaemon(installPath, runner);
+    if (!started.ok) {
+      return failExecution(started.error, "restart Dolt", completed, context);
+    }
+    completed.push({ name: "restart Dolt", status: "completed", output: started.value });
+    doltRestarted = true;
+  } else {
+    completed.push({
+      name: "restart Dolt",
+      status: "skipped",
+      output: "was not running before update",
+    });
+  }
+
+  completed.push({
+    name: "restart MCP client",
+    status: "skipped",
+    output: "manual restart required for stdio clients",
+  });
+
+  return ok({
+    mode: "execute",
+    installPath,
+    repoPath,
+    backup: backup.value,
+    steps: completed,
+    doltRestarted,
+  });
+}
+
+async function failExecution(
+  cause: StorageError | ValidationError,
+  failedStep: string,
+  completed: SelfUpdateStepResult[],
+  context: UpdateContext,
+): Promise<Result<SelfUpdateExecution, StorageError | ValidationError>> {
+  const stepLog = [...completed, { name: failedStep, status: "failed" as const, output: cause.message }];
+  const rollback = await performRollback(context);
+  return err(
+    new StorageError(`self update failed at "${failedStep}": ${cause.message}`, {
+      failedStep,
+      cause: cause.message,
+      causeCode: cause.code,
+      causeDetails: cause.details,
+      rollback,
+      steps: stepLog,
+      backupPath: context.backup.path,
+    }),
+  );
+}
+
+async function performRollback(context: UpdateContext): Promise<SelfUpdateRollback> {
+  const errors: string[] = [];
+  let restored: WorkspaceRestore = { backupId: context.backup.id, restored: [], skipped: [] };
+
+  const restore = await restoreWorkspace(context.repoPath, context.backup.path, { force: true });
+  if (!restore.ok) {
+    errors.push(`workspace restore failed: ${restore.error.message}`);
+  } else {
+    restored = restore.value;
+  }
+
+  let doltRestarted = false;
+  // Only attempt to restart Dolt if the workspace actually came back to a known
+  // good state. Restarting Dolt on top of a half-restored workspace can leave
+  // the user with a running daemon over corrupt data.
+  if (context.doltWasRunning && restore.ok) {
+    const started = await startDoltDaemon(context.installPath, context.runner);
+    if (!started.ok) {
+      errors.push(`dolt restart failed: ${started.error.message}`);
+    } else {
+      doltRestarted = true;
+    }
+  } else if (context.doltWasRunning && !restore.ok) {
+    errors.push("dolt was not restarted because workspace restore failed; resolve manually");
+  }
+
+  return {
+    performed: restore.ok,
+    backupPath: context.backup.path,
+    restored: restored.restored,
+    skipped: restored.skipped,
+    doltRestarted,
+    errors,
+  };
+}
+
+function mapCommand(
+  result: Result<{ readonly stdout: string; readonly stderr: string }, StorageError>,
+): Result<string, StorageError> {
+  if (!result.ok) return result;
+  return ok(combineOutput(result.value));
+}
+
+async function startDoltDaemon(
+  installPath: string,
+  runner: CommandRunner,
+): Promise<Result<string, StorageError>> {
+  const script = path.join(installPath, "scripts", "dolt", "start-local.sh");
+  const result = await runner({
+    command: script,
+    args: ["--daemon"],
+    cwd: installPath,
+    timeoutMs: 10000,
+    env: { ...process.env, MONSTHERA_VERSION: VERSION },
+    maxBufferBytes: 256 * 1024,
+  });
+  if (!result.ok) {
+    return err(new StorageError("Failed to start Dolt daemon", { cause: result.error.message }));
+  }
+  return ok(combineOutput(result.value));
+}
+
+async function inspectGitInstall(
+  installPath: string,
+  runner: CommandRunner,
+): Promise<Result<GitInstallStatus, StorageError>> {
   const resolved = path.resolve(installPath);
-  const root = await git(resolved, ["rev-parse", "--show-toplevel"]);
+  const root = await runGit(resolved, ["rev-parse", "--show-toplevel"], runner);
   if (!root.ok) {
     return ok({ path: resolved, isGitCheckout: false, error: root.error.message });
   }
 
   const gitRoot = root.value.trim();
   const [branch, head, upstreamHead, dirty] = await Promise.all([
-    git(gitRoot, ["branch", "--show-current"]),
-    git(gitRoot, ["rev-parse", "HEAD"]),
-    git(gitRoot, ["rev-parse", "--verify", "origin/main"]),
-    git(gitRoot, ["status", "--porcelain"]),
+    runGit(gitRoot, ["branch", "--show-current"], runner),
+    runGit(gitRoot, ["rev-parse", "HEAD"], runner),
+    runGit(gitRoot, ["rev-parse", "--verify", "origin/main"], runner),
+    runGit(gitRoot, ["status", "--porcelain"], runner),
   ]);
 
   return ok({
@@ -265,33 +457,18 @@ async function inspectGitInstall(installPath: string): Promise<Result<GitInstall
   });
 }
 
-async function git(cwd: string, args: string[]): Promise<Result<string, StorageError>> {
-  try {
-    const { stdout } = await execFileAsync("git", args, {
-      cwd,
-      timeout: 5000,
-      maxBuffer: 128 * 1024,
-    });
-    return ok(stdout);
-  } catch (error) {
-    return err(new StorageError(`git ${args.join(" ")} failed`, { cause: String(error) }));
-  }
-}
-
-async function runCommand(
-  command: string,
-  args: string[],
+async function runGit(
   cwd: string,
-  timeout: number,
+  args: string[],
+  runner: CommandRunner,
 ): Promise<Result<string, StorageError>> {
-  try {
-    const { stdout, stderr } = await execFileAsync(command, args, {
-      cwd,
-      timeout,
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    return ok([stdout.trim(), stderr.trim()].filter(Boolean).join("\n"));
-  } catch (error) {
-    return err(new StorageError(`${command} ${args.join(" ")} failed`, { cause: String(error) }));
-  }
+  const result = await runner({
+    command: "git",
+    args,
+    cwd,
+    timeoutMs: 5000,
+    maxBufferBytes: 128 * 1024,
+  });
+  if (!result.ok) return result;
+  return ok(result.value.stdout);
 }
