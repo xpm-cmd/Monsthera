@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { renderMarkdown } from "../../../public/lib/components.js";
+import { renderMarkdown, renderPhaseChip } from "../../../public/lib/components.js";
 
 describe("dashboard markdown renderer", () => {
   it("renders headings and lists as valid block markup", () => {
@@ -24,5 +24,14 @@ describe("dashboard markdown renderer", () => {
     expect(safe).toContain('<a href="https://example.com/docs">Docs</a>');
     expect(unsafe).toContain("Boom");
     expect(unsafe).not.toContain("<a href=");
+  });
+});
+
+describe("renderPhaseChip", () => {
+  it("renders a phase as a labeled badge", () => {
+    expect(renderPhaseChip("planning")).toContain("planning");
+  });
+  it("escapes the phase value", () => {
+    expect(renderPhaseChip("<script>")).not.toContain("<script>");
   });
 });

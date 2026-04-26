@@ -253,3 +253,17 @@ export function phaseVariant(phase) {
     default: return "secondary";
   }
 }
+
+const PHASE_VARIANT = {
+  planning: "primary",
+  enrichment: "secondary",
+  implementation: "success",
+  review: "warning",
+  done: "success",
+  cancelled: "error",
+};
+
+export function renderPhaseChip(phase) {
+  const variant = PHASE_VARIANT[phase] || "outline";
+  return renderBadge(phase, variant);
+}
