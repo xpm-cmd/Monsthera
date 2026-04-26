@@ -254,16 +254,8 @@ export function phaseVariant(phase) {
   }
 }
 
-const PHASE_VARIANT = {
-  planning: "primary",
-  enrichment: "secondary",
-  implementation: "success",
-  review: "warning",
-  done: "success",
-  cancelled: "error",
-};
-
-export function renderPhaseChip(phase) {
-  const variant = PHASE_VARIANT[phase] || "outline";
-  return renderBadge(phase, variant);
+export function renderPhaseChip(phase, count) {
+  const variant = phaseVariant(phase) || "outline";
+  const label = count != null ? `${phase} ×${count}` : phase;
+  return renderBadge(label, variant);
 }

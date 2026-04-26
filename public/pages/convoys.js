@@ -18,7 +18,7 @@ function renderConvoyCard(convoy) {
     counts[m.phase] = (counts[m.phase] || 0) + 1;
   }
   const distribution = Object.entries(counts)
-    .map(([phase, n]) => renderPhaseChip(`${phase} ×${n}`)).join(" ");
+    .map(([phase, n]) => renderPhaseChip(phase, n)).join(" ");
   const leadTitle = "title" in convoy.lead ? convoy.lead.title : "(deleted lead)";
   const leadPhase = "phase" in convoy.lead ? convoy.lead.phase : "—";
   const warnPill = convoy.hasUnresolvedWarning ? `<span style="margin-left:8px">${renderBadge("warning", "error")}</span>` : "";

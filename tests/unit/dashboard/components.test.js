@@ -34,4 +34,15 @@ describe("renderPhaseChip", () => {
   it("escapes the phase value", () => {
     expect(renderPhaseChip("<script>")).not.toContain("<script>");
   });
+  it("preserves phase variant when count is supplied", () => {
+    const withCount = renderPhaseChip("planning", 2);
+    expect(withCount).toContain("planning ×2");
+    // The variant class must match what the bare-phase chip produces.
+    const baseline = renderPhaseChip("planning");
+    // Extract the badge variant marker (badge--<variant>) from both.
+    const variantMatch = baseline.match(/badge--(\w+)/);
+    expect(variantMatch).not.toBeNull();
+    const variantClass = variantMatch[1];
+    expect(withCount).toContain(`badge--${variantClass}`);
+  });
 });

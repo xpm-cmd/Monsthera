@@ -1,5 +1,5 @@
 import { getConvoyById } from "../lib/api.js";
-import { esc, renderBadge, renderCard, renderPhaseChip, timeAgo } from "../lib/components.js";
+import { esc, renderCard, renderPhaseChip, timeAgo } from "../lib/components.js";
 
 function renderHeader(convoy) {
   const leadTitle = "title" in convoy.lead ? convoy.lead.title : "(deleted lead)";
