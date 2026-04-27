@@ -7,6 +7,7 @@ export const MAX_CONTENT_LENGTH = 500_000;
 export const MAX_QUERY_LENGTH = 1000;
 export const MAX_TAG_LENGTH = 100;
 export const MAX_TAGS_COUNT = 50;
+export const MAX_CODE_REF_LENGTH = 256;
 
 /** Helper to build a success response */
 export function successResponse(data: unknown): ToolResponse {

@@ -43,6 +43,7 @@ import { IngestService } from "../ingest/service.js";
 import { InMemorySnapshotRepository } from "../context/snapshot-in-memory-repository.js";
 import { SnapshotService } from "../context/snapshot-service.js";
 import type { SnapshotRepository } from "../context/snapshot-repository.js";
+import { CodeIntelligenceService } from "../code-intelligence/service.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -67,6 +68,7 @@ export interface MonstheraContainer extends Disposable {
   readonly bookkeeper: WikiBookkeeper;
   readonly snapshotRepo: SnapshotRepository;
   readonly snapshotService: SnapshotService;
+  readonly codeIntelligenceService: CodeIntelligenceService;
 }
 
 /**
@@ -297,6 +299,14 @@ export async function createContainer(
     repoPath: config.repoPath,
     logger,
   });
+
+  const codeIntelligenceService = new CodeIntelligenceService({
+    knowledgeRepo: knowledgeRepo!,
+    workRepo: workRepo!,
+    structureService,
+    repoPath: config.repoPath,
+    logger,
+  });
   const agentsService = new AgentService({
     workRepo: workRepo!,
     orchestrationRepo: orchestrationRepo!,
@@ -400,6 +410,11 @@ export async function createContainer(
     healthy: true,
     detail: "Structure service",
   }));
+  status.register("code-intelligence", () => ({
+    name: "code-intelligence",
+    healthy: true,
+    detail: "Code-ref intelligence service",
+  }));
   status.register("agents", () => ({
     name: "agents",
     healthy: true,
@@ -455,6 +470,7 @@ export async function createContainer(
     bookkeeper,
     snapshotRepo,
     snapshotService,
+    codeIntelligenceService,
     async dispose() {
       logger.info("Shutting down container");
       await stack.dispose();

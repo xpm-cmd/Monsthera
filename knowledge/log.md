@@ -116,3 +116,7 @@ Append-only record of knowledge and work mutations.
 - **[2026-04-26 04:51:35]** create work | Simplificar instalación, actualización y portabilidad del workspace (w-zxi617cw)
 - **[2026-04-26 04:57:37]** update work | Simplificar instalación, actualización y portabilidad del workspace (w-zxi617cw)
 - **[2026-04-26 10:46:41]** update work | Simplificar instalación, actualización y portabilidad del workspace (w-zxi617cw)
+- **[2026-04-26 11:35:36]** create knowledge | GitNexus UI and Graph Patterns Worth Reimagining (k-gzzzt7uk)
+- **[2026-04-26 11:39:14]** create knowledge | Monsthera vs GitNexus Code Exploration Evaluation (k-jk03wk0q)
+- **[2026-04-26 11:47:32]** create knowledge | ADR-015 Code Intelligence Strategy (k-quo5tdc1)
+- **[2026-04-26 11:52:13]** create knowledge | Code-Ref Intelligence MVP Implementation (k-6qapdb1a)

@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Logger } from "../core/logger.js";
 import type { KnowledgeArticle } from "./repository.js";
+import { POLICY_CATEGORY } from "./schemas.js";
 import type { WorkArticle } from "../work/repository.js";
 
 /**
@@ -134,7 +135,7 @@ export class WikiBookkeeper {
 
         lines.push(`### ${category}`);
         lines.push("");
-        if (category === "policy") {
+        if (category === POLICY_CATEGORY) {
           renderPolicySection(lines, articles);
         } else {
           for (const article of articles) {

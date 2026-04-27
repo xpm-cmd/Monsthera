@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 57 knowledge articles and 9 work articles.
-> Last updated: 2026-04-26 10:46:41
+> Auto-generated catalog of 61 knowledge articles and 9 work articles.
+> Last updated: 2026-04-26 11:52:13
 
 ## Knowledge
 
@@ -12,6 +12,7 @@
 - [ADR-003: Migration Boundary](notes/adr-003-migration-boundary.md) — ## Source - Path: `docs/adrs/003-migration-boundary.md`  ## Overview  ADR-003 de
 - [ADR-004: Orchestration Model](notes/adr-004-orchestration-model.md) — ## ADR-004: Orchestration Model  Status: Accepted | Date: 2026-04-07  ### What s
 - [ADR-005: Surface Boundaries](notes/adr-005-surface-boundaries.md) — ## Status Accepted — 2026-04-07  ## Decision Monsthera exposes three distinct su
+- [ADR-015 Code Intelligence Strategy](notes/adr-015-code-intelligence-strategy.md) — ## Source - Path: `docs/adrs/015-code-intelligence-strategy.md` - Status: Propos
 - [Monsthera: Hybrid Knowledge Architecture v6](notes/monsthera-hybrid-knowledge-architecture-v6.md) — ## Overview  Monsthera is a TypeScript MCP server for AI agent coordination. Thi
 
 ### context
@@ -68,15 +69,21 @@
 - [Monsthera usage guide for humans and agents](notes/monsthera-usage-guide-for-humans-and-agents.md) — ## Mental model  Monsthera is a shared brain with an integrated backlog. It has
 - [MonstheraV3 Docs](notes/monstherav3-docs.md) — ## ⚠️ Status snapshot  This article is an imported summary of the original v3 de
 
+### implementation
+
+- [Code-Ref Intelligence MVP Implementation](notes/code-ref-intelligence-mvp-implementation.md) — ## Summary  Implemented the first slice of ADR-015: code-ref intelligence withou
+
 ### plan
 
 - [Monsthera v3: Implementation Plan](notes/monsthera-v3-implementation-plan.md) — ## ⚠️ Status snapshot  This plan reflects the alpha.3 / alpha.4 implementation a
 
 ### policy
 
-- [Anti-Example Registry](notes/anti-example-registry.md) — # Anti-example registry  Two kinds of entries live here; each is carried as a JS
-- [Canonical Values Registry](notes/canonical-values.md) — # Canonical values  This article is the canonical registry of values the Monsthe
-- [Policy: feature articles touching auth require security enrichment](notes/policy-example-security-enrichment.md) — # Policy: auth features require security enrichment  ## What this policy enforce
+| Policy | Templates | Transition | Requires Roles | Requires Articles |
+|--------|-----------|------------|----------------|-------------------|
+| [Anti-Example Registry](notes/anti-example-registry.md) | — | — | — | — |
+| [Canonical Values Registry](notes/canonical-values.md) | — | — | — | — |
+| [Policy: feature articles touching auth require security enrichment](notes/policy-example-security-enrichment.md) | feature | enrichment → implementation | security | — |
 
 ### reference
 
@@ -87,7 +94,9 @@
 ### research
 
 - [Benchmark Methodology — Environment Snapshot + build_context_pack Impact](notes/monsthera-snapshot-benchmark-methodology.md) — Companion methodology for the benchmark spike `w-uvp3azdf`. Explains how to run
+- [GitNexus UI and Graph Patterns Worth Reimagining](notes/gitnexus-ui-and-graph-patterns-worth-reimagining.md) — ## Summary  GitNexus is useful as product/UX inspiration for Monsthera, especial
 - [IRIS Meta-Harness — Environment Bootstrapping and Implications for Monsthera](notes/iris-meta-harness-environment-bootstrapping-and-implications-for-monsthera.md) — Research note comparing Stanford IRIS Lab's `meta-harness-tbench2-artifact` ag
+- [Monsthera vs GitNexus Code Exploration Evaluation](notes/monsthera-vs-gitnexus-code-exploration-evaluation.md) — ## Evaluation  Monsthera and GitNexus both expose search, graph, embeddings, and
 
 ## Work
 

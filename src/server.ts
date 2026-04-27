@@ -24,6 +24,10 @@ import { lintToolDefinitions, handleLintTool } from "./tools/lint-tools.js";
 import { refsToolDefinitions, handleRefsTool } from "./tools/refs-tools.js";
 import { eventsToolDefinitions, handleEventsTool } from "./tools/events-tools.js";
 import { convoyToolDefinitions, handleConvoyTool } from "./tools/convoy-tools.js";
+import {
+  codeIntelligenceToolDefinitions,
+  handleCodeIntelligenceTool,
+} from "./tools/code-intelligence-tools.js";
 
 /**
  * Per-group tool registry. Exposed for tests and for the dispatch function
@@ -49,6 +53,7 @@ export interface ToolRegistry {
     readonly refs: ReadonlySet<string>;
     readonly events: ReadonlySet<string>;
     readonly convoy: ReadonlySet<string>;
+    readonly codeIntelligence: ReadonlySet<string>;
   };
 }
 
@@ -74,6 +79,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
   const refsTools = refsToolDefinitions();
   const eventsTools = eventsToolDefinitions();
   const convoyTools = convoyToolDefinitions();
+  const codeIntelligenceTools = codeIntelligenceToolDefinitions();
 
   return {
     definitions: [
@@ -93,6 +99,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       ...refsTools,
       ...eventsTools,
       ...convoyTools,
+      ...codeIntelligenceTools,
     ],
     names: {
       knowledge: new Set(knowledgeTools.map((t) => t.name)),
@@ -111,6 +118,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       refs: new Set(refsTools.map((t) => t.name)),
       events: new Set(eventsTools.map((t) => t.name)),
       convoy: new Set(convoyTools.map((t) => t.name)),
+      codeIntelligence: new Set(codeIntelligenceTools.map((t) => t.name)),
     },
   };
 }
@@ -205,6 +213,9 @@ export async function dispatchToolCall(
   }
   if (names.convoy.has(name)) {
     return handleConvoyTool(name, args, { convoyRepo: container.convoyRepo });
+  }
+  if (names.codeIntelligence.has(name)) {
+    return handleCodeIntelligenceTool(name, args, container.codeIntelligenceService);
   }
 
   return {

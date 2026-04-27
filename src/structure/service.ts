@@ -5,9 +5,9 @@ import type { Result } from "../core/result.js";
 import type { Logger } from "../core/logger.js";
 import { NotFoundError } from "../core/errors.js";
 import type { StorageError } from "../core/errors.js";
-import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
-import type { WorkArticleRepository } from "../work/repository.js";
-import { resolveCodeRef } from "../core/code-refs.js";
+import type { KnowledgeArticle, KnowledgeArticleRepository } from "../knowledge/repository.js";
+import type { WorkArticle, WorkArticleRepository } from "../work/repository.js";
+import { normalizeCodeRefPath, resolveCodeRef } from "../core/code-refs.js";
 import { extractInlineArticleIds, extractWikilinks, stripCodeRegions } from "./wikilink.js";
 
 /** Tags shared by up to this many articles get full pairwise edges. */
@@ -133,6 +133,22 @@ export interface CitationValueFinding {
   readonly claimedValue: string;
   readonly foundValues: readonly string[];
   readonly lineHint: string;
+}
+
+/**
+ * Index of code-ref strings to their owning knowledge/work articles. Built from
+ * `findMany()` on both repos and indexed by the comparable normalized form
+ * (line anchors stripped, leading `./` removed, trailing `/` removed). Node
+ * IDs use the same `k:` / `w:` prefix convention as the structure graph so
+ * callers can correlate the two surfaces.
+ */
+export interface CodeRefOwnerIndex {
+  /** Normalized code-ref → set of owning node IDs (`k:<articleId>` or `w:<articleId>`). */
+  readonly byRef: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Knowledge articles indexed by their `k:` node ID. */
+  readonly knowledgeById: ReadonlyMap<string, KnowledgeArticle>;
+  /** Work articles indexed by their `w:` node ID. */
+  readonly workById: ReadonlyMap<string, WorkArticle>;
 }
 
 export interface StructureServiceDeps {
@@ -446,6 +462,56 @@ export class StructureService {
     });
 
     return ok(graph);
+  }
+
+  /**
+   * Build an index of code-ref → owner articles, suitable for code-intelligence
+   * lookups. Cheaper than `getGraph()` because it skips edge construction,
+   * tag bucketing, and reference resolution. Returns the comparable normalized
+   * form for each ref so callers don't need to normalize on every lookup.
+   *
+   * Owners are returned per-ref as a set of node IDs (`k:<id>` / `w:<id>`).
+   * The full article objects are returned alongside so callers that need
+   * `category`, `phase`, `priority`, etc. don't have to issue another
+   * `findMany()`.
+   */
+  async buildCodeRefOwnerIndex(): Promise<Result<CodeRefOwnerIndex, StorageError>> {
+    const [knowledgeResult, workResult] = await Promise.all([
+      this.knowledgeRepo.findMany(),
+      this.workRepo.findMany(),
+    ]);
+    if (!knowledgeResult.ok) return knowledgeResult;
+    if (!workResult.ok) return workResult;
+
+    const byRef = new Map<string, Set<string>>();
+    const knowledgeById = new Map<string, KnowledgeArticle>();
+    const workById = new Map<string, WorkArticle>();
+
+    const remember = (nodeId: string, refs: readonly string[] | undefined): void => {
+      for (const ref of refs ?? []) {
+        const normalized = normalizeCodeRefPath(ref);
+        if (!normalized) continue;
+        let bucket = byRef.get(normalized);
+        if (!bucket) {
+          bucket = new Set();
+          byRef.set(normalized, bucket);
+        }
+        bucket.add(nodeId);
+      }
+    };
+
+    for (const article of knowledgeResult.value) {
+      const nodeId = `k:${article.id}`;
+      knowledgeById.set(nodeId, article);
+      remember(nodeId, article.codeRefs);
+    }
+    for (const article of workResult.value) {
+      const nodeId = `w:${article.id}`;
+      workById.set(nodeId, article);
+      remember(nodeId, article.codeRefs);
+    }
+
+    return ok({ byRef, knowledgeById, workById });
   }
 
   async getNeighbors(

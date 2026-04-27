@@ -10,3 +10,4 @@ export * from "./status-tools.js";
 export * from "./structure-tools.js";
 export * from "./wiki-tools.js";
 export * from "./snapshot-tools.js";
+export * from "./code-intelligence-tools.js";

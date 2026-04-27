@@ -3,6 +3,13 @@ import type { Result } from "../core/result.js";
 import { ok, err } from "../core/result.js";
 import { ValidationError } from "../core/errors.js";
 
+// ─── Canonical category constants ────────────────────────────────────────────
+//
+// Categories are free-form strings (`category: z.string().min(1).max(100)` below),
+// but well-known values used in business logic should be referenced via these
+// constants to avoid magic strings drifting across the codebase.
+export const POLICY_CATEGORY = "policy" as const;
+
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
 /** Schema for article frontmatter (parsed from YAML/markdown front matter) */
