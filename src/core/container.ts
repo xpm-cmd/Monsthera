@@ -75,9 +75,45 @@ export interface MonstheraContainer extends Disposable {
  * Create the Monsthera runtime container.
  * Wires up all dependencies based on config.
  */
+/**
+ * Container creation can fall back to in-memory storage when Dolt is
+ * configured but unreachable. That fallback is **opt-in** because a user
+ * who configured Dolt almost certainly wants their work to persist —
+ * silently degrading to in-memory means a session's worth of mutations
+ * disappear at the next restart.
+ *
+ * Opt-in mechanisms:
+ *   - `options.allowDegraded: true` (programmatic; tests, embeddings)
+ *   - `MONSTHERA_ALLOW_DEGRADED=1` env var (recommended for emergency
+ *     read-only sessions when Dolt is down)
+ */
+export class DoltUnavailableError extends Error {
+  readonly code = "DOLT_UNAVAILABLE";
+  readonly cause?: string;
+  constructor(cause?: string) {
+    super(
+      `Dolt is configured (storage.doltEnabled=true) but unreachable. ` +
+        `Refusing to start in degraded in-memory mode because mutations would ` +
+        `not persist across restart. ` +
+        `Resolve by starting Dolt (\`monsthera self restart dolt\`), running ` +
+        `\`monsthera self doctor --fix\`, or — for an emergency read-only ` +
+        `session — re-running with \`MONSTHERA_ALLOW_DEGRADED=1\`. ` +
+        (cause ? `Underlying cause: ${cause}` : ""),
+    );
+    this.name = "DoltUnavailableError";
+    this.cause = cause;
+  }
+}
+
+function shouldAllowDegraded(options?: { allowDegraded?: boolean }): boolean {
+  if (options?.allowDegraded === true) return true;
+  const env = process.env["MONSTHERA_ALLOW_DEGRADED"];
+  return env === "1" || env === "true";
+}
+
 export async function createContainer(
   config: MonstheraConfig,
-  options?: { v2Reader?: V2SourceReader },
+  options?: { v2Reader?: V2SourceReader; allowDegraded?: boolean },
 ): Promise<MonstheraContainer> {
   const stack = new DisposableStack();
 
@@ -129,12 +165,15 @@ export async function createContainer(
 
       const schemaResult = await initializeSchema(doltPool);
       if (!schemaResult.ok) {
-        logger.warn("Dolt schema initialization failed, falling back to in-memory storage", {
+        await closePool(doltPool);
+        doltPool = undefined;
+        if (!shouldAllowDegraded(options)) {
+          throw new DoltUnavailableError(schemaResult.error.message);
+        }
+        logger.warn("Dolt schema initialization failed, falling back to in-memory storage (allowDegraded=true)", {
           error: schemaResult.error.message,
           domain: "persistence",
         });
-        await closePool(doltPool);
-        doltPool = undefined;
       } else {
         // Knowledge and Work repos stay FileSystem — Markdown is the source of truth.
         // Only search index, orchestration events, and snapshots (derived/ephemeral
@@ -180,7 +219,15 @@ export async function createContainer(
         });
       }
     } catch (e) {
-      logger.warn("Failed to initialize Dolt, falling back to in-memory storage", {
+      if (e instanceof DoltUnavailableError) {
+        // Already wrapped — let it propagate so the CLI/MCP entry point
+        // can surface it cleanly without a stack trace.
+        throw e;
+      }
+      if (!shouldAllowDegraded(options)) {
+        throw new DoltUnavailableError(e instanceof Error ? e.message : String(e));
+      }
+      logger.warn("Failed to initialize Dolt, falling back to in-memory storage (allowDegraded=true)", {
         error: e instanceof Error ? e.message : String(e),
         domain: "persistence",
       });

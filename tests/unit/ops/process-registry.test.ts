@@ -63,6 +63,48 @@ describe("process registry", () => {
     expect(result.value.reason).toBeTruthy();
   });
 
+  it("trusts an exact basename match between metadata command and ps comm", async () => {
+    const repo = await tempRepo();
+    // process.execPath is the absolute path to the running Node binary;
+    // its basename is "node". This is the legitimate trusted path.
+    await writeProcessMetadata(repo, {
+      kind: "dolt",
+      pid: process.pid,
+      command: [process.execPath],
+      cwd: process.cwd(),
+      startedAt: new Date().toISOString(),
+    });
+
+    const result = await inspectManagedProcess(repo, "dolt");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.running).toBe(true);
+    expect(result.value.trusted).toBe(true);
+  });
+
+  it("rejects a basename mismatch (the previous substring check accepted this)", async () => {
+    const repo = await tempRepo();
+    // The current process is "node" but metadata claims it should be
+    // "dolt". The legacy includes() check returned true if "node" was a
+    // substring of metadata's joined command, or accepted any actual
+    // cmdline that contained the metadata basename. The strict check
+    // requires basename === basename, so this attempt to launder a
+    // different process as dolt-trusted is rejected.
+    await writeProcessMetadata(repo, {
+      kind: "dolt",
+      pid: process.pid,
+      command: ["/usr/local/bin/dolt", "sql-server"],
+      cwd: process.cwd(),
+      startedAt: new Date().toISOString(),
+    });
+
+    const result = await inspectManagedProcess(repo, "dolt");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.running).toBe(true);
+    expect(result.value.trusted).toBe(false);
+  });
+
   it("keeps legacy pid files readable but untrusted", async () => {
     const repo = await tempRepo();
     await fs.mkdir(path.dirname(legacyPidPath(repo, "dolt")), { recursive: true });

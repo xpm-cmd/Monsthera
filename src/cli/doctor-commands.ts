@@ -11,6 +11,24 @@ import { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import { parseMarkdown, serializeMarkdown } from "../knowledge/markdown.js";
 import { formatError } from "./formatters.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
+import { MonstheraError, StorageError } from "../core/errors.js";
+
+/**
+ * Fail-fast for CLI doctor flows: previously these helpers re-threw a
+ * fresh `Error(messageOnly)`, which discarded the structured error code
+ * (STORAGE_ERROR, NOT_FOUND, etc.) and produced an unstructured stack
+ * trace. Now we keep the original `MonstheraError`, render it via
+ * `formatError`, and exit cleanly. The `never` return lets callers
+ * narrow the post-call types without an extra `if`.
+ */
+function panicWithError(error: unknown, fallbackMessage: string): never {
+  if (error instanceof MonstheraError) {
+    console.error(formatError(error));
+  } else {
+    console.error(formatError(new StorageError(fallbackMessage, { cause: String(error) })));
+  }
+  process.exit(1);
+}
 
 type DoctorScope = "knowledge" | "work" | "all";
 type RepairableArticleKind = "knowledge" | "work";
@@ -79,7 +97,7 @@ async function collectLegacyArticles(
 
   if (scope === "knowledge" || scope === "all") {
     const knowledgeResult = await container.knowledgeRepo.findMany();
-    if (!knowledgeResult.ok) throw new Error(knowledgeResult.error.message);
+    if (!knowledgeResult.ok) panicWithError(knowledgeResult.error, "knowledge query failed");
 
     for (const article of knowledgeResult.value) {
       if (!isLegacyKnowledgeArticle(article)) continue;
@@ -97,7 +115,7 @@ async function collectLegacyArticles(
 
   if (scope === "work" || scope === "all") {
     const workResult = await container.workRepo.findMany();
-    if (!workResult.ok) throw new Error(workResult.error.message);
+    if (!workResult.ok) panicWithError(workResult.error, "work query failed");
 
     for (const article of workResult.value) {
       if (!isLegacyWorkArticle(article)) continue;
@@ -134,7 +152,7 @@ async function collectRepairableArticles(
 
   if (scope === "knowledge" || scope === "all") {
     const knowledgeResult = await container.knowledgeRepo.findMany();
-    if (!knowledgeResult.ok) throw new Error(knowledgeResult.error.message);
+    if (!knowledgeResult.ok) panicWithError(knowledgeResult.error, "knowledge query failed");
 
     for (const article of knowledgeResult.value) {
       const staleRefs: string[] = [];
@@ -160,7 +178,7 @@ async function collectRepairableArticles(
 
   if (scope === "work" || scope === "all") {
     const workResult = await container.workRepo.findMany();
-    if (!workResult.ok) throw new Error(workResult.error.message);
+    if (!workResult.ok) panicWithError(workResult.error, "work query failed");
 
     for (const article of workResult.value) {
       const staleRefs: string[] = [];
@@ -191,7 +209,7 @@ async function rewriteCodeRefs(article: RepairableArticle): Promise<void> {
   const raw = await fs.readFile(article.filePath, "utf-8");
   const parsed = parseMarkdown(raw);
   if (!parsed.ok) {
-    throw new Error(`Failed to parse ${article.filePath}: ${parsed.error.message}`);
+    panicWithError(parsed.error, `Failed to parse ${article.filePath}`);
   }
 
   const nextFrontmatter = {
@@ -283,18 +301,18 @@ async function archiveLegacyArticles(
 
   const clearResult = await container.searchRepo.clear();
   if (!clearResult.ok) {
-    throw new Error(`Failed to clear search index before reindex: ${clearResult.error.message}`);
+    panicWithError(clearResult.error, "Failed to clear search index before reindex");
   }
 
   const reindexResult = await container.searchService.fullReindex();
   if (!reindexResult.ok) {
-    throw new Error(`Failed to rebuild search index after archiving: ${reindexResult.error.message}`);
+    panicWithError(reindexResult.error, "Failed to rebuild search index after archiving");
   }
 
   const knowledgeResult = await container.knowledgeRepo.findMany();
-  if (!knowledgeResult.ok) throw new Error(knowledgeResult.error.message);
+  if (!knowledgeResult.ok) panicWithError(knowledgeResult.error, "knowledge query failed");
   const workResult = await container.workRepo.findMany();
-  if (!workResult.ok) throw new Error(workResult.error.message);
+  if (!workResult.ok) panicWithError(workResult.error, "work query failed");
 
   const markdownRoot = path.resolve(container.config.repoPath, container.config.storage.markdownRoot);
   const bookkeeper = new WikiBookkeeper(markdownRoot, container.logger);
@@ -324,7 +342,7 @@ async function seedCurrentDocs(container: MonstheraContainer): Promise<{
       replaceExisting: true,
     });
     if (!result.ok) {
-      throw new Error(`Failed to seed ${seed.sourcePath}: ${result.error.message}`);
+      panicWithError(result.error, `Failed to seed ${seed.sourcePath}`);
     }
     importedCount += result.value.importedCount;
     createdCount += result.value.createdCount;

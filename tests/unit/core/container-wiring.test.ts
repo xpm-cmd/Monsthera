@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createContainer } from "../../../src/core/container.js";
+import { createContainer, DoltUnavailableError } from "../../../src/core/container.js";
 import { defaultConfig } from "../../../src/core/config.js";
 import type { MonstheraConfig } from "../../../src/core/config.js";
 
@@ -85,23 +85,42 @@ describe("container wiring: Dolt fallback", () => {
     await container.dispose();
   });
 
-  it("falls back to in-memory when doltEnabled but Dolt unavailable", async () => {
-    // Point to an unused high port so the fallback remains deterministic.
+  it("refuses to start when doltEnabled but Dolt unavailable (no silent in-memory fallback)", async () => {
+    // Point to an unused high port so the failure is deterministic. The
+    // OLD behavior silently fell back to in-memory; we now treat that as
+    // a configuration error because session mutations would not persist.
     const config = makeConfig({ doltEnabled: true, doltHost: "127.0.0.1", doltPort: 65530 });
-    const container = await createContainer(config);
+    await expect(createContainer(config)).rejects.toBeInstanceOf(DoltUnavailableError);
+  });
 
-    // Repos should still be present (FS + in-memory fallback)
+  it("falls back to in-memory when doltEnabled but Dolt unavailable AND allowDegraded=true", async () => {
+    const config = makeConfig({ doltEnabled: true, doltHost: "127.0.0.1", doltPort: 65530 });
+    const container = await createContainer(config, { allowDegraded: true });
+
     expect(container.knowledgeRepo).toBeDefined();
     expect(container.workRepo).toBeDefined();
     expect(container.searchRepo).toBeDefined();
 
-    // Status should show degraded
     const status = container.status.getStatus();
     const storage = status.subsystems.find((s) => s.name === "storage");
     expect(storage?.healthy).toBe(false);
     expect(storage?.detail).toContain("degraded");
 
     await container.dispose();
+  });
+
+  it("respects MONSTHERA_ALLOW_DEGRADED=1 as opt-in", async () => {
+    const original = process.env["MONSTHERA_ALLOW_DEGRADED"];
+    process.env["MONSTHERA_ALLOW_DEGRADED"] = "1";
+    try {
+      const config = makeConfig({ doltEnabled: true, doltHost: "127.0.0.1", doltPort: 65530 });
+      const container = await createContainer(config);
+      expect(container.searchRepo).toBeDefined();
+      await container.dispose();
+    } finally {
+      if (original === undefined) delete process.env["MONSTHERA_ALLOW_DEGRADED"];
+      else process.env["MONSTHERA_ALLOW_DEGRADED"] = original;
+    }
   });
 
   it("does not register dolt-health when Dolt is disabled", async () => {
