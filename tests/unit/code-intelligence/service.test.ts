@@ -9,12 +9,14 @@ import { agentId, slug } from "../../../src/core/types.js";
 import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
 import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
 import { StructureService } from "../../../src/structure/service.js";
+import { InMemoryOrchestrationEventRepository } from "../../../src/orchestration/in-memory-repository.js";
 
 interface Harness {
   readonly repoPath: string;
   readonly knowledgeRepo: InMemoryKnowledgeArticleRepository;
   readonly workRepo: InMemoryWorkArticleRepository;
   readonly service: CodeIntelligenceService;
+  readonly eventRepo: InMemoryOrchestrationEventRepository;
 }
 
 const cleanupPaths: string[] = [];
@@ -26,7 +28,7 @@ afterEach(async () => {
   }
 });
 
-async function makeHarness(): Promise<Harness> {
+async function makeHarness(options: { withEventRepo?: boolean } = {}): Promise<Harness> {
   const repoPath = path.join(tmpdir(), `monsthera-code-intel-${randomUUID()}`);
   await fs.mkdir(path.join(repoPath, "src", "auth"), { recursive: true });
   await fs.writeFile(
@@ -40,15 +42,17 @@ async function makeHarness(): Promise<Harness> {
   const workRepo = new InMemoryWorkArticleRepository();
   const logger = createLogger({ level: "error", domain: "test" });
   const structureService = new StructureService({ knowledgeRepo, workRepo, repoPath, logger });
+  const eventRepo = new InMemoryOrchestrationEventRepository();
   const service = new CodeIntelligenceService({
     knowledgeRepo,
     workRepo,
     structureService,
     repoPath,
     logger,
+    ...(options.withEventRepo === false ? {} : { eventRepo }),
   });
 
-  return { repoPath, knowledgeRepo, workRepo, service };
+  return { repoPath, knowledgeRepo, workRepo, service, eventRepo };
 }
 
 describe("CodeIntelligenceService", () => {
@@ -303,5 +307,171 @@ describe("CodeIntelligenceService", () => {
 
     expect(result.value.summary.ownerCount).toBe(0);
     expect(result.value.owners).toEqual([]);
+  });
+
+  // ─── code_high_risk_detected event emission (ADR-015 M2 → M5 hook) ────────
+
+  describe("code_high_risk_detected event emission", () => {
+    it("emits one event per active work article when analyzeCodeRefImpact is high-risk", async () => {
+      const { knowledgeRepo, workRepo, service, eventRepo } = await makeHarness();
+      // policy + work-in-implementation → riskFor returns "high" via both paths
+      await knowledgeRepo.create({
+        title: "Policy: auth requires security",
+        slug: slug("policy-auth-requires-security"),
+        category: "policy",
+        content: "Applies to src/auth and related session work.",
+        codeRefs: ["src/auth"],
+        tags: ["policy"],
+      });
+      const workCreate = await workRepo.create({
+        title: "Improve session expiry",
+        template: "feature",
+        phase: "implementation",
+        priority: "high",
+        author: agentId("agent-1"),
+        content: "## Objective\nx\n\n## Acceptance Criteria\n- [ ] x\n\n## Implementation\nsrc/auth/session.ts",
+        codeRefs: ["src/auth/session.ts"],
+      });
+      expect(workCreate.ok).toBe(true);
+      if (!workCreate.ok) return;
+
+      const result = await service.analyzeCodeRefImpact({ ref: "src/auth/session.ts" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.risk).toBe("high");
+
+      const events = await eventRepo.findByType("code_high_risk_detected");
+      expect(events.ok).toBe(true);
+      if (!events.ok) return;
+      expect(events.value).toHaveLength(1);
+      expect(events.value[0]!.workId).toBe(workCreate.value.id);
+      const details = events.value[0]!.details as Record<string, unknown>;
+      expect(details.normalizedPath).toBe("src/auth/session.ts");
+      expect(details.source).toBe("analyze_impact");
+      expect(details.reasons).toEqual(expect.arrayContaining(["active_work_linked", "policy_linked"]));
+    });
+
+    it("does not emit when risk is below high (low/medium)", async () => {
+      const { workRepo, service, eventRepo } = await makeHarness();
+      // Active work in `planning` → risk=medium per riskFor (active_work_linked
+      // without implementation/review escalation, no policy, file exists).
+      await workRepo.create({
+        title: "Plan session expiry",
+        template: "feature",
+        phase: "planning",
+        priority: "low",
+        author: agentId("agent-1"),
+        content: "## Objective\nx\n\n## Acceptance Criteria\n- [ ] x",
+        codeRefs: ["src/auth/session.ts"],
+      });
+
+      const result = await service.analyzeCodeRefImpact({ ref: "src/auth/session.ts" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.risk).toBe("medium");
+
+      const events = await eventRepo.findByType("code_high_risk_detected");
+      expect(events.ok).toBe(true);
+      if (!events.ok) return;
+      expect(events.value).toHaveLength(0);
+    });
+
+    it("does not emit when risk is high but no active work is linked", async () => {
+      const { knowledgeRepo, service, eventRepo } = await makeHarness();
+      // policy linked → risk=high, but no work article → activeWork is empty.
+      // The high-risk signal still surfaces in the response payload for
+      // human/agent consumption; we just have no workId to address an
+      // orchestration event to.
+      await knowledgeRepo.create({
+        title: "Policy: auth requires security",
+        slug: slug("policy-auth-requires-security"),
+        category: "policy",
+        content: "Applies to src/auth/session.ts.",
+        codeRefs: ["src/auth/session.ts"],
+        tags: ["policy"],
+      });
+
+      const result = await service.analyzeCodeRefImpact({ ref: "src/auth/session.ts" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.risk).toBe("high");
+      expect(result.value.ref.activeWork).toHaveLength(0);
+
+      const events = await eventRepo.findByType("code_high_risk_detected");
+      expect(events.ok).toBe(true);
+      if (!events.ok) return;
+      expect(events.value).toHaveLength(0);
+    });
+
+    it("deduplicates by (workId, normalizedPath) within one detectChangedCodeRefs call", async () => {
+      const { workRepo, service, eventRepo } = await makeHarness();
+      // Single work article in `implementation` linked to a directory.
+      // detectChangedCodeRefs gets two paths under that directory; without
+      // dedup we'd emit (W, src/auth) twice (once per matched path). With
+      // dedup keyed by (workId, normalizedPath) we emit one event per path
+      // (because the paths normalize differently) — but only ONE per path,
+      // not multiplied by the number of owners-per-path.
+      const work = await workRepo.create({
+        title: "Auth refactor",
+        template: "feature",
+        phase: "implementation",
+        priority: "high",
+        author: agentId("agent-1"),
+        content: "## Objective\nx\n\n## Acceptance Criteria\n- [ ] x\n\n## Implementation\nsrc/auth",
+        codeRefs: ["src/auth"],
+      });
+      expect(work.ok).toBe(true);
+      if (!work.ok) return;
+
+      const result = await service.detectChangedCodeRefs({
+        // Same logical change repeated twice via different normalisations —
+        // first dedups inside detectChangedCodeRefs (uniquePaths), then the
+        // event-level dedup makes sure even if it slipped through, no
+        // duplicate event lands.
+        changedPaths: ["src/auth/session.ts", "./src/auth/session.ts/", "src/auth/middleware.ts"],
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const events = await eventRepo.findByType("code_high_risk_detected");
+      expect(events.ok).toBe(true);
+      if (!events.ok) return;
+      // Two distinct normalized paths → two events for the same workId.
+      expect(events.value).toHaveLength(2);
+      const paths = events.value.map((e) => (e.details as Record<string, unknown>).normalizedPath).sort();
+      expect(paths).toEqual(["src/auth/middleware.ts", "src/auth/session.ts"]);
+      expect(events.value.every((e) => e.workId === work.value.id)).toBe(true);
+      expect(events.value.every((e) => (e.details as Record<string, unknown>).source === "detect_changes")).toBe(true);
+    });
+
+    it("skips emission entirely when no eventRepo is wired (graceful degradation)", async () => {
+      const { knowledgeRepo, workRepo, service } = await makeHarness({ withEventRepo: false });
+      // High-risk setup, but service was built without eventRepo. The
+      // analyze should still succeed; we just have no observable side-effect
+      // to assert on, so we only assert the response payload.
+      await knowledgeRepo.create({
+        title: "Policy: auth",
+        slug: slug("policy-auth-deg"),
+        category: "policy",
+        content: "Applies to src/auth/session.ts.",
+        codeRefs: ["src/auth/session.ts"],
+        tags: ["policy"],
+      });
+      await workRepo.create({
+        title: "Auth work",
+        template: "feature",
+        phase: "implementation",
+        priority: "high",
+        author: agentId("agent-1"),
+        content: "## Objective\nx\n\n## Acceptance Criteria\n- [ ] x\n\n## Implementation\nsrc/auth/session.ts",
+        codeRefs: ["src/auth/session.ts"],
+      });
+
+      const result = await service.analyzeCodeRefImpact({ ref: "src/auth/session.ts" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.risk).toBe("high");
+      // No throw, no failure — graceful degradation contract holds.
+    });
   });
 });

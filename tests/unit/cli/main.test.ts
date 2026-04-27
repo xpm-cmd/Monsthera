@@ -809,6 +809,101 @@ describe("CLI main()", () => {
     });
   });
 
+  // ─── Code subcommand (ADR-015 M2) ────────────────────────────────────────
+
+  describe("code subcommand", () => {
+    it("code with no subcommand prints group help", async () => {
+      const output = await captureStdout(() => main(["code"]));
+      expect(output).toContain("monsthera code");
+      expect(output).toContain("USAGE");
+      expect(output).toContain("ref");
+      expect(output).toContain("owners");
+      expect(output).toContain("impact");
+      expect(output).toContain("changes");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("code --help prints usage", async () => {
+      const output = await captureStdout(() => main(["code", "--help"]));
+      expect(output).toContain("monsthera code");
+      expect(output).toContain("ADR-015");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("code ref <path> emits a JSON CodeRefDetail to stdout (empty corpus)", async () => {
+      const output = await captureStdout(() =>
+        main(withTempRepo(["code", "ref", "src/example.ts"])),
+      );
+      const parsed = JSON.parse(output) as {
+        input: string;
+        normalizedPath: string;
+        owners: unknown[];
+        summary: { ownerCount: number };
+      };
+      expect(parsed.input).toBe("src/example.ts");
+      expect(parsed.normalizedPath).toBe("src/example.ts");
+      expect(parsed.summary.ownerCount).toBe(0);
+      expect(parsed.owners).toEqual([]);
+    });
+
+    it("code owners <path> emits a JSON CodeRefOwners payload (empty corpus)", async () => {
+      const output = await captureStdout(() =>
+        main(withTempRepo(["code", "owners", "src/example.ts"])),
+      );
+      const parsed = JSON.parse(output) as { summary: { ownerCount: number } };
+      expect(parsed.summary.ownerCount).toBe(0);
+    });
+
+    it("code impact <path> emits a JSON CodeRefImpact with risk=none for empty corpus + missing path", async () => {
+      const output = await captureStdout(() =>
+        main(withTempRepo(["code", "impact", "src/never/touched.ts"])),
+      );
+      const parsed = JSON.parse(output) as {
+        risk: "none" | "low" | "medium" | "high";
+        reasons: string[];
+      };
+      // Missing file → risk=high (code_ref_missing dominates over no_monsthera_context).
+      expect(["high"]).toContain(parsed.risk);
+      expect(parsed.reasons).toContain("code_ref_missing");
+    });
+
+    it("code ref with no positional path exits 1 with a readable error", async () => {
+      await main(withTempRepo(["code", "ref"]));
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Missing required argument"),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("code changes --staged with --base errors out as mutually exclusive", async () => {
+      await main(withTempRepo(["code", "changes", "--staged", "--base", "main"]));
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("mutually exclusive"),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("code changes outside a git repo surfaces the git error and exits 1", async () => {
+      // withTempRepo points at a fresh dir with no .git — `git diff --name-only HEAD`
+      // exits non-zero with "fatal: not a git repository". The CLI translates that
+      // into a stderr message and exits 1; it must NOT silently feed an empty
+      // path list to the service.
+      await main(withTempRepo(["code", "changes"]));
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/git diff (failed|exited)/),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("code unknown-sub exits 1 and points to --help", async () => {
+      await main(["code", "totally-not-a-subcommand"]);
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Unknown code subcommand"),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
   // ─── Reindex subcommand ──────────────────────────────────────────────────
 
   describe("reindex subcommand", () => {

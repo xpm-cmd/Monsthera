@@ -714,6 +714,114 @@ async function handleRequest(
     return;
   }
 
+  // ── GET /api/code/ref?path=<path> ────────────────────────────────────────
+  // ADR-015 Layer 1 — code-ref intelligence over Monsthera's existing
+  // operational corpus. The three GET endpoints stay auth-exempt (same as
+  // every other dashboard read) so the SPA, agents, and shell scripts
+  // converge on a single deserialiser. POST /api/code/changes carries the
+  // diff payload and IS auth-gated by the standard mutating-method rule.
+  if (pathname === "/api/code/ref") {
+    if (req.method !== "GET") {
+      errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+      return;
+    }
+    const ref = searchParams.get("path");
+    if (!ref) {
+      errorResponse(res, 400, "VALIDATION_FAILED", `Query parameter "path" is required`);
+      return;
+    }
+    const result = await container.codeIntelligenceService.getCodeRef({ ref });
+    if (result.ok) {
+      jsonResponse(res, 200, result.value);
+    } else {
+      const { status, code } = mapErrorToHttp(result.error);
+      errorResponse(res, status, code, result.error.message);
+    }
+    return;
+  }
+
+  // ── GET /api/code/owners?path=<path> ─────────────────────────────────────
+  if (pathname === "/api/code/owners") {
+    if (req.method !== "GET") {
+      errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+      return;
+    }
+    const ref = searchParams.get("path");
+    if (!ref) {
+      errorResponse(res, 400, "VALIDATION_FAILED", `Query parameter "path" is required`);
+      return;
+    }
+    const result = await container.codeIntelligenceService.findCodeOwners({ ref });
+    if (result.ok) {
+      jsonResponse(res, 200, result.value);
+    } else {
+      const { status, code } = mapErrorToHttp(result.error);
+      errorResponse(res, status, code, result.error.message);
+    }
+    return;
+  }
+
+  // ── GET /api/code/impact?path=<path> ─────────────────────────────────────
+  if (pathname === "/api/code/impact") {
+    if (req.method !== "GET") {
+      errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+      return;
+    }
+    const ref = searchParams.get("path");
+    if (!ref) {
+      errorResponse(res, 400, "VALIDATION_FAILED", `Query parameter "path" is required`);
+      return;
+    }
+    const result = await container.codeIntelligenceService.analyzeCodeRefImpact({ ref });
+    if (result.ok) {
+      jsonResponse(res, 200, result.value);
+    } else {
+      const { status, code } = mapErrorToHttp(result.error);
+      errorResponse(res, status, code, result.error.message);
+    }
+    return;
+  }
+
+  // ── POST /api/code/changes ───────────────────────────────────────────────
+  // Mirrors the `code_detect_changes` MCP tool: callers compute the diff
+  // (typically `git diff --name-only`) and POST the resulting paths. The
+  // service rejects empty arrays with VALIDATION_FAILED so a misconfigured
+  // client cannot silently no-op.
+  if (pathname === "/api/code/changes") {
+    if (req.method !== "POST") {
+      errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+      return;
+    }
+    const body = await parseJsonBody(req);
+    if (!body.ok) {
+      errorResponse(res, 400, "VALIDATION_FAILED", body.message);
+      return;
+    }
+    const changed = (body.value as { changed_paths?: unknown }).changed_paths;
+    if (!Array.isArray(changed)) {
+      errorResponse(res, 400, "VALIDATION_FAILED", `"changed_paths" must be an array of strings`);
+      return;
+    }
+    if (changed.length === 0) {
+      errorResponse(res, 400, "VALIDATION_FAILED", `"changed_paths" must contain at least one path`);
+      return;
+    }
+    if (changed.some((value) => typeof value !== "string")) {
+      errorResponse(res, 400, "VALIDATION_FAILED", `"changed_paths" must be an array of strings`);
+      return;
+    }
+    const result = await container.codeIntelligenceService.detectChangedCodeRefs({
+      changedPaths: changed as string[],
+    });
+    if (result.ok) {
+      jsonResponse(res, 200, result.value);
+    } else {
+      const { status, code } = mapErrorToHttp(result.error);
+      errorResponse(res, status, code, result.error.message);
+    }
+    return;
+  }
+
   // ── POST /api/ingest/local ───────────────────────────────────────────────
   if (pathname === "/api/ingest/local") {
     if (req.method === "POST") {

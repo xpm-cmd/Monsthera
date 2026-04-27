@@ -346,7 +346,7 @@ search.
 ## Resolved Decisions
 
 The following questions were open in the original draft and were settled by
-the Milestone 1 implementation.
+the Milestone 1 and Milestone 2 implementations.
 
 - **Path matching:** Layer 1 supports exact match and directory-prefix match
   only. Glob-style code refs are out of scope; clients that need glob behavior
@@ -355,9 +355,34 @@ the Milestone 1 implementation.
   `code_detect_changes` accepts a `changed_paths` array supplied by the
   client/harness (typically captured via `git diff --name-only` in a CLI
   wrapper). This keeps the MCP boundary deterministic and side-effect-free.
-- **CLI placement:** the `monsthera code ref/owners/impact/changes` commands
-  are deferred from M1 to M2 to keep M1 scope tight. Agent access via MCP is
-  sufficient for the M1 success criteria.
+- **CLI placement:** shipped in Milestone 2 as `monsthera code ref/owners/impact/changes`.
+  The `code changes` subcommand bridges git into the MCP contract by capturing
+  `git diff --name-only` (or `--cached`, or `<base>...HEAD`) and passing the
+  result to `detectChangedCodeRefs`. Default mode is `HEAD`; `--staged` matches
+  what a pre-commit hook sees; `--base <ref>` covers review-bot scenarios.
+  Output is JSON-only on stdout (consistent with `monsthera convoy` and
+  `monsthera events`).
+- **High-risk signal as orchestration event (M2):** when
+  `analyzeCodeRefImpact` or `detectChangedCodeRefs` produces `risk: high`
+  against an active work article, `CodeIntelligenceService` emits a
+  `code_high_risk_detected` orchestration event. The envelope's `workId` is
+  the active work article; `details` carries the normalized path, source
+  (`analyze_impact` | `detect_changes`), reasons, counts, and a timestamp.
+  The event is **internal-only** — listed in `INTERNAL_ONLY_EVENT_TYPES` so
+  external `events_emit` callers cannot fabricate it. M2 only emits; M5 will
+  let policy articles subscribe and gate phase advancement on it. When risk
+  is high but no active work is linked (e.g. policy-only or missing-file
+  cases), the signal stays in the response payload but no event is emitted —
+  there is no `workId` for the orchestration layer to address.
+- **Dashboard explorer scope (M2):** Milestone 2 ships a standalone `/code`
+  page with two interaction modes (single-path inspect + diff-paths detect)
+  and a `Code` sidebar entry. The earlier ADR vision of "filter the
+  knowledge graph by article/work/code/policy" was deliberately punted to a
+  future Milestone — extending the existing knowledge-graph page would
+  require reshaping its filter model and tab semantics, which exceeds M2
+  scope. The standalone page covers the M2 success criterion ("humans can
+  inspect the relationship between code, work, policies, and knowledge")
+  without forcing a graph redesign.
 
 ## Open Questions
 

@@ -24,6 +24,10 @@ Complete reference for the `monsthera` CLI surface. Use this when you need the e
 | Print the version | `monsthera --version` / `-v` |
 | Search across all articles | `monsthera search <query> [--type knowledge\|work\|all] [--limit N]` |
 | Build a ranked context pack | `monsthera pack <query...>` |
+| Inspect a code path's Monsthera footprint | `monsthera code ref <path>` |
+| Find the owners of a code path | `monsthera code owners <path>` |
+| Score the impact of touching a path | `monsthera code impact <path>` |
+| Detect impact across a git diff | `monsthera code changes [--staged \| --base <ref>]` |
 | Rebuild the search index | `monsthera reindex` |
 | Run health checks | `monsthera doctor` |
 
@@ -144,6 +148,59 @@ A real observational benchmark (work article `w-benchmark-1`, sibling of this no
 | "Which work articles touch `src/context/`?" | `list_work --tag snapshot --json` or MCP `search` with `type=work` |
 
 Grep wins on verbatim-string queries; `pack` wins on narrative/conceptual queries. The knowledge base complements grep — it does not replace it.
+
+## `code` — code-ref intelligence (ADR-015 Layer 1)
+
+```sh
+monsthera code ref     <path>
+monsthera code owners  <path>
+monsthera code impact  <path>
+monsthera code changes [--staged | --base <ref>] [--repo <path>]
+```
+
+Ships in release `3.0.0-alpha.7` (Milestone 2). All four subcommands are
+thin CLI wrappers around `CodeIntelligenceService`, the same service that
+backs the `code_get_ref` / `code_find_owners` / `code_analyze_impact` /
+`code_detect_changes` MCP tools. Output is one JSON record per command on
+stdout — pipe into `jq` for filtering. Logs stay on stderr.
+
+| Subcommand | When to use |
+| :-- | :-- |
+| `ref` | "Tell me everything Monsthera knows about this path" — existence, line anchor, owners, active work, policies, summary counts. |
+| `owners` | "Who is on this path?" — knowledge + work owners, no filesystem stat, no risk scoring. Faster than `impact` when ownership is all you need. |
+| `impact` | "Should I touch this?" — risk (`none|low|medium|high`), reasons (`active_work_linked`, `policy_linked`, `code_ref_missing`, `no_monsthera_context`, etc.), and recommended next actions. The right call before editing or reviewing a path. |
+| `changes` | "What does this diff disturb?" — captures `git diff --name-only` and feeds the result to `detectChangedCodeRefs`. Default mode is `HEAD` (staged + unstaged); `--staged` narrows to the index (matches a pre-commit hook); `--base <ref>` diffs `<ref>...HEAD` for review-bot use. |
+
+### Why `code changes` shells out to git, but the MCP tool does not
+
+ADR-015 *Resolved Decisions* keeps the MCP boundary side-effect-free:
+`code_detect_changes` accepts a pre-computed `changed_paths` array. The
+CLI is the right surface to bridge git into that contract because it
+already runs in the operator's working tree with their credentials and
+their `git` config. An empty diff produces a zero-impact payload
+(`changedPathCount: 0`), not an error — useful for pre-commit hooks that
+run unconditionally.
+
+```sh
+# Before editing — see if you'd disturb anything Monsthera tracks:
+monsthera code impact src/auth/session.ts | jq '.risk, .reasons'
+
+# Before review — what does the staged diff hit?
+monsthera code changes --staged | jq '.summary'
+
+# In CI — score a feature branch against main:
+monsthera code changes --base origin/main | jq '.summary.highestRisk'
+```
+
+### What `risk: high` actually triggers
+
+When `analyzeCodeRefImpact` or `detectChangedCodeRefs` produces
+`risk: "high"` against an active work article, the service emits a
+`code_high_risk_detected` orchestration event (envelope `workId` is the
+active work, `details` carries `normalizedPath`, `source`, `reasons`,
+counts, and `detectedAt`). The event is internal-only — external
+`events_emit` callers cannot fabricate it. M2 only emits; ADR-015 M5
+will let policy articles subscribe and gate phase advancement on it.
 
 ## `reindex` — rebuild the search index
 

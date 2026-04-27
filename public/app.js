@@ -70,6 +70,7 @@ router
   .add("/work", () => loadPage("./pages/work.js"))
   .add("/convoys", () => loadPage("./pages/convoys.js"))
   .add("/convoys/:id", (params) => loadPage("./pages/convoy.js", params))
+  .add("/code", () => loadPage("./pages/code.js"))
   .add("/events", () => loadPage("./pages/events.js"))
   .add("/knowledge", () => loadPage("./pages/knowledge.js"))
   .add("/knowledge/graph", () => loadPage("./pages/knowledge-graph.js"))

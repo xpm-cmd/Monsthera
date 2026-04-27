@@ -306,6 +306,7 @@ export async function createContainer(
     structureService,
     repoPath: config.repoPath,
     logger,
+    eventRepo: orchestrationRepo!,
   });
   const agentsService = new AgentService({
     workRepo: workRepo!,

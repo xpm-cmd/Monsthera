@@ -62,6 +62,18 @@ export function getHealth() { return get("/api/health"); }
 export function getStatus() { return get("/api/status"); }
 export function getSystemRuntime() { return get("/api/system/runtime"); }
 export function getStructureGraph() { return get("/api/structure/graph"); }
+export function getCodeRef(refPath) {
+  return get(`/api/code/ref?path=${encodeURIComponent(refPath)}`);
+}
+export function getCodeOwners(refPath) {
+  return get(`/api/code/owners?path=${encodeURIComponent(refPath)}`);
+}
+export function getCodeImpact(refPath) {
+  return get(`/api/code/impact?path=${encodeURIComponent(refPath)}`);
+}
+export function detectCodeChanges(changedPaths) {
+  return post("/api/code/changes", { changed_paths: changedPaths });
+}
 export function getContextPack(query, mode = "general", limit = 8, type = "all") {
   const params = new URLSearchParams({ q: query, mode, limit: String(limit) });
   if (type && type !== "all") params.set("type", type);

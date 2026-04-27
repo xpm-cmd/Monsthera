@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { icon: "list-todo", label: "Work", path: "/work" },
   { icon: "radio", label: "Events", path: "/events" },
   { icon: "git-fork", label: "Convoys", path: "/convoys" },
+  { icon: "code-2", label: "Code", path: "/code" },
   { icon: "book-open", label: "Knowledge", path: "/knowledge" },
   { icon: "search", label: "Search", path: "/search" },
   { icon: "settings", label: "System", path: "/system" },

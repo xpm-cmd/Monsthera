@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 61 knowledge articles and 9 work articles.
-> Last updated: 2026-04-26 11:52:13
+> Auto-generated catalog of 62 knowledge articles and 9 work articles.
+> Last updated: 2026-04-27 09:46:25
 
 ## Knowledge
 
@@ -12,7 +12,7 @@
 - [ADR-003: Migration Boundary](notes/adr-003-migration-boundary.md) — ## Source - Path: `docs/adrs/003-migration-boundary.md`  ## Overview  ADR-003 de
 - [ADR-004: Orchestration Model](notes/adr-004-orchestration-model.md) — ## ADR-004: Orchestration Model  Status: Accepted | Date: 2026-04-07  ### What s
 - [ADR-005: Surface Boundaries](notes/adr-005-surface-boundaries.md) — ## Status Accepted — 2026-04-07  ## Decision Monsthera exposes three distinct su
-- [ADR-015 Code Intelligence Strategy](notes/adr-015-code-intelligence-strategy.md) — ## Source - Path: `docs/adrs/015-code-intelligence-strategy.md` - Status: Propos
+- [ADR-015 Code Intelligence Strategy](notes/adr-015-code-intelligence-strategy.md) — ## Source - Path: `docs/adrs/015-code-intelligence-strategy.md` - Status: Accept
 - [Monsthera: Hybrid Knowledge Architecture v6](notes/monsthera-hybrid-knowledge-architecture-v6.md) — ## Overview  Monsthera is a TypeScript MCP server for AI agent coordination. Thi
 
 ### context
@@ -71,6 +71,7 @@
 
 ### implementation
 
+- [Code-Ref Intelligence M2 Implementation](notes/code-ref-intelligence-m2-implementation.md) — ## Summary  Shipped Milestone 2 of ADR-015 — code-ref intelligence at the CLI an
 - [Code-Ref Intelligence MVP Implementation](notes/code-ref-intelligence-mvp-implementation.md) — ## Summary  Implemented the first slice of ADR-015: code-ref intelligence withou
 
 ### plan

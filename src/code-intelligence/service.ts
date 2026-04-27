@@ -14,6 +14,9 @@ import type { KnowledgeArticleRepository, KnowledgeArticle } from "../knowledge/
 import type { WorkArticleRepository, WorkArticle } from "../work/repository.js";
 import { POLICY_CATEGORY } from "../knowledge/schemas.js";
 import type { CodeRefOwnerIndex, StructureService } from "../structure/service.js";
+import type { OrchestrationEventRepository } from "../orchestration/repository.js";
+import type { CodeHighRiskDetectedEventDetails } from "../orchestration/types.js";
+import { workId, type Timestamp } from "../core/types.js";
 
 /**
  * Phases that count as "active work" for code-intelligence purposes. Whitelist
@@ -102,6 +105,15 @@ export interface CodeIntelligenceServiceDeps {
   readonly structureService: StructureService;
   readonly repoPath: string;
   readonly logger: Logger;
+  /**
+   * Optional. When provided, the service emits `code_high_risk_detected`
+   * orchestration events for each active work article whose code refs
+   * match a high-risk impact analysis. Wired by the container in
+   * production; tests omit it when they do not assert event emission.
+   * Graceful degradation: when absent, analysis still returns the same
+   * `Result` payload — only the side-effect emission is skipped.
+   */
+  readonly eventRepo?: OrchestrationEventRepository;
 }
 
 export class CodeIntelligenceService {
@@ -110,6 +122,7 @@ export class CodeIntelligenceService {
   private readonly structureService: StructureService;
   private readonly repoPath: string;
   private readonly logger: Logger;
+  private readonly eventRepo?: OrchestrationEventRepository;
 
   constructor(deps: CodeIntelligenceServiceDeps) {
     this.knowledgeRepo = deps.knowledgeRepo;
@@ -117,6 +130,7 @@ export class CodeIntelligenceService {
     this.structureService = deps.structureService;
     this.repoPath = deps.repoPath;
     this.logger = deps.logger.child({ domain: "code-intelligence" });
+    if (deps.eventRepo) this.eventRepo = deps.eventRepo;
   }
 
   async getCodeRef(input: { ref: string }): Promise<Result<CodeRefDetail, StorageError>> {
@@ -222,12 +236,16 @@ export class CodeIntelligenceService {
       recommendedNextActions.push("Consider adding code refs to relevant knowledge or work articles if this path matters.");
     }
 
-    return ok({
+    const impact: CodeRefImpact = {
       ref,
       risk: riskFor(ref),
       reasons,
       recommendedNextActions,
-    });
+    };
+
+    await this.maybeEmitHighRisk(impact, "analyze_impact", new Set());
+
+    return ok(impact);
   }
 
   async detectChangedCodeRefs(input: {
@@ -238,11 +256,16 @@ export class CodeIntelligenceService {
 
     const uniquePaths = [...new Set(input.changedPaths.map(normalizeCodeRefPath).filter(Boolean))];
     const impacts: CodeRefImpact[] = [];
+    // Dedup `(workId, normalizedPath)` across the whole batch so a work
+    // article whose codeRefs cover both `src/foo/` and `src/foo/bar.ts`
+    // doesn't fire two events for the same logical change.
+    const emitted = new Set<string>();
 
     for (const changedPath of uniquePaths) {
       const impact = await this.analyzeWithIndex(changedPath, indexResult.value);
       if (impact.ref.summary.ownerCount > 0 || !impact.ref.exists || impact.ref.outOfRepo) {
         impacts.push(impact);
+        await this.maybeEmitHighRisk(impact, "detect_changes", emitted);
       }
     }
 
@@ -360,6 +383,59 @@ export class CodeIntelligenceService {
     }
 
     return { ref, risk: riskFor(ref), reasons, recommendedNextActions };
+  }
+
+  /**
+   * Emit `code_high_risk_detected` for each active work article tied to a
+   * high-risk impact, deduplicated within the batch by `(workId, path)`.
+   * Skips silently when:
+   *  - no `eventRepo` is wired (graceful degradation; tests omit it)
+   *  - risk is not "high" (event noise floor)
+   *  - the impact has no active work (nothing for the orchestration layer
+   *    to act on — the high-risk signal is still surfaced in the response
+   *    payload for human/agent consumption)
+   *
+   * Emission failures are logged at debug and dropped so a transient event
+   * store error does not corrupt the analyze result. Code-intelligence
+   * reads should never fail because of an event-store hiccup.
+   */
+  private async maybeEmitHighRisk(
+    impact: CodeRefImpact,
+    source: CodeHighRiskDetectedEventDetails["source"],
+    alreadyEmitted: Set<string>,
+  ): Promise<void> {
+    if (!this.eventRepo) return;
+    if (impact.risk !== "high") return;
+    if (impact.ref.activeWork.length === 0) return;
+
+    const detectedAt = new Date().toISOString() as Timestamp;
+    const details: CodeHighRiskDetectedEventDetails = {
+      normalizedPath: impact.ref.normalizedPath,
+      source,
+      reasons: impact.reasons,
+      affectedActiveWorkCount: impact.ref.summary.activeWorkCount,
+      affectedPolicyCount: impact.ref.summary.policyCount,
+      detectedAt,
+    };
+
+    for (const owner of impact.ref.activeWork) {
+      const dedupKey = `${owner.id}:${impact.ref.normalizedPath}`;
+      if (alreadyEmitted.has(dedupKey)) continue;
+      alreadyEmitted.add(dedupKey);
+
+      const result = await this.eventRepo.logEvent({
+        workId: workId(owner.id),
+        eventType: "code_high_risk_detected",
+        details: details as unknown as Record<string, unknown>,
+      });
+      if (!result.ok) {
+        this.logger.debug("Failed to emit code_high_risk_detected", {
+          workId: owner.id,
+          path: impact.ref.normalizedPath,
+          error: result.error.message,
+        });
+      }
+    }
   }
 
   private async statPath(filePath: string): Promise<Result<StatResult, StorageError>> {

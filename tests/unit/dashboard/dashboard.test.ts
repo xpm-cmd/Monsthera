@@ -286,6 +286,142 @@ describe("Dashboard JSON API", () => {
     });
   });
 
+  // ─── /api/code (ADR-015 M2) ──────────────────────────────────────────────
+
+  describe("GET /api/code/ref", () => {
+    it("returns 400 VALIDATION_FAILED when ?path is missing", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/code/ref"));
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; message: string };
+      expect(body.error).toBe("VALIDATION_FAILED");
+      expect(body.message).toMatch(/path/i);
+    });
+
+    it("returns 200 with a CodeRefDetail payload for a queried path", async () => {
+      if (dashboardError) return;
+      // Seed an owner so the response is non-trivial. Path can be anything —
+      // exists/!exists is handled by the service, we just want owner enrichment.
+      const knowledge = await container.knowledgeService.createArticle({
+        title: "Code Tab Seed (ref)",
+        category: "architecture",
+        content: "Linked to a code path for the dashboard /api/code/ref test.",
+        codeRefs: ["src/dashboard-code-test/ref.ts"],
+      });
+      expect(knowledge.ok).toBe(true);
+
+      const res = await fetch(url("/api/code/ref?path=src%2Fdashboard-code-test%2Fref.ts"));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        normalizedPath: string;
+        summary: { ownerCount: number };
+      };
+      expect(body.normalizedPath).toBe("src/dashboard-code-test/ref.ts");
+      expect(body.summary.ownerCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it("rejects non-GET methods with 405 METHOD_NOT_ALLOWED", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/code/ref?path=src%2Ffoo.ts"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(405);
+    });
+  });
+
+  describe("GET /api/code/owners", () => {
+    it("returns 200 with owner counts for a queried path", async () => {
+      if (dashboardError) return;
+      const knowledge = await container.knowledgeService.createArticle({
+        title: "Code Tab Seed (owners)",
+        category: "architecture",
+        content: "Linked to a code path for the /api/code/owners test.",
+        codeRefs: ["src/dashboard-code-test/owners.ts"],
+      });
+      expect(knowledge.ok).toBe(true);
+
+      const res = await fetch(url("/api/code/owners?path=src%2Fdashboard-code-test%2Fowners.ts"));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { summary: { ownerCount: number } };
+      expect(body.summary.ownerCount).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe("GET /api/code/impact", () => {
+    it("returns 200 with risk + reasons for a queried path", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/code/impact?path=src%2Fdashboard-code-test%2Fimpact-only.ts"));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        risk: "none" | "low" | "medium" | "high";
+        reasons: string[];
+      };
+      // Path doesn't exist on disk + no owners → high risk via code_ref_missing.
+      expect(body.risk).toBe("high");
+      expect(body.reasons).toContain("code_ref_missing");
+    });
+  });
+
+  describe("POST /api/code/changes", () => {
+    it("requires authentication for the POST mutation surface", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/code/changes"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ changed_paths: ["src/foo.ts"] }),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 VALIDATION_FAILED for an empty changed_paths array", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/code/changes"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ changed_paths: [] }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("VALIDATION_FAILED");
+    });
+
+    it("returns 200 with a ChangedCodeRefImpact for a valid diff", async () => {
+      if (dashboardError) return;
+      // Seed a linked path so the response carries owner-aware impacts
+      // rather than just the no-owner pass-through case.
+      const knowledge = await container.knowledgeService.createArticle({
+        title: "Code Tab Seed (changes)",
+        category: "architecture",
+        content: "Linked path for /api/code/changes.",
+        codeRefs: ["src/dashboard-code-test/changes.ts"],
+      });
+      expect(knowledge.ok).toBe(true);
+
+      const res = await fetch(url("/api/code/changes"), {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          changed_paths: ["src/dashboard-code-test/changes.ts", "src/never/touched.ts"],
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        changedPathCount: number;
+        impacts: Array<{ ref: { normalizedPath: string } }>;
+        summary: {
+          impactedOwnerCount: number;
+          highestRisk: "none" | "low" | "medium" | "high";
+        };
+      };
+      expect(body.changedPathCount).toBe(2);
+      expect(body.summary.impactedOwnerCount).toBeGreaterThanOrEqual(1);
+      const paths = body.impacts.map((impact) => impact.ref.normalizedPath);
+      expect(paths).toContain("src/dashboard-code-test/changes.ts");
+    });
+  });
+
   describe("GET /api/agents", () => {
     it("returns derived agent profiles and summary counts", async () => {
       if (dashboardError) return;

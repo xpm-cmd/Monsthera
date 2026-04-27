@@ -19,7 +19,8 @@ export type OrchestrationEventType =
   | "convoy_created"
   | "convoy_completed"
   | "convoy_cancelled"
-  | "convoy_lead_cancelled_warning";
+  | "convoy_lead_cancelled_warning"
+  | "code_high_risk_detected";
 
 /**
  * Subset of event types that describe the agent-dispatch lifecycle. The
@@ -57,6 +58,7 @@ export const VALID_ORCHESTRATION_EVENT_TYPES: ReadonlySet<OrchestrationEventType
   "convoy_completed",
   "convoy_cancelled",
   "convoy_lead_cancelled_warning",
+  "code_high_risk_detected",
 ]);
 
 /**
@@ -72,6 +74,7 @@ export const INTERNAL_ONLY_EVENT_TYPES = [
   "convoy_completed",
   "convoy_cancelled",
   "convoy_lead_cancelled_warning",
+  "code_high_risk_detected",
 ] as const satisfies readonly OrchestrationEventType[];
 
 export type InternalOnlyEventType = (typeof INTERNAL_ONLY_EVENT_TYPES)[number];

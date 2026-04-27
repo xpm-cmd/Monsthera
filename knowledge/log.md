@@ -120,3 +120,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-04-26 11:39:14]** create knowledge | Monsthera vs GitNexus Code Exploration Evaluation (k-jk03wk0q)
 - **[2026-04-26 11:47:32]** create knowledge | ADR-015 Code Intelligence Strategy (k-quo5tdc1)
 - **[2026-04-26 11:52:13]** create knowledge | Code-Ref Intelligence MVP Implementation (k-6qapdb1a)
+- **[2026-04-27 09:46:25]** reindex knowledge | Reindex: 62 knowledge, 9 work

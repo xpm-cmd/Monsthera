@@ -266,3 +266,30 @@ export interface ConvoyLeadCancelledWarningEventDetails {
   /** Reason captured at cancel time (required by `WorkService.advancePhase`). */
   readonly reason: string;
 }
+
+// ─── Code intelligence events (ADR-015 Milestone 2) ─────────────────────────
+
+/**
+ * Internal-only event emitted by `CodeIntelligenceService` when an impact
+ * analysis surfaces `risk: "high"` against an active work article. Carries
+ * the offending path and the reasons computed by the risk model so policies
+ * (M5) can subscribe without re-running the analysis. The envelope's
+ * `workId` is the active work article whose code refs match the path —
+ * one event per (workId, normalizedPath) tuple, deduplicated within a
+ * single service call. No event is emitted when no active work is linked,
+ * because there is nothing for the orchestration layer to act on.
+ *
+ * `source` distinguishes whether the analysis was triggered by an explicit
+ * `analyzeCodeRefImpact` call or as part of a `detectChangedCodeRefs`
+ * batch — useful for filtering noisy CI-driven detections from interactive
+ * agent calls. Listed in `INTERNAL_ONLY_EVENT_TYPES` so external
+ * `events_emit` callers cannot fabricate it.
+ */
+export interface CodeHighRiskDetectedEventDetails {
+  readonly normalizedPath: string;
+  readonly source: "analyze_impact" | "detect_changes";
+  readonly reasons: readonly string[];
+  readonly affectedActiveWorkCount: number;
+  readonly affectedPolicyCount: number;
+  readonly detectedAt: Timestamp;
+}

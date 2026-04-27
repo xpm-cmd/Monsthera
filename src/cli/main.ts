@@ -22,6 +22,7 @@ import { handleLint } from "./lint-commands.js";
 import { handleInstallHook, handleUninstallHook } from "./hook-commands.js";
 import { handleEvents } from "./events-commands.js";
 import { handleConvoy } from "./convoy-commands.js";
+import { handleCode } from "./code-commands.js";
 import { handleWorkspace } from "./workspace-commands.js";
 import { handleSelf } from "./self-commands.js";
 
@@ -86,6 +87,7 @@ function handleHelp(): void {
       "  install-hook             Install a pre-commit hook that runs `monsthera lint` on staged knowledge/work .md files",
       "  uninstall-hook           Remove a previously-installed monsthera pre-commit hook",
       "  events <subcommand>      Tail or emit orchestration events (agent dispatch contract, ADR-008)",
+      "  code <subcommand>        Code-ref intelligence: inspect path, find owners, score impact, detect changes (ADR-015)",
       "",
       "KNOWLEDGE SUBCOMMANDS",
       "  knowledge create  --title <t> --category <c> --content <body> [--tags t1,t2] [--code-refs r1,r2]",
@@ -329,6 +331,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "convoy":
         await handleConvoy(args.slice(1));
+        break;
+      case "code":
+        await handleCode(args.slice(1));
         break;
       case "workspace":
         await handleWorkspace(args.slice(1));
