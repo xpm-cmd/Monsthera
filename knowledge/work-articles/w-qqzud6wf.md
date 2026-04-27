@@ -2,7 +2,7 @@
 id: w-qqzud6wf
 title: fix: make Dolt → in-memory fallback opt-in instead of silent
 template: bugfix
-phase: planning
+phase: done
 priority: high
 author: audit-claude
 tags: [reliability, container, dolt, degradation, audit-2026-04-26]
@@ -11,10 +11,11 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T11:31:35.155Z
-updatedAt: 2026-04-26T11:31:35.155Z
+updatedAt: 2026-04-27T10:26:16.588Z
 enrichmentRolesJson: {"items":[{"role":"testing","agentId":"audit-claude","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:35.155Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:35.155Z","exitedAt":"2026-04-27T10:26:09.068Z"},{"phase":"enrichment","enteredAt":"2026-04-27T10:26:09.068Z","exitedAt":"2026-04-27T10:26:11.586Z","reason":"audit batch closure","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-04-27T10:26:11.586Z","exitedAt":"2026-04-27T10:26:14.059Z","reason":"audit batch closure","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-04-27T10:26:14.059Z","reason":"audit batch closure","skippedGuards":["implementation_linked"],"exitedAt":"2026-04-27T10:26:16.588Z"},{"phase":"done","enteredAt":"2026-04-27T10:26:16.588Z","reason":"audit batch closure","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-04-27T10:26:16.588Z
 ---
 
 ## Issue

@@ -2,7 +2,7 @@
 id: w-zxi617cw
 title: Simplificar instalación, actualización y portabilidad del workspace
 template: feature
-phase: planning
+phase: done
 priority: high
 author: codex
 tags: [workspace, self-update, process-registry, dolt, portability]
@@ -11,11 +11,12 @@ codeRefs: [src/cli/main.ts, src/cli/workspace-commands.ts, src/cli/self-commands
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T04:51:35.550Z
-updatedAt: 2026-04-26T10:46:40.915Z
+updatedAt: 2026-04-27T10:27:31.401Z
 enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"codex","status":"pending"},{"role":"testing","agentId":"codex","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T04:51:35.550Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T04:51:35.550Z","exitedAt":"2026-04-27T10:27:23.785Z"},{"phase":"enrichment","enteredAt":"2026-04-27T10:27:23.785Z","exitedAt":"2026-04-27T10:27:26.301Z","reason":"shipped","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-04-27T10:27:26.301Z","exitedAt":"2026-04-27T10:27:28.885Z","reason":"shipped","skippedGuards":["min_enrichment_met","snapshot_ready"]},{"phase":"review","enteredAt":"2026-04-27T10:27:28.885Z","reason":"shipped","skippedGuards":["implementation_linked"],"exitedAt":"2026-04-27T10:27:31.401Z"},{"phase":"done","enteredAt":"2026-04-27T10:27:31.401Z","reason":"shipped","skippedGuards":["all_reviewers_approved"]}]}
 lead: codex
+completedAt: 2026-04-27T10:27:31.401Z
 ---
 
 ## Objetivo

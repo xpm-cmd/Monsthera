@@ -2,7 +2,7 @@
 id: w-kppfuyle
 title: fix: workspace restore corrupts Dolt when daemon is running
 template: bugfix
-phase: planning
+phase: done
 priority: critical
 author: audit-claude
 tags: [integrity, workspace, dolt, audit-2026-04-26]
@@ -11,10 +11,11 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T11:31:13.526Z
-updatedAt: 2026-04-26T11:31:13.526Z
+updatedAt: 2026-04-27T10:25:46.454Z
 enrichmentRolesJson: {"items":[{"role":"testing","agentId":"audit-claude","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:13.526Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:13.526Z","exitedAt":"2026-04-27T10:25:38.884Z"},{"phase":"enrichment","enteredAt":"2026-04-27T10:25:38.884Z","exitedAt":"2026-04-27T10:25:41.398Z","reason":"audit batch closure","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-04-27T10:25:41.398Z","exitedAt":"2026-04-27T10:25:43.925Z","reason":"audit batch closure","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-04-27T10:25:43.925Z","reason":"audit batch closure","skippedGuards":["implementation_linked"],"exitedAt":"2026-04-27T10:25:46.454Z"},{"phase":"done","enteredAt":"2026-04-27T10:25:46.454Z","reason":"audit batch closure","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-04-27T10:25:46.454Z
 ---
 
 ## Issue

@@ -2,7 +2,7 @@
 id: w-8qeo1wwj
 title: fix: process command validation by substring is spoofable
 template: bugfix
-phase: planning
+phase: done
 priority: high
 author: audit-claude
 tags: [security, process-registry, trust, audit-2026-04-26]
@@ -11,10 +11,11 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T11:31:58.372Z
-updatedAt: 2026-04-26T11:31:58.372Z
+updatedAt: 2026-04-27T10:26:47.066Z
 enrichmentRolesJson: {"items":[{"role":"testing","agentId":"audit-claude","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:58.372Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:58.372Z","exitedAt":"2026-04-27T10:26:39.398Z"},{"phase":"enrichment","enteredAt":"2026-04-27T10:26:39.398Z","exitedAt":"2026-04-27T10:26:42.032Z","reason":"audit batch closure","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-04-27T10:26:42.032Z","exitedAt":"2026-04-27T10:26:44.555Z","reason":"audit batch closure","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-04-27T10:26:44.555Z","reason":"audit batch closure","skippedGuards":["implementation_linked"],"exitedAt":"2026-04-27T10:26:47.066Z"},{"phase":"done","enteredAt":"2026-04-27T10:26:47.066Z","reason":"audit batch closure","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-04-27T10:26:47.066Z
 ---
 
 ## Issue
