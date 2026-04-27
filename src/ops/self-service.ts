@@ -211,24 +211,17 @@ export async function executeSelfUpdate(
   const installPath = plan.value.installPath;
   const repoPath = plan.value.repoPath;
 
-  const backup = await backupWorkspace(repoPath);
-  if (!backup.ok) return backup;
-
-  const completed: SelfUpdateStepResult[] = [
-    { name: "workspace backup", status: "completed", output: backup.value.path },
-  ];
-
+  // Stop Dolt FIRST (before backup) so the backup captures a quiesced
+  // .monsthera/dolt/ directory. Backing up while the daemon holds
+  // memory-mapped pages dirty produces an inconsistent snapshot that the
+  // rollback path then cannot trust.
+  const completed: SelfUpdateStepResult[] = [];
   const doltWasRunning = initial.value.processes.dolt.running;
   if (doltWasRunning) {
     const stopped = await stopManagedProcess(installPath, "dolt");
     if (!stopped.ok) {
-      return failExecution(stopped.error, "stop managed Dolt", completed, {
-        installPath,
-        repoPath,
-        runner,
-        backup: backup.value,
-        doltWasRunning,
-      });
+      // No backup yet, nothing to roll back. Just report the stop failure.
+      return err(stopped.error);
     }
     completed.push({
       name: "stop managed Dolt",
@@ -238,6 +231,25 @@ export async function executeSelfUpdate(
   } else {
     completed.push({ name: "stop managed Dolt", status: "skipped", output: "not running" });
   }
+
+  const backup = await backupWorkspace(repoPath);
+  if (!backup.ok) {
+    // Backup failed AFTER stopping Dolt — try to restart Dolt so the user
+    // is left in a clean state, then surface the backup error.
+    if (doltWasRunning) {
+      const restarted = await startDoltDaemon(installPath, runner);
+      if (!restarted.ok) {
+        return err(
+          new StorageError(
+            `workspace backup failed and Dolt restart failed: ${backup.error.message}; restart error: ${restarted.error.message}`,
+            { backupError: backup.error.message, restartError: restarted.error.message },
+          ),
+        );
+      }
+    }
+    return backup;
+  }
+  completed.push({ name: "workspace backup", status: "completed", output: backup.value.path });
 
   const context: UpdateContext = {
     installPath,

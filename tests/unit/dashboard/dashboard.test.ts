@@ -1225,18 +1225,51 @@ describe("Dashboard JSON API", () => {
   // ── CORS ──────────────────────────────────────────────────────────────────
 
   describe("CORS", () => {
-    it("response includes Access-Control-Allow-Origin header", async () => {
+    it("does not echo a wildcard origin (origin-less requests get no CORS header)", async () => {
       if (dashboardError) return;
       const res = await fetch(url("/api/status"));
-      expect(res.headers.get("access-control-allow-origin")).toBe("*");
+      // Origin-less request (like a curl or test runner) is treated as
+      // same-origin: it doesn't need a CORS header at all.
+      expect(res.headers.get("access-control-allow-origin")).toBeNull();
     });
 
-    it("OPTIONS request returns CORS preflight headers", async () => {
+    it("echoes localhost origin when request includes one", async () => {
       if (dashboardError) return;
-      const res = await fetch(url("/api/status"), { method: "OPTIONS" });
+      const res = await fetch(url("/api/status"), {
+        headers: { Origin: "http://localhost:3000" },
+      });
+      expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
+      expect(res.headers.get("vary")).toContain("Origin");
+    });
+
+    it("rejects cross-origin requests from non-localhost", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/status"), {
+        headers: { Origin: "https://evil.example" },
+      });
+      expect(res.status).toBe(403);
+      expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
+    it("OPTIONS preflight from localhost returns CORS preflight headers", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/status"), {
+        method: "OPTIONS",
+        headers: { Origin: "http://localhost:3000" },
+      });
       expect(res.status).toBe(204);
-      expect(res.headers.get("access-control-allow-origin")).toBe("*");
+      expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
       expect(res.headers.get("access-control-allow-methods")).toContain("GET");
+    });
+
+    it("OPTIONS preflight from a hostile origin is rejected", async () => {
+      if (dashboardError) return;
+      const res = await fetch(url("/api/status"), {
+        method: "OPTIONS",
+        headers: { Origin: "https://evil.example" },
+      });
+      expect(res.status).toBe(403);
+      expect(res.headers.get("access-control-allow-origin")).toBeNull();
     });
   });
 });

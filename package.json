@@ -3,8 +3,16 @@
   "version": "3.0.0-alpha.7",
   "description": "Knowledge-native development platform for AI coding agents",
   "type": "module",
-  "bin": { "monsthera": "dist/bin.js" },
-  "files": ["dist", "public", "LICENSE", "README.md", "CHANGELOG.md"],
+  "bin": {
+    "monsthera": "dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "public",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "dev": "tsx watch src/bin.ts serve",
     "dashboard": "tsx watch src/bin.ts dashboard",
@@ -25,14 +33,18 @@
     "prepare": "husky"
   },
   "packageManager": "pnpm@10.6.5",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "mysql2": "^3.11.3",
+    "proper-lockfile": "^4.1.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "@types/proper-lockfile": "^4.1.4",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
     "@vitest/coverage-v8": "^4.1.0",
@@ -46,6 +58,9 @@
     "vitest": "^4.1.0"
   },
   "lint-staged": {
-    "*.ts": ["eslint --fix", "prettier --write"]
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   }
 }

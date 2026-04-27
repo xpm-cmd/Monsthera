@@ -80,8 +80,8 @@ describe("executeSelfUpdate with mocked runner", () => {
 
     const names = result.value.steps.map((s) => s.name);
     expect(names).toEqual([
-      "workspace backup",
       "stop managed Dolt",
+      "workspace backup",
       "git pull --ff-only",
       "pnpm install --frozen-lockfile",
       "pnpm build",

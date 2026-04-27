@@ -90,21 +90,39 @@ export function readContentInput(args: string[], options?: { seed?: string }): s
   return openEditorForContent(options?.seed ?? "");
 }
 
+// Shell metacharacters that would change spawn semantics if a downstream
+// shell-aware target (e.g. `bash -c`) is invoked. We refuse to honor an
+// $EDITOR containing any of these, which blocks `EDITOR="bash -c 'evil'"`
+// while still permitting standard editor invocations like `code --wait`,
+// `subl --wait`, `vim -p`, or `/usr/local/bin/emacs --no-window-system`.
+const SHELL_METACHARS = /[;&|`$<>(){}\\"']/;
+
+export function parseEditorCommand(editor: string): { command: string; args: string[] } {
+  if (SHELL_METACHARS.test(editor)) {
+    throw new Error(
+      `--edit: $EDITOR contains shell metacharacters; refusing to spawn for safety. ` +
+        `Set $EDITOR to a plain command line (e.g. "code --wait", "vim", "subl --wait"). ` +
+        `Got: ${editor}`,
+    );
+  }
+  const parts = editor.split(/\s+/).filter(Boolean);
+  const command = parts[0];
+  if (!command) {
+    throw new Error("--edit: $EDITOR is empty after parsing");
+  }
+  return { command, args: parts.slice(1) };
+}
+
 function openEditorForContent(seed: string): string {
   const editor = process.env.EDITOR ?? process.env.VISUAL;
   if (!editor) {
     throw new Error("--edit requires $EDITOR or $VISUAL to be set");
   }
+  const { command, args: editorArgs } = parseEditorCommand(editor);
   const tmp = path.join(os.tmpdir(), `monsthera-edit-${randomUUID()}.md`);
   fs.writeFileSync(tmp, seed, "utf-8");
   try {
-    const parts = editor.split(/\s+/).filter(Boolean);
-    const cmd = parts[0];
-    if (!cmd) {
-      throw new Error("--edit: $EDITOR is empty after parsing");
-    }
-    const rest = parts.slice(1);
-    const res = spawnSync(cmd, [...rest, tmp], { stdio: "inherit" });
+    const res = spawnSync(command, [...editorArgs, tmp], { stdio: "inherit", shell: false });
     if (res.status !== 0) {
       throw new Error(`--edit: editor "${editor}" exited with status ${res.status ?? "unknown"}`);
     }
