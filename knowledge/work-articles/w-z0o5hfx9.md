@@ -2,7 +2,7 @@
 id: w-z0o5hfx9
 title: feat: workspace schema migration runner for future schema bumps
 template: feature
-phase: planning
+phase: done
 priority: high
 author: audit-claude
 tags: [integrity, workspace, migration, schema, audit-2026-04-26]
@@ -11,10 +11,11 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T11:32:04.963Z
-updatedAt: 2026-04-26T11:32:04.963Z
+updatedAt: 2026-04-27T10:26:57.104Z
 enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"audit-claude","status":"pending"},{"role":"testing","agentId":"audit-claude","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:32:04.963Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:32:04.963Z","exitedAt":"2026-04-27T10:26:49.592Z"},{"phase":"enrichment","enteredAt":"2026-04-27T10:26:49.592Z","exitedAt":"2026-04-27T10:26:52.103Z","reason":"audit batch closure","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-04-27T10:26:52.103Z","exitedAt":"2026-04-27T10:26:54.613Z","reason":"audit batch closure","skippedGuards":["min_enrichment_met","snapshot_ready"]},{"phase":"review","enteredAt":"2026-04-27T10:26:54.613Z","reason":"audit batch closure","skippedGuards":["implementation_linked"],"exitedAt":"2026-04-27T10:26:57.104Z"},{"phase":"done","enteredAt":"2026-04-27T10:26:57.104Z","reason":"audit batch closure","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-04-27T10:26:57.104Z
 ---
 
 ## Issue

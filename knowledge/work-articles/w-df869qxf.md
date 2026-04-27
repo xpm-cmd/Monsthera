@@ -2,7 +2,7 @@
 id: w-df869qxf
 title: fix: workspace backup captures inconsistent Dolt snapshot
 template: bugfix
-phase: planning
+phase: done
 priority: critical
 author: audit-claude
 tags: [integrity, workspace, dolt, backup, audit-2026-04-26]
@@ -11,10 +11,11 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T11:31:20.434Z
-updatedAt: 2026-04-26T11:31:20.434Z
+updatedAt: 2026-04-27T10:25:56.538Z
 enrichmentRolesJson: {"items":[{"role":"testing","agentId":"audit-claude","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:20.434Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:20.434Z","exitedAt":"2026-04-27T10:25:48.993Z"},{"phase":"enrichment","enteredAt":"2026-04-27T10:25:48.993Z","exitedAt":"2026-04-27T10:25:51.513Z","reason":"audit batch closure","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-04-27T10:25:51.513Z","exitedAt":"2026-04-27T10:25:54.025Z","reason":"audit batch closure","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-04-27T10:25:54.025Z","reason":"audit batch closure","skippedGuards":["implementation_linked"],"exitedAt":"2026-04-27T10:25:56.538Z"},{"phase":"done","enteredAt":"2026-04-27T10:25:56.538Z","reason":"audit batch closure","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-04-27T10:25:56.538Z
 ---
 
 ## Issue

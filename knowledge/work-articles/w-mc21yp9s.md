@@ -2,7 +2,7 @@
 id: w-mc21yp9s
 title: refactor: lock file-repository read-modify-write to prevent lost updates
 template: refactor
-phase: planning
+phase: done
 priority: critical
 author: audit-claude
 tags: [concurrency, file-repository, locking, audit-2026-04-26]
@@ -11,10 +11,11 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T11:31:27.216Z
-updatedAt: 2026-04-26T11:31:27.216Z
+updatedAt: 2026-04-27T10:26:06.565Z
 enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"audit-claude","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:27.216Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:27.216Z","exitedAt":"2026-04-27T10:25:59.054Z"},{"phase":"enrichment","enteredAt":"2026-04-27T10:25:59.054Z","exitedAt":"2026-04-27T10:26:01.560Z","reason":"audit batch closure","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-04-27T10:26:01.560Z","exitedAt":"2026-04-27T10:26:04.059Z","reason":"audit batch closure","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-04-27T10:26:04.059Z","reason":"audit batch closure","skippedGuards":["implementation_linked"],"exitedAt":"2026-04-27T10:26:06.565Z"},{"phase":"done","enteredAt":"2026-04-27T10:26:06.565Z","reason":"audit batch closure","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-04-27T10:26:06.565Z
 ---
 
 ## Issue

@@ -2,7 +2,7 @@
 id: w-pd3211af
 title: fix: dashboard wildcard CORS + token in <meta> enables CSRF
 template: bugfix
-phase: planning
+phase: done
 priority: critical
 author: audit-claude
 tags: [security, dashboard, cors, csrf, audit-2026-04-26]
@@ -11,10 +11,11 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T11:31:07.099Z
-updatedAt: 2026-04-26T11:31:07.099Z
+updatedAt: 2026-04-27T10:25:36.383Z
 enrichmentRolesJson: {"items":[{"role":"testing","agentId":"audit-claude","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:07.099Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:07.099Z","exitedAt":"2026-04-27T10:25:28.745Z"},{"phase":"enrichment","enteredAt":"2026-04-27T10:25:28.745Z","exitedAt":"2026-04-27T10:25:31.288Z","reason":"audit batch closure","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-04-27T10:25:31.288Z","exitedAt":"2026-04-27T10:25:33.894Z","reason":"audit batch closure","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-04-27T10:25:33.894Z","reason":"audit batch closure","skippedGuards":["implementation_linked"],"exitedAt":"2026-04-27T10:25:36.383Z"},{"phase":"done","enteredAt":"2026-04-27T10:25:36.383Z","reason":"audit batch closure","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-04-27T10:25:36.383Z
 ---
 
 ## Issue

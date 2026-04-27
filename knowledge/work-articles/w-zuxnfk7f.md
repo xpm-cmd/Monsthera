@@ -2,7 +2,7 @@
 id: w-zuxnfk7f
 title: refactor: replace throw new Error in CLI doctor commands with Result propagation
 template: refactor
-phase: planning
+phase: done
 priority: high
 author: audit-claude
 tags: [cli, result, error-handling, audit-2026-04-26]
@@ -11,10 +11,11 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-26T11:31:51.313Z
-updatedAt: 2026-04-26T11:31:51.313Z
+updatedAt: 2026-04-27T10:26:36.786Z
 enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"audit-claude","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:51.313Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-26T11:31:51.313Z","exitedAt":"2026-04-27T10:26:29.127Z"},{"phase":"enrichment","enteredAt":"2026-04-27T10:26:29.127Z","exitedAt":"2026-04-27T10:26:31.653Z","reason":"audit batch closure","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-04-27T10:26:31.653Z","exitedAt":"2026-04-27T10:26:34.261Z","reason":"audit batch closure","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-04-27T10:26:34.261Z","reason":"audit batch closure","skippedGuards":["implementation_linked"],"exitedAt":"2026-04-27T10:26:36.786Z"},{"phase":"done","enteredAt":"2026-04-27T10:26:36.786Z","reason":"audit batch closure","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-04-27T10:26:36.786Z
 ---
 
 ## Issue
