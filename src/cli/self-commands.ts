@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 import { parseRepoPath } from "./arg-helpers.js";
 import { formatError } from "./formatters.js";
+import { runSelfDoctor, type SelfDoctorReport } from "../ops/doctor.js";
 import {
   executeSelfUpdate,
   inspectSelf,
@@ -8,6 +9,7 @@ import {
   prepareSelfUpdate,
   restartDolt,
   type SelfUpdateExecution,
+  type SelfUpdateRollback,
 } from "../ops/self-service.js";
 
 function selfHelp(): string {
@@ -19,12 +21,16 @@ function selfHelp(): string {
     "  update --dry-run   Print the safe update plan and blockers",
     "  update --prepare   Create a workspace backup, migrate manifest, and print the update plan",
     "  update --execute   Run the safe update plan when there are no blockers",
+    "                     Automatic rollback restores the workspace if a step fails after backup",
     "  restart [dolt]     Restart managed local Dolt daemon",
+    "  doctor [--fix]     Diagnose blockers, stale metadata, and legacy pid files",
+    "                     With --fix, adopt legacy pids and clean up stale metadata where safe",
     "",
     "OPTIONS",
     "  --repo, -r <path>  Workspace repository path (defaults to cwd)",
     "  --json             Emit machine-readable JSON",
     "  --force            Allow restart to stop an untrusted legacy process",
+    "  --fix              Apply doctor fixes (only with subcommand 'doctor')",
     "",
   ].join("\n");
 }
@@ -72,7 +78,13 @@ export async function handleSelf(args: string[]): Promise<void> {
       if (args.includes("--execute")) {
         const result = await executeSelfUpdate({ repoPath });
         if (!result.ok) {
-          console.error(formatError(result.error));
+          if (asJson) {
+            process.stdout.write(JSON.stringify({ ok: false, error: serializeError(result.error) }, null, 2) + "\n");
+          } else {
+            console.error(formatError(result.error));
+            const rollback = result.error.details?.["rollback"] as SelfUpdateRollback | undefined;
+            if (rollback) printRollback(rollback);
+          }
           process.exit(1);
         }
         if (asJson) {
@@ -141,6 +153,23 @@ export async function handleSelf(args: string[]): Promise<void> {
       return;
     }
 
+    case "doctor": {
+      const fix = args.includes("--fix");
+      const report = await runSelfDoctor({ repoPath, fix });
+      if (!report.ok) {
+        console.error(formatError(report.error));
+        process.exit(1);
+      }
+      if (asJson) {
+        process.stdout.write(JSON.stringify(report.value, null, 2) + "\n");
+      } else {
+        printDoctor(report.value);
+      }
+      const blockers = report.value.findings.filter((f) => f.severity === "blocker").length;
+      if (blockers > 0) process.exit(2);
+      return;
+    }
+
     default:
       console.error(`Unknown self subcommand: ${command}`);
       console.error('Run "monsthera self --help" for usage.');
@@ -170,6 +199,46 @@ function printExecution(result: SelfUpdateExecution): void {
   }
 }
 
+function printRollback(rollback: SelfUpdateRollback): void {
+  process.stderr.write("\nRollback report\n");
+  process.stderr.write(`  Backup: ${rollback.backupPath}\n`);
+  process.stderr.write(`  Workspace restored: ${rollback.performed ? "yes" : "no"}\n`);
+  if (rollback.restored.length > 0) {
+    process.stderr.write(`  Restored: ${rollback.restored.join(", ")}\n`);
+  }
+  if (rollback.skipped.length > 0) {
+    process.stderr.write(`  Skipped (not in backup): ${rollback.skipped.join(", ")}\n`);
+  }
+  process.stderr.write(`  Dolt restarted: ${rollback.doltRestarted ? "yes" : "no"}\n`);
+  if (rollback.errors.length > 0) {
+    process.stderr.write("  Rollback errors:\n");
+    for (const e of rollback.errors) process.stderr.write(`    - ${e}\n`);
+  }
+}
+
+function printDoctor(report: SelfDoctorReport): void {
+  process.stdout.write("Self doctor\n");
+  process.stdout.write(`Install: ${report.installPath}\n`);
+  process.stdout.write(`Workspace: ${report.repoPath}\n`);
+  process.stdout.write(`Healthy: ${report.healthy ? "yes" : "no"}\n`);
+  if (report.findings.length === 0) {
+    process.stdout.write("Findings: none\n");
+    return;
+  }
+  process.stdout.write("Findings:\n");
+  for (const f of report.findings) {
+    process.stdout.write(`  - [${f.severity}] ${f.id}: ${f.message}\n`);
+    if (f.fixable) {
+      const fixedLabel = f.fixed === true ? "fixed" : f.fixError ? `fix failed: ${f.fixError}` : "fixable";
+      process.stdout.write(`      ${fixedLabel}\n`);
+    }
+    if (f.hint) process.stdout.write(`      hint: ${f.hint}\n`);
+  }
+  if (report.fixesAttempted > 0) {
+    process.stdout.write(`Fixes: ${report.fixesApplied}/${report.fixesAttempted} applied\n`);
+  }
+}
+
 function shortSha(value: string | undefined): string | undefined {
   return value ? value.slice(0, 7) : undefined;
 }
@@ -182,4 +251,8 @@ function formatProcess(process: { readonly pid: number | null; readonly running:
   if (!process.pid) return "not managed";
   const suffix = process.reason ? ` (${process.reason})` : "";
   return `${process.running ? "running" : "stale"} pid ${process.pid}, ${process.trusted ? "trusted" : "untrusted"}, ${process.source}${suffix}`;
+}
+
+function serializeError(error: { code: string; message: string; details?: Record<string, unknown> }): Record<string, unknown> {
+  return { code: error.code, message: error.message, details: error.details };
 }
