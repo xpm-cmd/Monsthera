@@ -118,3 +118,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-04-26 10:46:41]** update work | Simplificar instalación, actualización y portabilidad del workspace (w-zxi617cw)
 - **[2026-04-26 11:15:09]** reindex knowledge | Reindex: 57 knowledge, 9 work
 - **[2026-04-27 10:15:08]** reindex knowledge | Reindex: 62 knowledge, 9 work
+- **[2026-04-27 10:16:35]** reindex knowledge | Reindex: 62 knowledge, 19 work
