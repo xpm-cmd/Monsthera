@@ -164,3 +164,5 @@ Append-only record of knowledge and work mutations.
 - **[2026-04-27 10:27:28]** advance work | Simplificar instalación, actualización y portabilidad del workspace → review (w-zxi617cw)
 - **[2026-04-27 10:27:31]** advance work | Simplificar instalación, actualización y portabilidad del workspace → done (w-zxi617cw)
 - **[2026-04-28 12:05:03]** create work | Implement Code Intelligence M3 — Lightweight Code Inventory (w-w7yhmqse)
+- **[2026-04-28 12:34:36]** advance work | Implement Code Intelligence M3 — Lightweight Code Inventory → enrichment (w-w7yhmqse)
+- **[2026-04-28 12:35:47]** advance work | Implement Code Intelligence M3 — Lightweight Code Inventory → implementation (w-w7yhmqse)

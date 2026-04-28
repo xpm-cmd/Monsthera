@@ -2,7 +2,7 @@
 id: w-w7yhmqse
 title: Implement Code Intelligence M3 — Lightweight Code Inventory
 template: feature
-phase: planning
+phase: implementation
 priority: high
 author: agent-architect
 tags: [code-intelligence, m3, inventory, planning, adr-017]
@@ -11,10 +11,10 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-04-28T12:05:03.416Z
-updatedAt: 2026-04-28T12:05:03.416Z
-enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"agent-architect","status":"pending"},{"role":"testing","agentId":"agent-architect","status":"pending"}]}
+updatedAt: 2026-04-28T12:35:47.528Z
+enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"agent-architect","status":"contributed","contributedAt":"2026-04-28T12:35:20.334Z"},{"role":"testing","agentId":"agent-architect","status":"contributed","contributedAt":"2026-04-28T12:35:23.674Z"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-28T12:05:03.416Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-04-28T12:05:03.416Z","exitedAt":"2026-04-28T12:34:36.612Z"},{"phase":"enrichment","enteredAt":"2026-04-28T12:34:36.612Z","exitedAt":"2026-04-28T12:35:47.528Z"},{"phase":"implementation","enteredAt":"2026-04-28T12:35:47.528Z","reason":"Phase 1 implementation work; environment snapshot machinery is out of scope for the M3 extractor PR (a routine-driven cascade governs Phase 1-5 progression)","skippedGuards":["snapshot_ready"]}]}
 ---
 
 ## Objective
@@ -158,7 +158,7 @@ Acceptance: `pnpm typecheck`, `pnpm lint`, `pnpm vitest run`,
 `pnpm build` are all green; smoke-test with a 5,000-file repo confirms
 cold-build under 30 s and incremental query under 1 s.
 
-## Acceptance criteria (success-gates)
+## Acceptance Criteria
 
 1. **Discovery beats `rg`**: an agent can call `code_query` to find a
    symbol or file by name across 13+ languages without falling back

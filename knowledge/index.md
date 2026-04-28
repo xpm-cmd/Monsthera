@@ -1,7 +1,7 @@
 # Monsthera Index
 
 > Auto-generated catalog of 62 knowledge articles and 20 work articles.
-> Last updated: 2026-04-28 12:05:03
+> Last updated: 2026-04-28 12:35:47
 
 ## Knowledge
 
@@ -101,7 +101,7 @@
 
 ## Work
 
-### planning (1)
+### implementation (1)
 
 - [Implement Code Intelligence M3 — Lightweight Code Inventory](work-articles/w-w7yhmqse.md) [high] — ## Objective  Implement Milestone 3 of ADR-015 (Code Intelli
 
