@@ -106,6 +106,95 @@ ADR-017. Violations will be rejected in review.
 
 ---
 
+## Resumability — read this before doing anything
+
+You may be a fresh agent picking up after a previous agent died
+mid-work (rate limit, error, timeout). Treat every run as potentially
+a resume. Run **all four resume checks** first — do not skip:
+
+1. **Predecessor PR must be merged into `main`** (skip for Phase 1).
+   Run `gh pr list --state merged --search "M3 phase <N-1>" --base main`.
+   If the predecessor PR is **not** merged, abort with a clear
+   one-line message and exit 0. The schedule will retry; do not work
+   off an unmerged predecessor.
+
+2. **Idempotency: does this phase already have a PR?**
+   Run `gh pr list --state all --head feature/code-intelligence-m3-phase-<N>-* --base main`.
+   - If a `MERGED` PR exists → Phase already shipped. Print the URL,
+     exit 0.
+   - If an `OPEN` PR exists → check it out
+     (`git fetch origin <branch> && git checkout <branch>`), pull
+     latest, then continue from where the previous agent left off.
+     Read recent commits to understand state.
+   - If no PR exists → fresh start.
+
+3. **Verification baseline**: run
+   `pnpm install --prefer-offline && pnpm typecheck && pnpm lint && pnpm vitest run && pnpm build`.
+   - All four green → proceed.
+   - Any failure on the predecessor's main branch → abort, this is
+     not your fix to make.
+   - Failure on an OPEN phase branch you just checked out → triage:
+     fix root cause if it is your work, otherwise abort.
+
+4. **Work article phase**: read with
+   `pnpm exec tsx src/bin.ts work get w-w7yhmqse`. The `phase` field
+   tells you the semantic state. If you are starting implementation
+   work (Phases 1-4), advance to `implementation` if not already
+   there: `pnpm exec tsx src/bin.ts work advance w-w7yhmqse implementation`.
+   On Phase 5, advance to `review` when you open the PR. Never
+   advance to `done` — that is the human reviewer's call after merge.
+
+Git is the source of mechanical truth between agent sessions. The
+work article is the source of semantic truth. Read both before
+acting; commit and push frequently so the next agent inherits your
+progress if your session ends.
+
+If you complete your phase, push the branch, open the PR, and **STOP**.
+Do not start the next phase. Output the PR URL as your final message.
+
+---
+
+## Handoff to next phase (B-lite cascade)
+
+The five phases are pre-scheduled as separate routines. Each routine's
+prompt embeds the `trigger_id` of the next routine. Your job after
+opening the PR is to make the handoff visible to the human reviewer.
+
+**Always do this, idempotently** — re-running an agent on the same PR
+should produce the same description, not stack duplicates:
+
+1. Build the handoff block. The exact `<NEXT_ROUTINE_ID>` is embedded
+   in your routine's boot prompt (you received it when you started).
+2. Edit the PR description so it ends with:
+
+   ```
+   ---
+   ## Handoff
+   ✅ Phase N complete. Trigger Phase N+1:
+   - **Click to run** → https://claude.ai/code/routines/<NEXT_ROUTINE_ID>
+   - Or from a Claude Code session: `RemoteTrigger run trigger_id="<NEXT_ROUTINE_ID>"`
+
+   Phase N+1 will not start automatically — the human reviewer triggers
+   it after merging this PR.
+   ```
+
+3. If the PR description already contains a `## Handoff` section,
+   replace it. Do not append a second one.
+
+For Phase 5 the handoff block is different (no successor):
+
+```
+---
+## Handoff
+🎉 M3 complete — all five phases shipped. After this PR merges, advance
+the work article to done:
+`pnpm exec tsx src/bin.ts work advance w-w7yhmqse done`
+```
+
+The routine's boot prompt tells you which variant to use.
+
+---
+
 ## Phase plan
 
 Each phase ships its own PR. Each PR runs `pnpm typecheck`, `pnpm
