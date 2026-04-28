@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 62 knowledge articles and 19 work articles.
-> Last updated: 2026-04-27 10:27:31
+> Auto-generated catalog of 62 knowledge articles and 20 work articles.
+> Last updated: 2026-04-28 12:05:03
 
 ## Knowledge
 
@@ -100,6 +100,10 @@
 - [Monsthera vs GitNexus Code Exploration Evaluation](notes/monsthera-vs-gitnexus-code-exploration-evaluation.md) — ## Evaluation  Monsthera and GitNexus both expose search, graph, embeddings, and
 
 ## Work
+
+### planning (1)
+
+- [Implement Code Intelligence M3 — Lightweight Code Inventory](work-articles/w-w7yhmqse.md) [high] — ## Objective  Implement Milestone 3 of ADR-015 (Code Intelli
 
 ### done (18)
 
