@@ -1,7 +1,8 @@
 /* eslint-disable no-console */
 import { spawnSync } from "node:child_process";
-import { parseFlag, parsePositional, withContainer } from "./arg-helpers.js";
+import { parseCommaSeparated, parseFlag, parsePositional, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
+import type { CodeQueryInput } from "../code-intelligence/inventory/types.js";
 
 /**
  * `monsthera code <subcommand>` — code-ref intelligence (ADR-015 Layer 1)
@@ -28,6 +29,10 @@ export async function handleCode(args: string[]): Promise<void> {
       return handleImpact(args.slice(1));
     case "changes":
       return handleChanges(args.slice(1));
+    case "query":
+      return handleQuery(args.slice(1));
+    case "reindex":
+      return handleReindex(args.slice(1));
     default:
       console.error(`Unknown code subcommand: ${sub}`);
       console.error('Run "monsthera code --help" for usage.');
@@ -113,6 +118,84 @@ async function handleChanges(args: string[]): Promise<void> {
   });
 }
 
+async function handleQuery(args: string[]): Promise<void> {
+  if (wantsHelp(args)) return printCodeHelp();
+  const text = parsePositional(args, 0);
+  if (!text) {
+    console.error("Missing required argument: <text>");
+    console.error('Run "monsthera code query --help" for usage.');
+    process.exit(1);
+  }
+  const kinds = parseCommaSeparated(args, "--kinds");
+  const paths = parseCommaSeparated(args, "--paths");
+  const languages = parseCommaSeparated(args, "--languages");
+  const limitFlag = parseFlag(args, "--limit");
+  let limit: number | undefined;
+  if (limitFlag !== undefined) {
+    const parsed = Number(limitFlag);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 500 || !Number.isInteger(parsed)) {
+      console.error("--limit must be an integer between 1 and 500");
+      process.exit(1);
+    }
+    limit = parsed;
+  }
+
+  const queryInput: CodeQueryInput = {
+    query: text,
+    ...(kinds && { kinds: kinds as CodeQueryInput["kinds"] }),
+    ...(paths && { paths }),
+    ...(languages && { languages }),
+    ...(limit !== undefined && { limit }),
+  };
+
+  await withContainer(args, async (container) => {
+    const result = await container.codeInventoryService.query(queryInput);
+    if (!result.ok) {
+      console.error(`Failed to query code inventory: ${result.error.message}`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify(result.value) + "\n");
+  });
+}
+
+async function handleReindex(args: string[]): Promise<void> {
+  if (wantsHelp(args)) return printCodeHelp();
+  const full = args.includes("--full");
+  const repoPath = parseFlag(args, "--repo", "-r") ?? process.cwd();
+
+  const lsFiles = spawnSync("git", ["ls-files"], {
+    cwd: repoPath,
+    encoding: "utf-8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (lsFiles.error) {
+    console.error(`git ls-files failed: ${lsFiles.error.message}`);
+    process.exit(1);
+  }
+  if (lsFiles.status !== 0) {
+    const stderr = (lsFiles.stderr ?? "").trim();
+    console.error(
+      `git ls-files exited with status ${lsFiles.status}${stderr ? `: ${stderr}` : ""}`,
+    );
+    process.exit(1);
+  }
+  const paths = (lsFiles.stdout ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  await withContainer(args, async (container) => {
+    const result = full
+      ? await container.codeInventoryService.reindex({ paths, full: true })
+      : await container.codeInventoryService.reindex({ paths });
+    if (!result.ok) {
+      console.error(`Failed to reindex code inventory: ${result.error.message}`);
+      process.exit(1);
+    }
+    process.stdout.write(JSON.stringify(result.value) + "\n");
+  });
+}
+
 interface ChangedPathsOk {
   readonly ok: true;
   readonly paths: string[];
@@ -178,8 +261,8 @@ function printCodeHelp(): void {
   printSubcommandHelp({
     command: "monsthera code",
     summary:
-      "Code-ref intelligence (ADR-015 Layer 1): inspect a path's Monsthera footprint, discover its owners, score change impact, and detect impact across a git diff.",
-    usage: "<ref|owners|impact|changes> [path] [options]",
+      "Code intelligence: ADR-015 Layer 1 code-ref inspection plus the ADR-017 M3 lightweight symbol inventory (query, reindex).",
+    usage: "<ref|owners|impact|changes|query|reindex> [path|text] [options]",
     flags: [
       {
         name: "ref <path>",
@@ -201,13 +284,24 @@ function printCodeHelp(): void {
         description:
           "Analyze a git diff: default is `HEAD` (staged + unstaged); `--staged` narrows to the index; `--base <ref>` diffs `<ref>...HEAD`.",
       },
+      {
+        name: "query <text> [--kinds <list>] [--paths <list>] [--languages <list>] [--limit <n>]",
+        description:
+          "Search the M3 lightweight inventory (ADR-017) for symbols and files. Filters are comma-separated; `--limit` is 1-500 (default 50). Empty inventory returns an empty hit list with a hint to run `monsthera code reindex`.",
+      },
+      {
+        name: "reindex [--full]",
+        description:
+          "Build or refresh the M3 inventory by feeding `git ls-files` into the inventory service. `--full` wipes the cache; default is incremental (re-extracts only changed files).",
+      },
       { name: "--repo, -r <path>", description: "Repository path used for git diff and container resolution.", default: "cwd" },
     ],
     notes: [
       "stdout emits a single JSON record per invocation; logs stay on stderr.",
-      "`changes` shells out to `git` in the CLI rather than the MCP server, preserving the MCP boundary as side-effect-free (ADR-015 Resolved Decisions).",
+      "`changes` and `reindex` shell out to `git` in the CLI rather than the MCP server, preserving the MCP boundary as side-effect-free (ADR-015 Resolved Decisions).",
       "An empty diff produces a zero-impact payload (changedPathCount: 0), not an error — useful for pre-commit hooks that run unconditionally.",
       "Path matching is exact + directory-prefix; glob expansion happens in the caller (e.g., your shell), not in this command.",
+      "`query` reads from `.monsthera/cache/code-index.json` only — it never builds the inventory. Run `reindex` first after a fresh checkout.",
     ],
     examples: [
       "monsthera code ref src/auth/session.ts",
@@ -216,6 +310,11 @@ function printCodeHelp(): void {
       "monsthera code changes",
       "monsthera code changes --staged",
       "monsthera code changes --base origin/main",
+      "monsthera code reindex",
+      "monsthera code reindex --full",
+      "monsthera code query SearchService",
+      "monsthera code query parser --kinds class,interface --limit 10",
+      "monsthera code query session --paths src/auth --languages typescript",
     ],
   });
 }

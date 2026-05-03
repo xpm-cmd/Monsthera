@@ -28,6 +28,10 @@ import {
   codeIntelligenceToolDefinitions,
   handleCodeIntelligenceTool,
 } from "./tools/code-intelligence-tools.js";
+import {
+  codeQueryToolDefinitions,
+  handleCodeQueryTool,
+} from "./tools/code-query-tool.js";
 
 /**
  * Per-group tool registry. Exposed for tests and for the dispatch function
@@ -54,6 +58,7 @@ export interface ToolRegistry {
     readonly events: ReadonlySet<string>;
     readonly convoy: ReadonlySet<string>;
     readonly codeIntelligence: ReadonlySet<string>;
+    readonly codeQuery: ReadonlySet<string>;
   };
 }
 
@@ -80,6 +85,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
   const eventsTools = eventsToolDefinitions();
   const convoyTools = convoyToolDefinitions();
   const codeIntelligenceTools = codeIntelligenceToolDefinitions();
+  const codeQueryTools = codeQueryToolDefinitions();
 
   return {
     definitions: [
@@ -100,6 +106,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       ...eventsTools,
       ...convoyTools,
       ...codeIntelligenceTools,
+      ...codeQueryTools,
     ],
     names: {
       knowledge: new Set(knowledgeTools.map((t) => t.name)),
@@ -119,6 +126,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       events: new Set(eventsTools.map((t) => t.name)),
       convoy: new Set(convoyTools.map((t) => t.name)),
       codeIntelligence: new Set(codeIntelligenceTools.map((t) => t.name)),
+      codeQuery: new Set(codeQueryTools.map((t) => t.name)),
     },
   };
 }
@@ -216,6 +224,9 @@ export async function dispatchToolCall(
   }
   if (names.codeIntelligence.has(name)) {
     return handleCodeIntelligenceTool(name, args, container.codeIntelligenceService);
+  }
+  if (names.codeQuery.has(name)) {
+    return handleCodeQueryTool(name, args, container.codeInventoryService);
   }
 
   return {
