@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 62 knowledge articles and 20 work articles.
-> Last updated: 2026-04-28 12:35:47
+> Auto-generated catalog of 63 knowledge articles and 20 work articles.
+> Last updated: 2026-05-03 05:47:00
 
 ## Knowledge
 
@@ -71,6 +71,7 @@
 
 ### implementation
 
+- [Code Intelligence M3 Implementation](notes/code-intelligence-m3-implementation.md) — ## Summary  Shipped Milestone 3 of ADR-015 — a lightweight, multi-language symbo
 - [Code-Ref Intelligence M2 Implementation](notes/code-ref-intelligence-m2-implementation.md) — ## Summary  Shipped Milestone 2 of ADR-015 — code-ref intelligence at the CLI an
 - [Code-Ref Intelligence MVP Implementation](notes/code-ref-intelligence-mvp-implementation.md) — ## Summary  Implemented the first slice of ADR-015: code-ref intelligence withou
 
@@ -101,7 +102,7 @@
 
 ## Work
 
-### implementation (1)
+### review (1)
 
 - [Implement Code Intelligence M3 — Lightweight Code Inventory](work-articles/w-w7yhmqse.md) [high] — ## Objective  Implement Milestone 3 of ADR-015 (Code Intelli
 

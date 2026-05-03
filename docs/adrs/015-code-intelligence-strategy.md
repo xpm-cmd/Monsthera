@@ -346,7 +346,7 @@ search.
 ## Resolved Decisions
 
 The following questions were open in the original draft and were settled by
-the Milestone 1 and Milestone 2 implementations.
+the Milestone 1, Milestone 2, and Milestone 3 implementations.
 
 - **Path matching:** Layer 1 supports exact match and directory-prefix match
   only. Glob-style code refs are out of scope; clients that need glob behavior
@@ -383,15 +383,34 @@ the Milestone 1 and Milestone 2 implementations.
   scope. The standalone page covers the M2 success criterion ("humans can
   inspect the relationship between code, work, policies, and knowledge")
   without forcing a graph redesign.
+- **M3 lightweight inventory (see ADR-017 for the full record):** the open
+  questions from this ADR's Layer 2 / Milestone 3 section — symbol
+  extractor choice, storage location, language coverage, `code_query` vs
+  enrichment, cache invalidation, status surface, and inventory-aware risk
+  scoring — are resolved in
+  [`docs/adrs/017-code-intelligence-m3-lightweight-inventory.md`](017-code-intelligence-m3-lightweight-inventory.md).
+  The headline choices: TextMate via `vscode-textmate` +
+  `vscode-oniguruma` + `@shikijs/langs` (no native deps, 13+ languages
+  day 1), JSON-canonical persistence at `.monsthera/cache/code-index.json`
+  with optional Dolt mirror, lazy mtime-per-file invalidation plus a
+  manual `monsthera code reindex` escape hatch, both a new `code_query`
+  MCP tool **and** a one-line breadcrumb in
+  `build_context_pack(mode="code")`, and two new conservative `reasons`
+  codes (`file_has_no_exports`, `file_is_manifest`) on the M1/M2 risk
+  surfaces — the `risk` enum stays unchanged. Implementation note:
+  [`code-intelligence-m3-implementation`](../../knowledge/notes/code-intelligence-m3-implementation.md).
 
 ## Open Questions
 
-- Should code inventory live only in `.monsthera/cache/`, or also in Dolt when
-  Dolt is enabled?
-- Should `code_query` be a new tool group, or should it enrich
-  `build_context_pack` first?
+- Importer-count weighting and symbol-level risk scoring — both deferred to
+  M4 (provider bridge), which can do real import resolution rather than
+  heuristics on top of TextMate scopes.
+- Whether M4's provider bridge should default to `local-cache` (reading
+  M3's inventory directly) or `none` for fresh installs.
 - How much next-step guidance should be appended to MCP responses before it
-  becomes noisy?
+  becomes noisy. ADR-017 §D6 sets the rule for `code_query` and the
+  `build_context_pack` breadcrumb; the question stays open for the wider
+  MCP surface.
 
 ## Consequences
 

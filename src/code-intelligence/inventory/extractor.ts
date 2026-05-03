@@ -137,10 +137,22 @@ async function getGrammarForLanguage(languageId: string): Promise<IGrammar | nul
     const bundlePromise = loadGrammars(languageId);
     if (!bundlePromise) return null;
     const bundle = await bundlePromise;
+    let addedNewScope = false;
     for (const grammar of bundle) {
       if (!grammarsByScope.has(grammar.scopeName)) {
         grammarsByScope.set(grammar.scopeName, grammar);
+        addedNewScope = true;
       }
+    }
+    // vscode-textmate's Registry caches "scope unavailable" lookups when a
+    // previously-loaded grammar (notably Markdown's embedded fenced-code
+    // grammars) referenced a scope that was not yet registered. After we add
+    // new scopes to `grammarsByScope`, drop the registry so it is rebuilt
+    // with a clean lookup cache. The compiled `IGrammar` results we have
+    // already cached in `grammarByLanguage` are not bound to the Registry
+    // and remain usable for `tokenizeLine`.
+    if (addedNewScope) {
+      registryPromise = null;
     }
     const registry = await ensureRegistry();
     const grammar = await registry.loadGrammar(descriptor.scopeName);
