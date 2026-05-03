@@ -28,6 +28,8 @@ Complete reference for the `monsthera` CLI surface. Use this when you need the e
 | Find the owners of a code path | `monsthera code owners <path>` |
 | Score the impact of touching a path | `monsthera code impact <path>` |
 | Detect impact across a git diff | `monsthera code changes [--staged \| --base <ref>]` |
+| Search the code symbol inventory | `monsthera code query <text> [--kinds] [--paths] [--languages] [--limit]` |
+| Build/refresh the code symbol inventory | `monsthera code reindex [--full]` |
 | Rebuild the search index | `monsthera reindex` |
 | Run health checks | `monsthera doctor` |
 
@@ -149,20 +151,28 @@ A real observational benchmark (work article `w-benchmark-1`, sibling of this no
 
 Grep wins on verbatim-string queries; `pack` wins on narrative/conceptual queries. The knowledge base complements grep — it does not replace it.
 
-## `code` — code-ref intelligence (ADR-015 Layer 1)
+## `code` — code intelligence (ADR-015 Layer 1 + ADR-017 M3 inventory)
 
 ```sh
 monsthera code ref     <path>
 monsthera code owners  <path>
 monsthera code impact  <path>
 monsthera code changes [--staged | --base <ref>] [--repo <path>]
+monsthera code query   <text> [--kinds <list>] [--paths <list>] [--languages <list>] [--limit <n>]
+monsthera code reindex [--full] [--repo <path>]
 ```
 
-Ships in release `3.0.0-alpha.7` (Milestone 2). All four subcommands are
-thin CLI wrappers around `CodeIntelligenceService`, the same service that
-backs the `code_get_ref` / `code_find_owners` / `code_analyze_impact` /
-`code_detect_changes` MCP tools. Output is one JSON record per command on
-stdout — pipe into `jq` for filtering. Logs stay on stderr.
+`ref` / `owners` / `impact` / `changes` ship in release `3.0.0-alpha.7`
+(Milestone 2) and wrap `CodeIntelligenceService`, which backs the
+`code_get_ref` / `code_find_owners` / `code_analyze_impact` /
+`code_detect_changes` MCP tools.
+
+`query` and `reindex` ship with M3 phase 3 (ADR-017) and wrap
+`CodeInventoryService`, which backs the `code_query` MCP tool. The
+inventory is a lightweight TextMate-driven symbol catalogue persisted at
+`.monsthera/cache/code-index.json` (with an optional Dolt mirror). Output
+across all six subcommands is one JSON record per command on stdout —
+pipe into `jq` for filtering. Logs stay on stderr.
 
 | Subcommand | When to use |
 | :-- | :-- |
@@ -170,6 +180,8 @@ stdout — pipe into `jq` for filtering. Logs stay on stderr.
 | `owners` | "Who is on this path?" — knowledge + work owners, no filesystem stat, no risk scoring. Faster than `impact` when ownership is all you need. |
 | `impact` | "Should I touch this?" — risk (`none|low|medium|high`), reasons (`active_work_linked`, `policy_linked`, `code_ref_missing`, `no_monsthera_context`, etc.), and recommended next actions. The right call before editing or reviewing a path. |
 | `changes` | "What does this diff disturb?" — captures `git diff --name-only` and feeds the result to `detectChangedCodeRefs`. Default mode is `HEAD` (staged + unstaged); `--staged` narrows to the index (matches a pre-commit hook); `--base <ref>` diffs `<ref>...HEAD` for review-bot use. |
+| `query` | "Where is this symbol or file declared?" — searches the M3 inventory for symbols and files, ranked by name overlap. `--kinds`, `--paths`, `--languages` are comma-separated filters; `--limit` is 1-500 (default 50). On an unbuilt inventory returns an empty hit list with a hint to run `reindex`. |
+| `reindex` | "Refresh the inventory before I query." Shells `git ls-files` and feeds the path list to the inventory service. `--full` wipes the cache; default is incremental (re-extracts only files whose mtime/size changed). |
 
 ### Why `code changes` shells out to git, but the MCP tool does not
 
@@ -190,7 +202,23 @@ monsthera code changes --staged | jq '.summary'
 
 # In CI — score a feature branch against main:
 monsthera code changes --base origin/main | jq '.summary.highestRisk'
+
+# After a fresh checkout — build the M3 inventory once:
+monsthera code reindex | jq '.fileCount, .symbolCount'
+
+# Locate a symbol you remember by name:
+monsthera code query SearchService --kinds class,interface | jq '.hits[].path'
+
+# Constrain to a directory and a single language:
+monsthera code query parser --paths src/parsers --languages typescript --limit 10
 ```
+
+`code query` is the read surface. It never builds the inventory itself —
+that is `reindex`'s job, which lives in the CLI because shelling
+`git ls-files` is allowed there but forbidden inside the MCP server
+(ADR-015 Resolved Decisions). `code_query` (the MCP twin) accepts the
+same `kinds` / `paths` / `languages` / `limit` filters, validated through
+a Zod schema at the boundary.
 
 ### What `risk: high` actually triggers
 

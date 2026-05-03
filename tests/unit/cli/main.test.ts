@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "node:crypto";
 import { main } from "../../../src/cli/main.js";
@@ -26,6 +27,27 @@ function captureStdout(fn: () => void | Promise<void>): Promise<string> {
 
 function withTempRepo(args: string[]): string[] {
   return [...args, "--repo", `/tmp/monsthera-cli-test-${randomUUID()}`];
+}
+
+/**
+ * Create a fresh temp dir, `git init` it, and seed one tracked file. Returns
+ * the absolute path. Used by the `code reindex` happy-path test where the
+ * subcommand shells `git ls-files` and feeds the result to the inventory
+ * service.
+ */
+async function makeGitRepoWithFile(): Promise<{ repoPath: string; filePath: string }> {
+  const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+  await fs.mkdir(repoPath, { recursive: true });
+  const init = spawnSync("git", ["init", "-q"], { cwd: repoPath, encoding: "utf-8" });
+  if (init.status !== 0) throw new Error("git init failed");
+  // Local commit identity so any future `git commit` works without a global config.
+  spawnSync("git", ["config", "user.email", "ci@monsthera.test"], { cwd: repoPath });
+  spawnSync("git", ["config", "user.name", "monsthera-ci"], { cwd: repoPath });
+  await fs.mkdir(path.join(repoPath, "src"), { recursive: true });
+  const filePath = path.join(repoPath, "src", "example.ts");
+  await fs.writeFile(filePath, "export function example(): number { return 1; }\n", "utf-8");
+  spawnSync("git", ["add", "src/example.ts"], { cwd: repoPath });
+  return { repoPath, filePath };
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -901,6 +923,148 @@ describe("CLI main()", () => {
         expect.stringContaining("Unknown code subcommand"),
       );
       expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    // ─── M3 phase 3: code query / code reindex ────────────────────────────
+
+    it("code group help mentions the M3 query and reindex subcommands", async () => {
+      const output = await captureStdout(() => main(["code"]));
+      expect(output).toContain("query");
+      expect(output).toContain("reindex");
+    });
+
+    it("code query <text> on an unbuilt inventory emits the not-built hint", async () => {
+      const output = await captureStdout(() =>
+        main(withTempRepo(["code", "query", "SearchService"])),
+      );
+      const parsed = JSON.parse(output) as {
+        query: string;
+        hits: unknown[];
+        summary: { hitCount: number };
+        recommendedNextActions: string[];
+      };
+      expect(parsed.query).toBe("SearchService");
+      expect(parsed.summary.hitCount).toBe(0);
+      expect(parsed.hits).toEqual([]);
+      expect(parsed.recommendedNextActions).toContain(
+        "Inventory has not been built yet. Run monsthera code reindex to build it.",
+      );
+    });
+
+    it("code query with no positional text exits 1 with a readable error", async () => {
+      await main(withTempRepo(["code", "query"]));
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Missing required argument"),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("code query with an out-of-range --limit exits 1", async () => {
+      await main(withTempRepo(["code", "query", "abc", "--limit", "0"]));
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining("--limit"),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("code query forwards comma-separated filter flags into the JSON request", async () => {
+      // Even on an empty inventory, the response echoes the original query
+      // text so we can verify the filters at least don't crash. The
+      // tool-level test exercises the filter forwarding more directly.
+      const output = await captureStdout(() =>
+        main(
+          withTempRepo([
+            "code",
+            "query",
+            "Parser",
+            "--kinds",
+            "class,interface",
+            "--paths",
+            "src/parsers",
+            "--languages",
+            "typescript",
+            "--limit",
+            "10",
+          ]),
+        ),
+      );
+      const parsed = JSON.parse(output) as { query: string; summary: { hitCount: number } };
+      expect(parsed.query).toBe("Parser");
+      expect(parsed.summary.hitCount).toBe(0);
+    });
+
+    it("code reindex outside a git repo surfaces a git error and exits 1", async () => {
+      // The temp repo has no `.git` — `git ls-files` exits non-zero with
+      // "fatal: not a git repository". The CLI must fail loudly rather than
+      // silently feeding an empty path list to the service.
+      await main(withTempRepo(["code", "reindex"]));
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringMatching(/git ls-files (failed|exited)/),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it("code reindex in a fresh git repo emits a status JSON with built=true and matching counts", async () => {
+      const { repoPath } = await makeGitRepoWithFile();
+      try {
+        const output = await captureStdout(() =>
+          main(["code", "reindex", "--repo", repoPath]),
+        );
+        const parsed = JSON.parse(output) as {
+          built: boolean;
+          fileCount: number;
+          symbolCount: number;
+          languages: string[];
+          lastReindexAt?: string;
+        };
+        expect(parsed.built).toBe(true);
+        expect(parsed.fileCount).toBeGreaterThanOrEqual(1);
+        // The seeded file declares `function example()` — the extractor finds it.
+        expect(parsed.symbolCount).toBeGreaterThanOrEqual(1);
+        expect(parsed.languages).toContain("typescript");
+        expect(parsed.lastReindexAt).toBeDefined();
+      } finally {
+        await fs.rm(repoPath, { recursive: true, force: true });
+      }
+    });
+
+    it("code reindex --full wipes the cache and rebuilds from scratch", async () => {
+      const { repoPath } = await makeGitRepoWithFile();
+      try {
+        // First incremental reindex builds the cache.
+        await captureStdout(() => main(["code", "reindex", "--repo", repoPath]));
+        // Then a --full reindex returns a fresh status with built=true.
+        const output = await captureStdout(() =>
+          main(["code", "reindex", "--full", "--repo", repoPath]),
+        );
+        const parsed = JSON.parse(output) as { built: boolean; fileCount: number };
+        expect(parsed.built).toBe(true);
+        expect(parsed.fileCount).toBeGreaterThanOrEqual(1);
+      } finally {
+        await fs.rm(repoPath, { recursive: true, force: true });
+      }
+    });
+
+    it("code reindex then code query returns ranked hits for the seeded symbol", async () => {
+      const { repoPath } = await makeGitRepoWithFile();
+      try {
+        await captureStdout(() => main(["code", "reindex", "--repo", repoPath]));
+        const output = await captureStdout(() =>
+          main(["code", "query", "example", "--repo", repoPath]),
+        );
+        const parsed = JSON.parse(output) as {
+          hits: { symbol: string; kind: string; score: number }[];
+          summary: { hitCount: number };
+        };
+        expect(parsed.summary.hitCount).toBeGreaterThanOrEqual(1);
+        // `example` matches both the file basename ("example.ts") and the
+        // declared `function example()` — the function symbol should be
+        // among the hits.
+        const symbols = parsed.hits.map((h) => h.symbol);
+        expect(symbols).toContain("example");
+      } finally {
+        await fs.rm(repoPath, { recursive: true, force: true });
+      }
     });
   });
 

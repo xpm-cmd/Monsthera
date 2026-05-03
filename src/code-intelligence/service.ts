@@ -16,6 +16,7 @@ import { POLICY_CATEGORY } from "../knowledge/schemas.js";
 import type { CodeRefOwnerIndex, StructureService } from "../structure/service.js";
 import type { OrchestrationEventRepository } from "../orchestration/repository.js";
 import type { CodeHighRiskDetectedEventDetails } from "../orchestration/types.js";
+import type { CodeInventoryService } from "./inventory/service.js";
 import { workId, type Timestamp } from "../core/types.js";
 
 /**
@@ -114,6 +115,14 @@ export interface CodeIntelligenceServiceDeps {
    * `Result` payload — only the side-effect emission is skipped.
    */
   readonly eventRepo?: OrchestrationEventRepository;
+  /**
+   * Optional. The M3 lightweight code inventory (ADR-017). Wired by the
+   * container starting at M3 phase 3; M3 phase 4 will use it to add the
+   * `file_has_no_exports` and `file_is_manifest` reasons codes. When
+   * absent — including all M2 callers — the M2 behavior is preserved
+   * exactly; phase-4 reasons codes simply do not surface.
+   */
+  readonly inventoryService?: CodeInventoryService;
 }
 
 export class CodeIntelligenceService {
@@ -123,6 +132,8 @@ export class CodeIntelligenceService {
   private readonly repoPath: string;
   private readonly logger: Logger;
   private readonly eventRepo?: OrchestrationEventRepository;
+  /** Wired by M3 phase 3; consumed by M3 phase 4. Unused by M1/M2 callers. */
+  private readonly inventoryService?: CodeInventoryService;
 
   constructor(deps: CodeIntelligenceServiceDeps) {
     this.knowledgeRepo = deps.knowledgeRepo;
@@ -131,6 +142,7 @@ export class CodeIntelligenceService {
     this.repoPath = deps.repoPath;
     this.logger = deps.logger.child({ domain: "code-intelligence" });
     if (deps.eventRepo) this.eventRepo = deps.eventRepo;
+    if (deps.inventoryService) this.inventoryService = deps.inventoryService;
   }
 
   async getCodeRef(input: { ref: string }): Promise<Result<CodeRefDetail, StorageError>> {

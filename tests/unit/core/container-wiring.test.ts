@@ -132,3 +132,69 @@ describe("container wiring: Dolt fallback", () => {
     await container.dispose();
   });
 });
+
+describe("container wiring: code inventory service (M3 phase 3)", () => {
+  it("wires codeInventoryService when Dolt is disabled (JSON-only path)", async () => {
+    const config = makeConfig({ doltEnabled: false });
+    const container = await createContainer(config);
+
+    expect(container.codeInventoryService).toBeDefined();
+    // The service exposes the M3 read surface. With no cache file on disk
+    // (fresh temp repo), getStatus reports `built: false`.
+    const status = await container.codeInventoryService.getStatus();
+    expect(status.ok).toBe(true);
+    if (status.ok) {
+      expect(status.value.built).toBe(false);
+      expect(status.value.fileCount).toBe(0);
+      expect(status.value.symbolCount).toBe(0);
+      // No Dolt mirror configured → no degraded reason from a failing mirror.
+      expect(status.value.degraded).toBeUndefined();
+    }
+
+    await container.dispose();
+  });
+
+  it("wires codeInventoryService in degraded mode when Dolt is unreachable but allowDegraded=true", async () => {
+    // The container falls back to in-memory when allowDegraded is set, and
+    // the inventory's Dolt mirror is wired with `null` because the pool
+    // never came up. The JSON path remains canonical (ADR-014 portable
+    // workspace rule).
+    const config = makeConfig({ doltEnabled: true, doltHost: "127.0.0.1", doltPort: 65530 });
+    const container = await createContainer(config, { allowDegraded: true });
+
+    expect(container.codeInventoryService).toBeDefined();
+    const status = await container.codeInventoryService.getStatus();
+    expect(status.ok).toBe(true);
+    if (status.ok) {
+      // Empty cache is the same shape regardless of Dolt availability:
+      // the inventory does not depend on Dolt for reads.
+      expect(status.value.built).toBe(false);
+      // No Dolt save has happened yet, so `degraded` is still undefined.
+      expect(status.value.degraded).toBeUndefined();
+    }
+
+    await container.dispose();
+  });
+
+  it("threads the codeInventoryService through to CodeIntelligenceService as an optional dep", async () => {
+    // The wiring must not break the M2 surface. The container hands the
+    // inventory service to CodeIntelligenceService via the optional dep
+    // (Phase 4 will use it for the new `reasons` codes); Phase 3 only
+    // verifies the wiring lands without breaking the M2 result shape.
+    const config = makeConfig({ doltEnabled: false });
+    const container = await createContainer(config);
+
+    const impactResult = await container.codeIntelligenceService.analyzeCodeRefImpact({
+      ref: "src/never-touched.ts",
+    });
+    expect(impactResult.ok).toBe(true);
+    if (impactResult.ok) {
+      expect(impactResult.value).toHaveProperty("ref");
+      expect(impactResult.value).toHaveProperty("risk");
+      expect(impactResult.value).toHaveProperty("reasons");
+      expect(impactResult.value).toHaveProperty("recommendedNextActions");
+    }
+
+    await container.dispose();
+  });
+});

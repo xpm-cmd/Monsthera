@@ -44,6 +44,8 @@ import { InMemorySnapshotRepository } from "../context/snapshot-in-memory-reposi
 import { SnapshotService } from "../context/snapshot-service.js";
 import type { SnapshotRepository } from "../context/snapshot-repository.js";
 import { CodeIntelligenceService } from "../code-intelligence/service.js";
+import { CodeInventoryService } from "../code-intelligence/inventory/service.js";
+import type { DoltMirrorClient } from "../code-intelligence/inventory/persistence.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -69,6 +71,7 @@ export interface MonstheraContainer extends Disposable {
   readonly snapshotRepo: SnapshotRepository;
   readonly snapshotService: SnapshotService;
   readonly codeIntelligenceService: CodeIntelligenceService;
+  readonly codeInventoryService: CodeInventoryService;
 }
 
 /**
@@ -347,6 +350,28 @@ export async function createContainer(
     logger,
   });
 
+  // Wire the M3 lightweight code inventory (ADR-017). The service is
+  // independent of `CodeIntelligenceService` — it owns the JSON cache at
+  // `.monsthera/cache/code-index.json` and (optionally) mirrors into Dolt.
+  // M3 phase 3 only wires it; phase 4 plugs it into the M1/M2 surfaces via
+  // the optional `inventoryService` dep on `CodeIntelligenceService`.
+  //
+  // `doltClient` is `null` when Dolt is disabled or unreachable, so the
+  // mirror short-circuits and the JSON cache remains canonical
+  // (ADR-014 portable-workspace rule).
+  const codeInventoryDoltClient: DoltMirrorClient | null = doltPool
+    ? {
+        async execute(sql, params) {
+          await doltPool.execute(sql, (params ?? []) as (string | number | null)[]);
+        },
+      }
+    : null;
+  const codeInventoryService = new CodeInventoryService({
+    repoPath: config.repoPath,
+    logger,
+    doltClient: codeInventoryDoltClient,
+  });
+
   const codeIntelligenceService = new CodeIntelligenceService({
     knowledgeRepo: knowledgeRepo!,
     workRepo: workRepo!,
@@ -354,6 +379,7 @@ export async function createContainer(
     repoPath: config.repoPath,
     logger,
     eventRepo: orchestrationRepo!,
+    inventoryService: codeInventoryService,
   });
   const agentsService = new AgentService({
     workRepo: workRepo!,
@@ -519,6 +545,7 @@ export async function createContainer(
     snapshotRepo,
     snapshotService,
     codeIntelligenceService,
+    codeInventoryService,
     async dispose() {
       logger.info("Shutting down container");
       await stack.dispose();
