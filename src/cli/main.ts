@@ -52,7 +52,7 @@ async function handleDashboard(args: string[]): Promise<void> {
 
 async function handleStatus(args: string[]): Promise<void> {
   await withContainer(args, async (container) => {
-    const status = container.status.getStatus();
+    const status = await container.status.getStatusAsync();
     process.stdout.write(JSON.stringify(status, null, 2) + "\n");
   });
 }

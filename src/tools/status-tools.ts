@@ -25,7 +25,7 @@ export async function handleStatusTool(
 ): Promise<ToolResponse> {
   switch (name) {
     case "status": {
-      const result = status.getStatus();
+      const result = await status.getStatusAsync();
       return successResponse(result);
     }
     default:

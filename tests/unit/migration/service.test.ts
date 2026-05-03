@@ -102,11 +102,14 @@ function createService() {
       return this.snapshot;
     },
   };
+  const baseStatus = () => ({ version: "test", uptime: 0, timestamp: timestamp("2026-01-01T00:00:00Z"), subsystems: [] });
   const status = {
     register: () => {},
     unregister: () => {},
-    getStatus: () => ({ version: "test", uptime: 0, timestamp: timestamp("2026-01-01T00:00:00Z"), subsystems: [] }),
+    getStatus: baseStatus,
+    getStatusAsync: async () => baseStatus(),
     recordStat: (_key: string, _value: unknown) => {},
+    registerStatProvider: (_key: string, _provider: () => Promise<unknown>) => {},
   };
   const service = new MigrationService({ v2Reader: reader, knowledgeRepo, workRepo, logger, runtimeState, status });
   return { service, reader, knowledgeRepo, workRepo, logger, runtimeState };

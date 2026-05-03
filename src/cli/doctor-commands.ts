@@ -357,7 +357,7 @@ export async function handleDoctor(args: string[]): Promise<void> {
     process.stdout.write("Monsthera Doctor\n");
     process.stdout.write("================\n\n");
 
-    const status = container.status.getStatus();
+    const status = await container.status.getStatusAsync();
 
     process.stdout.write(`Version: ${status.version}\n`);
     process.stdout.write(`Uptime: ${Math.round(status.uptime / 1000)}s\n\n`);

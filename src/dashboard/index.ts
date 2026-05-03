@@ -365,14 +365,14 @@ async function handleRequest(
 
   // ── GET /api/status ──────────────────────────────────────────────────────
   if (pathname === "/api/status" && req.method === "GET") {
-    const status = container.status.getStatus();
+    const status = await container.status.getStatusAsync();
     jsonResponse(res, 200, status);
     return;
   }
 
   // ── GET /api/system/runtime ──────────────────────────────────────────────
   if (pathname === "/api/system/runtime" && req.method === "GET") {
-    const status = container.status.getStatus();
+    const status = await container.status.getStatusAsync();
     const [
       recentEventsResult,
       workResult,

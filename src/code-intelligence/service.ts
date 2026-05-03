@@ -34,6 +34,106 @@ const ACTIVE_WORK_PHASES: ReadonlySet<WorkPhase> = new Set<WorkPhase>([
 /** Minimum target length for the policy `content`-fallback match (avoid false positives on short tokens). */
 const POLICY_CONTENT_MATCH_MIN_LENGTH = 6;
 
+/**
+ * Manifest filenames per ADR-017 §D10. A change to one of these files is
+ * interpreted as project-wide; risk is forced to `high` regardless of
+ * active-work links. Match is by basename so the same rule applies under
+ * any subdirectory (e.g. workspace packages).
+ */
+const MANIFEST_BASENAMES: ReadonlySet<string> = new Set([
+  // JavaScript / TypeScript
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "yarn.lock",
+  "npm-shrinkwrap.json",
+  // Rust
+  "cargo.toml",
+  "cargo.lock",
+  // Python
+  "pyproject.toml",
+  "pipfile",
+  "pipfile.lock",
+  "requirements.txt",
+  "setup.py",
+  "setup.cfg",
+  "poetry.lock",
+  // Go
+  "go.mod",
+  "go.sum",
+  // Ruby
+  "gemfile",
+  "gemfile.lock",
+  // PHP
+  "composer.json",
+  "composer.lock",
+  // JVM
+  "build.gradle",
+  "build.gradle.kts",
+  "settings.gradle",
+  "settings.gradle.kts",
+  "pom.xml",
+  // iOS / macOS
+  "podfile",
+  "podfile.lock",
+  // .NET (project file extensions checked separately)
+  "packages.config",
+]);
+
+/**
+ * Manifest filename suffixes (basename ends with one of these). Covers
+ * cases where the manifest name is project-specific but the suffix is
+ * conventional (`.gemspec`, `.csproj`, `.fsproj`, `.vbproj`).
+ */
+const MANIFEST_SUFFIXES: readonly string[] = [
+  ".gemspec",
+  ".csproj",
+  ".fsproj",
+  ".vbproj",
+];
+
+/**
+ * Languages whose files are "code" for the purposes of the
+ * `file_has_no_exports` reason. Documentation, JSON, YAML, and TOML are
+ * deliberately excluded — a markdown file with zero symbols is normal,
+ * not a hint of dead code.
+ */
+const CODE_LANGUAGE_EXTENSIONS: ReadonlySet<string> = new Set([
+  ".ts",
+  ".mts",
+  ".cts",
+  ".tsx",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".jsx",
+  ".py",
+  ".pyi",
+  ".go",
+  ".rs",
+  ".java",
+  ".rb",
+]);
+
+function isManifestPath(normalizedPath: string): boolean {
+  if (!normalizedPath) return false;
+  const slash = normalizedPath.lastIndexOf("/");
+  const basename = (slash >= 0 ? normalizedPath.slice(slash + 1) : normalizedPath).toLowerCase();
+  if (MANIFEST_BASENAMES.has(basename)) return true;
+  for (const suffix of MANIFEST_SUFFIXES) {
+    if (basename.endsWith(suffix)) return true;
+  }
+  return false;
+}
+
+function isCodeLanguagePath(normalizedPath: string): boolean {
+  if (!normalizedPath) return false;
+  const dot = normalizedPath.lastIndexOf(".");
+  if (dot < 0) return false;
+  return CODE_LANGUAGE_EXTENSIONS.has(normalizedPath.slice(dot).toLowerCase());
+}
+
 export interface CodeRefOwner {
   readonly id: string;
   readonly title: string;
@@ -248,9 +348,13 @@ export class CodeIntelligenceService {
       recommendedNextActions.push("Consider adding code refs to relevant knowledge or work articles if this path matters.");
     }
 
+    const inventoryReasons = await this.collectInventoryReasons(ref);
+    for (const reason of inventoryReasons) reasons.push(reason);
+    const risk = inventoryReasons.includes("file_is_manifest") ? "high" : riskFor(ref);
+
     const impact: CodeRefImpact = {
       ref,
-      risk: riskFor(ref),
+      risk,
       reasons,
       recommendedNextActions,
     };
@@ -394,7 +498,54 @@ export class CodeIntelligenceService {
       recommendedNextActions.push("Consider adding code refs to relevant knowledge or work articles if this path matters.");
     }
 
-    return { ref, risk: riskFor(ref), reasons, recommendedNextActions };
+    const inventoryReasons = await this.collectInventoryReasons(ref);
+    for (const reason of inventoryReasons) reasons.push(reason);
+    const risk = inventoryReasons.includes("file_is_manifest") ? "high" : riskFor(ref);
+
+    return { ref, risk, reasons, recommendedNextActions };
+  }
+
+  /**
+   * Inventory-driven reasons codes added in M3 phase 4. Returns an empty
+   * list when no `inventoryService` is wired — that branch is the M2
+   * regression path. ADR-017 §D10:
+   *   - `file_is_manifest` — basename matches a manifest (package.json,
+   *     Cargo.toml, …); forces `risk: "high"` regardless of work links.
+   *   - `file_has_no_exports` — file is in a code language and the
+   *     inventory currently records zero symbols for it; does not change
+   *     the risk enum (hint that the path may be internal/test/dead code).
+   *
+   * Both reasons are skipped for refs that are out-of-repo or that the
+   * filesystem reports as a directory: a directory is not a manifest, and
+   * "no exports" is meaningless for non-files.
+   */
+  private async collectInventoryReasons(ref: CodeRefDetail): Promise<readonly string[]> {
+    if (ref.outOfRepo) return [];
+    if (ref.isDirectory === true) return [];
+    if (!this.inventoryService) return [];
+
+    const reasons: string[] = [];
+
+    if (isManifestPath(ref.normalizedPath)) {
+      reasons.push("file_is_manifest");
+    }
+
+    if (isCodeLanguagePath(ref.normalizedPath)) {
+      const symbolsResult = await this.inventoryService.getSymbolsForFile(ref.normalizedPath);
+      if (symbolsResult.ok && symbolsResult.value.length === 0) {
+        reasons.push("file_has_no_exports");
+      }
+      // A storage error on the inventory must never break risk analysis.
+      // Silently skip the reason and let the M2-shaped result through.
+      if (!symbolsResult.ok) {
+        this.logger.debug("inventory: getSymbolsForFile failed during risk analysis", {
+          path: ref.normalizedPath,
+          error: symbolsResult.error.message,
+        });
+      }
+    }
+
+    return reasons;
   }
 
   /**
