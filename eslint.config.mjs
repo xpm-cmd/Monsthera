@@ -4,7 +4,13 @@ import tsPlugin from "@typescript-eslint/eslint-plugin";
 /** @type {import("eslint").Linter.FlatConfig[]} */
 export default [
   {
+    // `tests/fixtures/**` is plain test data, not real code — see ADR-017 D7
+    // and the per-language fixtures under `tests/fixtures/code-intelligence/m3/`.
+    ignores: ["tests/fixtures/**"],
+  },
+  {
     files: ["src/**/*.ts", "tests/**/*.ts"],
+    ignores: ["tests/fixtures/**"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {

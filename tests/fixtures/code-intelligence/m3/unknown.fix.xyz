@@ -1,0 +1,20 @@
+XYZ-FIXTURE 1.0
+==============
+
+Plain test data with an unrecognised extension. The extractor maps
+.xyz to no language and returns []. The Phase 2 service still emits a
+file-level inventory entry with path, size, and mtime — that is the
+ADR-017 D3 "degraded path" — but the file-level entry does not come
+from this fixture-driven test.
+
+This file deliberately contains text that resembles common keywords
+("function foo", "class Bar", "interface Baz") to make sure the
+extractor does not heuristically pretend to find symbols in unknown
+languages.
+
+  function foo() = nope, not extracted.
+  class Bar     = also not extracted.
+  interface Baz = nope.
+  enum Quux     = nope.
+
+End of fixture.
