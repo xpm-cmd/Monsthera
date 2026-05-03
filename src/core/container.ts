@@ -273,6 +273,26 @@ export async function createContainer(
     embeddingProvider = new StubEmbeddingProvider();
   }
 
+  // Wire the M3 lightweight code inventory (ADR-017) before SearchService so
+  // the M3 phase-4 breadcrumb in `build_context_pack(mode="code")` can reach
+  // the inventory query. The service is independent of `CodeIntelligenceService`
+  // and owns the JSON cache at `.monsthera/cache/code-index.json`, optionally
+  // mirroring into Dolt. `doltClient` is `null` when Dolt is disabled or
+  // unreachable; the mirror then short-circuits and the JSON cache remains
+  // canonical (ADR-014 portable-workspace rule).
+  const codeInventoryDoltClient: DoltMirrorClient | null = doltPool
+    ? {
+        async execute(sql, params) {
+          await doltPool.execute(sql, (params ?? []) as (string | number | null)[]);
+        },
+      }
+    : null;
+  const codeInventoryService = new CodeInventoryService({
+    repoPath: config.repoPath,
+    logger,
+    doltClient: codeInventoryDoltClient,
+  });
+
   const searchService = new SearchService({
     searchRepo: searchRepo!,
     knowledgeRepo: knowledgeRepo!,
@@ -283,6 +303,7 @@ export async function createContainer(
     status,
     runtimeState,
     repoPath: config.repoPath,
+    inventoryService: codeInventoryService,
   });
   // Wiki bookkeeper: maintains index.md + log.md (Karpathy second-brain style)
   const bookkeeper = new WikiBookkeeper(markdownRoot, logger);
@@ -350,28 +371,6 @@ export async function createContainer(
     logger,
   });
 
-  // Wire the M3 lightweight code inventory (ADR-017). The service is
-  // independent of `CodeIntelligenceService` — it owns the JSON cache at
-  // `.monsthera/cache/code-index.json` and (optionally) mirrors into Dolt.
-  // M3 phase 3 only wires it; phase 4 plugs it into the M1/M2 surfaces via
-  // the optional `inventoryService` dep on `CodeIntelligenceService`.
-  //
-  // `doltClient` is `null` when Dolt is disabled or unreachable, so the
-  // mirror short-circuits and the JSON cache remains canonical
-  // (ADR-014 portable-workspace rule).
-  const codeInventoryDoltClient: DoltMirrorClient | null = doltPool
-    ? {
-        async execute(sql, params) {
-          await doltPool.execute(sql, (params ?? []) as (string | number | null)[]);
-        },
-      }
-    : null;
-  const codeInventoryService = new CodeInventoryService({
-    repoPath: config.repoPath,
-    logger,
-    doltClient: codeInventoryDoltClient,
-  });
-
   const codeIntelligenceService = new CodeIntelligenceService({
     knowledgeRepo: knowledgeRepo!,
     workRepo: workRepo!,
@@ -429,6 +428,21 @@ export async function createContainer(
   if (persistedRuntimeState.lastReindexAt) {
     status.recordStat("lastReindexAt", persistedRuntimeState.lastReindexAt);
   }
+
+  // ADR-017 §D9: lazy provider — `monsthera status` surfaces a compact
+  // `codeInventory` block, computed at read time so it stays fresh after
+  // reindex/build without us having to wire status updates from every code
+  // path. `service.getStatus()` never triggers a build (D8): when the cache
+  // file does not exist it resolves to `{ built: false, ... }` and returns
+  // a snapshot derived from the in-memory state otherwise.
+  status.registerStatProvider("codeInventory", async () => {
+    const result = await codeInventoryService.getStatus();
+    if (!result.ok) {
+      logger.debug("codeInventory status provider failed", { error: result.error.message });
+      return undefined;
+    }
+    return result.value;
+  });
 
   // Search repositories can be ephemeral. Probe the live index on boot and
   // rebuild it when source articles exist but the queryable index is empty or stale.

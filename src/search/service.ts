@@ -12,6 +12,7 @@ import type { SearchIndexRepository, SearchResult } from "./repository.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticleRepository } from "../work/repository.js";
 import type { EmbeddingProvider } from "./embedding.js";
+import type { CodeInventoryService } from "../code-intelligence/inventory/service.js";
 import { validateSearchInput } from "./schemas.js";
 import { inspectKnowledgeArticle, inspectWorkArticle } from "../context/insights.js";
 import { resolveCodeRef } from "../core/code-refs.js";
@@ -73,6 +74,14 @@ export interface SearchServiceDeps {
   status?: StatusReporter;
   runtimeState?: RuntimeStateStore;
   repoPath?: string;
+  /**
+   * Optional. The M3 lightweight code inventory (ADR-017). Wired by the
+   * container; the M3 phase-4 breadcrumb in `build_context_pack(mode="code")`
+   * uses this to surface symbol matches the pack itself didn't reveal.
+   * When absent, behavior is identical to phases 1-3: no breadcrumb, no
+   * inventory query, no extra latency.
+   */
+  inventoryService?: CodeInventoryService;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -87,6 +96,8 @@ export class SearchService {
   private readonly status?: StatusReporter;
   private readonly runtimeState?: RuntimeStateStore;
   private readonly repoPath?: string;
+  /** ADR-017 §D4 — feeds the M3 phase-4 breadcrumb. Optional. */
+  private readonly inventoryService?: CodeInventoryService;
 
   /** Cached result of the last canary query (null = never ran) */
   private canaryHealthy: boolean | null = null;
@@ -101,6 +112,7 @@ export class SearchService {
     this.status = deps.status;
     this.runtimeState = deps.runtimeState;
     this.repoPath = deps.repoPath;
+    if (deps.inventoryService) this.inventoryService = deps.inventoryService;
   }
 
   // ─── health ────────────────────────────────────────────────────────────────
@@ -500,6 +512,15 @@ export class SearchService {
     const knowledgeCount = page.filter((item) => item.type === "knowledge").length;
     const workCount = page.length - knowledgeCount;
 
+    const guidance = guidanceForMode(mode, {
+      freshCount,
+      staleCount,
+      sourceLinkedCount,
+      codeLinkedCount,
+    });
+    const breadcrumb = await this.maybeInventoryBreadcrumb(mode, validated.value.query, page);
+    if (breadcrumb !== null) guidance.push(breadcrumb);
+
     return ok({
       generatedAt: new Date().toISOString(),
       query: validated.value.query,
@@ -514,14 +535,55 @@ export class SearchService {
         sourceLinkedCount,
         skippedStaleIndexCount,
       },
-      guidance: guidanceForMode(mode, {
-        freshCount,
-        staleCount,
-        sourceLinkedCount,
-        codeLinkedCount,
-      }),
+      guidance,
       items: page,
     });
+  }
+
+  /**
+   * ADR-017 §D4: when assembling a `mode="code"` context pack, query the
+   * lightweight code inventory and surface a one-line hint pointing at
+   * `code_query` for symbol matches the pack itself doesn't carry.
+   *
+   * Returns `null` (no breadcrumb) when:
+   *  - mode is not "code"
+   *  - no inventory service is wired (M2/M3 phase-1..3 path)
+   *  - the inventory query fails (status reads must never fail because
+   *    inventory hiccupped — log at debug and silently drop)
+   *  - the inventory has zero hits, or every hit is at a path already
+   *    surfaced by the pack via item.codeRefs (no new information)
+   *
+   * Breadcrumb is a single string, never repeated within a single pack.
+   */
+  private async maybeInventoryBreadcrumb(
+    mode: "general" | "code" | "research",
+    query: string,
+    page: readonly ContextPackItem[],
+  ): Promise<string | null> {
+    if (mode !== "code") return null;
+    if (!this.inventoryService) return null;
+
+    const queryResult = await this.inventoryService.query({ query, limit: 25 });
+    if (!queryResult.ok) {
+      this.logger.debug("inventory query failed during build_context_pack breadcrumb", {
+        query,
+        error: queryResult.error.message,
+      });
+      return null;
+    }
+
+    const hits = queryResult.value.hits;
+    if (hits.length === 0) return null;
+
+    const surfacedPaths = new Set<string>();
+    for (const item of page) {
+      for (const ref of item.codeRefs) surfacedPaths.add(ref);
+    }
+
+    const additional = hits.filter((hit) => !surfacedPaths.has(hit.path)).length;
+    if (additional === 0) return null;
+
+    return `Inventory has ${additional} additional symbol matches not surfaced in this pack — call code_query for the full list.`;
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────

@@ -10,16 +10,20 @@ import { timestamp } from "../../../src/core/types.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
+const baseStatus = (): SystemStatus => ({
+  version: "test",
+  uptime: 0,
+  timestamp: timestamp(),
+  subsystems: [],
+});
+
 const mockStatus: StatusReporter = {
   register: () => {},
   unregister: () => {},
   recordStat: () => {},
-  getStatus: (): SystemStatus => ({
-    version: "test",
-    uptime: 0,
-    timestamp: timestamp(),
-    subsystems: [],
-  }),
+  registerStatProvider: () => {},
+  getStatus: baseStatus,
+  getStatusAsync: async () => baseStatus(),
 };
 
 // ---------------------------------------------------------------------------
