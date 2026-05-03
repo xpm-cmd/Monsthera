@@ -84,6 +84,53 @@ export const SCHEMA_STATEMENTS = [
     INDEX idx_lead (lead_work_id),
     INDEX idx_created_at (created_at)
   )`,
+
+  // Code artifacts - lightweight inventory mirror (ADR-017 D1).
+  // The JSON file under `.monsthera/cache/code-index.json` is the canonical
+  // read surface; this Dolt mirror is write-only from M3's perspective and
+  // exists so M4 (provider bridge) can issue SQL queries without rebuilding
+  // the inventory.
+  //
+  // Column type rationale (ADR-017 §"Open questions" — Dolt schema):
+  //   id          : `kind:path:name@line` composite — VARCHAR(512) is generous
+  //                 enough for deeply nested paths plus identifier names
+  //                 (Dolt's index limits cap effective key prefix at 767 bytes).
+  //   path        : TEXT for cross-platform repo paths beyond 255 chars; the
+  //                 idx_path index is keyed on a 255-byte prefix to stay
+  //                 under MySQL's index-key-length limit.
+  //   start/end_line: INT (line numbers fit comfortably; SMALLINT would cap
+  //                 at 32k which some generated TS files exceed).
+  //   exported, stale: TINYINT(1) — MySQL's idiomatic boolean.
+  `CREATE TABLE IF NOT EXISTS code_artifacts (
+    id VARCHAR(512) PRIMARY KEY,
+    kind VARCHAR(64) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    path TEXT NOT NULL,
+    language VARCHAR(64),
+    start_line INT,
+    end_line INT,
+    exported TINYINT(1),
+    scope VARCHAR(255),
+    stale TINYINT(1) NOT NULL DEFAULT 0,
+    INDEX idx_path (path(255)),
+    INDEX idx_kind (kind),
+    INDEX idx_language (language)
+  )`,
+
+  // Code relations - edges between code artifacts (ADR-017 D1).
+  // M3 only emits `contains` (file → symbol) and `defines`. M4 will extend
+  // with `imports` and other edge kinds; the (source_id, target_id, kind)
+  // composite key supports parallel edge kinds between the same nodes.
+  `CREATE TABLE IF NOT EXISTS code_relations (
+    source_id VARCHAR(512) NOT NULL,
+    target_id VARCHAR(512) NOT NULL,
+    kind VARCHAR(64) NOT NULL,
+    confidence VARCHAR(16) NOT NULL,
+    PRIMARY KEY (source_id, target_id, kind),
+    INDEX idx_source (source_id),
+    INDEX idx_target (target_id),
+    INDEX idx_kind (kind)
+  )`,
 ] as const;
 
 /**
