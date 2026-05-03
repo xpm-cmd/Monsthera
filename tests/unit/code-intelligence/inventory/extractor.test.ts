@@ -284,4 +284,25 @@ describe("TextMateSymbolExtractor", () => {
     await extractor.extract({ path: "b.ts", content });
     expect(loadedLanguages()).toEqual(afterFirst);
   });
+
+  // Regression test for the M3 phase-5 smoke-test bug:
+  //
+  // Markdown's grammar bundle declares fenced-code embedded language scopes
+  // (`source.ts`, `source.python`, etc.). When Markdown was extracted before
+  // a code language, vscode-textmate's Registry cached "scope unavailable"
+  // for those embedded scopes. Subsequent calls for the same scope returned
+  // null even after we added the corresponding bundle to `grammarsByScope`,
+  // because the Registry never re-consulted the user-supplied loadGrammar
+  // callback for already-failed lookups. The fix drops the registry
+  // (`registryPromise = null`) whenever a language load adds new scopes, so
+  // the next `ensureRegistry()` call rebuilds with a fresh lookup cache.
+  it("extracts symbols from a code language even after Markdown was loaded first", async () => {
+    const markdown = loadFixture("markdown.fix.md");
+    const typescript = loadFixture("typescript.fix.ts");
+
+    await extractor.extract({ path: "doc.md", content: markdown });
+    const tsResult = await extractor.extract({ path: "after-md.ts", content: typescript });
+
+    expect(tsResult.length).toBeGreaterThan(0);
+  });
 });
