@@ -447,6 +447,39 @@ If the agent forgets to close, the next `monsthera session open` will detect the
 - Throwaway shell sessions where Monsthera was used only for `monsthera search` or `monsthera knowledge get` with no mutations.
 - CI runs where the session lifecycle has no consumer.
 
+### Teaching the agent the close protocol (recommended)
+
+The Phase E teaser already includes a one-line reminder of the close command — that gets the agent ~95% of the way. For a more bulletproof setup, drop the snippet below into your global agent instructions (`~/.claude/CLAUDE.md` for Claude Code; the equivalent in Codex). This guarantees the protocol survives any future change to the teaser format.
+
+```markdown
+## Monsthera sessions
+
+When the user says "cierra session", "close session", "end session", or signals
+they are about to stop / context is about to compact:
+
+1. Run `monsthera session close --note "<one-line intent>"`.
+2. The CLI returns in ~100 ms. Do NOT wait for the LLM — a detached worker
+   generates the handoff article in the background. Stdout of the close
+   command is enough; you do not need to poll for completion.
+3. If the close errors with `NOT_FOUND`, no session is currently open
+   for this agent+repo — fine, nothing to close.
+4. If Ollama is unreachable (you see `degraded — Ollama unavailable`),
+   re-run with `--no-llm` to force a T1-only handoff (Hypergraph + Facts,
+   no narrative). This keeps the lifecycle intact even when the local
+   model is down.
+5. The `--note` argument is the ONLY content you contribute. Everything
+   else (events, work, knowledge, code diffs, commits) is captured by
+   Stage A automatically and summarized by local Ollama. Keep `--note`
+   to a single line of intent or accomplishment.
+
+Common modes:
+- `monsthera session close --note "shipped M3 phase 5"` — async default
+- `monsthera session close --note "..." --sync` — block until article ready
+- `monsthera session close --note "..." --no-llm` — Ollama-free, T1-only
+```
+
+The above is a verbatim copy-paste template. Customise the trigger phrases ("cierra session", etc.) to match how you actually talk to the agent.
+
 ---
 
 ## Customization

@@ -394,8 +394,16 @@ function formatSessionLine(s: Session): string {
  * cross-agent delta) lands in a follow-up alongside the handoff-renderer.
  */
 function formatTeaser(current: Session, parent: Session | null, orphan: Session | null): string {
+  const closeHint =
+    `→ Before exit / on \"cierra session\" / \"close session\": ` +
+    `\`monsthera session close --note \"<one-line intent>\"\` ` +
+    `(returns in ~100ms, Ollama runs in background).`;
+
   if (parent === null) {
-    return `No previous handoff for ${current.agentId} in this repo. Starting fresh (session ${current.id}).`;
+    return [
+      `No previous handoff for ${current.agentId} in this repo. Starting fresh (session ${current.id}).`,
+      closeHint,
+    ].join("\n");
   }
   const closedAt = parent.closedAt ? parent.closedAt.slice(0, 16).replace("T", " ") : "(unknown)";
   const lines: string[] = [
@@ -408,8 +416,9 @@ function formatTeaser(current: Session, parent: Session | null, orphan: Session 
         `Recover: \`monsthera session _generate-handoff ${orphan.id}\``,
     );
   } else if (parent.handoffArticleId) {
-    lines.push(`→ \`monsthera knowledge get ${parent.handoffArticleId}\` for the handoff article.`);
+    lines.push(`→ \`monsthera knowledge get ${parent.handoffArticleId}\` for the previous handoff.`);
   }
+  lines.push(closeHint);
   return lines.join("\n");
 }
 
