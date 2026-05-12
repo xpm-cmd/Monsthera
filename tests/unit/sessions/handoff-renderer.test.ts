@@ -136,6 +136,21 @@ describe("renderHandoffArticle", () => {
     expect(out).toContain("Events in window: 2");
   });
 
+  it("does NOT say 'degraded' when Ollama succeeded (regression: dogfood bug 2026-05-12)", () => {
+    // Repro for the bug discovered during the first real dogfood: the
+    // service used to render against the post-close session (quality
+    // provisional `degraded=true`) BEFORE attachHandoff populated the
+    // final quality fields. The article body then carried a stale
+    // "Quality (no eval) · degraded (Ollama unavailable)" header even
+    // when Ollama had succeeded with score 4/5. Service now projects
+    // the post-pipeline quality state before render; this test pins
+    // the renderer's contract: given a non-degraded session, the body
+    // must never claim degraded mode.
+    const out = renderHandoffArticle(makeSession(), makeFacts(), makeSummary());
+    expect(out).not.toContain("degraded (Ollama unavailable)");
+    expect(out).not.toContain("Quality (no eval)");
+  });
+
   it("includes a session header block with id/agent/duration/quality + previous pointer", () => {
     const out = renderHandoffArticle(makeSession(), makeFacts(), makeSummary());
     expect(out).toContain("ses-20260512-104300-claude-code");
