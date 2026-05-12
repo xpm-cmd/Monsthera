@@ -329,13 +329,27 @@ export class SessionService {
   ): Promise<Result<HandoffPipelineOutput, StateTransitionError | NotFoundError | StorageError>> {
     const llmOutcome = await this.runLlmStages(facts, skipLlm);
 
+    // Render against a projected session that reflects the FINAL quality
+    // state (after `attachHandoff` lands below), not the provisional
+    // `degraded: true` set in `close()` while the pipeline was pending.
+    // Otherwise the article header carries stale "degraded (Ollama
+    // unavailable)" text even when Ollama succeeded. Discovered during
+    // first real dogfood — see knowledge:cognitive-handoff-sessions.
+    const projectedSession: Session = {
+      ...closedSession,
+      quality: {
+        score: llmOutcome.evalResult?.score ?? null,
+        degraded: llmOutcome.degraded,
+        model: llmOutcome.modelName,
+      },
+    };
     const articleBody = renderHandoffArticle(
-      closedSession,
+      projectedSession,
       facts,
       llmOutcome.summary ?? emptyT1Summary(),
     );
-    const slug = buildHandoffSlug(closedSession);
-    const handoffArticleId = await this.persistHandoffArticle(closedSession, articleBody, slug);
+    const slug = buildHandoffSlug(projectedSession);
+    const handoffArticleId = await this.persistHandoffArticle(projectedSession, articleBody, slug);
     if (!handoffArticleId.ok) return handoffArticleId;
 
     const attached = await this.repo.attachHandoff(closedSession.id, {
