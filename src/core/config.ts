@@ -41,6 +41,17 @@ const ContextConfigSchema = z.object({
   snapshotMaxAgeMinutes: z.number().min(0).default(30),
 });
 
+const SessionsConfigSchema = z.object({
+  /** Enable LLM-powered handoff articles. When false, all closes produce T1-only handoffs. */
+  llmEnabled: z.boolean().default(true),
+  /** Ollama model for the retrospect+prospect summarizer. */
+  llmModel: z.string().default("qwen2.5-coder:7b"),
+  /** Temperature for the summarizer. Lower = more deterministic. */
+  llmTemperature: z.number().min(0).max(1).default(0.2),
+  /** Timeout for a single Ollama generate call (ms). */
+  llmTimeoutMs: z.number().min(1000).default(60_000),
+});
+
 const ServerConfigSchema = z.object({
   port: z.number().default(3000),
   host: z.string().default("localhost"),
@@ -54,6 +65,7 @@ export const MonstheraConfigSchema = z.object({
   server: ServerConfigSchema.default(() => ServerConfigSchema.parse({})),
   dashboard: DashboardConfigSchema.default(() => DashboardConfigSchema.parse({})),
   context: ContextConfigSchema.default(() => ContextConfigSchema.parse({})),
+  sessions: SessionsConfigSchema.default(() => SessionsConfigSchema.parse({})),
   verbosity: z.enum(["quiet", "normal", "verbose", "debug"]).default("normal"),
 });
 
@@ -237,6 +249,27 @@ export function applyEnvOverrides(config: Record<string, unknown>): Record<strin
         snapshotMaxAgeMinutes: minutes,
       };
     }
+  }
+
+  // Sessions overrides
+  const sessionsPatch: Record<string, unknown> = {};
+  if (process.env["MONSTHERA_SESSIONS_LLM_ENABLED"] !== undefined) {
+    sessionsPatch["llmEnabled"] = process.env["MONSTHERA_SESSIONS_LLM_ENABLED"] === "true";
+  }
+  if (process.env["MONSTHERA_SESSIONS_LLM_MODEL"] !== undefined) {
+    sessionsPatch["llmModel"] = process.env["MONSTHERA_SESSIONS_LLM_MODEL"];
+  }
+  if (process.env["MONSTHERA_SESSIONS_LLM_TIMEOUT_MS"] !== undefined) {
+    const ms = Number(process.env["MONSTHERA_SESSIONS_LLM_TIMEOUT_MS"]);
+    if (Number.isFinite(ms) && ms > 0) sessionsPatch["llmTimeoutMs"] = ms;
+  }
+  if (Object.keys(sessionsPatch).length > 0) {
+    result["sessions"] = {
+      ...(typeof result["sessions"] === "object" && result["sessions"] !== null
+        ? (result["sessions"] as Record<string, unknown>)
+        : {}),
+      ...sessionsPatch,
+    };
   }
 
   return result;

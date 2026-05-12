@@ -46,6 +46,12 @@ import type { SnapshotRepository } from "../context/snapshot-repository.js";
 import { CodeIntelligenceService } from "../code-intelligence/service.js";
 import { CodeInventoryService } from "../code-intelligence/inventory/service.js";
 import type { DoltMirrorClient } from "../code-intelligence/inventory/persistence.js";
+import type { SessionRepository } from "../sessions/repository.js";
+import { FileSystemSessionRepository } from "../sessions/file-repository.js";
+import { SessionService } from "../sessions/service.js";
+import { MinimalFactsExtractor } from "../sessions/facts-extractor.js";
+import type { LLMSummarizer } from "../sessions/llm-summarizer.js";
+import { OllamaSummarizer } from "../sessions/llm-summarizer.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -72,6 +78,8 @@ export interface MonstheraContainer extends Disposable {
   readonly snapshotService: SnapshotService;
   readonly codeIntelligenceService: CodeIntelligenceService;
   readonly codeInventoryService: CodeInventoryService;
+  readonly sessionRepo: SessionRepository;
+  readonly sessionService: SessionService;
 }
 
 /**
@@ -380,6 +388,24 @@ export async function createContainer(
     eventRepo: orchestrationRepo!,
     inventoryService: codeInventoryService,
   });
+  // Session subsystem: persists per-agent session lifecycle records, the
+  // Stage A facts artifact, and (when LLM is enabled and Ollama is reachable)
+  // the Stage B+C+D handoff article. The summarizer is constructed eagerly
+  // but its `healthCheck()` runs at close-time — Ollama being down does not
+  // block container startup; the service falls back to T1-only handoffs.
+  const sessionRepo: SessionRepository = new FileSystemSessionRepository(markdownRoot);
+  const sessionSummarizer: LLMSummarizer | null = config.sessions.llmEnabled
+    ? new OllamaSummarizer({
+        ollamaUrl: config.search.ollamaUrl,
+        model: config.sessions.llmModel,
+        temperature: config.sessions.llmTemperature,
+        timeoutMs: config.sessions.llmTimeoutMs,
+      })
+    : null;
+  const sessionService = new SessionService(sessionRepo, new MinimalFactsExtractor(), {
+    summarizer: sessionSummarizer,
+    knowledgeService,
+  });
   const agentsService = new AgentService({
     workRepo: workRepo!,
     orchestrationRepo: orchestrationRepo!,
@@ -560,6 +586,8 @@ export async function createContainer(
     snapshotService,
     codeIntelligenceService,
     codeInventoryService,
+    sessionRepo,
+    sessionService,
     async dispose() {
       logger.info("Shutting down container");
       await stack.dispose();

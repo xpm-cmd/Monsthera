@@ -25,6 +25,7 @@ import { handleConvoy } from "./convoy-commands.js";
 import { handleCode } from "./code-commands.js";
 import { handleWorkspace } from "./workspace-commands.js";
 import { handleSelf } from "./self-commands.js";
+import { handleSession } from "./session-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -88,6 +89,7 @@ function handleHelp(): void {
       "  uninstall-hook           Remove a previously-installed monsthera pre-commit hook",
       "  events <subcommand>      Tail or emit orchestration events (agent dispatch contract, ADR-008)",
       "  code <subcommand>        Code-ref intelligence: inspect path, find owners, score impact, detect changes (ADR-015)",
+      "  session <subcommand>     Manage agent session lifecycle (cognitive handoff between sessions)",
       "",
       "KNOWLEDGE SUBCOMMANDS",
       "  knowledge create  --title <t> --category <c> --content <body> [--tags t1,t2] [--code-refs r1,r2]",
@@ -340,6 +342,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "self":
         await handleSelf(args.slice(1));
+        break;
+      case "session":
+        await handleSession(args.slice(1));
         break;
       case "--version":
       case "-v":

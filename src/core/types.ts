@@ -72,6 +72,26 @@ export function generateConvoyId(): ConvoyId {
   return convoyId(generateId("cv"));
 }
 
+/**
+ * Generate a Session ID with a stable, sortable, human-readable shape:
+ *   `ses-<UTC-YYYYMMDD-HHMMSS>-<agentId>`
+ *
+ * The second-resolution timestamp prevents collisions when an agent closes
+ * and immediately re-opens within the same minute (typical for back-to-back
+ * Claude/Codex conversations). The agent suffix makes cross-agent sessions
+ * distinguishable at a glance, and the lexicographically-sortable timestamp
+ * makes filesystem listings naturally chronological. Agent slug is sanitized:
+ * lowercased, non-[a-z0-9-] replaced with `-`.
+ */
+export function generateSessionId(agentId: string, when: Date = new Date()): SessionId {
+  const pad = (n: number): string => n.toString().padStart(2, "0");
+  const stamp =
+    `${when.getUTCFullYear()}${pad(when.getUTCMonth() + 1)}${pad(when.getUTCDate())}` +
+    `-${pad(when.getUTCHours())}${pad(when.getUTCMinutes())}${pad(when.getUTCSeconds())}`;
+  const agentSlug = agentId.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return sessionId(`ses-${stamp}-${agentSlug || "unknown"}`);
+}
+
 /** Work article phases */
 export const WorkPhase = {
   PLANNING: "planning",
