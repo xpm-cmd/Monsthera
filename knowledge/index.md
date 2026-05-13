@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 65 knowledge articles and 20 work articles.
-> Last updated: 2026-05-13 00:40:38
+> Auto-generated catalog of 66 knowledge articles and 20 work articles.
+> Last updated: 2026-05-13 00:47:37
 
 ## Knowledge
 
@@ -20,7 +20,7 @@
 - [Agent and wave MCP tools](notes/agent-and-wave-mcp-tools.md) — ## Overview  Monsthera has a small but important slice of MCP tools dedicated to
 - [AgentService: Agent registry and session tracking](notes/agentservice-agent-registry-and-session-tracking.md) — ## Overview  `AgentService` is a derived-data service — it has no persistent age
 - [CLI entrypoint and command routing](notes/cli-entrypoint-and-command-routing.md) — ## Overview  The CLI surface is the thinnest operational wrapper around the Mons
-- [Cognitive handoff sessions — system design and state](notes/cognitive-handoff-sessions.md) — # Cognitive handoff sessions  **Status:** shipped in PRs #104 + #105 + #106 + #107
+- [Cognitive handoff sessions — system design and state](notes/cognitive-handoff-sessions.md) — # Cognitive handoff sessions  **Status:** shipped in PRs [#104](https://github.c
 - [Context Pack Builder: Scoring, Diagnostics, and Mode-Specific Ranking](notes/context-pack-builder-scoring-diagnostics-and-mode-specific-ranking.md) — ## How build_context_pack Works  `buildContextPack()` in `SearchService` (`src/s
 - [Core runtime state, logging, and startup bootstrap](notes/core-runtime-state-logging-and-startup-bootstrap.md) — ## Overview  The runtime-state layer is Monsthera's "last-known facts" cache for
 - [Dashboard architecture and SPA routing](notes/dashboard-architecture-and-spa-routing.md) — # Dashboard Architecture and SPA Routing  ## Overview  The Monsthera dashboard i
@@ -60,6 +60,10 @@
 ### design
 
 - [Monsthera: Work Article Design](notes/monsthera-work-article-design.md) — ## Overview  Work articles are Monsthera's replacement for traditional tickets.
+
+### gotcha
+
+- [Phase 3c shipping — non-obvious learnings](notes/phase-3c-shipping-non-obvious-learnings.md) — # Phase 3c shipping — non-obvious learnings  These are the things that surfaced
 
 ### guide
 
