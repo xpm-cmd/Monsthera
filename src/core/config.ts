@@ -45,7 +45,7 @@ const SessionsConfigSchema = z.object({
   /** Enable LLM-powered handoff articles. When false, all closes produce T1-only handoffs. */
   llmEnabled: z.boolean().default(true),
   /** Ollama model for the retrospect+prospect summarizer. */
-  llmModel: z.string().default("qwen2.5-coder:7b"),
+  llmModel: z.string().default("gemma4:latest"),
   /** Temperature for the summarizer. Lower = more deterministic. */
   llmTemperature: z.number().min(0).max(1).default(0.2),
   /** Timeout for a single Ollama generate call (ms). */
