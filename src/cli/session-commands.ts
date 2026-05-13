@@ -399,6 +399,14 @@ function formatTeaser(current: Session, parent: Session | null, orphan: Session 
     `\`monsthera session close --note \"<one-line intent>\"\` ` +
     `(returns in ~100ms, Ollama runs in background).`;
 
+  // Resume hint — symmetric counterpart to closeHint. Only emitted when there
+  // IS a previous handoff to resume from. Agents with the CLAUDE.md snippet
+  // will treat this as the trigger to read the handoff and propose next-steps;
+  // agents without it still see the explicit invitation.
+  const resumeHint = (handoffId: string): string =>
+    `→ On \"retomá la session\" / \"continuá donde quedamos\" / \"pick up where we left off\": ` +
+    `read the handoff above (\`monsthera knowledge get ${handoffId}\`), then act on its \"What's next > First action\".`;
+
   if (parent === null) {
     return [
       `No previous handoff for ${current.agentId} in this repo. Starting fresh (session ${current.id}).`,
@@ -417,6 +425,7 @@ function formatTeaser(current: Session, parent: Session | null, orphan: Session 
     );
   } else if (parent.handoffArticleId) {
     lines.push(`→ \`monsthera knowledge get ${parent.handoffArticleId}\` for the previous handoff.`);
+    lines.push(resumeHint(parent.handoffArticleId));
   }
   lines.push(closeHint);
   return lines.join("\n");

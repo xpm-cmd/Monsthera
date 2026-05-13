@@ -23,7 +23,7 @@ A single bash helper script that runs once per agent session in any Monsthera-re
 6. **Emits a `## Monsthera briefing` block** with a short teaser pointing at the previous session's handoff article — the agent picks up where the last session left off, with verifiable citations to events/work/knowledge/code. Skipped silently if no previous session exists (just creates a fresh one).
 7. **Surfaces orphan warnings** when the previous session's async handoff worker did not finish writing — the next agent sees `⚠ Previous handoff is incomplete` and a one-line recovery command.
 
-Phase E reuses the same hook plumbing and the same 5 s timeout / never-blocks contract as Phases A–D. The cost is one extra `monsthera` CLI call per session start (typically <200 ms). The agent's responsibility on the way out is a single `monsthera session close [--note "..."]` call — see [Step 5](#step-5--agent-responsibility-on-the-way-out).
+Phase E reuses the same hook plumbing and the same 5 s timeout / never-blocks contract as Phases A–D. The cost is one extra `monsthera` CLI call per session start (typically <200 ms). The agent's responsibility splits in two: on the way IN it should act on the briefing (read the previous handoff, propose next-steps); on the way OUT it should call `monsthera session close [--note "..."]`. See [Step 5](#step-5--agent-responsibility-on-the-way-in-and-on-the-way-out).
 
 The same script reaches three integration points:
 
@@ -414,9 +414,12 @@ If the briefing surfaces an orphan warning (`⚠ Previous handoff is incomplete`
 
 ---
 
-## Step 5 — Agent responsibility on the way out
+## Step 5 — Agent responsibility on the way in and on the way out
 
-The bootstrap script handles the **way in** (opens a session, surfaces the previous handoff). The **way out** is the agent's job: call `monsthera session close` before exit or context compaction so the next session has something to read.
+The bootstrap script handles the **way in** (opens a session, surfaces the previous handoff) **on the mechanical level** — the SessionStart hook emits the `## Monsthera briefing` block automatically. What it cannot do is teach the agent to **act on** the briefing. Two cases:
+
+- **Way in (cognitive resume)**: when the agent sees `## Monsthera briefing` with a previous handoff slug, the recommended behavior is to read the handoff and surface its "What's next > First action" — unless the user's first message already specifies a different task. See the snippet below.
+- **Way out (handoff write)**: when the user signals they're done (or compaction is imminent), the agent must call `monsthera session close [--note "..."]` so the NEXT session has something to read.
 
 Recommended pattern, in the agent's session-end protocol (CLAUDE.md / AGENTS.md / equivalent):
 
@@ -447,12 +450,42 @@ If the agent forgets to close, the next `monsthera session open` will detect the
 - Throwaway shell sessions where Monsthera was used only for `monsthera search` or `monsthera knowledge get` with no mutations.
 - CI runs where the session lifecycle has no consumer.
 
-### Teaching the agent the close protocol (recommended)
+### Teaching the agent the session protocol (recommended)
 
-The Phase E teaser already includes a one-line reminder of the close command — that gets the agent ~95% of the way. For a more bulletproof setup, drop the snippet below into your global agent instructions (`~/.claude/CLAUDE.md` for Claude Code; the equivalent in Codex). This guarantees the protocol survives any future change to the teaser format.
+The Phase E teaser already includes one-line reminders of both the resume command and the close command — that gets the agent ~95% of the way. For a more bulletproof setup, drop the snippet below into your global agent instructions (`~/.claude/CLAUDE.md` for Claude Code; the equivalent in Codex). This guarantees both protocols (open/resume and close) survive any future change to the teaser format.
 
 ```markdown
 ## Monsthera sessions
+
+### On the way IN — when a `## Monsthera briefing` block appears in your initial context
+
+The SessionStart hook already opened a session for you. The briefing names the
+previous closed session and the slug of its handoff article. Two cases:
+
+1. **The user's first message is an explicit task** ("implement Phase 3c",
+   "fix bug X", "add feature Y") — execute it. The briefing is supporting
+   context; do NOT detour to read the handoff unless the task explicitly
+   relates to the previous session's work.
+
+2. **The user's first message is generic** ("hola", "ready?", "let's go",
+   "qué tenemos?", "what's next?") — treat this as a resume signal:
+   a. Read the previous handoff: `monsthera knowledge get handoff-<id>`
+      (the `<id>` is in the briefing).
+   b. Surface a one-paragraph summary of its "What's next > First action".
+   c. Ask: "Resume this, or different priority?"
+   d. Wait for confirmation before executing.
+
+3. **The user says "retomá la session", "continuá donde quedamos",
+   "pick up where we left off", "load the handoff", or any phrase signaling
+   session resumption** — same as case 2, but proceed without asking for
+   confirmation. The user explicitly opted in.
+
+4. If the briefing surfaces `⚠ Previous handoff is incomplete`, the previous
+   session's async worker did not finish. Run the recovery command from the
+   warning (`monsthera session _generate-handoff <id>`) BEFORE doing other
+   work — it regenerates the missing article from already-captured facts.
+
+### On the way OUT — when the user wants to stop
 
 When the user says "cierra session", "close session", "end session", or signals
 they are about to stop / context is about to compact:
@@ -478,7 +511,7 @@ Common modes:
 - `monsthera session close --note "..." --no-llm` — Ollama-free, T1-only
 ```
 
-The above is a verbatim copy-paste template. Customise the trigger phrases ("cierra session", etc.) to match how you actually talk to the agent.
+The above is a verbatim copy-paste template. Customise the trigger phrases ("cierra session", "retomá la session", etc.) to match how you actually talk to the agent.
 
 ---
 
