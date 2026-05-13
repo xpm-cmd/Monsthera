@@ -49,7 +49,8 @@ import type { DoltMirrorClient } from "../code-intelligence/inventory/persistenc
 import type { SessionRepository } from "../sessions/repository.js";
 import { FileSystemSessionRepository } from "../sessions/file-repository.js";
 import { SessionService } from "../sessions/service.js";
-import { MinimalFactsExtractor } from "../sessions/facts-extractor.js";
+import { DefaultFactsExtractor } from "../sessions/facts-extractor.js";
+import { realCommandRunner } from "../ops/command-runner.js";
 import type { LLMSummarizer } from "../sessions/llm-summarizer.js";
 import { OllamaSummarizer } from "../sessions/llm-summarizer.js";
 
@@ -402,7 +403,13 @@ export async function createContainer(
         timeoutMs: config.sessions.llmTimeoutMs,
       })
     : null;
-  const sessionService = new SessionService(sessionRepo, new MinimalFactsExtractor(), {
+  const factsExtractor = new DefaultFactsExtractor({
+    eventRepo: orchestrationRepo!,
+    workRepo: workRepo!,
+    knowledgeRepo: knowledgeRepo!,
+    runner: realCommandRunner,
+  });
+  const sessionService = new SessionService(sessionRepo, factsExtractor, {
     summarizer: sessionSummarizer,
     knowledgeService,
   });
