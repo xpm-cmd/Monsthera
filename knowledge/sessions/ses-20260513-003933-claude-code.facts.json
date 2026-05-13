@@ -1,0 +1,109 @@
+{
+  "sessionId": "ses-20260513-003933-claude-code",
+  "agent": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/funny-elgamal-3f370a",
+  "branch": null,
+  "window": {
+    "openedAt": "2026-05-13T00:39:33.299Z",
+    "closedAt": "2026-05-13T00:40:38.165Z"
+  },
+  "events": [],
+  "workTouched": [],
+  "knowledgeTouched": [],
+  "codeTouched": [
+    {
+      "path": "src/core/container.ts",
+      "linesAdded": 9,
+      "linesRemoved": 2
+    },
+    {
+      "path": "src/sessions/facts-extractor-git.ts",
+      "linesAdded": 210,
+      "linesRemoved": 0
+    },
+    {
+      "path": "src/sessions/facts-extractor-joins.ts",
+      "linesAdded": 90,
+      "linesRemoved": 0
+    },
+    {
+      "path": "src/sessions/facts-extractor.ts",
+      "linesAdded": 158,
+      "linesRemoved": 0
+    },
+    {
+      "path": "tests/unit/sessions/default-facts-extractor.test.ts",
+      "linesAdded": 264,
+      "linesRemoved": 0
+    },
+    {
+      "path": "tests/unit/sessions/facts-extractor-git.test.ts",
+      "linesAdded": 227,
+      "linesRemoved": 0
+    },
+    {
+      "path": "tests/unit/sessions/facts-extractor-joins.test.ts",
+      "linesAdded": 194,
+      "linesRemoved": 0
+    }
+  ],
+  "commits": [
+    {
+      "sha": "9fb97a45f45ca4747302b52f44b83b088f781fff",
+      "subject": "feat(sessions): Phase 3c — DefaultFactsExtractor",
+      "timestamp": "2026-05-13T10:40:29+10:00"
+    }
+  ],
+  "signals": {
+    "todosAdded": [
+      {
+        "path": "src/sessions/facts-extractor-git.ts",
+        "line": 80,
+        "text": "const TODO_RE = /\\b(?:TODO|FIXME|XXX|HACK)\\b/i;"
+      },
+      {
+        "path": "src/sessions/facts-extractor-git.ts",
+        "line": 84,
+        "text": " * Scan `git diff --unified=0 baseSha..HEAD` for TODO/FIXME/XXX/HACK markers"
+      },
+      {
+        "path": "tests/unit/sessions/default-facts-extractor.test.ts",
+        "line": 149,
+        "text": "        \"+// TODO: wire refresh\","
+      },
+      {
+        "path": "tests/unit/sessions/default-facts-extractor.test.ts",
+        "line": 198,
+        "text": "      { path: \"src/auth/worker.ts\", line: 42, text: \"// TODO: wire refresh\" },"
+      },
+      {
+        "path": "tests/unit/sessions/facts-extractor-git.test.ts",
+        "line": 146,
+        "text": "  it(\"captures TODO/FIXME/XXX/HACK markers from added lines as `todosAdded`\", async () => {"
+      },
+      {
+        "path": "tests/unit/sessions/facts-extractor-git.test.ts",
+        "line": 152,
+        "text": "      \"+// TODO: wire refresh logic\","
+      },
+      {
+        "path": "tests/unit/sessions/facts-extractor-git.test.ts",
+        "line": 165,
+        "text": "      { path: \"src/foo.ts\", line: 11, text: \"// TODO: wire refresh logic\" },"
+      },
+      {
+        "path": "tests/unit/sessions/facts-extractor-git.test.ts",
+        "line": 203,
+        "text": "      \"+// TODO: in foo\","
+      },
+      {
+        "path": "tests/unit/sessions/facts-extractor-git.test.ts",
+        "line": 221,
+        "text": "      { path: \"src/foo.ts\", line: 5, text: \"// TODO: in foo\" },"
+      }
+    ],
+    "questions": [],
+    "testFailures": []
+  },
+  "agentNote": "phase 3c shipped — 21 tests + DefaultFactsExtractor wired"
+}

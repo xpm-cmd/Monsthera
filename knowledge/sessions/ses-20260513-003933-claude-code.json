@@ -1,0 +1,19 @@
+{
+  "id": "ses-20260513-003933-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/funny-elgamal-3f370a",
+  "branch": null,
+  "openedAt": "2026-05-13T00:39:33.299Z",
+  "closedAt": "2026-05-13T00:40:38.165Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260513-003933-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/funny-elgamal-3f370a/knowledge/sessions/ses-20260513-003933-claude-code.facts.json",
+  "parentSessionId": null,
+  "abandonReason": null,
+  "quality": {
+    "score": null,
+    "degraded": true,
+    "model": "qwen2.5-coder:7b"
+  },
+  "intent": "phase 3c dogfood verification"
+}
