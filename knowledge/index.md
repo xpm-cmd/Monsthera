@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 67 knowledge articles and 20 work articles.
-> Last updated: 2026-05-13 12:29:28
+> Auto-generated catalog of 68 knowledge articles and 20 work articles.
+> Last updated: 2026-05-13 12:46:40
 
 ## Knowledge
 
@@ -65,6 +65,7 @@
 
 - [Phase 3c shipping — non-obvious learnings](notes/phase-3c-shipping-non-obvious-learnings.md) — # Phase 3c shipping — non-obvious learnings  These are the things that surfaced
 - [Phase 3d + 3e shipping — non-obvious learnings](notes/phase-3d-3e-shipping-non-obvious-learnings.md) — # Phase 3d + 3e shipping — non-obvious learnings  These are the things that surf
+- [Phase 4a + 4b shipping — non-obvious learnings](notes/phase-4a-4b-shipping-non-obvious-learnings.md) — # Phase 4a + 4b shipping — non-obvious learnings  Same shape as the Phase 3d+3e
 
 ### guide
 
