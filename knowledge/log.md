@@ -170,3 +170,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-05-03 05:52:25]** advance work | Implement Code Intelligence M3 — Lightweight Code Inventory → done (w-w7yhmqse)
 - **[2026-05-13 00:40:38]** create knowledge | Handoff: 2026-05-13 claude-code (1 min) (k-s5jroill)
 - **[2026-05-13 00:47:37]** create knowledge | Phase 3c shipping — non-obvious learnings (k-s6dgwnj5)
+- **[2026-05-13 12:29:28]** create knowledge | Phase 3d + 3e shipping — non-obvious learnings (k-7tu6a89q)
