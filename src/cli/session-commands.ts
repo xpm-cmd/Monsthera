@@ -474,8 +474,14 @@ function formatSessionLine(s: Session): string {
 function formatTeaser(current: Session, parent: Session | null, orphan: Session | null): string {
   const closeHint =
     `→ Before exit / on \"cierra session\" / \"close session\": ` +
-    `\`monsthera session close --note \"<one-line intent>\"\` ` +
+    `\`monsthera session close --note \"<note>\"\` ` +
     `(returns in ~100ms, Ollama runs in background).`;
+  const noteTemplate =
+    `   The \`--note\` is the next agent's grounding. Aim to cover the 5 cold-start questions:\n` +
+    `   1) WHAT shipped (phases / features with names) · 2) WHY (intent + parent goal) · ` +
+    `3) NEXT (1-3 concrete actions with file:line or commands) · ` +
+    `4) WATCH-OUTS (blockers / deferred / gotchas) · ` +
+    `5) VERIFY (test commands or check). Suggested agent for next is a nice extra.`;
 
   // Resume hint — symmetric counterpart to closeHint. Only emitted when there
   // IS a previous handoff to resume from. Agents with the CLAUDE.md snippet
@@ -489,6 +495,7 @@ function formatTeaser(current: Session, parent: Session | null, orphan: Session 
     return [
       `No previous handoff for ${current.agentId} in this repo. Starting fresh (session ${current.id}).`,
       closeHint,
+      noteTemplate,
     ].join("\n");
   }
   const closedAt = parent.closedAt ? parent.closedAt.slice(0, 16).replace("T", " ") : "(unknown)";
@@ -506,6 +513,7 @@ function formatTeaser(current: Session, parent: Session | null, orphan: Session 
     lines.push(resumeHint(parent.handoffArticleId));
   }
   lines.push(closeHint);
+  lines.push(noteTemplate);
   return lines.join("\n");
 }
 

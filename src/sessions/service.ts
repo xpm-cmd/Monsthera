@@ -18,6 +18,10 @@ import {
   renderHandoffArticle,
   renderOrphanBrief,
 } from "./handoff-renderer.js";
+import {
+  evaluateHandoffCoverage,
+  renderCoverageSection,
+} from "./coverage-validator.js";
 import type { KnowledgeService } from "../knowledge/service.js";
 import type { KnowledgeArticle } from "../knowledge/repository.js";
 import { spawn } from "node:child_process";
@@ -478,11 +482,19 @@ export class SessionService {
         model: llmOutcome.modelName,
       },
     };
-    const articleBody = renderHandoffArticle(
+    const renderedBody = renderHandoffArticle(
       projectedSession,
       facts,
       llmOutcome.summary ?? emptyT1Summary(),
     );
+    // Advisory coverage pass over the rendered article — surfaces unanswered
+    // dimensions to the next agent without blocking persistence. The render is
+    // not perfect; the coverage section is the article's own self-criticism.
+    const coverageGaps = evaluateHandoffCoverage(renderedBody);
+    const coverageSection = renderCoverageSection(coverageGaps);
+    const articleBody = coverageSection.length > 0
+      ? `${renderedBody.trimEnd()}\n\n${coverageSection}\n`
+      : renderedBody;
     const slug = buildHandoffSlug(projectedSession);
     const handoffArticleId = await this.persistHandoffArticle(projectedSession, articleBody, slug);
     if (!handoffArticleId.ok) return handoffArticleId;
