@@ -321,6 +321,7 @@ describe("InMemoryConvoyRepository", () => {
         async findByWorkId() { return ok([]); },
         async findByType() { return ok([]); },
         async findRecent() { return ok([]); },
+        async findInWindow() { return ok([]); },
       };
       const r = new InMemoryConvoyRepository({ eventRepo: failingRepo, logger: silentLogger() });
       const created = await r.create({

@@ -3,7 +3,7 @@ import { ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import type { StorageError } from "../core/errors.js";
 import { generateId, timestamp, workId, agentId } from "../core/types.js";
-import type { WorkId } from "../core/types.js";
+import type { Timestamp, WorkId } from "../core/types.js";
 import type {
   OrchestrationEvent,
   OrchestrationEventRepository,
@@ -99,6 +99,24 @@ export class DoltOrchestrationRepository implements OrchestrationEventRepository
     const rows = queryResult.value as OrchestrationEventRow[];
     const events = rows.map((row) => this.parseEventRow(row));
 
+    return ok(events);
+  }
+
+  async findInWindow(
+    start: Timestamp,
+    end: Timestamp,
+    limit?: number,
+  ): Promise<Result<OrchestrationEvent[], StorageError>> {
+    const baseSql =
+      "SELECT * FROM orchestration_events WHERE created_at BETWEEN ? AND ? ORDER BY created_at ASC";
+    const sql = limit != null ? `${baseSql} LIMIT ?` : baseSql;
+    const params: unknown[] = limit != null ? [start, end, limit] : [start, end];
+
+    const queryResult = await executeQuery(this.pool, sql, params);
+    if (!queryResult.ok) return queryResult;
+
+    const rows = queryResult.value as OrchestrationEventRow[];
+    const events = rows.map((row) => this.parseEventRow(row));
     return ok(events);
   }
 

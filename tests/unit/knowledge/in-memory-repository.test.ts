@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
 import { ErrorCode } from "../../../src/core/errors.js";
 import type { KnowledgeArticle } from "../../../src/knowledge/repository.js";
-import { slug as brandSlug } from "../../../src/core/types.js";
+import { slug as brandSlug, timestamp } from "../../../src/core/types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -476,5 +476,66 @@ describe("exists", () => {
 
     expect(await repo.exists(created.id)).toBe(true);
     expect(await repo.exists("not-a-real-id")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findUpdatedSince
+// ---------------------------------------------------------------------------
+
+describe("findUpdatedSince", () => {
+  let repo: InMemoryKnowledgeArticleRepository;
+
+  beforeEach(() => {
+    repo = new InMemoryKnowledgeArticleRepository();
+  });
+
+  it("returns articles whose updatedAt >= the cutoff", async () => {
+    const older = await createArticle(repo, {
+      title: "Older",
+      createdAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-04-01T00:00:00.000Z",
+    });
+    const newer = await createArticle(repo, {
+      title: "Newer",
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+
+    const result = await repo.findUpdatedSince(timestamp("2026-04-15T00:00:00.000Z"));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const ids = result.value.map((a) => a.id);
+    expect(ids).toContain(newer.id);
+    expect(ids).not.toContain(older.id);
+  });
+
+  it("includes articles whose updatedAt exactly equals the cutoff", async () => {
+    const article = await createArticle(repo, {
+      title: "On boundary",
+      createdAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-04-15T00:00:00.000Z",
+    });
+
+    const result = await repo.findUpdatedSince(timestamp("2026-04-15T00:00:00.000Z"));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.map((a) => a.id)).toContain(article.id);
+  });
+
+  it("returns an empty array when no articles match", async () => {
+    await createArticle(repo, {
+      title: "Old",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const result = await repo.findUpdatedSince(timestamp("2099-01-01T00:00:00.000Z"));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual([]);
   });
 });

@@ -1,6 +1,8 @@
 import type { Result } from "../core/result.js";
 import { ok } from "../core/result.js";
 import type { StorageError } from "../core/errors.js";
+import { timestamp } from "../core/types.js";
+import type { Timestamp } from "../core/types.js";
 import type { CommandRunner } from "../ops/command-runner.js";
 import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { OrchestrationEventRepository } from "../orchestration/repository.js";
@@ -102,16 +104,17 @@ export class DefaultFactsExtractor implements FactsExtractor {
     session: Session,
     agentNote: string | null,
   ): Promise<Result<SessionFacts, StorageError>> {
-    const closedAt = session.closedAt ?? new Date().toISOString();
+    const closedAt: Timestamp = session.closedAt ?? timestamp();
     const limit = this.deps.recentEventsLimit ?? DEFAULT_RECENT_EVENTS_LIMIT;
 
-    const recentResult = await this.deps.eventRepo.findRecent(limit);
-    const recentEvents = recentResult.ok ? recentResult.value : [];
-    const eventsInWindow = recentEvents.filter(
-      (e) =>
-        e.createdAt >= session.openedAt &&
-        e.createdAt <= closedAt &&
-        (e.agentId === undefined || e.agentId === session.agentId),
+    const windowResult = await this.deps.eventRepo.findInWindow(
+      session.openedAt,
+      closedAt,
+      limit,
+    );
+    const windowEvents = windowResult.ok ? windowResult.value : [];
+    const eventsInWindow = windowEvents.filter(
+      (e) => e.agentId === undefined || e.agentId === session.agentId,
     );
 
     const workTouched = await joinWorkTouched({
@@ -122,11 +125,11 @@ export class DefaultFactsExtractor implements FactsExtractor {
       closedAt,
     });
 
-    const knowledgeResult = await this.deps.knowledgeRepo.findMany();
+    const knowledgeResult = await this.deps.knowledgeRepo.findUpdatedSince(session.openedAt);
     const knowledgeTouched = knowledgeResult.ok
       ? knowledgeResult.value
           .filter((a) => a.category !== "handoff")
-          .filter((a) => a.updatedAt >= session.openedAt && a.updatedAt <= closedAt)
+          .filter((a) => a.updatedAt <= closedAt)
           .map((a) => ({
             id: a.id,
             slug: a.slug,

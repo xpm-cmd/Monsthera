@@ -1,7 +1,7 @@
 import { ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import { generateId, timestamp } from "../core/types.js";
-import type { WorkId } from "../core/types.js";
+import type { Timestamp, WorkId } from "../core/types.js";
 import type { StorageError } from "../core/errors.js";
 import type {
   OrchestrationEvent,
@@ -46,5 +46,16 @@ export class InMemoryOrchestrationEventRepository implements OrchestrationEventR
       b.createdAt.localeCompare(a.createdAt),
     );
     return ok(sorted.slice(0, limit));
+  }
+
+  async findInWindow(
+    start: Timestamp,
+    end: Timestamp,
+    limit?: number,
+  ): Promise<Result<OrchestrationEvent[], StorageError>> {
+    const inWindow = this.events
+      .filter((e) => e.createdAt >= start && e.createdAt <= end)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return ok(limit != null ? inWindow.slice(0, limit) : inWindow);
   }
 }

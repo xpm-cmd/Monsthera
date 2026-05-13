@@ -5,7 +5,7 @@ import type { Result } from "../core/result.js";
 import { AlreadyExistsError, NotFoundError, StorageError, ValidationError } from "../core/errors.js";
 import { withFileLock } from "../core/file-lock.js";
 import { generateArticleId, articleId, slug, timestamp } from "../core/types.js";
-import type { ArticleId, Slug } from "../core/types.js";
+import type { ArticleId, Slug, Timestamp } from "../core/types.js";
 import { parseMarkdown, serializeMarkdown } from "./markdown.js";
 import { uniqueSlug } from "./slug.js";
 import { validateFrontmatter } from "./schemas.js";
@@ -192,6 +192,15 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
 
   async findMany(_filter?: Record<string, unknown>): Promise<Result<KnowledgeArticle[], StorageError>> {
     return this.loadAll();
+  }
+
+  async findUpdatedSince(timestamp: Timestamp): Promise<Result<KnowledgeArticle[], StorageError>> {
+    // Future optimization: scan dir mtimes and short-circuit when sorted
+    // newest-first crosses the cutoff. Worth the complexity only above ~1K
+    // articles; the simple filter is identical in behavior for now.
+    const all = await this.loadAll();
+    if (!all.ok) return all;
+    return ok(all.value.filter((a) => a.updatedAt >= timestamp));
   }
 
   async create(input: CreateKnowledgeArticleInput): Promise<Result<KnowledgeArticle, ValidationError | StorageError>> {

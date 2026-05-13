@@ -64,6 +64,12 @@ function makeWork(overrides: Partial<WorkArticle> = {}): WorkArticle {
 function fakeEventRepo(events: OrchestrationEvent[]): OrchestrationEventRepository {
   return {
     findRecent: async () => ok([...events]),
+    findInWindow: async (start: string, end: string, limit?: number) => {
+      const inWindow = events
+        .filter((e) => e.createdAt >= start && e.createdAt <= end)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      return ok(limit != null ? inWindow.slice(0, limit) : inWindow);
+    },
   } as unknown as OrchestrationEventRepository;
 }
 
@@ -81,6 +87,8 @@ function fakeWorkRepo(articles: WorkArticle[]): WorkArticleRepository {
 function fakeKnowledgeRepo(articles: KnowledgeArticle[]): KnowledgeArticleRepository {
   return {
     findMany: async () => ok([...articles]),
+    findUpdatedSince: async (ts: string) =>
+      ok(articles.filter((a) => a.updatedAt >= ts)),
   } as unknown as KnowledgeArticleRepository;
 }
 
