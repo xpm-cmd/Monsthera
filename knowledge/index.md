@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 63 knowledge articles and 20 work articles.
-> Last updated: 2026-05-03 05:52:25
+> Auto-generated catalog of 66 knowledge articles and 20 work articles.
+> Last updated: 2026-05-13 00:47:37
 
 ## Knowledge
 
@@ -20,6 +20,7 @@
 - [Agent and wave MCP tools](notes/agent-and-wave-mcp-tools.md) — ## Overview  Monsthera has a small but important slice of MCP tools dedicated to
 - [AgentService: Agent registry and session tracking](notes/agentservice-agent-registry-and-session-tracking.md) — ## Overview  `AgentService` is a derived-data service — it has no persistent age
 - [CLI entrypoint and command routing](notes/cli-entrypoint-and-command-routing.md) — ## Overview  The CLI surface is the thinnest operational wrapper around the Mons
+- [Cognitive handoff sessions — system design and state](notes/cognitive-handoff-sessions.md) — # Cognitive handoff sessions  **Status:** shipped in PRs [#104](https://github.c
 - [Context Pack Builder: Scoring, Diagnostics, and Mode-Specific Ranking](notes/context-pack-builder-scoring-diagnostics-and-mode-specific-ranking.md) — ## How build_context_pack Works  `buildContextPack()` in `SearchService` (`src/s
 - [Core runtime state, logging, and startup bootstrap](notes/core-runtime-state-logging-and-startup-bootstrap.md) — ## Overview  The runtime-state layer is Monsthera's "last-known facts" cache for
 - [Dashboard architecture and SPA routing](notes/dashboard-architecture-and-spa-routing.md) — # Dashboard Architecture and SPA Routing  ## Overview  The Monsthera dashboard i
@@ -60,6 +61,10 @@
 
 - [Monsthera: Work Article Design](notes/monsthera-work-article-design.md) — ## Overview  Work articles are Monsthera's replacement for traditional tickets.
 
+### gotcha
+
+- [Phase 3c shipping — non-obvious learnings](notes/phase-3c-shipping-non-obvious-learnings.md) — # Phase 3c shipping — non-obvious learnings  These are the things that surfaced
+
 ### guide
 
 - [Dashboard pages and features](notes/dashboard-pages-and-features.md) — # Dashboard Pages and Features  ## Page Module Contract  Every page module expor
@@ -68,6 +73,10 @@
 - [Monsthera Agent Operating Guide](notes/monsthera-agent-operating-guide.md) — Monsthera works best when agents use it as an operational memory and coordinatio
 - [Monsthera usage guide for humans and agents](notes/monsthera-usage-guide-for-humans-and-agents.md) — ## Mental model  Monsthera is a shared brain with an integrated backlog. It has
 - [MonstheraV3 Docs](notes/monstherav3-docs.md) — ## ⚠️ Status snapshot  This article is an imported summary of the original v3 de
+
+### handoff
+
+- [Handoff: 2026-05-13 claude-code (1 min)](notes/handoff-ses-20260513-003933-claude-code.md) — > **Session** `ses-20260513-003933-claude-code` · agent `claude-code` · 1 min >
 
 ### implementation
 
