@@ -213,3 +213,97 @@ function renderFacts(session: Session): string {
   const fileName = path.basename(session.factsPath);
   return ["## Facts (raw, for downstream LLM)", "", `See [\`${fileName}\`](../sessions/${fileName}).`].join("\n");
 }
+
+// ─── Brief / depth slicing ───────────────────────────────────────────────────
+
+export interface ParsedHandoffSections {
+  /** The pre-`## ` block at the top of the article (`> Session …` lines). */
+  readonly preamble: string;
+  /**
+   * Section name (heading text without `## `) → section body (everything until
+   * the next `^## ` heading, trimmed of trailing whitespace).
+   */
+  readonly sections: ReadonlyMap<string, string>;
+}
+
+/**
+ * Parse a rendered handoff article body into its preamble + level-2 sections.
+ * Subsections (`### …`) stay inside their parent section. The parser tolerates
+ * articles without a preamble and articles missing some standard sections —
+ * callers must handle a missing `TL;DR` etc. by themselves.
+ */
+export function parseHandoffSections(body: string): ParsedHandoffSections {
+  const chunks = body.split(/^## /m);
+  const preamble = (chunks[0] ?? "").trim();
+  const sections = new Map<string, string>();
+  for (const chunk of chunks.slice(1)) {
+    const newlineIdx = chunk.indexOf("\n");
+    if (newlineIdx === -1) {
+      // section heading with no body
+      sections.set(chunk.trim(), "");
+      continue;
+    }
+    const title = chunk.slice(0, newlineIdx).trim();
+    const sectionBody = chunk.slice(newlineIdx + 1).trimEnd();
+    sections.set(title, sectionBody);
+  }
+  return { preamble, sections };
+}
+
+/**
+ * Render the "standard" depth: preamble + TL;DR + What's next + a one-line
+ * Hypergraph summary. Drops "What happened" (the deep narrative) and the
+ * Facts pointer. Sections that are not present in the input are silently
+ * skipped, so degraded articles still produce something readable.
+ */
+export function renderBriefStandard(parsed: ParsedHandoffSections): string {
+  const blocks: string[] = [];
+  if (parsed.preamble.length > 0) blocks.push(parsed.preamble);
+  for (const name of ["TL;DR", "What's next", "Hypergraph"]) {
+    const sectionBody = parsed.sections.get(name);
+    if (sectionBody !== undefined && sectionBody.length > 0) {
+      blocks.push(`## ${name}\n\n${sectionBody}`);
+    }
+  }
+  return blocks.join("\n\n") + "\n";
+}
+
+/**
+ * Render the "teaser" depth: a compact, ~200-token slice. Just the session
+ * header + TL;DR — no Hypergraph, no What's next list. If the article had no
+ * TL;DR (degraded), the preamble alone is returned with a note.
+ */
+export function renderBriefTeaser(parsed: ParsedHandoffSections): string {
+  const tldr = parsed.sections.get("TL;DR");
+  const blocks: string[] = [];
+  if (parsed.preamble.length > 0) blocks.push(parsed.preamble);
+  if (tldr !== undefined && tldr.length > 0) {
+    blocks.push(`## TL;DR\n\n${tldr}`);
+  } else {
+    blocks.push("## TL;DR\n\n_No TL;DR available (handoff may be degraded)._");
+  }
+  return blocks.join("\n\n") + "\n";
+}
+
+/**
+ * Body used when a session was closed but its handoff article never got
+ * attached (orphan: async worker failed or has not finished yet). Gives the
+ * brief reader the lifecycle facts they would otherwise have gotten from the
+ * handoff article preamble + a hint at how to recover.
+ */
+export function renderOrphanBrief(session: Session): string {
+  const duration = computeDurationMinutes(session);
+  const lines: string[] = [
+    `> **Session** \`${session.id}\` · agent \`${session.agentId}\` · ${duration} min`,
+    `> Status: \`${session.status}\` · handoff: _not yet generated_`,
+  ];
+  if (session.intent) lines.push(`> Intent: ${session.intent}`);
+  lines.push(
+    "",
+    "## TL;DR",
+    "",
+    "_This session closed but its handoff article was never attached._",
+    "_Recover with_ `monsthera session _generate-handoff " + session.id + "`.",
+  );
+  return lines.join("\n") + "\n";
+}

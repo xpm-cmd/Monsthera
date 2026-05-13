@@ -1,7 +1,7 @@
 import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import { NotFoundError, StateTransitionError, StorageError, ValidationError } from "../core/errors.js";
-import type { SessionId, AgentId } from "../core/types.js";
+import type { SessionId, AgentId, Timestamp } from "../core/types.js";
 import { generateSessionId, timestamp } from "../core/types.js";
 import { AbandonmentReason, SessionStatus, type SessionFacts } from "./schemas.js";
 import type { Session, SessionRepository, SessionListFilter } from "./repository.js";
@@ -12,9 +12,14 @@ import {
   buildHandoffSlug,
   buildHandoffTags,
   buildHandoffTitle,
+  parseHandoffSections,
+  renderBriefStandard,
+  renderBriefTeaser,
   renderHandoffArticle,
+  renderOrphanBrief,
 } from "./handoff-renderer.js";
 import type { KnowledgeService } from "../knowledge/service.js";
+import type { KnowledgeArticle } from "../knowledge/repository.js";
 import { spawn } from "node:child_process";
 import { openSync } from "node:fs";
 
@@ -85,6 +90,34 @@ export interface HandoffPipelineOutput {
   readonly evalResult: LLMQualityEval | null;
   readonly handoffArticleId: string;
   readonly degraded: boolean;
+}
+
+// ─── Brief inputs / outputs ───────────────────────────────────────────────────
+
+export type BriefDepth = "teaser" | "standard" | "full";
+
+export interface BriefSessionInput {
+  /** Explicit session to brief. If absent, the latest CLOSED for (agentId, repo) is used. */
+  readonly sessionId?: SessionId;
+  readonly agentId?: AgentId;
+  readonly repo?: string;
+  readonly depth: BriefDepth;
+  /** When provided, the output includes counts of CLOSED sessions by OTHER agents since this timestamp. */
+  readonly since?: Timestamp;
+}
+
+/** Counts of closed sessions per OTHER agent since the cutoff timestamp. */
+export interface CrossAgentDelta {
+  readonly since: Timestamp;
+  /** Map of agentId → count of CLOSED sessions in the same repo, since the cutoff. */
+  readonly byAgent: Record<string, number>;
+}
+
+export interface BriefSessionOutput {
+  readonly session: Session;
+  readonly handoffArticle: KnowledgeArticle | null;
+  readonly body: string;
+  readonly crossAgentDelta: CrossAgentDelta | null;
 }
 
 // ─── Optional clock + summarizer + knowledge for tests ────────────────────────
@@ -287,6 +320,105 @@ export class SessionService {
 
   async list(filter?: SessionListFilter): Promise<Result<Session[], StorageError>> {
     return this.repo.findMany(filter);
+  }
+
+  /**
+   * Read-side complement to `session open --teaser-only`. Returns a depth-sliced
+   * view of a session's handoff article so an agent can re-orient mid-flight
+   * without paying the cost of loading the full article (or the cost of
+   * regenerating it from facts.json).
+   *
+   * Resolution order:
+   *   1. `input.sessionId` → exact lookup
+   *   2. `input.agentId + input.repo` → most recent CLOSED for that pair
+   *   3. otherwise ValidationError
+   *
+   * Orphan handling: if the resolved session has no `handoffArticleId`, the
+   * body is a minimal "this handoff was never attached" message instead of
+   * an error — the lifecycle facts are still useful.
+   */
+  async brief(
+    input: BriefSessionInput,
+  ): Promise<Result<BriefSessionOutput, NotFoundError | ValidationError | StorageError>> {
+    const resolved = await this.resolveBriefingSession(input);
+    if (!resolved.ok) return resolved;
+    const session = resolved.value;
+
+    let article: KnowledgeArticle | null = null;
+    if (session.handoffArticleId !== null && this.knowledgeService !== null) {
+      const got = await this.knowledgeService.getArticle(session.handoffArticleId);
+      if (got.ok) {
+        article = got.value;
+      }
+      // NotFoundError falls through to orphan path so a missing article does
+      // not crash the brief — agents would rather see "handoff missing" than
+      // a hard error.
+    }
+
+    const body =
+      article !== null
+        ? this.renderBriefBody(article.content, input.depth)
+        : renderOrphanBrief(session);
+
+    const crossAgentDelta =
+      input.since !== undefined
+        ? await this.computeCrossAgentDelta(session, input.since)
+        : null;
+
+    return ok({ session, handoffArticle: article, body, crossAgentDelta });
+  }
+
+  private async resolveBriefingSession(
+    input: BriefSessionInput,
+  ): Promise<Result<Session, NotFoundError | ValidationError | StorageError>> {
+    if (input.sessionId !== undefined) {
+      return this.repo.findById(input.sessionId);
+    }
+    if (input.agentId === undefined || input.repo === undefined) {
+      return err(
+        new ValidationError(
+          "brief requires either sessionId, or (agentId + repo) to resolve the latest closed session",
+        ),
+      );
+    }
+    const latest = await this.repo.findLatestClosed(input.agentId, input.repo);
+    if (!latest.ok) return latest;
+    if (latest.value === null) {
+      return err(
+        new NotFoundError(
+          "Session",
+          `no closed session for agent=${input.agentId} repo=${input.repo}`,
+        ),
+      );
+    }
+    return ok(latest.value);
+  }
+
+  private renderBriefBody(articleBody: string, depth: BriefDepth): string {
+    if (depth === "full") return articleBody;
+    const parsed = parseHandoffSections(articleBody);
+    return depth === "teaser"
+      ? renderBriefTeaser(parsed)
+      : renderBriefStandard(parsed);
+  }
+
+  private async computeCrossAgentDelta(
+    session: Session,
+    since: Timestamp,
+  ): Promise<CrossAgentDelta | null> {
+    const all = await this.repo.findMany({
+      repo: session.repo,
+      status: SessionStatus.CLOSED,
+    });
+    if (!all.ok) return null;
+    const byAgent: Record<string, number> = {};
+    for (const s of all.value) {
+      if (s.agentId === session.agentId) continue;
+      if (s.closedAt === null) continue;
+      if (s.closedAt < since) continue;
+      byAgent[s.agentId] = (byAgent[s.agentId] ?? 0) + 1;
+    }
+    return { since, byAgent };
   }
 
   // ─── Internals ───────────────────────────────────────────────────────────────
