@@ -1,0 +1,19 @@
+{
+  "id": "ses-20260513-125013-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356",
+  "branch": null,
+  "openedAt": "2026-05-13T12:50:13.879Z",
+  "closedAt": "2026-05-13T12:50:51.270Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260513-125013-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356/knowledge/sessions/ses-20260513-125013-claude-code.facts.json",
+  "parentSessionId": null,
+  "abandonReason": null,
+  "quality": {
+    "score": 4,
+    "degraded": false,
+    "model": "gemma4:latest"
+  },
+  "intent": "Phase 3d+3e+4a+4b dogfood + version bump"
+}

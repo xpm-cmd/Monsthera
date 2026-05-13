@@ -346,7 +346,10 @@ export class SessionService {
 
     let article: KnowledgeArticle | null = null;
     if (session.handoffArticleId !== null && this.knowledgeService !== null) {
-      const got = await this.knowledgeService.getArticle(session.handoffArticleId);
+      // `handoffArticleId` is a misnomer — the close path persists the article
+      // and stores its SLUG here (see `persistHandoffArticle`), not the
+      // article's `k-*` id. Look up by slug to match.
+      const got = await this.knowledgeService.getArticleBySlug(session.handoffArticleId);
       if (got.ok) {
         article = got.value;
       }

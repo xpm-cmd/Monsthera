@@ -70,15 +70,17 @@ function stubExtractor(): FactsExtractor {
   };
 }
 
-function fakeKnowledgeService(articles: Record<string, string>): KnowledgeService {
+function fakeKnowledgeService(articlesBySlug: Record<string, string>): KnowledgeService {
+  // Mirrors production: brief() reads by slug because the close path stores
+  // the slug in `session.handoffArticleId`. Test using the same keying.
   return {
-    getArticle: async (id: string) => {
-      const content = articles[id];
-      if (content === undefined) return err(new NotFoundError("KnowledgeArticle", id));
+    getArticleBySlug: async (slug: string) => {
+      const content = articlesBySlug[slug];
+      if (content === undefined) return err(new NotFoundError("KnowledgeArticle", slug));
       const article: KnowledgeArticle = {
-        id: id as never,
+        id: `k-${slug.replace(/[^a-z0-9]/gi, "").slice(0, 8)}` as never,
         title: "Handoff: 2026-05-13",
-        slug: brandSlug(`handoff-${id}`),
+        slug: brandSlug(slug),
         category: "handoff",
         tags: ["session-handoff", "agent:claude-code"],
         codeRefs: [],
@@ -129,11 +131,12 @@ describe("SessionService.brief", () => {
   let svc: SessionService;
 
   const SESSION_ID = "ses-20260513-001000-claude-code";
-  const ARTICLE_ID = "k-handoff-001";
+  // Matches production: handoffArticleId stores the article's SLUG, not its id.
+  const ARTICLE_SLUG = "handoff-ses-20260513-001000-claude-code";
 
   beforeEach(async () => {
     repo = new InMemorySessionRepository();
-    knowledge = fakeKnowledgeService({ [ARTICLE_ID]: HANDOFF_BODY });
+    knowledge = fakeKnowledgeService({ [ARTICLE_SLUG]: HANDOFF_BODY });
     svc = new SessionService(repo, stubExtractor(), { knowledgeService: knowledge });
     await seedClosedSession(repo, {
       id: SESSION_ID,
@@ -141,7 +144,7 @@ describe("SessionService.brief", () => {
       repo: "/tmp/repo-a",
       openedAt: "2026-05-13T00:00:00Z",
       closedAt: "2026-05-13T00:30:00Z",
-      handoffArticleId: ARTICLE_ID,
+      handoffArticleId: ARTICLE_SLUG,
     });
   });
 
@@ -201,7 +204,7 @@ describe("SessionService.brief", () => {
         repo: "/tmp/repo-a",
         openedAt: "2026-05-13T02:00:00Z",
         closedAt: "2026-05-13T02:15:00Z",
-        handoffArticleId: ARTICLE_ID,
+        handoffArticleId: ARTICLE_SLUG,
       });
 
       const result = await svc.brief({
@@ -232,7 +235,7 @@ describe("SessionService.brief", () => {
         repo: "/tmp/repo-a",
         openedAt: "2026-05-13T01:00:00Z",
         closedAt: "2026-05-13T01:10:00Z",
-        handoffArticleId: ARTICLE_ID,
+        handoffArticleId: ARTICLE_SLUG,
       });
       await seedClosedSession(repo, {
         id: "ses-20260513-015000-codex-cli",
@@ -240,7 +243,7 @@ describe("SessionService.brief", () => {
         repo: "/tmp/repo-a",
         openedAt: "2026-05-13T01:50:00Z",
         closedAt: "2026-05-13T01:55:00Z",
-        handoffArticleId: ARTICLE_ID,
+        handoffArticleId: ARTICLE_SLUG,
       });
 
       const result = await svc.brief({
