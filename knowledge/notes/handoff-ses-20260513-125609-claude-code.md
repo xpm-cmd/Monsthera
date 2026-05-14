@@ -15,6 +15,7 @@ codeRefs:
   - src/sessions/facts-extractor.ts
   - src/sessions/service.ts
   - src/sessions/handoff-renderer.ts
+  - src/sessions/coverage-validator.ts
   - src/cli/session-commands.ts
   - src/tools/session-tools.ts
   - src/server.ts
@@ -37,7 +38,7 @@ _This handoff has been **enriched** post-close. The Stage B/C LLM output capture
 
 ## TL;DR
 
-Shipped 4 roadmap phases + the Ollama model default in [PR #109](https://github.com/xpm-cmd/Monsthera/pull/109): **Phase 3d** (`OrchestrationEventRepository.findInWindow`), **Phase 3e** (`KnowledgeArticleRepository.findUpdatedSince`), **Phase 4a** (`monsthera session brief` CLI + service), **Phase 4b** (5 MCP `session_*` tool wrappers), default model swap `qwen2.5-coder:7b → gemma4:latest`, and version bump to `3.0.0-alpha.8`. Dogfood-verified non-degraded with quality 4–5/5. Real bug found via dogfood and fixed: `Session.handoffArticleId` stores the article's slug (not id), so `brief()` had to use `getArticleBySlug`. 1859/1859 tests passing.
+Shipped 4 roadmap phases + the Ollama model default + a **handoff coverage validator** in [PR #109](https://github.com/xpm-cmd/Monsthera/pull/109): **Phase 3d** (`OrchestrationEventRepository.findInWindow`), **Phase 3e** (`KnowledgeArticleRepository.findUpdatedSince`), **Phase 4a** (`monsthera session brief` CLI + service), **Phase 4b** (5 MCP `session_*` tool wrappers), default model swap `qwen2.5-coder:7b → gemma4:latest`, version bump to `3.0.0-alpha.8`, and a 5-question coverage validator that appends a `## Coverage` section to every handoff listing dimensions the renderer didn't visibly answer. Dogfood-verified non-degraded with quality 4–5/5. Real bug found via dogfood and fixed: `Session.handoffArticleId` stores the article's slug (not id), so `brief()` had to use `getArticleBySlug`. 1871/1871 tests passing.
 
 ## What happened
 
@@ -55,6 +56,7 @@ The codebase is now considered review-ready, backed by 1859/1859 tests and 8 com
 - **The brief depth slice is a NEW parser** (`parseHandoffSections` + `renderBriefStandard` + `renderBriefTeaser`), not a reuse of the private section renderers from the write path. Those take `LLMSummary`; the brief operates on already-persisted markdown — different input shape.
 - **Orphan handoffs get their own renderer** (`renderOrphanBrief`). Hard-erroring on `handoffArticleId === null` was the wrong UX; degraded modes are first-class outputs in the sessions feature (already true of `quality.degraded=true` T1-only articles).
 - **`repo` is required on the MCP-side `session_open`**, no auto-default to cwd. The stdio MCP server has no implicit cwd in the same sense the CLI does; an agent must be explicit about which repo it targets.
+- **Handoff coverage is advisory, body-wide, and complementary to the LLM-eval** — not a gating rule. The LLM-eval scores on count proxies (decisionCount, blockerCount, nextStepCount); the validator scores on whether the rendered body literally contains file:line refs / commands / constraint keywords. Dogfood revealed the LLM strips specificity from rich `--note` text (e.g. drops `pnpm test ...` in favor of "the dedicated unit tests"); the validator surfaces this loss-of-fidelity gap that the LLM-eval can't see.
 
 ### Surprises
 
@@ -71,7 +73,7 @@ The codebase is now considered review-ready, backed by 1859/1859 tests and 8 com
 
 ## Full commit list (enriched)
 
-8 commits on `claude/quizzical-cori-d5e356` (excluding this handoff session):
+10 commits on `claude/quizzical-cori-d5e356` (the conversation-handoff commit `f6b3b9f` is included since it's part of the shipping record):
 
 | SHA | Type | Title |
 |---|---|---|
@@ -83,8 +85,10 @@ The codebase is now considered review-ready, backed by 1859/1859 tests and 8 com
 | `4013ab0` | docs | capture non-obvious learnings from Phase 4a + 4b shipping |
 | `d0d2507` | chore | bump version to 3.0.0-alpha.8 |
 | `59ae27a` | fix | brief() reads handoff by slug, not id (dogfood-found) |
+| `f6b3b9f` | docs | conversation handoff for the full PR #109 work |
+| `38d4587` | feat | handoff coverage validator — 5-question agent-readiness check |
 
-Net diff vs `main` (`aff9c66`): ~1700 lines added across `src/sessions/`, `src/orchestration/`, `src/knowledge/`, `src/persistence/`, `src/tools/`, `src/cli/`, `src/server.ts`, plus tests and 2 knowledge notes.
+Net diff vs `main` (`aff9c66`): ~2100 lines added across `src/sessions/`, `src/orchestration/`, `src/knowledge/`, `src/persistence/`, `src/tools/`, `src/cli/`, `src/server.ts`, plus tests and 3 knowledge notes.
 
 ## What's next
 
@@ -105,10 +109,11 @@ Net diff vs `main` (`aff9c66`): ~1700 lines added across `src/sessions/`, `src/o
 - Should `Session.handoffArticleId` be renamed to `Session.handoffArticleSlug` for honesty, or should we look up by both id and slug? Renaming is a schema migration ripple; the current code now has an inline comment flagging the misnomer. Worth a discussion before the next consumer hits the same trap.
 - Once the worktree fallback ships, should the SessionStart hook explicitly suggest `node dist/bin.js` for worktree-internal verification? The global symlink confusion is the same root cause as the briefing-block-empty-in-worktree problem.
 - The `repo` field has different defaults across surfaces (CLI: cwd; MCP: must be explicit). Document this in the agent-bootstrap-guide so MCP-using agents don't get confused when they migrate from CLI invocations.
+- The coverage validator's `verification` check requires a **backticked** command. The LLM frequently writes "run the tests" without backticks even when the `--note` had them. Should we either (a) sharpen the LLM prompt to preserve backticks, or (b) loosen the validator to accept un-backticked CLI verbs followed by recognizable args? Option (a) is more honest but adds prompt complexity; (b) reduces validator precision.
 
 ## Hypergraph (enriched)
 
-**Code touched** (~14 files):
+**Code touched** (~16 files):
 - `src/core/config.ts` — default `llmModel` swap (3 chars)
 - `src/orchestration/repository.ts` — `findInWindow` interface
 - `src/orchestration/in-memory-repository.ts` — linear filter impl
@@ -117,19 +122,21 @@ Net diff vs `main` (`aff9c66`): ~1700 lines added across `src/sessions/`, `src/o
 - `src/knowledge/in-memory-repository.ts` — in-memory impl
 - `src/knowledge/file-repository.ts` — file-system impl
 - `src/sessions/facts-extractor.ts` — call-site swaps (both phases)
-- `src/sessions/service.ts` — `brief()` method + types (Phase 4a) + slug fix
+- `src/sessions/service.ts` — `brief()` method + types (Phase 4a) + slug fix + coverage validator wiring
 - `src/sessions/handoff-renderer.ts` — `parseHandoffSections`, `renderBriefStandard`, `renderBriefTeaser`, `renderOrphanBrief`
-- `src/cli/session-commands.ts` — `handleSessionBrief` (Phase 4a)
+- `src/sessions/coverage-validator.ts` — NEW. 5-dimension agent-readiness check (state, intent, executable-action, constraints, verification) appended as `## Coverage` to every rendered handoff
+- `src/cli/session-commands.ts` — `handleSessionBrief` (Phase 4a) + 5-question `--note` template in close-protocol teaser
 - `src/tools/session-tools.ts` — 5 MCP tools (Phase 4b, new file)
 - `src/server.ts` — registry + dispatch
 - `package.json` — version bump
 
-**Tests added** (~34 new across 5 files):
+**Tests added** (+46 new across 6 files; suite went 1825 → 1871):
 - `tests/unit/orchestration/in-memory-repository.test.ts` (new, 5 tests)
 - `tests/unit/persistence/dolt-orchestration-repository.test.ts` (extended, +3 tests)
 - `tests/unit/knowledge/in-memory-repository.test.ts` (extended, +3 tests for `findUpdatedSince`)
 - `tests/unit/sessions/service-brief.test.ts` (new, 10 tests)
 - `tests/unit/tools/session-tools.test.ts` (new, 13 tests)
+- `tests/unit/sessions/coverage-validator.test.ts` (new, 12 tests)
 
 Plus dependency-only updates to mocks in `tests/unit/orchestration/convoy-repository.test.ts` and `tests/unit/sessions/default-facts-extractor.test.ts`.
 
