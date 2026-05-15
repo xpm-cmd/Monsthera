@@ -205,6 +205,34 @@ describe("evaluateHandoffCoverage", () => {
     }
   });
 
+  it("does NOT credit executable-action from the structural Facts pointer alone (always present in rendered handoffs)", () => {
+    // The Facts section is a navigation artifact every non-degraded handoff
+    // carries — its backticked `<id>.facts.json` filename must not credit
+    // hasExecutableAction. Otherwise the dimension is a tautology.
+    const body = [
+      "> **Session** `ses-x` · agent `claude-code` · 0 min",
+      "> Intent: regression guard for Facts-pointer false positive",
+      "",
+      "## TL;DR",
+      "",
+      "Did some work but the body has no real action.",
+      "",
+      "## What's next",
+      "",
+      "(no concrete next steps — review the Hypergraph below for context.)",
+      "",
+      "## Hypergraph",
+      "",
+      "Events in window: 0",
+      "",
+      "## Facts (raw, for downstream LLM)",
+      "",
+      "See [`ses-x.facts.json`](../sessions/ses-x.facts.json).",
+    ].join("\n");
+    const gaps = evaluateHandoffCoverage(body);
+    expect(gaps.map((g) => g.dimension)).toContain("executable-action");
+  });
+
   it("pins behavior on the degraded T1-only fixture: state + intent pass; the other three fail", () => {
     // The degraded fixture (ses-20260513-003933-claude-code) is the canonical
     // shape for an Ollama-unavailable handoff: header, Hypergraph, Commits,

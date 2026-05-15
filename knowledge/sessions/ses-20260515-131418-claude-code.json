@@ -1,0 +1,19 @@
+{
+  "id": "ses-20260515-131418-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356",
+  "branch": null,
+  "openedAt": "2026-05-15T13:14:18.425Z",
+  "closedAt": "2026-05-15T13:14:35.769Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260515-131418-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356/knowledge/sessions/ses-20260515-131418-claude-code.facts.json",
+  "parentSessionId": "ses-20260513-125609-claude-code",
+  "abandonReason": null,
+  "quality": {
+    "score": 4,
+    "degraded": false,
+    "model": "gemma4:latest"
+  },
+  "intent": "Verify coverage validator round 4 calibration"
+}

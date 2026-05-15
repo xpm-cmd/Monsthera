@@ -1,0 +1,19 @@
+{
+  "id": "ses-20260515-131606-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356",
+  "branch": null,
+  "openedAt": "2026-05-15T13:16:06.267Z",
+  "closedAt": "2026-05-15T13:16:13.525Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260515-131606-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356/knowledge/sessions/ses-20260515-131606-claude-code.facts.json",
+  "parentSessionId": "ses-20260515-131418-claude-code",
+  "abandonReason": null,
+  "quality": {
+    "score": 2,
+    "degraded": false,
+    "model": "gemma4:latest"
+  },
+  "intent": "Negative dogfood: thin note should flag gaps"
+}

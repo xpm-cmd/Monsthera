@@ -1,0 +1,21 @@
+{
+  "sessionId": "ses-20260515-131951-claude-code",
+  "agent": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356",
+  "branch": null,
+  "window": {
+    "openedAt": "2026-05-15T13:19:51.176Z",
+    "closedAt": "2026-05-15T13:19:53.879Z"
+  },
+  "events": [],
+  "workTouched": [],
+  "knowledgeTouched": [],
+  "codeTouched": [],
+  "commits": [],
+  "signals": {
+    "todosAdded": [],
+    "questions": [],
+    "testFailures": []
+  },
+  "agentNote": "Trivial work."
+}

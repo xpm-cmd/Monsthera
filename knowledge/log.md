@@ -174,3 +174,6 @@ Append-only record of knowledge and work mutations.
 - **[2026-05-13 12:46:40]** create knowledge | Phase 4a + 4b shipping — non-obvious learnings (k-8wefem2p)
 - **[2026-05-13 12:51:37]** create knowledge | Handoff: 2026-05-13 claude-code (1 min) (k-9cbpkv85)
 - **[2026-05-13 12:56:59]** create knowledge | Handoff: 2026-05-13 claude-code (0 min) (k-5umd9fff)
+- **[2026-05-15 13:15:34]** create knowledge | Handoff: 2026-05-15 claude-code (0 min) (k-t8xkc9zv)
+- **[2026-05-15 13:16:36]** create knowledge | Handoff: 2026-05-15 claude-code (0 min) (k-vwp3wrl6)
+- **[2026-05-15 13:20:20]** create knowledge | Handoff: 2026-05-15 claude-code (0 min) (k-9l0jvtch)

@@ -153,14 +153,30 @@ const CHECKS: readonly DimensionCheck[] = [
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
+ * Strip the structural Facts pointer section from the body before evaluation.
+ * The Facts section (`## Facts (raw, for downstream LLM)`) always carries a
+ * backticked `.facts.json` filename — a navigation artifact, not an
+ * executable action. Including it in scope makes `hasExecutableAction`
+ * credit every non-degraded handoff regardless of substantive content.
+ *
+ * Splitting on `## Facts` rather than the full heading text keeps the strip
+ * robust to minor heading variations.
+ */
+function stripStructuralSections(body: string): string {
+  const factsIdx = body.indexOf("## Facts");
+  return factsIdx >= 0 ? body.slice(0, factsIdx) : body;
+}
+
+/**
  * Evaluate the rendered handoff body against the five-question framework.
  * Returns the list of dimensions that are not visibly answered. An empty
  * array means the body satisfies all five.
  */
 export function evaluateHandoffCoverage(body: string): CoverageGap[] {
+  const evaluable = stripStructuralSections(body);
   const gaps: CoverageGap[] = [];
   for (const check of CHECKS) {
-    if (!check.satisfied(body)) {
+    if (!check.satisfied(evaluable)) {
       gaps.push({
         dimension: check.dimension,
         question: check.question,
