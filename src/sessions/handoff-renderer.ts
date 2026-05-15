@@ -91,12 +91,17 @@ function renderWhatHappened(summary: LLMSummary): string {
     }
   }
 
+  // Always emit Blockers heading even when empty. Silence is ambiguous: the
+  // next agent can't distinguish "nothing to flag" from "you forgot to check".
+  // An explicit "(none identified)" tells them the previous agent looked.
+  lines.push("", "### Blockers");
   if (summary.blockers.length > 0) {
-    lines.push("", "### Blockers");
     for (const b of summary.blockers) {
       const ev = b.evidence.length > 0 ? ` — evidence: [${b.evidence.join(", ")}]` : "";
       lines.push(`- ${b.text}${ev}`);
     }
+  } else {
+    lines.push("_(none identified)_");
   }
 
   if (summary.surprises.length > 0) {
