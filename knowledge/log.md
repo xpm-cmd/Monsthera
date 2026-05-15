@@ -177,3 +177,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-05-15 13:15:34]** create knowledge | Handoff: 2026-05-15 claude-code (0 min) (k-t8xkc9zv)
 - **[2026-05-15 13:16:36]** create knowledge | Handoff: 2026-05-15 claude-code (0 min) (k-vwp3wrl6)
 - **[2026-05-15 13:20:20]** create knowledge | Handoff: 2026-05-15 claude-code (0 min) (k-9l0jvtch)
+- **[2026-05-15 13:25:00]** create knowledge | Coverage validator — round 4 calibration learnings (k-cv-round-4-calibration)

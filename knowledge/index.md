@@ -66,6 +66,7 @@
 - [Phase 3c shipping — non-obvious learnings](notes/phase-3c-shipping-non-obvious-learnings.md) — # Phase 3c shipping — non-obvious learnings  These are the things that surfaced
 - [Phase 3d + 3e shipping — non-obvious learnings](notes/phase-3d-3e-shipping-non-obvious-learnings.md) — # Phase 3d + 3e shipping — non-obvious learnings  These are the things that surf
 - [Phase 4a + 4b shipping — non-obvious learnings](notes/phase-4a-4b-shipping-non-obvious-learnings.md) — # Phase 4a + 4b shipping — non-obvious learnings  Same shape as the Phase 3d+3e
+- [Coverage validator — round 4 calibration learnings](notes/coverage-validator-round-4-calibration.md) — # Coverage validator — round 4 calibration learnings  Captures what surfaced during round 4 dogfood
 
 ### guide
 
