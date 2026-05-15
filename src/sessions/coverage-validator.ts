@@ -68,12 +68,22 @@ function hasIntent(body: string): boolean {
  * `file.ext:line` reference, or a backticked command. The LLM scatters
  * specificity across sections — what matters is signal-presence, not which
  * heading carries it. A handoff with no file path anywhere is genuinely thin.
+ *
+ * Both backticked and bare-prose forms credit. The bare-prose form requires
+ * a high-specificity suffix (`:line` for file refs, a recognizable subcommand
+ * for CLI verbs) to avoid crediting casual prose like "see foo.ts" or "run
+ * the tests". This is defense-in-depth for the case where the LLM elides
+ * backticks even when the agent's `--note` had them.
  */
 function hasExecutableAction(body: string): boolean {
   // backticked file path — `src/foo.ts`, `tests/bar.ts:42`
   if (/`[a-zA-Z_][\w./-]*\.(ts|tsx|js|jsx|mjs|cjs|md|json|sql|sh|py|rb|go|rs)(:[0-9]+)?`/.test(body)) return true;
   // backticked command starting with a known CLI verb
   if (/`(pnpm|npm|monsthera|gh|git|node|tsx|vitest)\b[^`]*`/.test(body)) return true;
+  // bare file:line — require explicit `:digits` suffix so "see foo.ts for context" doesn't match
+  if (/\b[a-zA-Z_][\w./-]*\.(ts|tsx|js|jsx|mjs|cjs|md|json|sql|sh|py|rb|go|rs):[0-9]+\b/.test(body)) return true;
+  // bare CLI invocation — require recognizable subcommand so "run the tests" doesn't match
+  if (/\b(pnpm|monsthera|vitest)\s+(test|typecheck|build|doctor|run|lint|status|exec)\b/.test(body)) return true;
   return false;
 }
 
@@ -85,18 +95,24 @@ function hasExecutableAction(body: string): boolean {
  */
 function hasConstraints(body: string): boolean {
   if (/^#{2,3}\s+(Blockers|Deferred|Open questions|Constraints|Watch-?outs?)\b/im.test(body)) return true;
-  if (/\b(blocked? by|deferred|gotcha|watch[- ]?out|regress(es|ion)?|invariant|do not break|must not)\b/i.test(body)) return true;
+  if (/\b(blocked? by|deferred|gotcha|watch[- ]?out|regress(ed|es|ing|ion|ions|ive)?|invariant|do not break|must not)\b/i.test(body)) return true;
   return false;
 }
 
 /**
  * True if any executable verification command is named — `pnpm test`, `monsthera doctor`,
  * `pnpm typecheck`, etc. Looks across the entire body, not just one section.
+ *
+ * Backticked form is the high-confidence signal. Bare-prose form is the
+ * defense-in-depth case: requires the verb followed by a recognizable
+ * argument-shaped token so prose like "run the tests" doesn't credit.
  */
 function hasVerification(body: string): boolean {
-  return /`(pnpm (test|typecheck|build|run)|monsthera (doctor|status|lint)|git (status|diff)|vitest|gh (pr|run|status))\b[^`]*`/.test(
-    body,
-  );
+  // backticked form — high confidence
+  if (/`(pnpm (test|typecheck|build|run)|monsthera (doctor|status|lint)|git (status|diff)|vitest|gh (pr|run|status))\b[^`]*`/.test(body)) return true;
+  // bare with argv-shaped suffix — `pnpm test tests/foo.test.ts`, `vitest tests/foo`, etc.
+  if (/\b(pnpm (test|typecheck|build|run)|monsthera (doctor|status|lint)|vitest)\s+[\w./-]+/.test(body)) return true;
+  return false;
 }
 
 // ─── Dimension table ─────────────────────────────────────────────────────────
@@ -164,7 +180,7 @@ export function renderCoverageSection(gaps: readonly CoverageGap[]): string {
   const lines: string[] = [
     "## Coverage",
     "",
-    "_This handoff did not visibly answer every question a cold-start agent will have. Listed below as advisory — the next agent can still proceed by reading the body, but consider filling these in next time you close._",
+    "_This handoff did not visibly answer every question a cold-start agent will have. Listed below as advisory — the next agent can still proceed by reading the body, but consider filling these in next time you close. If `executable-action` or `verification` is flagged but the body mentions a file:line or test command in prose without backticks, that's the LLM dropping specificity — re-render is usually unnecessary, but tightening the `--note` template (with backticked file paths and `pnpm test ...` invocations) helps the next handoff._",
     "",
   ];
   for (const gap of gaps) {

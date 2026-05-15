@@ -143,6 +143,103 @@ describe("evaluateHandoffCoverage", () => {
       });
     }
   });
+
+  // ─── Bare-prose recognition (round 4 calibration) ───────────────────────────
+  // The LLM doesn't always wrap file paths or commands in backticks even when
+  // the agent's --note had them. These tests pin the bare-prose acceptance
+  // paths added in commit `feat(sessions): broaden coverage validator regex`.
+
+  it("credits executable-action when the body has a bare file:line in prose (no backticks)", () => {
+    const body =
+      THIN_BODY +
+      "\n\nThe next step is to edit src/foo.ts:42 and add the missing branch.";
+    const gaps = evaluateHandoffCoverage(body);
+    expect(gaps.map((g) => g.dimension)).not.toContain("executable-action");
+  });
+
+  it("credits verification when the body has a bare `pnpm test <path>` in prose (no backticks)", () => {
+    const body =
+      THIN_BODY +
+      "\n\nVerify by running pnpm test tests/unit/sessions/foo.test.ts.";
+    const gaps = evaluateHandoffCoverage(body);
+    expect(gaps.map((g) => g.dimension)).not.toContain("verification");
+  });
+
+  it("does NOT credit executable-action for a bare file mention without `:line` suffix", () => {
+    const body = THIN_BODY + "\n\nSee src/foo.ts for context on the auth flow.";
+    const gaps = evaluateHandoffCoverage(body);
+    // The file is mentioned but with no specificity — that's prose, not action.
+    expect(gaps.map((g) => g.dimension)).toContain("executable-action");
+  });
+
+  it("does NOT credit verification for vague 'run the tests' prose without an argv-shaped target", () => {
+    const body =
+      THIN_BODY +
+      "\n\nRun the tests and check the doctor command before merging.";
+    const gaps = evaluateHandoffCoverage(body);
+    // "Run the tests" mentions no specific test path or doctor invocation;
+    // hasVerification should not credit it.
+    expect(gaps.map((g) => g.dimension)).toContain("verification");
+  });
+
+  it("credits constraints for every inflection of `regress` (regression, regressions, regressing, regressive)", () => {
+    const variants = [
+      "regress",
+      "regressed",
+      "regresses",
+      "regressing",
+      "regression",
+      "regressions",
+      "regressive",
+    ];
+    for (const variant of variants) {
+      const body = THIN_BODY.replace(
+        "## What happened\n\nThe agent completed several changes.",
+        `## What happened\n\nThe change may cause a ${variant} in some edge cases.`,
+      );
+      const gaps = evaluateHandoffCoverage(body);
+      expect(
+        gaps.map((g) => g.dimension),
+        `variant "${variant}" should not flag constraints`,
+      ).not.toContain("constraints");
+    }
+  });
+
+  it("pins behavior on the degraded T1-only fixture: state + intent pass; the other three fail", () => {
+    // The degraded fixture (ses-20260513-003933-claude-code) is the canonical
+    // shape for an Ollama-unavailable handoff: header, Hypergraph, Commits,
+    // Events count, Facts pointer — but no narrative, no nextSteps, no
+    // blockers. It must continue to flag executable-action / constraints /
+    // verification so the next agent knows the LLM stage didn't run.
+    const degraded = [
+      "> **Session** `ses-20260513-003933-claude-code` · agent `claude-code` · 1 min",
+      "> Quality (no eval) (qwen2.5-coder:7b) · degraded (Ollama unavailable)",
+      "> Intent: phase 3c dogfood verification",
+      "",
+      "## TL;DR",
+      "",
+      "_Handoff is degraded — LLM pipeline did not run._",
+      "",
+      "## What's next",
+      "",
+      "(no concrete next steps — review the Hypergraph below for context.)",
+      "",
+      "## Hypergraph",
+      "",
+      "**Commits** (1 of 1):",
+      "- `9fb97a45` feat(sessions): Phase 3c — DefaultFactsExtractor",
+      "",
+      "Events in window: 0",
+    ].join("\n");
+
+    const gaps = evaluateHandoffCoverage(degraded);
+    const dimensions = gaps.map((g) => g.dimension);
+    expect(dimensions).not.toContain("state"); // Hypergraph + commit:<sha> in backticks
+    expect(dimensions).not.toContain("intent"); // explicit Intent line
+    expect(dimensions).toContain("executable-action");
+    expect(dimensions).toContain("constraints");
+    expect(dimensions).toContain("verification");
+  });
 });
 
 describe("renderCoverageSection", () => {
