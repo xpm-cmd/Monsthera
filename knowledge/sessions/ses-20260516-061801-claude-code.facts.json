@@ -1,0 +1,21 @@
+{
+  "sessionId": "ses-20260516-061801-claude-code",
+  "agent": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/round-6",
+  "branch": null,
+  "window": {
+    "openedAt": "2026-05-16T06:18:01.529Z",
+    "closedAt": "2026-05-16T06:18:04.663Z"
+  },
+  "events": [],
+  "workTouched": [],
+  "knowledgeTouched": [],
+  "codeTouched": [],
+  "commits": [],
+  "signals": {
+    "todosAdded": [],
+    "questions": [],
+    "testFailures": []
+  },
+  "agentNote": "Round 6 v3 final. Found a meta-bug during round 6 dogfood: the stripStructuralSections function in both src/sessions/coverage-validator.ts:166 and src/sessions/handoff-extractors.ts used body.indexOf('## Facts') which matched even when the handoff prose mentioned '## Facts' as text. That chopped off most of the body, causing the validator to flag every dimension. Fixed by anchoring to line-start with regex /^## Facts/m + body.search(). NEXT: verify this handoff has codeRefs with src/sessions/handoff-extractors.ts (legitimate file ref above ## Facts), zero gaps from the validator (5 dimensions all satisfied), and no Facts pointer ses-*.facts.json in codeRefs. WATCH-OUT: do NOT change /^## Facts/m back to plain string indexOf — the regression test in tests/unit/sessions/coverage-validator.test.ts pins this. VERIFY: pnpm test tests/unit/sessions/ — should show 1953 passing."
+}

@@ -1,0 +1,19 @@
+{
+  "id": "ses-20260516-060530-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/round-6",
+  "branch": null,
+  "openedAt": "2026-05-16T06:05:30.646Z",
+  "closedAt": "2026-05-16T06:05:45.492Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260516-060530-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/round-6/knowledge/sessions/ses-20260516-060530-claude-code.facts.json",
+  "parentSessionId": "ses-20260516-055350-claude-code",
+  "abandonReason": null,
+  "quality": {
+    "score": 4,
+    "degraded": false,
+    "model": "gemma4:latest"
+  },
+  "intent": "Dogfood round 6 codeRefs extractor fix"
+}

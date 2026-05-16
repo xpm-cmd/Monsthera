@@ -205,6 +205,49 @@ describe("evaluateHandoffCoverage", () => {
     }
   });
 
+  it("anchors the Facts-section strip to line-start (regression: '## Facts' in prose must not chop content)", () => {
+    // Round-6 dogfood bug: the strip used `body.indexOf("## Facts")`,
+    // which also matched when a handoff's TL;DR mentioned "the
+    // `## Facts` section" as text. That false-strip chopped off most
+    // of the body and the validator flagged every dimension. Fix
+    // anchors to line-start. This test pins the fix.
+    const body = [
+      "> **Session** `ses-x` · agent `claude-code` · 0 min",
+      "> Intent: regression guard for the multiline anchor",
+      "",
+      "## TL;DR",
+      "",
+      "The validator strips structural sections (like `## Facts`) so prose can mention them safely.",
+      "",
+      "### Decisions",
+      "- Edit `src/sessions/coverage-validator.ts:166` to fix the strip anchor.",
+      "",
+      "### Blockers",
+      "_(none identified)_",
+      "",
+      "## What's next",
+      "",
+      "**Run `pnpm test tests/unit/sessions/coverage-validator.test.ts` to verify.**",
+      "",
+      "## Hypergraph",
+      "",
+      "Events in window: 0",
+      "",
+      "## Facts (raw, for downstream LLM)",
+      "",
+      "See [`ses-x.facts.json`](../sessions/ses-x.facts.json).",
+    ].join("\n");
+    const gaps = evaluateHandoffCoverage(body);
+    const dimensions = gaps.map((g) => g.dimension);
+    // All five dimensions should be satisfied: prose mention of `## Facts`
+    // must not destroy the validator's view of the body's actual content.
+    expect(dimensions).not.toContain("state");
+    expect(dimensions).not.toContain("intent");
+    expect(dimensions).not.toContain("executable-action");
+    expect(dimensions).not.toContain("constraints");
+    expect(dimensions).not.toContain("verification");
+  });
+
   it("does NOT credit executable-action from the structural Facts pointer alone (always present in rendered handoffs)", () => {
     // The Facts section is a navigation artifact every non-degraded handoff
     // carries — its backticked `<id>.facts.json` filename must not credit

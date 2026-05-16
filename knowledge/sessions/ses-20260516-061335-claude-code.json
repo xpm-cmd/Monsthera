@@ -1,0 +1,19 @@
+{
+  "id": "ses-20260516-061335-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/round-6",
+  "branch": null,
+  "openedAt": "2026-05-16T06:13:35.958Z",
+  "closedAt": "2026-05-16T06:13:39.023Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260516-061335-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/round-6/knowledge/sessions/ses-20260516-061335-claude-code.facts.json",
+  "parentSessionId": "ses-20260516-060530-claude-code",
+  "abandonReason": null,
+  "quality": {
+    "score": 3,
+    "degraded": false,
+    "model": "gemma4:latest"
+  },
+  "intent": "Verify round 6 Facts-strip + defensive filter"
+}
