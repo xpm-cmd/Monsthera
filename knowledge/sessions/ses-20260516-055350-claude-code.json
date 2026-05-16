@@ -1,0 +1,19 @@
+{
+  "id": "ses-20260516-055350-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/prompt-improvements",
+  "branch": null,
+  "openedAt": "2026-05-16T05:53:50.956Z",
+  "closedAt": "2026-05-16T05:53:54.035Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260516-055350-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/prompt-improvements/knowledge/sessions/ses-20260516-055350-claude-code.facts.json",
+  "parentSessionId": "ses-20260516-042501-claude-code",
+  "abandonReason": null,
+  "quality": {
+    "score": 4,
+    "degraded": false,
+    "model": "gemma4:latest"
+  },
+  "intent": "Dogfood prompt round 5 improvements"
+}
