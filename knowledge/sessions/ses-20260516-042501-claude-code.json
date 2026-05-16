@@ -1,0 +1,19 @@
+{
+  "id": "ses-20260516-042501-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/worktree-fallback",
+  "branch": null,
+  "openedAt": "2026-05-16T04:25:01.179Z",
+  "closedAt": "2026-05-16T04:27:37.965Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260516-042501-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/worktree-fallback/knowledge/sessions/ses-20260516-042501-claude-code.facts.json",
+  "parentSessionId": null,
+  "abandonReason": null,
+  "quality": {
+    "score": 4,
+    "degraded": false,
+    "model": "gemma4:latest"
+  },
+  "intent": "Quality assessment: round 4 + ADR-018 + worktree fallback shipped today"
+}

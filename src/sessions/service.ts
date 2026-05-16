@@ -189,9 +189,24 @@ export class SessionService {
     }
 
     // 2. Find latest closed session to set as parent + detect orphan state.
-    const latestClosed = await this.repo.findLatestClosed(input.agentId, input.repo);
-    if (!latestClosed.ok) return latestClosed;
-    const parent: Session | null = latestClosed.value;
+    //    Drops the repo filter so cross-worktree parent discovery works:
+    //    sessions opened in main (or other worktrees) have different `repo`
+    //    fields than the current worktree, so a strict equality filter would
+    //    miss them. The repo-layer fallback (PR #111) already scopes us to
+    //    this Monsthera codebase, so widening the filter to agentId only is
+    //    safe — we never bleed across unrelated Monstheras.
+    const allClosed = await this.repo.findMany({
+      agentId: input.agentId,
+      status: SessionStatus.CLOSED,
+    });
+    if (!allClosed.ok) return allClosed;
+    const withClosedAt = allClosed.value.filter((s) => s.closedAt !== null);
+    withClosedAt.sort((a, b) => {
+      const aT = a.closedAt ?? "";
+      const bT = b.closedAt ?? "";
+      return aT < bT ? 1 : aT > bT ? -1 : 0;
+    });
+    const parent: Session | null = withClosedAt[0] ?? null;
     const previousOrphan =
       parent !== null && parent.handoffArticleId === null ? parent : null;
 
