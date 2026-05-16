@@ -49,11 +49,37 @@ function extractExtraFrontmatter(
   return hasAny ? extras : undefined;
 }
 
+/**
+ * Worktree fallback (added 2026-05-16):
+ *
+ * When constructed with `fallbackMarkdownRoot` (the main repo's
+ * knowledge dir, resolved via `git rev-parse --git-common-dir`),
+ * `loadAll()` merges articles from the primary `notes/` AND the
+ * fallback `notes/`. Primary wins on slug or id collisions. Writes go
+ * ONLY to primary — articles authored in a worktree stay on that
+ * worktree's feature branch until it merges.
+ *
+ * The fallback is the cross-worktree visibility layer the cognitive
+ * handoff sessions feature depends on: `monsthera knowledge get
+ * handoff-ses-X` should find the article whether the handoff was
+ * generated in the current worktree or another. Beyond handoffs, it
+ * also surfaces shared knowledge across feature branches — a side
+ * benefit, not the primary purpose.
+ */
 export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRepository {
-  constructor(private readonly markdownRoot: string) {}
+  constructor(
+    private readonly markdownRoot: string,
+    private readonly fallbackMarkdownRoot: string | null = null,
+  ) {}
 
   private get notesDir(): string {
     return path.join(this.markdownRoot, "notes");
+  }
+
+  private get fallbackNotesDir(): string | null {
+    return this.fallbackMarkdownRoot === null
+      ? null
+      : path.join(this.fallbackMarkdownRoot, "notes");
   }
 
   private articlePath(slugValue: string): string {
@@ -103,20 +129,22 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     });
   }
 
-  private async loadAll(): Promise<Result<KnowledgeArticle[], StorageError>> {
-    await this.ensureDirectory();
-
+  private async loadAllFromDir(dir: string): Promise<Result<KnowledgeArticle[], StorageError>> {
     let entries: string[];
     try {
-      entries = await fs.readdir(this.notesDir);
+      entries = await fs.readdir(dir);
     } catch (error) {
-      return err(new StorageError(`Failed to list knowledge articles in ${this.notesDir}`, { cause: String(error) }));
+      // Missing directory is not a read failure — treat as empty so a
+      // fallback path that hasn't been written to yet doesn't get created
+      // by reads.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return ok([]);
+      return err(new StorageError(`Failed to list knowledge articles in ${dir}`, { cause: String(error) }));
     }
 
     const articles: KnowledgeArticle[] = [];
     for (const entry of entries) {
       if (!entry.endsWith(".md")) continue;
-      const articleResult = await this.readFromPath(path.join(this.notesDir, entry));
+      const articleResult = await this.readFromPath(path.join(dir, entry));
       if (!articleResult.ok) {
         if (articleResult.error instanceof NotFoundError) continue;
         return articleResult;
@@ -125,6 +153,33 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     }
 
     return ok(articles);
+  }
+
+  private async loadAll(): Promise<Result<KnowledgeArticle[], StorageError>> {
+    await this.ensureDirectory();
+
+    const primary = await this.loadAllFromDir(this.notesDir);
+    if (!primary.ok) return primary;
+
+    if (this.fallbackNotesDir === null) return primary;
+
+    // Aggregate primary + fallback. Primary wins on collisions (id OR
+    // slug match) so the worktree's view of an article takes precedence
+    // over the main repo's older copy. Soft-fail on fallback errors:
+    // a missing or unreadable fallback dir is not a primary failure.
+    const fallback = await this.loadAllFromDir(this.fallbackNotesDir);
+    if (!fallback.ok) return primary;
+
+    const seenIds = new Set(primary.value.map((a) => a.id));
+    const seenSlugs = new Set(primary.value.map((a) => a.slug));
+    const merged: KnowledgeArticle[] = [...primary.value];
+    for (const article of fallback.value) {
+      if (seenIds.has(article.id) || seenSlugs.has(article.slug)) continue;
+      seenIds.add(article.id);
+      seenSlugs.add(article.slug);
+      merged.push(article);
+    }
+    return ok(merged);
   }
 
   private async writeArticle(
@@ -352,11 +407,21 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
   }
 
   async findBySlug(slugValue: Slug): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>> {
-    const result = await this.readFromPath(this.articlePath(slugValue));
-    if (!result.ok && result.error instanceof NotFoundError) {
+    const primary = await this.readFromPath(this.articlePath(slugValue));
+    if (primary.ok) return primary;
+
+    if (this.fallbackNotesDir !== null && primary.error instanceof NotFoundError) {
+      const fallback = await this.readFromPath(
+        path.join(this.fallbackNotesDir, `${slugValue}.md`),
+      );
+      if (fallback.ok) return fallback;
+      // Fall through to the standardised slug-shaped error below.
+    }
+
+    if (primary.error instanceof NotFoundError) {
       return err(new NotFoundError("KnowledgeArticle", `slug:${slugValue}`));
     }
-    return result;
+    return primary;
   }
 
   async findByCategory(category: string): Promise<Result<KnowledgeArticle[], StorageError>> {

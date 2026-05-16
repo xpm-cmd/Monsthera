@@ -50,6 +50,10 @@ import type { SessionRepository } from "../sessions/repository.js";
 import { FileSystemSessionRepository } from "../sessions/file-repository.js";
 import { SessionService } from "../sessions/service.js";
 import { DefaultFactsExtractor } from "../sessions/facts-extractor.js";
+import {
+  resolveWorkspaceLocation,
+  buildFallbackMarkdownRoot,
+} from "../sessions/workspace-resolver.js";
 import { realCommandRunner } from "../ops/command-runner.js";
 import type { LLMSummarizer } from "../sessions/llm-summarizer.js";
 import { OllamaSummarizer } from "../sessions/llm-summarizer.js";
@@ -151,7 +155,18 @@ export async function createContainer(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let doltPool: any;
 
-  knowledgeRepo = new FileSystemKnowledgeArticleRepository(markdownRoot);
+  // Worktree fallback: when running inside a git worktree, also read from
+  // the main repo's knowledge dir so sessions and handoff articles created
+  // in other worktrees (or in main) remain visible. Writes still go to
+  // primary only. Resolution is best-effort — a non-git workspace or a
+  // missing git binary just yields `null` and the system stays
+  // worktree-isolated.
+  const workspaceLocation = await resolveWorkspaceLocation(config.repoPath, realCommandRunner);
+  const fallbackMarkdownRoot = workspaceLocation.ok
+    ? buildFallbackMarkdownRoot(workspaceLocation.value, config.storage.markdownRoot)
+    : null;
+
+  knowledgeRepo = new FileSystemKnowledgeArticleRepository(markdownRoot, fallbackMarkdownRoot);
   workRepo = new FileSystemWorkArticleRepository(markdownRoot);
 
   if (config.storage.doltEnabled) {
@@ -394,7 +409,10 @@ export async function createContainer(
   // the Stage B+C+D handoff article. The summarizer is constructed eagerly
   // but its `healthCheck()` runs at close-time — Ollama being down does not
   // block container startup; the service falls back to T1-only handoffs.
-  const sessionRepo: SessionRepository = new FileSystemSessionRepository(markdownRoot);
+  const sessionRepo: SessionRepository = new FileSystemSessionRepository(
+    markdownRoot,
+    fallbackMarkdownRoot,
+  );
   const sessionSummarizer: LLMSummarizer | null = config.sessions.llmEnabled
     ? new OllamaSummarizer({
         ollamaUrl: config.search.ollamaUrl,
