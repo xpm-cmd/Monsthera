@@ -16,6 +16,7 @@ import {
   parseHandoffSections,
   renderBriefStandard,
   renderBriefTeaser,
+  renderAgentWrittenHandoff,
   renderHandoffArticle,
   renderOrphanBrief,
 } from "./handoff-renderer.js";
@@ -44,6 +45,20 @@ export interface CloseSessionInput {
   readonly agentId?: AgentId;
   readonly repo?: string;
   readonly note?: string | null;
+  /**
+   * ADR-019 agent-direct handoff body. When present, the LLM pipeline
+   * (Stages B/C/D) is skipped entirely — the agent's content is
+   * persisted as-is with the deterministic header + Hypergraph + Facts
+   * sections appended. Mutually exclusive with the LLM path: if both
+   * `content` and `note` are provided, `content` wins and `note` is
+   * stored in facts.json as agentNote (for grounding) but the rendered
+   * body comes from `content`. `quality.writer` is set to `"agent"`,
+   * `quality.model` is set to the agentId, `quality.degraded` is false
+   * (the body was explicitly authored), and `quality.score` is null
+   * (no self-eval; the coverage validator still runs as an advisory
+   * pass).
+   */
+  readonly content?: string | null;
   readonly closedAt?: string;
   /** Skip the LLM pipeline (Stages B/C/D). Persists a T1-only handoff article. */
   readonly noLlm?: boolean;
@@ -51,7 +66,9 @@ export interface CloseSessionInput {
    * Run Stages B/C/D + render + persist synchronously before returning.
    * Default `true` for direct service callers (tests, programmatic use).
    * The CLI flips this to `false` so `monsthera session close` returns in
-   * ~100ms and the worker runs in a detached subprocess.
+   * ~100ms and the worker runs in a detached subprocess. Ignored when
+   * `content` is provided — agent-direct render is always synchronous
+   * (no LLM call to defer).
    */
   readonly sync?: boolean;
 }
@@ -262,7 +279,16 @@ export class SessionService {
     });
     if (!closed.ok) return closed;
 
-    // 5. Branch: sync (run pipeline inline) vs async (dispatch worker).
+    // 5a. ADR-019 agent-direct path: skip LLM stages entirely, persist the
+    //     agent-authored body verbatim. Always synchronous (no LLM call to
+    //     defer). `note`, if also provided, lives in facts.json as
+    //     agentNote (grounding) but doesn't influence the rendered body.
+    const agentContent = (input.content ?? "").trim();
+    if (agentContent.length > 0) {
+      return this.runAgentDirectHandoff(closed.value, facts, agentContent);
+    }
+
+    // 5b. Branch: sync (run pipeline inline) vs async (dispatch worker).
     //    Tests and direct callers default to sync. The CLI flips this so the
     //    coding agent does not wait ~30-60s for Ollama at session close.
     const sync = input.sync !== false; // default true
@@ -468,6 +494,63 @@ export class SessionService {
   }
 
   /**
+   * ADR-019 agent-direct handoff. The executing agent (Claude, Codex, etc.)
+   * has full session context and writes the substantive body itself.
+   * No LLM call, no async dispatch, no degraded mode. Always synchronous.
+   *
+   * Quality fields:
+   *   - `writer: "agent"` — distinguishes from the legacy Ollama path
+   *   - `model: <agentId>` — carries the agent identity (`claude-code`,
+   *     `codex-cli`) since there's no LLM model to record
+   *   - `degraded: false` — the body was explicitly authored, never degraded
+   *   - `score: null` — no self-eval; the coverage validator still runs
+   *     as an advisory pass and surfaces gaps in the `## Coverage` section
+   */
+  private async runAgentDirectHandoff(
+    closedSession: Session,
+    facts: SessionFacts,
+    agentContent: string,
+  ): Promise<Result<CloseSessionOutput, StateTransitionError | NotFoundError | StorageError>> {
+    const projectedSession: Session = {
+      ...closedSession,
+      quality: {
+        score: null,
+        degraded: false,
+        model: closedSession.agentId,
+        writer: "agent",
+      },
+    };
+    const renderedBody = renderAgentWrittenHandoff(projectedSession, facts, agentContent);
+    const coverageGaps = evaluateHandoffCoverage(renderedBody);
+    const coverageSection = renderCoverageSection(coverageGaps);
+    const articleBody = coverageSection.length > 0
+      ? `${renderedBody.trimEnd()}\n\n${coverageSection}\n`
+      : renderedBody;
+    const slug = buildHandoffSlug(projectedSession);
+    const handoffArticleId = await this.persistHandoffArticle(projectedSession, articleBody, slug);
+    if (!handoffArticleId.ok) return handoffArticleId;
+
+    const attached = await this.repo.attachHandoff(closedSession.id, {
+      handoffArticleId: handoffArticleId.value,
+      qualityScore: null,
+      qualityModel: closedSession.agentId,
+      qualityDegraded: false,
+      qualityWriter: "agent",
+    });
+    if (!attached.ok) return attached;
+
+    return ok({
+      session: attached.value,
+      facts,
+      summary: null,
+      evalResult: null,
+      handoffArticleId: handoffArticleId.value,
+      degraded: false,
+      asyncDispatched: false,
+    });
+  }
+
+  /**
    * Full pipeline: Stages B/C/D + render markdown + persist via KnowledgeService
    * + attach handoff metadata to the session. Used by both the sync close path
    * and the async worker entry point (`generateHandoff`).
@@ -496,6 +579,7 @@ export class SessionService {
         score: llmOutcome.evalResult?.score ?? null,
         degraded: llmOutcome.degraded,
         model: llmOutcome.modelName,
+        writer: "ollama",
       },
     };
     const renderedBody = renderHandoffArticle(

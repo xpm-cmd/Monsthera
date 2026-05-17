@@ -29,7 +29,7 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     factsPath: null,
     parentSessionId: null,
     abandonReason: null,
-    quality: { score: null, degraded: false, model: null },
+    quality: { score: null, degraded: false, model: null, writer: "ollama" },
     intent: null,
     ...overrides,
   };

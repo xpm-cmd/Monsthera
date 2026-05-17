@@ -108,6 +108,7 @@ export class FileSystemSessionRepository implements SessionRepository {
         score: s.quality.score,
         degraded: s.quality.degraded,
         model: s.quality.model,
+        writer: s.quality.writer,
       },
       intent: s.intent,
     };
@@ -126,7 +127,12 @@ export class FileSystemSessionRepository implements SessionRepository {
       factsPath: fm.factsPath,
       parentSessionId: fm.parentSessionId === null ? null : makeSessionId(fm.parentSessionId),
       abandonReason: fm.abandonReason as Session["abandonReason"],
-      quality: { score: fm.quality.score, degraded: fm.quality.degraded, model: fm.quality.model },
+      quality: {
+        score: fm.quality.score,
+        degraded: fm.quality.degraded,
+        model: fm.quality.model,
+        writer: fm.quality.writer,
+      },
       intent: fm.intent,
     };
   }
@@ -196,7 +202,7 @@ export class FileSystemSessionRepository implements SessionRepository {
       factsPath: null,
       parentSessionId: record.parentSessionId,
       abandonReason: null,
-      quality: { score: null, degraded: false, model: null },
+      quality: { score: null, degraded: false, model: null, writer: "ollama" },
       intent: record.intent,
     };
     const wrote = await this.writeSession(session);
@@ -284,6 +290,7 @@ export class FileSystemSessionRepository implements SessionRepository {
         score: record.qualityScore,
         degraded: record.qualityDegraded,
         model: record.qualityModel,
+        writer: record.qualityWriter ?? "ollama",
       },
     };
     const wrote = await this.writeSession(updated);

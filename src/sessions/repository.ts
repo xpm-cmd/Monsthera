@@ -9,6 +9,13 @@ export interface SessionQualityState {
   readonly score: number | null;
   readonly degraded: boolean;
   readonly model: string | null;
+  /**
+   * Who wrote the handoff body. `"ollama"` = legacy local-LLM pipeline
+   * (Stages B/C/D); `"agent"` = ADR-019 agent-direct path
+   * (`session close --content[-file]`). When `"agent"`, `model` carries
+   * the agentId (e.g. "claude-code") rather than an LLM name.
+   */
+  readonly writer: "ollama" | "agent";
 }
 
 export interface Session {
@@ -55,6 +62,8 @@ export interface AttachHandoffRecord {
   readonly qualityScore: number | null;
   readonly qualityModel: string | null;
   readonly qualityDegraded: boolean;
+  /** ADR-019: writer identity. Defaults to "ollama" for backward compat. */
+  readonly qualityWriter?: "ollama" | "agent";
 }
 
 export interface SessionListFilter {

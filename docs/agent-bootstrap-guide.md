@@ -423,19 +423,53 @@ The bootstrap script handles the **way in** (opens a session, surfaces the previ
 
 Recommended pattern, in the agent's session-end protocol (CLAUDE.md / AGENTS.md / equivalent):
 
+**PREFERRED (ADR-019, agent-direct)** — the executing agent writes the full handoff body:
+
 ```bash
-# Default: async fire-and-forget. Returns in ~100 ms; a detached worker
-# generates the handoff article via Ollama in the background (~30-60 s).
-monsthera session close --note "one-line intent or accomplishment"
+# 1. Write the complete handoff body to a temp file (use your full session context).
+cat > /tmp/handoff-$$.md <<'EOF'
+## TL;DR
 
-# When you need the handoff inline (CI smoke tests, debugging, no Ollama):
-monsthera session close --note "..." --sync
+<2-3 sentences. Preserve identifiers verbatim (PR #NNN, commit SHA, file.ts:42).>
 
-# When Ollama is unavailable but you still want the lifecycle closed:
-monsthera session close --note "..." --no-llm
+## What happened
+
+<2-3 paragraphs. Grounded narrative.>
+
+### Decisions
+- <decision> — evidence: [commit:abc12345] [path:src/foo.ts:42]
+
+### Blockers
+_(none identified)_  <!-- or list real blockers — see ADR-018 D4 -->
+
+## What's next
+
+### First action
+**<imperative verb + concrete target>** (e.g. "Edit `src/foo.ts:42` to replace X with Y")
+- why: <one-sentence rationale>
+- verify: `pnpm test tests/unit/foo.test.ts`
+- suggested agent: <role>
+
+### Next steps
+- <action> — why: <rationale>
+EOF
+
+# 2. Close the session with the body. Synchronous, no Ollama, no information loss.
+monsthera session close --content-file /tmp/handoff-$$.md
 ```
 
-What the agent contributes — the entire token cost on the way out — is the `--note` string. Everything else (event log, work touched, knowledge created, code diffs, commits, signals, narrative, decisions, next steps, citations) is captured automatically by Stage A + local Ollama. A one-line note costs ~10–50 tokens; the rest of the ~5 KB handoff article is generated for free by the local model.
+**LEGACY (ADR-018 D2/D3, local-Ollama expansion)** — deprecated; produces lower-utility handoffs:
+
+```bash
+# Async fire-and-forget. Returns in ~100 ms; a detached worker generates the
+# handoff via local Ollama in the background. The LLM can only re-format what
+# the --note already said; specifics not in the note are lost. See ADR-019.
+monsthera session close --note "one-line intent or accomplishment"
+```
+
+The agent-direct path is the recommended default as of 3.0 (ADR-019). The legacy `--note` + local-LLM path continues to work and remains in-tree for one minor version; planned removal in 3.1.
+
+What the agent contributes — and what makes the agent-direct path measurably better than the LLM path — is **the substantive markdown body**. The CLI prepends the deterministic session header (id, agent, duration, quality fields) and appends the deterministic `## Hypergraph` (events, work, knowledge, code, commits from Stage A's `facts.json`) and `## Facts (raw, for downstream LLM)` sections. Everything between is the agent's authored content; the agent owns identifier preservation, voice, depth, and watch-out placement directly — no model-gap entropy.
 
 If the agent forgets to close, the next `monsthera session open` will detect the lingering open session and mark it `abandoned` (reason: `superseded`). The work isn't lost — `facts.json` is still extractable from `monsthera session _generate-handoff <id>` against the prior session, but the lifecycle is no longer recoverable as a "completed" handoff.
 
@@ -485,30 +519,56 @@ previous closed session and the slug of its handoff article. Two cases:
    warning (`monsthera session _generate-handoff <id>`) BEFORE doing other
    work — it regenerates the missing article from already-captured facts.
 
-### On the way OUT — when the user wants to stop
+### On the way OUT — when the user wants to stop (ADR-019 path, PREFERRED)
 
 When the user says "cierra session", "close session", "end session", or signals
 they are about to stop / context is about to compact:
 
-1. Run `monsthera session close --note "<one-line intent>"`.
-2. The CLI returns in ~100 ms. Do NOT wait for the LLM — a detached worker
-   generates the handoff article in the background. Stdout of the close
-   command is enough; you do not need to poll for completion.
-3. If the close errors with `NOT_FOUND`, no session is currently open
-   for this agent+repo — fine, nothing to close.
-4. If Ollama is unreachable (you see `degraded — Ollama unavailable`),
-   re-run with `--no-llm` to force a T1-only handoff (Hypergraph + Facts,
-   no narrative). This keeps the lifecycle intact even when the local
-   model is down.
-5. The `--note` argument is the ONLY content you contribute. Everything
-   else (events, work, knowledge, code diffs, commits) is captured by
-   Stage A automatically and summarized by local Ollama. Keep `--note`
-   to a single line of intent or accomplishment.
+1. **You** write the handoff body. You have the full session context — file
+   contents you read, decisions you made, watch-outs you discovered — and you
+   are the right writer. A local LLM, no matter how good, can only re-format
+   what you put in `--note`; specifics you don't surface there are lost.
+2. The body must cover the 5 cold-start questions a fresh agent has:
+   - **TL;DR** (2-3 sentences) — what just shipped, preserving identifiers
+     verbatim (PR numbers, commit SHAs, file:line).
+   - **What happened** (2-3 paragraphs) — narrative grounded to commits, work,
+     code. Plus subsections for `### Decisions`, `### Blockers` (use
+     `_(none identified)_` when there are none — silence is ambiguous),
+     `### Surprises` (optional), `### Deferred` (optional).
+   - **What's next** with `### First action` (imperative verb, file:line or
+     command, why, suggested agent role) and `### Next steps` (1-3 bullets).
+3. Save to a tmp file and pass via `--content-file`:
+   ```bash
+   monsthera session close --content-file /tmp/handoff-$$.md
+   ```
+4. The CLI is synchronous (~single-digit seconds for render + persist +
+   reindex). No async, no Ollama, no degraded mode. The article is ready
+   inline.
+5. If the close errors with `NOT_FOUND`, no session is currently open for
+   this agent+repo — fine, nothing to close.
+6. **Voice**: imperative in actions ("Edit X" not "The next step is to edit X").
+   Backticks around file paths and commands. Watch-outs go in
+   `### Blockers`, not in narrative.
 
-Common modes:
-- `monsthera session close --note "shipped M3 phase 5"` — async default
-- `monsthera session close --note "..." --sync` — block until article ready
-- `monsthera session close --note "..." --no-llm` — Ollama-free, T1-only
+### On the way OUT — LEGACY (ADR-018 D2/D3, `--note` + local Ollama)
+
+Deprecated as of ADR-019. Continues to work for backward compatibility:
+
+```bash
+# Async fire-and-forget. Returns in ~100 ms; a detached worker generates
+# the handoff via local Ollama in the background (~30-60 s). Lower-utility
+# output: the LLM only sees the sparse note + facts.json counts; specifics
+# in your session context that you don't surface in --note are lost.
+monsthera session close --note "<one-line intent>"
+
+# Force inline (CI smoke tests, debugging):
+monsthera session close --note "..." --sync
+
+# Force Ollama-free (T1-only — Hypergraph + Facts, no narrative):
+monsthera session close --note "..." --no-llm
+```
+
+Planned removal in 3.1. New agents should use the agent-direct path above.
 ```
 
 The above is a verbatim copy-paste template. Customise the trigger phrases ("cierra session", "retomá la session", etc.) to match how you actually talk to the agent.

@@ -212,6 +212,139 @@ describe("SessionService.close", () => {
   });
 });
 
+describe("SessionService.close — ADR-019 agent-direct content path", () => {
+  let repo: InMemorySessionRepository;
+  let svc: SessionService;
+
+  const AGENT_BODY = `## TL;DR
+
+Shipped ADR-019 agent-direct handoff path. Executor (Claude/Codex) now writes the full body via \`session close --content[-file]\`, bypassing the local Ollama pipeline.
+
+## What happened
+
+Implemented \`renderAgentWrittenHandoff\` + new branch in \`SessionService.close\` (\`src/sessions/service.ts\`). When \`input.content\` is non-empty, no LLM call happens — the agent body is wrapped with header + Hypergraph + Facts and persisted directly.
+
+### Decisions
+- Agent owns substantive body; CLI owns deterministic framing.
+
+### Blockers
+_(none identified)_
+
+## What's next
+
+### First action
+**Run \`pnpm test tests/unit/sessions/service.test.ts\` to verify the new path.**`;
+
+  beforeEach(() => {
+    repo = new InMemorySessionRepository();
+    // A fake knowledge service that just remembers the slug it was asked to
+    // create — enough to let the close pipeline complete and attach the
+    // article id to the session.
+    const fakeKnowledgeService = {
+      createArticle: async (input: { slug?: string; title: string }) => ({
+        ok: true as const,
+        value: { id: "k-fake", slug: input.slug ?? "handoff-fake", title: input.title },
+      }),
+    } as unknown as Parameters<typeof SessionService>[2] extends infer D
+      ? D extends { knowledgeService?: infer K }
+        ? K
+        : never
+      : never;
+    svc = new SessionService(repo, stubExtractor(), {
+      now: () => new Date("2026-05-12T10:43:00Z"),
+      knowledgeService: fakeKnowledgeService,
+      // intentionally NO summarizer — agent-direct path must work without one
+    });
+  });
+
+  it("skips the LLM pipeline entirely when input.content is provided", async () => {
+    const opened = await svc.open({ agentId: agentId("claude-code"), repo: "/tmp/repo-a" });
+    if (!opened.ok) throw new Error("open failed");
+
+    const closed = await svc.close({
+      sessionId: opened.value.session.id,
+      content: AGENT_BODY,
+    });
+    expect(closed.ok).toBe(true);
+    if (!closed.ok) return;
+
+    expect(closed.value.summary).toBeNull(); // no LLM ran
+    expect(closed.value.evalResult).toBeNull(); // no self-eval
+    expect(closed.value.degraded).toBe(false); // explicitly authored, NOT degraded
+    expect(closed.value.handoffArticleId).toMatch(/^handoff-ses-/);
+  });
+
+  it("sets quality.writer='agent' and quality.model=<agentId> for agent-direct closes", async () => {
+    const opened = await svc.open({ agentId: agentId("claude-code"), repo: "/tmp/repo-a" });
+    if (!opened.ok) throw new Error("open failed");
+
+    const closed = await svc.close({
+      sessionId: opened.value.session.id,
+      content: AGENT_BODY,
+    });
+    expect(closed.ok).toBe(true);
+    if (!closed.ok) return;
+
+    expect(closed.value.session.quality.writer).toBe("agent");
+    expect(closed.value.session.quality.model).toBe("claude-code");
+    expect(closed.value.session.quality.score).toBeNull();
+    expect(closed.value.session.quality.degraded).toBe(false);
+  });
+
+  it("agent-direct close is always synchronous (sync=false on input is ignored)", async () => {
+    // Even with sync: false (the CLI default for the legacy path), agent-direct
+    // returns the handoffArticleId synchronously — no async worker to dispatch.
+    const opened = await svc.open({ agentId: agentId("claude-code"), repo: "/tmp/repo-a" });
+    if (!opened.ok) throw new Error("open failed");
+
+    const closed = await svc.close({
+      sessionId: opened.value.session.id,
+      content: AGENT_BODY,
+      sync: false,
+    });
+    expect(closed.ok).toBe(true);
+    if (!closed.ok) return;
+    expect(closed.value.asyncDispatched).toBe(false);
+    expect(closed.value.handoffArticleId).not.toBeNull();
+  });
+
+  it("falls back to the LLM/legacy path when content is an empty string", async () => {
+    // Empty content must NOT short-circuit into agent-direct (that would
+    // produce a header-only handoff with no narrative). Sparse note + no
+    // summarizer should land on the T1 degraded path.
+    const opened = await svc.open({ agentId: agentId("claude-code"), repo: "/tmp/repo-a" });
+    if (!opened.ok) throw new Error("open failed");
+
+    const closed = await svc.close({
+      sessionId: opened.value.session.id,
+      content: "",
+      note: "smoke test",
+    });
+    expect(closed.ok).toBe(true);
+    if (!closed.ok) return;
+    expect(closed.value.degraded).toBe(true); // no summarizer wired → T1-only
+    expect(closed.value.session.quality.writer).toBe("ollama"); // legacy path
+  });
+
+  it("when both content and note are provided, content wins for the rendered body", async () => {
+    // The note is preserved as agentNote (Stage A facts) for grounding, but
+    // the rendered body comes from content. Verify quality.writer reflects
+    // the agent-direct choice.
+    const opened = await svc.open({ agentId: agentId("claude-code"), repo: "/tmp/repo-a" });
+    if (!opened.ok) throw new Error("open failed");
+
+    const closed = await svc.close({
+      sessionId: opened.value.session.id,
+      content: AGENT_BODY,
+      note: "smoke test",
+    });
+    expect(closed.ok).toBe(true);
+    if (!closed.ok) return;
+    expect(closed.value.session.quality.writer).toBe("agent");
+    expect(closed.value.facts.agentNote).toBe("smoke test");
+  });
+});
+
 describe("SessionService.close — LLM pipeline integration", () => {
   let repo: InMemorySessionRepository;
 

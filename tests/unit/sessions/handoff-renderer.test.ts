@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   renderHandoffArticle,
+  renderAgentWrittenHandoff,
   buildHandoffTitle,
   buildHandoffSlug,
   buildHandoffTags,
@@ -24,7 +25,7 @@ function makeSession(): Session {
     factsPath: "/tmp/repo-a/knowledge/sessions/ses-20260512-104300-claude-code.facts.json",
     parentSessionId: sessionId("ses-20260510-090000-claude-code"),
     abandonReason: null,
-    quality: { score: 4, degraded: false, model: "qwen2.5-coder:7b" },
+    quality: { score: 4, degraded: false, model: "qwen2.5-coder:7b", writer: "ollama" },
     intent: "Ship M3 phase 5",
   };
 }
@@ -183,5 +184,76 @@ describe("renderHandoffArticle", () => {
     const out = renderHandoffArticle(makeSession(), makeFacts(), makeSummary());
     expect(out).toContain("## Facts");
     expect(out).toContain("ses-20260512-104300-claude-code.facts.json");
+  });
+});
+
+describe("renderAgentWrittenHandoff (ADR-019 agent-direct path)", () => {
+  const agentBody = `## TL;DR
+
+Shipped PR #999 — agent-direct handoff path. Replaces Ollama Stages B/C/D with executor-authored body.
+
+## What happened
+
+Implemented \`renderAgentWrittenHandoff\` in \`src/sessions/handoff-renderer.ts\`. Service routes to it when \`input.content\` is non-empty. Bypasses LLM entirely.
+
+### Decisions
+- Renderer splits responsibility: agent owns substantive body; CLI owns header + Hypergraph + Facts.
+
+### Blockers
+_(none identified)_
+
+## What's next
+
+### First action
+**Verify the rendered body via \`pnpm test tests/unit/sessions/handoff-renderer.test.ts\`.**
+- why: pins the section ordering contract.`;
+
+  it("wraps the agent body with the deterministic header (session id, agent, duration, intent)", () => {
+    const out = renderAgentWrittenHandoff(makeSession(), makeFacts(), agentBody);
+    expect(out).toContain("ses-20260512-104300-claude-code");
+    expect(out).toContain("claude-code");
+    // Header lands BEFORE the agent's TL;DR.
+    expect(out.indexOf("## TL;DR")).toBeGreaterThan(out.indexOf("ses-20260512-104300-claude-code"));
+  });
+
+  it("preserves the agent body verbatim (no re-rendering, no LLM massaging)", () => {
+    const out = renderAgentWrittenHandoff(makeSession(), makeFacts(), agentBody);
+    expect(out).toContain("Shipped PR #999 — agent-direct handoff path.");
+    expect(out).toContain("`renderAgentWrittenHandoff`");
+    expect(out).toContain("**Verify the rendered body via `pnpm test tests/unit/sessions/handoff-renderer.test.ts`.**");
+    expect(out).toContain("_(none identified)_");
+  });
+
+  it("appends the deterministic Hypergraph section AFTER the agent body", () => {
+    const out = renderAgentWrittenHandoff(makeSession(), makeFacts(), agentBody);
+    expect(out).toContain("## Hypergraph");
+    // Hypergraph lands AFTER the agent's last section.
+    expect(out.indexOf("## Hypergraph")).toBeGreaterThan(out.indexOf("### First action"));
+  });
+
+  it("appends the Facts pointer at the very end (downstream LLM-readable)", () => {
+    const out = renderAgentWrittenHandoff(makeSession(), makeFacts(), agentBody);
+    expect(out).toContain("## Facts (raw, for downstream LLM)");
+    expect(out).toContain("ses-20260512-104300-claude-code.facts.json");
+    // Facts is the LAST section.
+    expect(out.lastIndexOf("## Facts")).toBeGreaterThan(out.lastIndexOf("## Hypergraph"));
+  });
+
+  it("trims trailing whitespace from the agent body so the join is consistent", () => {
+    const messyBody = "## TL;DR\n\nA thing happened.\n\n\n\n\n   \n";
+    const out = renderAgentWrittenHandoff(makeSession(), makeFacts(), messyBody);
+    // No 5-blank-line stretches before Hypergraph.
+    expect(out).not.toMatch(/\n{4,}## Hypergraph/);
+  });
+
+  it("handles an empty agent body without producing a malformed article (header + Hypergraph + Facts only)", () => {
+    const out = renderAgentWrittenHandoff(makeSession(), makeFacts(), "");
+    expect(out).toContain("ses-20260512-104300-claude-code");
+    expect(out).toContain("## Hypergraph");
+    expect(out).toContain("## Facts");
+    // No empty section between header and Hypergraph.
+    const headerEnd = out.indexOf("## Hypergraph");
+    const beforeHypergraph = out.slice(0, headerEnd);
+    expect(beforeHypergraph).not.toMatch(/##\s+TL;DR/);
   });
 });

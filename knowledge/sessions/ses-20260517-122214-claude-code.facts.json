@@ -1,0 +1,21 @@
+{
+  "sessionId": "ses-20260517-122214-claude-code",
+  "agent": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/agent-writes-handoff",
+  "branch": null,
+  "window": {
+    "openedAt": "2026-05-17T12:22:14.939Z",
+    "closedAt": "2026-05-17T12:24:01.672Z"
+  },
+  "events": [],
+  "workTouched": [],
+  "knowledgeTouched": [],
+  "codeTouched": [],
+  "commits": [],
+  "signals": {
+    "todosAdded": [],
+    "questions": [],
+    "testFailures": []
+  },
+  "agentNote": null
+}

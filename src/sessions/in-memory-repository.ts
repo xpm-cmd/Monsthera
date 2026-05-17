@@ -41,7 +41,7 @@ export class InMemorySessionRepository implements SessionRepository {
       factsPath: null,
       parentSessionId: record.parentSessionId,
       abandonReason: null,
-      quality: { score: null, degraded: false, model: null },
+      quality: { score: null, degraded: false, model: null, writer: "ollama" },
       intent: record.intent,
     };
     this.sessions.set(record.id, session);
@@ -123,6 +123,7 @@ export class InMemorySessionRepository implements SessionRepository {
         score: record.qualityScore,
         degraded: record.qualityDegraded,
         model: record.qualityModel,
+        writer: record.qualityWriter ?? "ollama",
       },
     };
     this.sessions.set(id, updated);
