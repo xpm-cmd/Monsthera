@@ -9,7 +9,7 @@ import { InMemorySessionRepository } from "../../../src/sessions/in-memory-repos
 import { KnowledgeService } from "../../../src/knowledge/service.js";
 import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
 import { createLogger } from "../../../src/core/logger.js";
-import { agentId, sessionId, timestamp } from "../../../src/core/types.js";
+import { agentId } from "../../../src/core/types.js";
 import type { FactsExtractor } from "../../../src/sessions/facts-extractor.js";
 import type { SessionFacts } from "../../../src/sessions/schemas.js";
 import { ok } from "../../../src/core/result.js";
@@ -175,11 +175,8 @@ describe("handleSessionTool", () => {
 
   describe("session_brief", () => {
     it("returns the brief body for a session, defaulting to standard depth", async () => {
-      // Seed a closed session with a handoff article attached.
-      const created = await (deps.sessionService as unknown as {
-        repo: InMemorySessionRepository;
-      }).repo;
-      // Use the repo directly through the service: open + close (no LLM) attaches the article.
+      // Seed a closed session with a handoff article attached via the service
+      // (open + close with --no-LLM attaches the article in-memory).
       const opened = await deps.sessionService.open({
         agentId: agentId("claude-code"),
         repo: "/tmp/repo-a",

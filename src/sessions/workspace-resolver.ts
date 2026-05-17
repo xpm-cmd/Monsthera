@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { ok, err } from "../core/result.js";
+import { ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import { StorageError } from "../core/errors.js";
 import type { CommandRunner } from "../ops/command-runner.js";

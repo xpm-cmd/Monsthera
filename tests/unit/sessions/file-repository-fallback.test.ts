@@ -5,7 +5,6 @@ import * as os from "node:os";
 import { FileSystemSessionRepository } from "../../../src/sessions/file-repository.js";
 import { SessionStatus, type SessionFacts } from "../../../src/sessions/schemas.js";
 import { agentId, sessionId, timestamp } from "../../../src/core/types.js";
-import type { AgentId, SessionId, Timestamp } from "../../../src/core/types.js";
 
 /**
  * Worktree fallback tests for FileSystemSessionRepository.
