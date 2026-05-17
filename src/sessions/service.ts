@@ -8,6 +8,7 @@ import type { Session, SessionRepository, SessionListFilter } from "./repository
 import type { FactsExtractor } from "./facts-extractor.js";
 import type { LLMSummarizer, LLMSummary, LLMQualityEval } from "./llm-summarizer.js";
 import { pruneSummaryCitations } from "./citation-validator.js";
+import { collectCodeRefs, collectArticleReferences } from "./handoff-extractors.js";
 import {
   buildHandoffSlug,
   buildHandoffTags,
@@ -695,36 +696,8 @@ function emptyT1Summary(): LLMSummary {
   };
 }
 
-/**
- * Pull `src/...` and `path:...` references out of the rendered body so the
- * persisted article carries them as `codeRefs[]`. Cheap regex; the renderer
- * is the only producer of this body, so we know its shape.
- */
-function collectCodeRefs(body: string): string[] {
-  const refs = new Set<string>();
-  for (const match of body.matchAll(/`([^`]+\.(?:ts|tsx|js|jsx|py|rs|go|md|sh|sql))`/g)) {
-    if (match[1]) refs.add(match[1]);
-  }
-  for (const match of body.matchAll(/path:([^\],\s]+)/g)) {
-    if (match[1]) refs.add(match[1]);
-  }
-  return [...refs];
-}
-
-/**
- * Pull work/knowledge ids out of the rendered body to seed the article's
- * `references[]` field for graph navigation.
- */
-function collectArticleReferences(body: string): string[] {
-  const refs = new Set<string>();
-  for (const match of body.matchAll(/work:([a-z0-9-]+)/g)) {
-    if (match[1]) refs.add(match[1]);
-  }
-  for (const match of body.matchAll(/knowledge:([a-z0-9-]+)/g)) {
-    if (match[1]) refs.add(match[1]);
-  }
-  for (const match of body.matchAll(/handoff-(ses-[a-z0-9-]+)\.md/g)) {
-    if (match[1]) refs.add(`handoff-${match[1]}`);
-  }
-  return [...refs];
-}
+// Extractors live in `./handoff-extractors.ts` so each is unit-testable
+// in isolation. The round-6 regression that motivated the extraction —
+// `` `pnpm test tests/foo.test.ts` `` being captured by collectCodeRefs
+// as a single "file path" entry because the original `[^`]+` regex
+// allowed whitespace inside the backticks — is pinned by tests there.

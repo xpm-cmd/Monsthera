@@ -1,0 +1,21 @@
+{
+  "sessionId": "ses-20260516-061335-claude-code",
+  "agent": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/round-6",
+  "branch": null,
+  "window": {
+    "openedAt": "2026-05-16T06:13:35.958Z",
+    "closedAt": "2026-05-16T06:13:39.023Z"
+  },
+  "events": [],
+  "workTouched": [],
+  "knowledgeTouched": [],
+  "codeTouched": [],
+  "commits": [],
+  "signals": {
+    "todosAdded": [],
+    "questions": [],
+    "testFailures": []
+  },
+  "agentNote": "Round 6 v2: extractor now strips ## Facts section before scanning (same pattern as coverage validator round 4 fix) + defensive isPathShaped filter rejects any entry with whitespace, parens, brackets, or backticks. Edits: src/sessions/handoff-extractors.ts (stripStructuralSections + PATH_SHAPE_FULL). Tests: +4 new (24 total, was 20). VERIFY this handoff has codeRefs ONLY with legitimate file paths like src/sessions/handoff-extractors.ts, no Facts pointer (.facts.json), no malformed entries like backtick-paren. Run pnpm test tests/unit/sessions/handoff-extractors.test.ts to confirm. WATCH-OUT: the YAML serializer at src/knowledge/markdown.ts:128 still does naive value.join(',') without quoting — if a codeRef entry has special YAML chars (like : followed by space), it could mangle. Defensive filter prevents this for known patterns but not all. Separate hardening."
+}

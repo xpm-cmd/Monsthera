@@ -161,9 +161,16 @@ const CHECKS: readonly DimensionCheck[] = [
  *
  * Splitting on `## Facts` rather than the full heading text keeps the strip
  * robust to minor heading variations.
+ *
+ * Anchor to line-start (multiline). The original `indexOf` matched any
+ * occurrence of the string, including in prose ("...about the `## Facts`
+ * section..."), which chopped off substantive content above the real
+ * section. Caught by round-6 dogfood.
  */
+const FACTS_SECTION_START = /^## Facts/m;
+
 function stripStructuralSections(body: string): string {
-  const factsIdx = body.indexOf("## Facts");
+  const factsIdx = body.search(FACTS_SECTION_START);
   return factsIdx >= 0 ? body.slice(0, factsIdx) : body;
 }
 

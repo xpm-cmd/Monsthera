@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 83 knowledge articles and 20 work articles.
-> Last updated: 2026-05-16 05:54:56
+> Auto-generated catalog of 86 knowledge articles and 20 work articles.
+> Last updated: 2026-05-16 06:18:55
 
 ## Knowledge
 
@@ -93,6 +93,9 @@
 - [Handoff: 2026-05-15 claude-code (0 min)](notes/handoff-ses-20260515-131606-claude-code.md) — > **Session** `ses-20260515-131606-claude-code` · agent `claude-code` · 0 min >
 - [Handoff: 2026-05-15 claude-code (0 min)](notes/handoff-ses-20260515-131951-claude-code.md) — > **Session** `ses-20260515-131951-claude-code` · agent `claude-code` · 0 min >
 - [Handoff: 2026-05-16 claude-code (0 min)](notes/handoff-ses-20260516-055350-claude-code.md) — > **Session** `ses-20260516-055350-claude-code` · agent `claude-code` · 0 min >
+- [Handoff: 2026-05-16 claude-code (0 min)](notes/handoff-ses-20260516-060530-claude-code.md) — > **Session** `ses-20260516-060530-claude-code` · agent `claude-code` · 0 min >
+- [Handoff: 2026-05-16 claude-code (0 min)](notes/handoff-ses-20260516-061335-claude-code.md) — > **Session** `ses-20260516-061335-claude-code` · agent `claude-code` · 0 min >
+- [Handoff: 2026-05-16 claude-code (0 min)](notes/handoff-ses-20260516-061801-claude-code.md) — > **Session** `ses-20260516-061801-claude-code` · agent `claude-code` · 0 min >
 - [Handoff: 2026-05-16 claude-code (3 min)](notes/handoff-ses-20260516-042501-claude-code.md) — > **Session** `ses-20260516-042501-claude-code` · agent `claude-code` · 3 min >
 
 ### implementation
