@@ -1,0 +1,21 @@
+{
+  "sessionId": "ses-20260515-131418-claude-code",
+  "agent": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356",
+  "branch": null,
+  "window": {
+    "openedAt": "2026-05-15T13:14:18.425Z",
+    "closedAt": "2026-05-15T13:14:35.769Z"
+  },
+  "events": [],
+  "workTouched": [],
+  "knowledgeTouched": [],
+  "codeTouched": [],
+  "commits": [],
+  "signals": {
+    "todosAdded": [],
+    "questions": [],
+    "testFailures": []
+  },
+  "agentNote": "Round 4 calibration of coverage validator shipped. WHAT: two commits — `d49ad24` makes `renderWhatHappened` always emit `### Blockers` with `_(none identified)_` placeholder (src/sessions/handoff-renderer.ts:94), and rule 5 in `buildRetrospectProspectPrompt` (src/sessions/llm-summarizer.ts:127) asks the LLM to put verification commands in nextSteps[].why; `e8018f4` broadens `hasExecutableAction` and `hasVerification` to accept bare-prose forms (src/sessions/coverage-validator.ts:75-79, :100-101) and covers regress(ed|es|ing|ion|ions|ive)? at :89. WHY: dogfood revealed quality 4/5 LLM handoffs were flagging constraints + verification gaps because the renderer skipped empty Blockers heading and the prompt didn't request verification commands. NEXT: dogfood this very close to confirm zero `## Coverage` section appears (verifies the fix end-to-end). WATCH-OUTS: do not break the schema — verification stays inside nextSteps[].why field as prose, not a new field; `renderWhatHappened` test at tests/unit/sessions/handoff-renderer.test.ts:114 was flipped (now expects Blockers heading). VERIFY: `pnpm test tests/unit/sessions/` should show 1885 passing; build with `pnpm build` and rerun this very command path to confirm validator self-consistency."
+}

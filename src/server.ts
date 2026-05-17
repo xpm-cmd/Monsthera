@@ -32,6 +32,7 @@ import {
   codeQueryToolDefinitions,
   handleCodeQueryTool,
 } from "./tools/code-query-tool.js";
+import { sessionToolDefinitions, handleSessionTool } from "./tools/session-tools.js";
 
 /**
  * Per-group tool registry. Exposed for tests and for the dispatch function
@@ -59,6 +60,7 @@ export interface ToolRegistry {
     readonly convoy: ReadonlySet<string>;
     readonly codeIntelligence: ReadonlySet<string>;
     readonly codeQuery: ReadonlySet<string>;
+    readonly session: ReadonlySet<string>;
   };
 }
 
@@ -86,6 +88,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
   const convoyTools = convoyToolDefinitions();
   const codeIntelligenceTools = codeIntelligenceToolDefinitions();
   const codeQueryTools = codeQueryToolDefinitions();
+  const sessionTools = sessionToolDefinitions();
 
   return {
     definitions: [
@@ -107,6 +110,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       ...convoyTools,
       ...codeIntelligenceTools,
       ...codeQueryTools,
+      ...sessionTools,
     ],
     names: {
       knowledge: new Set(knowledgeTools.map((t) => t.name)),
@@ -127,6 +131,7 @@ export function buildToolRegistry(container: MonstheraContainer): ToolRegistry {
       convoy: new Set(convoyTools.map((t) => t.name)),
       codeIntelligence: new Set(codeIntelligenceTools.map((t) => t.name)),
       codeQuery: new Set(codeQueryTools.map((t) => t.name)),
+      session: new Set(sessionTools.map((t) => t.name)),
     },
   };
 }
@@ -227,6 +232,9 @@ export async function dispatchToolCall(
   }
   if (names.codeQuery.has(name)) {
     return handleCodeQueryTool(name, args, container.codeInventoryService);
+  }
+  if (names.session.has(name)) {
+    return handleSessionTool(name, args, { sessionService: container.sessionService });
   }
 
   return {

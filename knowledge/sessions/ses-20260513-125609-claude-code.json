@@ -1,0 +1,19 @@
+{
+  "id": "ses-20260513-125609-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356",
+  "branch": null,
+  "openedAt": "2026-05-13T12:56:09.932Z",
+  "closedAt": "2026-05-13T12:56:22.006Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260513-125609-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356/knowledge/sessions/ses-20260513-125609-claude-code.facts.json",
+  "parentSessionId": "ses-20260513-125013-claude-code",
+  "abandonReason": null,
+  "quality": {
+    "score": 5,
+    "degraded": false,
+    "model": "gemma4:latest"
+  },
+  "intent": "Phase 3d+3e+4a+4b shipped + dogfood-found brief() slug bug fixed (full conversation handoff)"
+}

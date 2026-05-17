@@ -11,3 +11,4 @@ export * from "./structure-tools.js";
 export * from "./wiki-tools.js";
 export * from "./snapshot-tools.js";
 export * from "./code-intelligence-tools.js";
+export * from "./session-tools.js";

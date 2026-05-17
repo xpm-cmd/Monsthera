@@ -3,7 +3,7 @@ import type { Result } from "../core/result.js";
 import { NotFoundError } from "../core/errors.js";
 import type { StorageError, ValidationError } from "../core/errors.js";
 import { generateArticleId, timestamp } from "../core/types.js";
-import type { ArticleId, Slug } from "../core/types.js";
+import type { ArticleId, Slug, Timestamp } from "../core/types.js";
 import { uniqueSlug } from "./slug.js";
 import type {
   KnowledgeArticle,
@@ -32,6 +32,12 @@ export class InMemoryKnowledgeArticleRepository implements KnowledgeArticleRepos
 
   async findMany(_filter?: Record<string, unknown>): Promise<Result<KnowledgeArticle[], StorageError>> {
     return ok([...this.store.values()]);
+  }
+
+  async findUpdatedSince(timestamp: Timestamp): Promise<Result<KnowledgeArticle[], StorageError>> {
+    return ok(
+      [...this.store.values()].filter((a) => a.updatedAt >= timestamp),
+    );
   }
 
   async create(input: CreateKnowledgeArticleInput): Promise<Result<KnowledgeArticle, ValidationError | StorageError>> {

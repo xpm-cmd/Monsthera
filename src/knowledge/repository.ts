@@ -1,6 +1,6 @@
 import type { Repository } from "../core/repository.js";
 import type { Result } from "../core/result.js";
-import type { ArticleId, Slug } from "../core/types.js";
+import type { ArticleId, Slug, Timestamp } from "../core/types.js";
 import type { NotFoundError, StorageError } from "../core/errors.js";
 
 /** Knowledge article entity (as returned from repository) */
@@ -61,6 +61,12 @@ export interface KnowledgeArticleRepository
   findBySlug(slug: Slug): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>>;
   findByCategory(category: string): Promise<Result<KnowledgeArticle[], StorageError>>;
   findByTag(tag: string): Promise<Result<KnowledgeArticle[], StorageError>>;
+  /**
+   * Return all articles whose `updatedAt` is at or after the given timestamp.
+   * Pushes the time-window filter to the repository layer so callers like
+   * session facts extraction do not have to load the entire corpus.
+   */
+  findUpdatedSince(timestamp: Timestamp): Promise<Result<KnowledgeArticle[], StorageError>>;
   search(query: string): Promise<Result<KnowledgeArticle[], StorageError>>;
   /**
    * Write an article with a specific new slug (and optional content/references/etc. overrides),

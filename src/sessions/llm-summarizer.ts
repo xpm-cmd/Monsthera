@@ -124,7 +124,7 @@ export function buildRetrospectProspectPrompt(facts: SessionFacts): string {
     "   Invented citations will be pruned automatically. Prefer fewer real citations over many fabricated ones.",
     "3. `suggestedAgent` is a short role hint (e.g. \"security-reviewer\", \"performance\", \"architecture\"), or null.",
     "4. Keep `tldr` to 2-3 sentences. Keep `summary` to 2-3 paragraphs.",
-    "5. `nextSteps` must each pair an `action` with at least one piece of `evidence` whenever possible.",
+    "5. `nextSteps` must each pair an `action` with at least one piece of `evidence` whenever possible. Use the `why` field to mention a concrete verification command when applicable — e.g. \"verifies the regression with `pnpm test tests/sessions/foo.test.ts`\". Wrap file paths and shell commands in backticks (markdown convention) so the next agent can scan and run them.",
     "6. If there is no signal for a section (e.g. no blockers), return an empty array. Do not invent.",
     "",
     "Schema (zod):",

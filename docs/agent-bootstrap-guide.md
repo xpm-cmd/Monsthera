@@ -527,7 +527,7 @@ The above is a verbatim copy-paste template. Customise the trigger phrases ("cie
 | **Disable the cognitive briefing only** | Remove Phase E from the script (or guard it with `[[ -n "$MONSTHERA_SKIP_BRIEFING" ]] && exit 0` before the `if [[ "$GLOBAL_VER" != "missing" ]]` block). The bootstrap diagnostics keep working. |
 | **Force a specific agent identity** | Set `MONSTHERA_AGENT_ID=<id>` in your `~/.zshrc` / `~/.bashrc`. Overrides the `CLAUDE_*` / `CODEX_*` env auto-detection. Useful when you run multiple agent types from the same shell. |
 | **Disable LLM-generated handoff narrative** | Set `MONSTHERA_SESSIONS_LLM_ENABLED=false`. Sessions still open/close and track lifecycle, but every handoff article is T1-only (metadata + Hypergraph, no Ollama narrative). |
-| **Change the local Ollama model** | Set `MONSTHERA_SESSIONS_LLM_MODEL=qwen2.5-coder:7b` (or any other chat-capable model your local Ollama serves). Default is `qwen2.5-coder:7b`. |
+| **Change the local Ollama model** | Set `MONSTHERA_SESSIONS_LLM_MODEL=qwen2.5-coder:7b` (or any other chat-capable model your local Ollama serves). Default is `gemma4:latest`. |
 | **Tune Ollama timeout** | Set `MONSTHERA_SESSIONS_LLM_TIMEOUT_MS=60000` (default). Larger handoffs benefit from longer timeouts; CI may prefer shorter. |
 | **Capture the async worker's stdio for debugging** | Set `MONSTHERA_SESSIONS_WORKER_LOG=/tmp/monsthera-worker.log`. The detached handoff worker appends its stdout+stderr there. |
 
@@ -551,7 +551,7 @@ The above is a verbatim copy-paste template. Customise the trigger phrases ("cie
 
 **The briefing shows `⚠ Previous handoff is incomplete`.** The previous session's async worker did not finish writing the handoff article. Causes: Ollama was unreachable / slow, the worker crashed, or the parent shell killed the detached subprocess. Recovery: run the command the warning prints (`monsthera session _generate-handoff <id>`); it loads the previously-captured Stage A facts from disk and re-runs Stages B/C/D synchronously.
 
-**The handoff article body says `Handoff is degraded — LLM pipeline did not run`.** Phase E ran cleanly but `session close` ran with Ollama unreachable or `--no-llm`. The session lifecycle is intact; the Hypergraph + Facts sections still have value. To regenerate with the LLM, ensure Ollama is up and the configured model (`MONSTHERA_SESSIONS_LLM_MODEL`, default `qwen2.5-coder:7b`) is pulled, then run `monsthera session _generate-handoff <id>`.
+**The handoff article body says `Handoff is degraded — LLM pipeline did not run`.** Phase E ran cleanly but `session close` ran with Ollama unreachable or `--no-llm`. The session lifecycle is intact; the Hypergraph + Facts sections still have value. To regenerate with the LLM, ensure Ollama is up and the configured model (`MONSTHERA_SESSIONS_LLM_MODEL`, default `gemma4:latest`) is pulled, then run `monsthera session _generate-handoff <id>`.
 
 **Async worker silently fails to produce the handoff article.** Set `MONSTHERA_SESSIONS_WORKER_LOG=/tmp/monsthera-worker.log` before `session close` and inspect the log. The most common failure in dev (running via `tsx`) is the loader not being registered for the child process — Monsthera handles this by prepending `--import tsx` automatically when the entry script ends in `.ts`, but custom tsx installations may behave differently.
 

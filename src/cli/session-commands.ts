@@ -1,10 +1,11 @@
 /* eslint-disable no-console */
-import { agentId as makeAgentId, sessionId as makeSessionId } from "../core/types.js";
+import { agentId as makeAgentId, sessionId as makeSessionId, timestamp as makeTimestamp } from "../core/types.js";
 import { SessionStatus } from "../sessions/schemas.js";
 import { formatError } from "./formatters.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printGroupHelp, printSubcommandHelp, wantsHelp } from "./help.js";
 import type { Session } from "../sessions/repository.js";
+import type { BriefDepth } from "../sessions/service.js";
 
 // ─── Agent identity detection ─────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ export async function handleSession(args: string[]): Promise<void> {
         { name: "close", summary: "Close the current session and persist Stage A facts." },
         { name: "get", summary: "Fetch a session by id." },
         { name: "list", summary: "List sessions filtered by agent / status / repo." },
+        { name: "brief", summary: "Show a depth-sliced view of a closed session's handoff article." },
       ],
     });
     return;
@@ -65,6 +67,9 @@ export async function handleSession(args: string[]): Promise<void> {
       break;
     case "list":
       await handleSessionList(subArgs);
+      break;
+    case "brief":
+      await handleSessionBrief(subArgs);
       break;
     case "_generate-handoff":
       // Internal subcommand: invoked by the async worker subprocess. Not
@@ -355,6 +360,79 @@ async function handleSessionList(args: string[]): Promise<void> {
   });
 }
 
+async function handleSessionBrief(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera session brief",
+      summary: "Show a depth-sliced view of a closed session's handoff article.",
+      usage: "[--session-id <id>] [--agent <id>] [--depth teaser|standard|full] [--since <iso-ts>] [--json] [--repo <path>]",
+      flags: [
+        { name: "--session-id <id>", description: "Brief this exact session. Mutually exclusive with --agent." },
+        { name: "--agent <id>", description: "Brief the most recent CLOSED session for this agent in --repo. Defaults to env-detected agent." },
+        { name: "--depth <d>", description: "teaser | standard | full", default: "standard" },
+        { name: "--since <iso-ts>", description: "Add cross-agent delta: count of CLOSED sessions by OTHER agents in --repo since this timestamp." },
+        { name: "--json", description: "Emit the full BriefSessionOutput as JSON." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      examples: [
+        "monsthera session brief                              # latest closed for this agent",
+        "monsthera session brief --depth teaser               # ~200 token preview",
+        "monsthera session brief --session-id ses-…           # exact session",
+        "monsthera session brief --agent codex-cli --depth full",
+        "monsthera session brief --since 2026-05-01T00:00:00Z # add cross-agent delta",
+      ],
+    });
+    return;
+  }
+
+  await withContainer(args, async (container) => {
+    const depthFlag = (parseFlag(args, "--depth") ?? "standard") as BriefDepth;
+    if (depthFlag !== "teaser" && depthFlag !== "standard" && depthFlag !== "full") {
+      console.error(`Invalid --depth: ${depthFlag}. Must be teaser | standard | full.`);
+      process.exit(1);
+    }
+
+    const sessionIdFlag = parseFlag(args, "--session-id");
+    const sinceFlag = parseFlag(args, "--since");
+    const briefInput: Parameters<typeof container.sessionService.brief>[0] = {
+      depth: depthFlag,
+      ...(sessionIdFlag ? { sessionId: makeSessionId(sessionIdFlag) } : {}),
+      ...(sessionIdFlag
+        ? {}
+        : {
+            agentId: makeAgentId(resolveAgentId(args)),
+            repo: container.config.repoPath,
+          }),
+      ...(sinceFlag ? { since: makeTimestamp(sinceFlag) } : {}),
+    };
+
+    const result = await container.sessionService.brief(briefInput);
+    if (!result.ok) {
+      console.error(formatError(result.error));
+      process.exit(1);
+    }
+
+    if (args.includes("--json")) {
+      process.stdout.write(JSON.stringify(result.value, null, 2) + "\n");
+      return;
+    }
+
+    process.stdout.write(result.value.body);
+    if (!result.value.body.endsWith("\n")) process.stdout.write("\n");
+
+    const delta = result.value.crossAgentDelta;
+    if (delta !== null) {
+      const entries = Object.entries(delta.byAgent);
+      if (entries.length === 0) {
+        process.stdout.write(`\n_Cross-agent delta since ${delta.since}: no closed sessions from other agents._\n`);
+      } else {
+        const summary = entries.map(([a, n]) => `${a}: ${n}`).join(", ");
+        process.stdout.write(`\n_Cross-agent delta since ${delta.since}: ${summary}_\n`);
+      }
+    }
+  });
+}
+
 // ─── Helpers (formatting + teaser) ────────────────────────────────────────────
 
 function formatSession(s: Session): string {
@@ -396,8 +474,14 @@ function formatSessionLine(s: Session): string {
 function formatTeaser(current: Session, parent: Session | null, orphan: Session | null): string {
   const closeHint =
     `→ Before exit / on \"cierra session\" / \"close session\": ` +
-    `\`monsthera session close --note \"<one-line intent>\"\` ` +
+    `\`monsthera session close --note \"<note>\"\` ` +
     `(returns in ~100ms, Ollama runs in background).`;
+  const noteTemplate =
+    `   The \`--note\` is the next agent's grounding. Aim to cover the 5 cold-start questions:\n` +
+    `   1) WHAT shipped (phases / features with names) · 2) WHY (intent + parent goal) · ` +
+    `3) NEXT (1-3 concrete actions with file:line or commands) · ` +
+    `4) WATCH-OUTS (blockers / deferred / gotchas) · ` +
+    `5) VERIFY (test commands or check). Suggested agent for next is a nice extra.`;
 
   // Resume hint — symmetric counterpart to closeHint. Only emitted when there
   // IS a previous handoff to resume from. Agents with the CLAUDE.md snippet
@@ -411,6 +495,7 @@ function formatTeaser(current: Session, parent: Session | null, orphan: Session 
     return [
       `No previous handoff for ${current.agentId} in this repo. Starting fresh (session ${current.id}).`,
       closeHint,
+      noteTemplate,
     ].join("\n");
   }
   const closedAt = parent.closedAt ? parent.closedAt.slice(0, 16).replace("T", " ") : "(unknown)";
@@ -428,6 +513,7 @@ function formatTeaser(current: Session, parent: Session | null, orphan: Session 
     lines.push(resumeHint(parent.handoffArticleId));
   }
   lines.push(closeHint);
+  lines.push(noteTemplate);
   return lines.join("\n");
 }
 

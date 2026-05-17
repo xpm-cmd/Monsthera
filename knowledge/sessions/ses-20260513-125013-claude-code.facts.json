@@ -1,0 +1,33 @@
+{
+  "sessionId": "ses-20260513-125013-claude-code",
+  "agent": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/quizzical-cori-d5e356",
+  "branch": null,
+  "window": {
+    "openedAt": "2026-05-13T12:50:13.879Z",
+    "closedAt": "2026-05-13T12:50:51.270Z"
+  },
+  "events": [],
+  "workTouched": [],
+  "knowledgeTouched": [],
+  "codeTouched": [
+    {
+      "path": "package.json",
+      "linesAdded": 1,
+      "linesRemoved": 1
+    }
+  ],
+  "commits": [
+    {
+      "sha": "d0d2507b2a687d5d238fb7c359843096e444b220",
+      "subject": "chore: bump version to 3.0.0-alpha.8",
+      "timestamp": "2026-05-13T22:50:40+10:00"
+    }
+  ],
+  "signals": {
+    "todosAdded": [],
+    "questions": [],
+    "testFailures": []
+  },
+  "agentNote": "Phase 3d+3e+4a+4b shipped: time/window filters at repo layer, session brief CLI+service, MCP wrappers, default gemma4:latest, version bump to alpha.8. Verified via dogfood."
+}

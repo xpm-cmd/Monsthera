@@ -102,7 +102,7 @@ describe("renderHandoffArticle", () => {
     expect(out).toContain("Shipped M3 phase 5 with auth refresh.");
   });
 
-  it("renders What happened with summary + decisions + deferred (skipping empty sections)", () => {
+  it("renders What happened with summary + decisions + deferred; always emits Blockers heading", () => {
     const out = renderHandoffArticle(makeSession(), makeFacts(), makeSummary());
     expect(out).toContain("## What happened");
     expect(out).toContain("PR #101");
@@ -111,8 +111,27 @@ describe("renderHandoffArticle", () => {
     expect(out).toContain("evidence: [work:w-12]");
     expect(out).toContain("### Deferred");
     expect(out).toContain("Token rotation");
-    expect(out).not.toContain("### Blockers"); // empty array → skipped
-    expect(out).not.toContain("### Surprises"); // empty array → skipped
+    // Blockers heading always present so coverage-validator credits constraints
+    // and the next agent knows the previous agent actively checked.
+    expect(out).toContain("### Blockers");
+    expect(out).toContain("_(none identified)_");
+    expect(out).not.toContain("### Surprises"); // surprises empty → still skipped
+  });
+
+  it("renders Blockers list items (with evidence) when blockers array is non-empty", () => {
+    const session = makeSession();
+    const facts = makeFacts();
+    const summary = makeSummary();
+    summary.blockers = [
+      { text: "Ollama unreachable on macOS sandbox", evidence: ["evt:e-001"] },
+      { text: "Dolt 0.40 stale-schema bug", evidence: [] },
+    ];
+    const out = renderHandoffArticle(session, facts, summary);
+    expect(out).toContain("### Blockers");
+    expect(out).toContain("Ollama unreachable");
+    expect(out).toContain("evidence: [evt:e-001]");
+    expect(out).toContain("Dolt 0.40 stale-schema bug");
+    expect(out).not.toContain("_(none identified)_");
   });
 
   it("renders What's next with first-action callout, evidence, and suggested agent", () => {

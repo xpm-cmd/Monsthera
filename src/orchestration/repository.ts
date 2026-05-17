@@ -95,4 +95,9 @@ export interface OrchestrationEventRepository {
   findByWorkId(workId: WorkId): Promise<Result<OrchestrationEvent[], StorageError>>;
   findByType(type: OrchestrationEventType): Promise<Result<OrchestrationEvent[], StorageError>>;
   findRecent(limit: number): Promise<Result<OrchestrationEvent[], StorageError>>;
+  findInWindow(
+    start: Timestamp,
+    end: Timestamp,
+    limit?: number,
+  ): Promise<Result<OrchestrationEvent[], StorageError>>;
 }
