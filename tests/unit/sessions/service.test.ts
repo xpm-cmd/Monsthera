@@ -111,6 +111,61 @@ describe("SessionService.open", () => {
     if (!result.ok) return;
     expect(result.value.session.intent).toBe("Land M3 phase 5");
   });
+
+  it("sets parentSessionId across different repo paths (cross-worktree parent discovery)", async () => {
+    // The SessionStart-hook flow: prior session was opened in
+    // /tmp/main-repo (committed there). New session opens in a fresh
+    // worktree at /tmp/main-repo/.claude/worktrees/feature-x — a
+    // different `repo` path. The parent lookup must still discover
+    // the prior session; the repo-layer fallback (PR #111) already
+    // scopes us to this Monsthera, so a wider agentId-only filter is
+    // safe.
+    const first = await svc.open({
+      agentId: agentId("claude-code"),
+      repo: "/tmp/main-repo",
+    });
+    if (!first.ok) throw new Error("first open failed");
+    clock = () => new Date("2026-05-12T10:55:00Z");
+    svc = new SessionService(repo, stubExtractor(), { now: clock });
+    await svc.close({ sessionId: first.value.session.id });
+
+    clock = () => new Date("2026-05-12T11:00:00Z");
+    svc = new SessionService(repo, stubExtractor(), { now: clock });
+    const second = await svc.open({
+      agentId: agentId("claude-code"),
+      repo: "/tmp/main-repo/.claude/worktrees/feature-x", // DIFFERENT repo
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.session.parentSessionId).toBe(first.value.session.id);
+    expect(second.value.parent).not.toBeNull();
+    expect(second.value.parent!.repo).toBe("/tmp/main-repo");
+  });
+
+  it("does NOT cross agent identity even when crossing worktrees", async () => {
+    // The relaxed parent filter is by-agent-only; sessions for a
+    // different agent must NOT surface as parents regardless of repo.
+    const codexPrior = await svc.open({
+      agentId: agentId("codex-cli"),
+      repo: "/tmp/main-repo",
+    });
+    if (!codexPrior.ok) throw new Error("codex open failed");
+    clock = () => new Date("2026-05-12T10:55:00Z");
+    svc = new SessionService(repo, stubExtractor(), { now: clock });
+    await svc.close({ sessionId: codexPrior.value.session.id });
+
+    clock = () => new Date("2026-05-12T11:00:00Z");
+    svc = new SessionService(repo, stubExtractor(), { now: clock });
+    const claudeNew = await svc.open({
+      agentId: agentId("claude-code"),
+      repo: "/tmp/main-repo/.claude/worktrees/feature-x",
+    });
+    expect(claudeNew.ok).toBe(true);
+    if (!claudeNew.ok) return;
+    // codex-cli's prior session is not claude-code's parent.
+    expect(claudeNew.value.parent).toBeNull();
+    expect(claudeNew.value.session.parentSessionId).toBeNull();
+  });
 });
 
 describe("SessionService.close", () => {

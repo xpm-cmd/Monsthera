@@ -38,8 +38,24 @@ import type {
  *   - Handoff articles (phase 3) remain Markdown knowledge articles —
  *     narrative content belongs in the corpus, not in operational storage.
  */
+/**
+ * Worktree fallback (added 2026-05-16):
+ *
+ * When constructed with `fallbackMarkdownRoot` (the main repo's
+ * knowledge dir, resolved via `git rev-parse --git-common-dir`), the
+ * repository aggregates reads from BOTH the worktree's `sessions/`
+ * and the main repo's `sessions/`. Writes go ONLY to the primary —
+ * the feature branch keeps its own session history committed
+ * alongside the work that produced it.
+ *
+ * `findOpen` deliberately stays primary-only: an "open" session in
+ * another worktree is not this worktree's to supersede.
+ */
 export class FileSystemSessionRepository implements SessionRepository {
-  constructor(private readonly markdownRoot: string) {}
+  constructor(
+    private readonly markdownRoot: string,
+    private readonly fallbackMarkdownRoot: string | null = null,
+  ) {}
 
   private get dir(): string {
     // `markdownRoot` already includes the `knowledge` segment from config
@@ -49,12 +65,26 @@ export class FileSystemSessionRepository implements SessionRepository {
     return path.join(this.markdownRoot, "sessions");
   }
 
+  private get fallbackDir(): string | null {
+    return this.fallbackMarkdownRoot === null
+      ? null
+      : path.join(this.fallbackMarkdownRoot, "sessions");
+  }
+
+  private sessionPathIn(baseDir: string, id: string): string {
+    return path.join(baseDir, `${id}.json`);
+  }
+
+  private factsPathIn(baseDir: string, id: string): string {
+    return path.join(baseDir, `${id}.facts.json`);
+  }
+
   private sessionPath(id: string): string {
-    return path.join(this.dir, `${id}.json`);
+    return this.sessionPathIn(this.dir, id);
   }
 
   private factsPath(id: string): string {
-    return path.join(this.dir, `${id}.facts.json`);
+    return this.factsPathIn(this.dir, id);
   }
 
   private async ensureDir(): Promise<void> {
@@ -112,10 +142,13 @@ export class FileSystemSessionRepository implements SessionRepository {
     }
   }
 
-  private async readSession(id: string): Promise<Result<Session, NotFoundError | StorageError>> {
+  private async readSessionFrom(
+    baseDir: string,
+    id: string,
+  ): Promise<Result<Session, NotFoundError | StorageError>> {
     let raw: string;
     try {
-      raw = await fs.readFile(this.sessionPath(id), "utf-8");
+      raw = await fs.readFile(this.sessionPathIn(baseDir, id), "utf-8");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return err(new NotFoundError("Session", id));
@@ -133,6 +166,17 @@ export class FileSystemSessionRepository implements SessionRepository {
       return err(new StorageError(`Session ${id} on disk is malformed`, { issues: validated.error.details }));
     }
     return ok(this.fromFrontmatter(validated.value));
+  }
+
+  private async readSession(id: string): Promise<Result<Session, NotFoundError | StorageError>> {
+    // Primary first. If the session lives in the worktree, this hits; we
+    // never pay for a second filesystem read. Only when the worktree has
+    // no record of this id do we consult the fallback.
+    const primary = await this.readSessionFrom(this.dir, id);
+    if (primary.ok) return primary;
+    if (this.fallbackDir === null) return primary;
+    if (primary.error.code !== "NOT_FOUND") return primary;
+    return this.readSessionFrom(this.fallbackDir, id);
   }
 
   // ─── CRUD ──────────────────────────────────────────────────────────────────
@@ -251,19 +295,29 @@ export class FileSystemSessionRepository implements SessionRepository {
     return this.readSession(id);
   }
 
-  async findMany(filter?: SessionListFilter): Promise<Result<Session[], StorageError>> {
+  /**
+   * Read sessions from a single directory, applying the filter. Used as
+   * the building block for both `findOpen` (primary-only) and
+   * `findMany` (primary + fallback merged).
+   */
+  private async findManyInDir(
+    baseDir: string,
+    filter?: SessionListFilter,
+  ): Promise<Result<Session[], StorageError>> {
     let entries: string[];
     try {
-      await this.ensureDir();
-      entries = await fs.readdir(this.dir);
+      entries = await fs.readdir(baseDir);
     } catch (error) {
+      // Missing directory is not a read failure — treat as empty so the
+      // fallback path stays untouched until something writes to it.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return ok([]);
       return err(new StorageError(`Failed to list sessions dir`, { cause: String(error) }));
     }
     const sessionFiles = entries.filter((e) => e.endsWith(".json") && !e.endsWith(".facts.json"));
     const results: Session[] = [];
     for (const f of sessionFiles) {
       const id = f.slice(0, -".json".length);
-      const r = await this.readSession(id);
+      const r = await this.readSessionFrom(baseDir, id);
       if (r.ok) results.push(r.value);
     }
 
@@ -271,24 +325,53 @@ export class FileSystemSessionRepository implements SessionRepository {
     if (filter?.agentId !== undefined) filtered = filtered.filter((s) => s.agentId === filter.agentId);
     if (filter?.repo !== undefined) filtered = filtered.filter((s) => s.repo === filter.repo);
     if (filter?.status !== undefined) filtered = filtered.filter((s) => s.status === filter.status);
-    filtered.sort((a, b) => (a.openedAt < b.openedAt ? 1 : a.openedAt > b.openedAt ? -1 : 0));
-    if (filter?.limit !== undefined) filtered = filtered.slice(0, filter.limit);
     return ok(filtered);
+  }
+
+  async findMany(filter?: SessionListFilter): Promise<Result<Session[], StorageError>> {
+    const primary = await this.findManyInDir(this.dir, filter);
+    if (!primary.ok) return primary;
+
+    let merged: Session[] = primary.value;
+    if (this.fallbackDir !== null) {
+      const fallback = await this.findManyInDir(this.fallbackDir, filter);
+      // Soft-fail: a missing fallback dir is not a primary-read failure;
+      // surface the primary result so the caller stays productive.
+      if (fallback.ok) {
+        const seen = new Set(merged.map((s) => s.id));
+        for (const s of fallback.value) {
+          if (!seen.has(s.id)) {
+            seen.add(s.id);
+            merged.push(s);
+          }
+        }
+      }
+    }
+
+    merged.sort((a, b) => (a.openedAt < b.openedAt ? 1 : a.openedAt > b.openedAt ? -1 : 0));
+    if (filter?.limit !== undefined) merged = merged.slice(0, filter.limit);
+    return ok(merged);
   }
 
   async findOpen(
     agentIdArg: AgentId,
     repo: string,
   ): Promise<Result<Session | null, StorageError>> {
-    const all = await this.findMany({ agentId: agentIdArg, repo, status: SessionStatus.OPEN });
-    if (!all.ok) return all;
-    return ok(all.value[0] ?? null);
+    // Primary-only: an "open" session in another worktree is not this
+    // worktree's to supersede. Reading the fallback here would cause
+    // spurious abandons of unrelated agents' active work.
+    const filter = { agentId: agentIdArg, repo, status: SessionStatus.OPEN };
+    const primary = await this.findManyInDir(this.dir, filter);
+    if (!primary.ok) return primary;
+    return ok(primary.value[0] ?? null);
   }
 
   async findLatestClosed(
     agentIdArg: AgentId,
     repo: string,
   ): Promise<Result<Session | null, StorageError>> {
+    // Uses findMany so the fallback dir is consulted — cross-worktree
+    // parent discovery is exactly what this method exists for.
     const all = await this.findMany({ agentId: agentIdArg, repo, status: SessionStatus.CLOSED });
     if (!all.ok) return all;
     const withClosedAt = all.value.filter((s) => s.closedAt !== null);
@@ -311,10 +394,13 @@ export class FileSystemSessionRepository implements SessionRepository {
     }
   }
 
-  async loadFacts(id: SessionId): Promise<Result<SessionFacts, NotFoundError | StorageError>> {
+  private async loadFactsFrom(
+    baseDir: string,
+    id: SessionId,
+  ): Promise<Result<SessionFacts, NotFoundError | StorageError>> {
     let raw: string;
     try {
-      raw = await fs.readFile(this.factsPath(id), "utf-8");
+      raw = await fs.readFile(this.factsPathIn(baseDir, id), "utf-8");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return err(new NotFoundError("SessionFacts", id));
@@ -332,5 +418,13 @@ export class FileSystemSessionRepository implements SessionRepository {
       return err(new StorageError(`Facts ${id} on disk are malformed`, { issues: validated.error.details }));
     }
     return ok(validated.value);
+  }
+
+  async loadFacts(id: SessionId): Promise<Result<SessionFacts, NotFoundError | StorageError>> {
+    const primary = await this.loadFactsFrom(this.dir, id);
+    if (primary.ok) return primary;
+    if (this.fallbackDir === null) return primary;
+    if (primary.error.code !== "NOT_FOUND") return primary;
+    return this.loadFactsFrom(this.fallbackDir, id);
   }
 }

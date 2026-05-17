@@ -1,0 +1,21 @@
+{
+  "sessionId": "ses-20260516-042501-claude-code",
+  "agent": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/worktree-fallback",
+  "branch": null,
+  "window": {
+    "openedAt": "2026-05-16T04:25:01.179Z",
+    "closedAt": "2026-05-16T04:27:37.965Z"
+  },
+  "events": [],
+  "workTouched": [],
+  "knowledgeTouched": [],
+  "codeTouched": [],
+  "commits": [],
+  "signals": {
+    "todosAdded": [],
+    "questions": [],
+    "testFailures": []
+  },
+  "agentNote": "Quality assessment dogfood. SHIPPED today: PR #109 round 4 calibration (renderer always emits Blockers, prompt asks for verification commands, validator regex broadened, Facts pointer excluded), PR #110 ADR-018 + bump 3.0.0, PR #111 worktree-aware read fallback (FileSystemSessionRepository + KnowledgeArticleRepository accept fallbackMarkdownRoot resolved via git rev-parse --git-common-dir). INTENT: assess current handoff quality post-round-4 + post-fallback. WHAT NEXT: the cross-worktree fallback works for `session list` and `monsthera knowledge get`, but `session open` still says 'Starting fresh' from a new worktree because SessionService.open's `findLatestClosed(agent, input.repo)` filters strictly by repo path and prior sessions have other worktrees' paths. Fix: in src/sessions/service.ts:192 bypass findLatestClosed and use `this.repo.findMany({ agentId, status: SessionStatus.CLOSED })` instead — drops the repo filter (cross-worktree parent discovery is the whole point), keeps the fallback aggregation from PR #111. WATCH-OUTS: do NOT relax findOpen's repo filter — that one is per-worktree by design (an open session in another worktree is not ours to supersede). VERIFY with `pnpm test tests/unit/sessions/` after the fix, then dogfood again from a fresh worktree to confirm the briefing surfaces a parent."
+}
