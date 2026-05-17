@@ -1,0 +1,21 @@
+{
+  "sessionId": "ses-20260516-055350-claude-code",
+  "agent": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/prompt-improvements",
+  "branch": null,
+  "window": {
+    "openedAt": "2026-05-16T05:53:50.956Z",
+    "closedAt": "2026-05-16T05:53:54.035Z"
+  },
+  "events": [],
+  "workTouched": [],
+  "knowledgeTouched": [],
+  "codeTouched": [],
+  "commits": [],
+  "signals": {
+    "todosAdded": [],
+    "questions": [],
+    "testFailures": []
+  },
+  "agentNote": "Round 5 prompt improvements shipped today on top of PR #111. WHAT: 3 new rules in src/sessions/llm-summarizer.ts:127 buildRetrospectProspectPrompt (Rule 7 preserve identifiers like #NNN and commit SHAs and file.ts:42 verbatim; Rule 8 imperative voice in nextSteps[].action — Edit/Run/Fix/Verify not 'The next step is to'; Rule 9 watch-outs to blockers[] not decisions[]). Also Stage D buildSelfEvalPrompt at src/sessions/llm-summarizer.ts:150 now rates on 5 cold-start questions (STATE/INTENT/ACTION/CONSTRAINTS/VERIFICATION) with specific-vs-generic distinction — replaces the old count-proxy rubric. NEXT: open PR #112 (this branch feat/prompt-improvements-round-5). WATCH-OUT: do NOT mix Stage D changes into PR #109/110/111 — keep round 5 as its own PR so the historical quality.score recalibration is traceable to a single commit. Some prior handoffs scored 4-5 under old count-proxy rubric may score 3-4 under new content rubric; that's the expected calibration. VERIFY with pnpm test tests/unit/sessions/llm-summarizer.test.ts (7 new tests should pass) and then re-open this PR's handoff to confirm new rules are visible in the rendered output (PR numbers preserved, action starts with imperative verb, watch-outs in Blockers)."
+}

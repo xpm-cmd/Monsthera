@@ -126,6 +126,9 @@ export function buildRetrospectProspectPrompt(facts: SessionFacts): string {
     "4. Keep `tldr` to 2-3 sentences. Keep `summary` to 2-3 paragraphs.",
     "5. `nextSteps` must each pair an `action` with at least one piece of `evidence` whenever possible. Use the `why` field to mention a concrete verification command when applicable — e.g. \"verifies the regression with `pnpm test tests/sessions/foo.test.ts`\". Wrap file paths and shell commands in backticks (markdown convention) so the next agent can scan and run them.",
     "6. If there is no signal for a section (e.g. no blockers), return an empty array. Do not invent.",
+    "7. Preserve specific identifiers from `agentNote` verbatim wherever they appear: PR numbers (`#NNN`), issue numbers, commit SHAs (8+ hex), exact line numbers (`file.ts:42`), exact symbol names (`SessionService.open`). Do NOT replace them with generic phrases (\"the PR\", \"the file\", \"the function\"). These identifiers are the next agent's cold-start hooks; losing them forces re-derivation from history.",
+    "8. `nextSteps[].action` must start with an imperative verb (Edit, Run, Add, Fix, Verify, Implement, Rebase, Merge, etc.). NOT \"The next step is to…\", \"You should…\", \"It would be good to…\". The action field IS a command the next agent executes, not a description of what they will do.",
+    "9. Statements in `agentNote` starting with \"do not\", \"must not\", \"watch out\", \"watch-out\", \"WATCH-OUT\", \"careful\", \"warning\", or framed as constraints belong in `blockers[]`, not in `decisions[]` or `summary`. The next agent reads `### Blockers` specifically to learn what to avoid. Burying watch-outs in narrative loses them.",
     "",
     "Schema (zod):",
     "{",
@@ -148,13 +151,22 @@ export function buildRetrospectProspectPrompt(facts: SessionFacts): string {
 }
 
 export function buildSelfEvalPrompt(summary: LLMSummary, facts: SessionFacts): string {
+  // Pass enough narrative content for the LLM to rate quality, not just
+  // counts. Trim long fields to keep the prompt bounded regardless of
+  // session size. Counts on the FACTS side stay as numbers — coverage is
+  // a function of what the SUMMARY says, not how many raw events existed.
   const summaryForEval = {
     tldr: summary.tldr,
-    decisionCount: summary.decisions.length,
-    blockerCount: summary.blockers.length,
-    nextStepCount: summary.nextSteps.length,
-    openQuestionCount: summary.openQuestions.length,
-    hasSuggestedAgent: summary.suggestedAgent !== null,
+    summary: summary.summary.slice(0, 1500),
+    decisions: summary.decisions.slice(0, 5).map((d) => d.text),
+    blockers: summary.blockers.slice(0, 5).map((b) => b.text),
+    deferred: summary.deferred.slice(0, 5),
+    nextSteps: summary.nextSteps.slice(0, 3).map((s) => ({
+      action: s.action,
+      why: s.why,
+    })),
+    openQuestions: summary.openQuestions.slice(0, 3),
+    suggestedAgent: summary.suggestedAgent,
   };
   const factsShape = {
     eventCount: facts.events.length,
@@ -167,21 +179,31 @@ export function buildSelfEvalPrompt(summary: LLMSummary, facts: SessionFacts): s
   };
 
   return [
-    "You evaluate the quality of a session handoff document produced by another AI assistant.",
+    "You evaluate a session handoff document by scoring how well it answers the FIVE cold-start questions a brand-new agent has when picking up this work:",
     "",
-    "Rate the document on a 1-5 scale where:",
-    "  5 = comprehensive, well-grounded, actionable; captures what happened AND what's next",
-    "  4 = covers what was done and what's next with minor gaps",
-    "  3 = covers either retrospect or prospect well but the other is thin",
-    "  2 = vague or sparse despite available facts",
-    "  1 = mostly empty or hallucinated (low fact coverage)",
+    "  Q1. STATE — Where am I? (workstream state — what just shipped, what's open, what's closed)",
+    "  Q2. INTENT — Why are we here? (the overarching goal / parent reason for this session)",
+    "  Q3. ACTION — What do I do next? (concrete first step — file:line, command, or imperative verb tied to a target)",
+    "  Q4. CONSTRAINTS — What must I not break? (blockers, deferred items, watch-outs, invariants)",
+    "  Q5. VERIFICATION — How do I verify? (a concrete test command, doctor check, or observable signal)",
     "",
-    "Output ONLY valid JSON: { \"score\": 1|2|3|4|5, \"reasoning\": \"one short sentence\" }",
+    "Scoring rubric (count how many of Q1-Q5 are CLEARLY answered with SPECIFICS — not generic prose):",
+    "  5 = all five answered with specifics (file:line, command, identifier, exact symbol/PR number)",
+    "  4 = four answered with specifics; one is missing or only generic",
+    "  3 = three answered with specifics; the other two are missing or generic",
+    "  2 = two answered; three missing or only generic prose",
+    "  1 = one or zero answered (document is mostly empty or vague)",
     "",
-    "Summary shape (from the document):",
+    "A 'specific' answer cites something the next agent can grep, click, or run — e.g. `pnpm test tests/foo.test.ts`, `src/sessions/service.ts:192`, `PR #111`, `commit abc12345`. A 'generic' answer reads like \"review the changes\" or \"check the tests\".",
+    "",
+    "In the `reasoning` field, name which of Q1-Q5 you found and which were missing/generic — e.g. \"Q1,Q3,Q5 specific; Q2 generic; Q4 missing\".",
+    "",
+    "Output ONLY valid JSON: { \"score\": 1|2|3|4|5, \"reasoning\": \"one short sentence covering Q1-Q5\" }",
+    "",
+    "Handoff document content:",
     JSON.stringify(summaryForEval, null, 2),
     "",
-    "Underlying facts (size only, for coverage judgement):",
+    "Underlying facts (size only — for context on how much raw signal was available):",
     JSON.stringify(factsShape, null, 2),
     "",
     "Output the JSON now.",

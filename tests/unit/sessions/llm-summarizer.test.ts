@@ -87,15 +87,94 @@ describe("buildRetrospectProspectPrompt", () => {
     expect(prompt).toContain("e-49");
     expect(prompt).not.toContain("e-50");
   });
+
+  // ─── Round 5 prompt improvements ──────────────────────────────────────────
+
+  it("instructs the LLM to preserve identifiers verbatim (PRs, SHAs, line numbers, symbols)", () => {
+    const prompt = buildRetrospectProspectPrompt(makeFacts());
+    // Rule 7: identifier preservation. Specifically calls out `#NNN`, SHA
+    // length, and the anti-pattern of generic replacements.
+    expect(prompt).toContain("Preserve specific identifiers");
+    expect(prompt).toContain("#NNN");
+    expect(prompt).toContain("Do NOT replace them with generic phrases");
+  });
+
+  it("requires imperative voice in nextSteps[].action", () => {
+    const prompt = buildRetrospectProspectPrompt(makeFacts());
+    // Rule 8: action field IS a command, not a description.
+    expect(prompt).toContain("imperative verb");
+    expect(prompt).toContain("Edit, Run, Add");
+    expect(prompt).toContain("NOT \"The next step is to…\"");
+  });
+
+  it("routes watch-outs from agentNote into blockers, not decisions", () => {
+    const prompt = buildRetrospectProspectPrompt(makeFacts());
+    // Rule 9: warning-style phrases belong in blockers. The coverage
+    // validator's hasConstraints check reads `### Blockers` specifically;
+    // burying watch-outs in the summary loses them.
+    expect(prompt).toContain("watch out");
+    expect(prompt).toContain("`blockers[]`");
+    expect(prompt).toContain("not in `decisions[]`");
+  });
 });
 
-describe("buildSelfEvalPrompt", () => {
-  it("scores 1-5 with reasoning, surfacing summary shape (not raw content) for the eval", () => {
+describe("buildSelfEvalPrompt — 5-question coverage rubric (round 5)", () => {
+  it("rates on the 5 cold-start questions, not count proxies", () => {
     const prompt = buildSelfEvalPrompt(makeSummary(), makeFacts());
-    expect(prompt).toContain("1-5 scale");
+    // The new rubric explicitly enumerates Q1-Q5 (STATE / INTENT / ACTION /
+    // CONSTRAINTS / VERIFICATION) and asks the eval to count how many are
+    // CLEARLY answered with SPECIFICS. Pins the alignment with the coverage
+    // validator's dimensions.
+    expect(prompt).toContain("Q1. STATE");
+    expect(prompt).toContain("Q2. INTENT");
+    expect(prompt).toContain("Q3. ACTION");
+    expect(prompt).toContain("Q4. CONSTRAINTS");
+    expect(prompt).toContain("Q5. VERIFICATION");
+  });
+
+  it("distinguishes 'specific' from 'generic' answers in the rubric", () => {
+    const prompt = buildSelfEvalPrompt(makeSummary(), makeFacts());
+    // The rubric must teach the LLM what counts as specific. Without this,
+    // it tends to credit verbose-but-vague prose as 'covered'.
+    expect(prompt).toContain("with SPECIFICS");
+    expect(prompt).toContain("not generic prose");
+    expect(prompt).toMatch(/file:line|pnpm test/);
+  });
+
+  it("asks the LLM to name which Qs were specific vs missing in the reasoning", () => {
+    const prompt = buildSelfEvalPrompt(makeSummary(), makeFacts());
+    // The `reasoning` field becomes diagnostic — operators can read the
+    // self-eval and see which dimensions the LLM thought were weak.
+    expect(prompt).toContain("name which of Q1-Q5");
+  });
+
+  it("passes narrative content (tldr, summary, decisions, blockers) to the eval — not just counts", () => {
+    const summary: LLMSummary = {
+      tldr: "TLDR-MARKER",
+      summary: "SUMMARY-MARKER",
+      decisions: [{ text: "DECISION-MARKER", evidence: [] }],
+      blockers: [{ text: "BLOCKER-MARKER", evidence: [] }],
+      surprises: [],
+      deferred: [],
+      nextSteps: [{ action: "ACTION-MARKER", evidence: [], why: "WHY-MARKER" }],
+      openQuestions: ["QUESTION-MARKER"],
+      suggestedAgent: "agent-marker",
+    };
+    const prompt = buildSelfEvalPrompt(summary, makeFacts());
+    // Each narrative field must appear so the eval can rate on content,
+    // not on counts alone.
+    expect(prompt).toContain("TLDR-MARKER");
+    expect(prompt).toContain("SUMMARY-MARKER");
+    expect(prompt).toContain("DECISION-MARKER");
+    expect(prompt).toContain("BLOCKER-MARKER");
+    expect(prompt).toContain("ACTION-MARKER");
+    expect(prompt).toContain("WHY-MARKER");
+  });
+
+  it("emits valid JSON shape { score, reasoning } so the LLMQualityEvalSchema validates", () => {
+    const prompt = buildSelfEvalPrompt(makeSummary(), makeFacts());
     expect(prompt).toContain('"score"');
     expect(prompt).toContain('"reasoning"');
-    expect(prompt).toContain("decisionCount");
-    expect(prompt).toContain("blockerCount");
+    expect(prompt).toContain("Output ONLY valid JSON");
   });
 });
