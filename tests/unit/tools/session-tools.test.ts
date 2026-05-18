@@ -128,6 +128,30 @@ describe("handleSessionTool", () => {
       // With --no-llm, the article is still persisted by the sync path
       expect(payload.degraded).toBe(true);
     });
+
+    it("accepts ADR-019 `content` param and routes to the agent-direct path", async () => {
+      const opened = await deps.sessionService.open({
+        agentId: agentId("claude-code"),
+        repo: "/tmp/repo-a",
+      });
+      if (!opened.ok) throw new Error("setup open failed");
+
+      const content =
+        "## TL;DR\n\nMCP-side agent-direct close.\n\n## What's next\n\n### First action\n**Verify the test passes.**\n";
+      const response = await handleSessionTool(
+        "session_close",
+        { sessionId: opened.value.session.id as string, content },
+        deps,
+      );
+      expect(response.isError).toBeFalsy();
+      const payload = JSON.parse(response.content[0]!.text);
+      expect(payload.session.status).toBe("closed");
+      expect(payload.degraded).toBe(false); // agent-direct is never degraded
+      expect(payload.session.quality.writer).toBe("agent");
+      expect(payload.session.quality.model).toBe("claude-code");
+      expect(payload.session.quality.score).toBeNull();
+      expect(payload.handoffArticleId).toMatch(/^handoff-ses-/);
+    });
   });
 
   describe("session_get", () => {

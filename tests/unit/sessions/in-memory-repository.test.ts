@@ -82,11 +82,16 @@ describe("InMemorySessionRepository.create", () => {
     expect(result.value.abandonReason).toBeNull();
   });
 
-  it("initializes quality as { score: null, degraded: false, model: null }", async () => {
+  it("initializes quality with writer='ollama' (ADR-019 default for backward compat)", async () => {
     const result = await repo.create(makeCreate());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.quality).toEqual({ score: null, degraded: false, model: null });
+    expect(result.value.quality).toEqual({
+      score: null,
+      degraded: false,
+      model: null,
+      writer: "ollama",
+    });
   });
 });
 

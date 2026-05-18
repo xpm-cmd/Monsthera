@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 86 knowledge articles and 20 work articles.
-> Last updated: 2026-05-16 06:18:55
+> Auto-generated catalog of 82 knowledge articles and 20 work articles.
+> Last updated: 2026-05-17 12:24:01
 
 ## Knowledge
 
@@ -70,22 +70,15 @@
 
 ### guide
 
-- [Cognitive handoff sessions — future phases roadmap](notes/cognitive-handoff-sessions-roadmap.md) — # Cognitive handoff sessions — future phases roadmap  **Reads first:** [`cogniti
 - [Dashboard pages and features](notes/dashboard-pages-and-features.md) — # Dashboard Pages and Features  ## Page Module Contract  Every page module expor
 - [Drift Prevention — Design](notes/drift-prevention-design.md) — # Drift Prevention — Design  Closure note for the Hedera v1 retrospective. Pairs
 - [MCP Tool Catalog — Complete Reference](notes/mcp-tool-catalog-complete-reference.md) — ## Overview  Monsthera exposes **31 MCP tools** via stdio transport, organized i
 - [Monsthera Agent Operating Guide](notes/monsthera-agent-operating-guide.md) — Monsthera works best when agents use it as an operational memory and coordinatio
 - [Monsthera usage guide for humans and agents](notes/monsthera-usage-guide-for-humans-and-agents.md) — ## Mental model  Monsthera is a shared brain with an integrated backlog. It has
 - [MonstheraV3 Docs](notes/monstherav3-docs.md) — ## ⚠️ Status snapshot  This article is an imported summary of the original v3 de
-- [Phase 3c — DefaultFactsExtractor: implementation plan](notes/phase-3c-default-facts-extractor.md) — # Phase 3c — `DefaultFactsExtractor` implementation plan  **Status:** ready to i
 
 ### handoff
 
-- [Handoff: 2026-05-12 claude-code (0 min)](notes/handoff-ses-20260512-233859-claude-code.md) — > **Session** `ses-20260512-233859-claude-code` · agent `claude-code` · 0 min >
-- [Handoff: 2026-05-12 claude-code (0 min)](notes/handoff-ses-20260512-234347-claude-code.md) — > **Session** `ses-20260512-234347-claude-code` · agent `claude-code` · 0 min >
-- [Handoff: 2026-05-12 claude-code (0 min)](notes/handoff-ses-20260512-234459-claude-code.md) — > **Session** `ses-20260512-234459-claude-code` · agent `claude-code` · 0 min >
-- [Handoff: 2026-05-12 claude-code (0 min)](notes/handoff-ses-20260512-235710-claude-code.md) — > **Session** `ses-20260512-235710-claude-code` · agent `claude-code` · 0 min >
-- [Handoff: 2026-05-12 claude-code (0 min)](notes/handoff-ses-20260512-235930-claude-code.md) — > **Session** `ses-20260512-235930-claude-code` · agent `claude-code` · 0 min >
 - [Handoff: 2026-05-13 claude-code (1 min)](notes/handoff-ses-20260513-003933-claude-code.md) — > **Session** `ses-20260513-003933-claude-code` · agent `claude-code` · 1 min >
 - [Handoff: 2026-05-13 claude-code (1 min)](notes/handoff-ses-20260513-125013-claude-code.md) — > **Session** `ses-20260513-125013-claude-code` · agent `claude-code` · 1 min >
 - [Handoff: 2026-05-13 claude-code (Phase 3d/3e/4a/4b shipped)](notes/handoff-ses-20260513-125609-claude-code.md) — > **Session** `ses-20260513-125609-claude-code` · agent `claude-code` · 0 min >
@@ -97,6 +90,9 @@
 - [Handoff: 2026-05-16 claude-code (0 min)](notes/handoff-ses-20260516-061335-claude-code.md) — > **Session** `ses-20260516-061335-claude-code` · agent `claude-code` · 0 min >
 - [Handoff: 2026-05-16 claude-code (0 min)](notes/handoff-ses-20260516-061801-claude-code.md) — > **Session** `ses-20260516-061801-claude-code` · agent `claude-code` · 0 min >
 - [Handoff: 2026-05-16 claude-code (3 min)](notes/handoff-ses-20260516-042501-claude-code.md) — > **Session** `ses-20260516-042501-claude-code` · agent `claude-code` · 3 min >
+- [Handoff: 2026-05-17 claude-code (0 min)](notes/handoff-ses-20260517-114223-claude-code.md) — > **Session** `ses-20260517-114223-claude-code` · agent `claude-code` · 0 min >
+- [Handoff: 2026-05-17 claude-code (0 min)](notes/handoff-ses-20260517-114452-claude-code.md) — > **Session** `ses-20260517-114452-claude-code` · agent `claude-code` · 0 min >
+- [Handoff: 2026-05-17 claude-code (2 min)](notes/handoff-ses-20260517-122214-claude-code.md) — > **Session** `ses-20260517-122214-claude-code` · agent `claude-code` · 2 min >
 
 ### implementation
 

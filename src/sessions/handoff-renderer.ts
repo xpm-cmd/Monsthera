@@ -55,6 +55,50 @@ export function renderHandoffArticle(
   return sections.filter((s) => s.length > 0).join("\n\n") + "\n";
 }
 
+/**
+ * ADR-019 agent-direct render path.
+ *
+ * The executing agent (Claude, Codex, etc.) writes the substantive
+ * content directly — TL;DR + What happened + What's next + Decisions
+ * + Blockers + Surprises + Deferred — and the CLI assembles the final
+ * article by wrapping with the deterministic header and appending the
+ * Hypergraph + Facts pointer sections derived from `facts.json`.
+ *
+ * Why split this way:
+ *   - The HEADER is deterministic metadata (session id, agent id,
+ *     duration, quality, intent, parent pointer) the agent shouldn't
+ *     have to author.
+ *   - The HYPERGRAPH + FACTS sections are derived from Stage A
+ *     (`facts.json`) — agent-supplied content here would only
+ *     duplicate or contradict the deterministic extract.
+ *   - Everything between is content only the agent — with full
+ *     session context — can produce well.
+ *
+ * The agent's body is trimmed and inserted verbatim. The agent is
+ * responsible for the structure (markdown headings, list shape); the
+ * coverage validator runs as an advisory pass against the assembled
+ * article body, identical to the LLM path.
+ */
+export function renderAgentWrittenHandoff(
+  session: Session,
+  facts: SessionFacts,
+  agentBody: string,
+): string {
+  const sections: string[] = [];
+
+  sections.push(renderHeader(session, facts));
+
+  const trimmed = agentBody.trim();
+  if (trimmed.length > 0) {
+    sections.push(trimmed);
+  }
+
+  sections.push(renderHypergraph(facts));
+  sections.push(renderFacts(session));
+
+  return sections.filter((s) => s.length > 0).join("\n\n") + "\n";
+}
+
 function renderHeader(session: Session, _facts: SessionFacts): string {
   const duration = computeDurationMinutes(session);
   const lines: string[] = [

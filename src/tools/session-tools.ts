@@ -46,16 +46,17 @@ export function sessionToolDefinitions(): ToolDefinition[] {
     {
       name: "session_close",
       description:
-        "Close an open session and persist the Stage A facts artifact. Returns immediately when `sync` is false (default); the LLM pipeline runs in the background. Set `sync: true` to wait for the full handoff to be persisted (useful in tests and programmatic flows).",
+        "Close an open session and persist the Stage A facts artifact. ADR-019 PREFERRED: pass `content` (full handoff body authored by you, the executing agent) — synchronous, skips the LLM pipeline entirely, produces a higher-quality handoff because the writer has full session context. LEGACY: pass `note` (short string) + leave `content` empty → triggers the local-Ollama pipeline (Stages B/C/D) which expands the note into a structured handoff. Returns immediately when `sync` is false (default, legacy path only); the LLM pipeline runs in the background. Set `sync: true` to wait for the full handoff to be persisted (useful in tests and programmatic flows). Agent-direct (`content`) is always synchronous.",
       inputSchema: {
         type: "object" as const,
         properties: {
           sessionId: { type: "string", description: "Specific session to close. Mutually exclusive with agentId+repo." },
           agentId: { type: "string", description: "Resolve the open session by agent (requires repo too)" },
           repo: { type: "string", description: "Repository path used with agentId to resolve the open session" },
-          note: { type: "string", description: "Optional one-line agent intent string surfaced in the handoff" },
-          noLlm: { type: "boolean", description: "Skip Stages B/C/D — persist a T1-only handoff article" },
-          sync: { type: "boolean", description: "Wait for the LLM pipeline to finish before returning" },
+          content: { type: "string", description: "(ADR-019 PREFERRED) Full handoff body authored by the executing agent. Markdown: TL;DR + What happened + What's next + Decisions + Blockers. The CLI prepends the session header and appends Hypergraph + Facts. Skips the LLM pipeline entirely (writer=agent, no Ollama, no degraded mode). Mutually-supersedes the `note`+LLM path — if `content` is non-empty, `note` is still persisted to facts.agentNote for grounding but the rendered body comes from `content`." },
+          note: { type: "string", description: "(LEGACY) One-line agent intent. Triggers the Ollama pipeline that expands it into a structured handoff. Lower-utility than `content` because the LLM can only re-format what the note already said; specifics not in the note are lost. See ADR-019 for rationale to prefer `content`." },
+          noLlm: { type: "boolean", description: "Skip Stages B/C/D — persist a T1-only handoff article. Implied when `content` is provided." },
+          sync: { type: "boolean", description: "Wait for the LLM pipeline to finish before returning. Ignored when `content` is provided (agent-direct is always sync)." },
         },
       },
     },
@@ -139,6 +140,11 @@ export async function handleSessionTool(
       if (isErrorResponse(repoArg)) return repoArg;
       const noteArg = optionalString(args, "note", 1024);
       if (isErrorResponse(noteArg)) return noteArg;
+      // ADR-019 agent-direct content. Long body allowed (handoffs commonly
+      // run 2-4KB; cap at 64KB for sanity — a body that big almost certainly
+      // means the agent dumped raw logs).
+      const contentArg = optionalString(args, "content", 64 * 1024);
+      if (isErrorResponse(contentArg)) return contentArg;
       const noLlm = args["noLlm"] === true;
       const sync = args["sync"] === true;
       if (!sessionIdArg && !(agentArg && repoArg)) {
@@ -152,6 +158,7 @@ export async function handleSessionTool(
         ...(agentArg ? { agentId: makeAgentId(agentArg) } : {}),
         ...(repoArg ? { repo: repoArg } : {}),
         note: noteArg ?? null,
+        content: contentArg ?? null,
         noLlm,
         sync,
       });

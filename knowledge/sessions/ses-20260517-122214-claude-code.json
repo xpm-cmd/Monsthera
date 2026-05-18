@@ -1,0 +1,20 @@
+{
+  "id": "ses-20260517-122214-claude-code",
+  "agentId": "claude-code",
+  "repo": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/agent-writes-handoff",
+  "branch": null,
+  "openedAt": "2026-05-17T12:22:14.939Z",
+  "closedAt": "2026-05-17T12:24:01.672Z",
+  "status": "closed",
+  "handoffArticleId": "handoff-ses-20260517-122214-claude-code",
+  "factsPath": "/Users/xpm/Projects/Github/Monsthera/.claude/worktrees/agent-writes-handoff/knowledge/sessions/ses-20260517-122214-claude-code.facts.json",
+  "parentSessionId": "ses-20260517-114452-claude-code",
+  "abandonReason": null,
+  "quality": {
+    "score": null,
+    "degraded": false,
+    "model": "claude-code",
+    "writer": "agent"
+  },
+  "intent": "ADR-019 dogfood: Claude writes its own handoff"
+}

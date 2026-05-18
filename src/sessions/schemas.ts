@@ -30,10 +30,31 @@ export type AbandonmentReason = (typeof AbandonmentReason)[keyof typeof Abandonm
 
 // ─── Quality model ────────────────────────────────────────────────────────────
 
+/**
+ * `writer` identifies which producer authored the handoff body. Added in
+ * ADR-019 alongside the agent-direct handoff path. Defaults to `"ollama"`
+ * for backward compatibility with session records persisted before the
+ * field existed (they predate any agent-direct rendering).
+ *
+ * - `"ollama"`  — Stage B/C/D ran a local LLM (gemma4, qwen-coder, etc.).
+ *                `model` carries the specific model name (e.g. "gemma4:latest").
+ * - `"agent"`   — the executing agent wrote the body directly via
+ *                `session close --content[-file]`. `model` carries the
+ *                `agentId` (e.g. "claude-code", "codex-cli"). `score` is
+ *                null (no self-eval); `degraded` is false.
+ */
+export const SessionWriter = {
+  OLLAMA: "ollama",
+  AGENT: "agent",
+} as const;
+export type SessionWriter = (typeof SessionWriter)[keyof typeof SessionWriter];
+
 export const SessionQualitySchema = z.object({
   score: z.number().int().min(1).max(5).nullable(),
   degraded: z.boolean(),
   model: z.string().nullable(),
+  /** ADR-019: identifies who wrote the handoff. Backward compat: defaults to "ollama". */
+  writer: z.enum(["ollama", "agent"]).default("ollama"),
 });
 
 export type SessionQuality = z.infer<typeof SessionQualitySchema>;

@@ -1,4 +1,5 @@
 /* eslint-disable no-console */
+import { readFile } from "node:fs/promises";
 import { agentId as makeAgentId, sessionId as makeSessionId, timestamp as makeTimestamp } from "../core/types.js";
 import { SessionStatus } from "../sessions/schemas.js";
 import { formatError } from "./formatters.js";
@@ -157,26 +158,30 @@ async function handleSessionClose(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera session close",
       summary: "Close the current session. Persists Stage A facts to disk.",
-      usage: "[--session-id <id>] [--note <text>] [--agent <id>] [--repo <path>] [--json]",
+      usage: "[--session-id <id>] [--content-file <path> | --content <md> | --note <text>] [--agent <id>] [--repo <path>] [--json]",
       flags: [
         { name: "--session-id <id>", description: "Explicit session to close. If absent, the open session for (agent, repo) is resolved." },
-        { name: "--note <text>", description: "Optional one-line agent intent note. Persisted on facts.agentNote." },
-        { name: "--no-llm", description: "Skip Stages B/C/D. Persist a T1-only handoff article (Ollama-free) inline." },
-        { name: "--sync", description: "Run the LLM pipeline inline and wait for it (~5-60s). Default is fire-and-forget." },
+        { name: "--content <md>", description: "(ADR-019, preferred) Full handoff body authored by the executing agent. Inline markdown — TL;DR + What happened + What's next + Decisions + Blockers. The CLI prepends the session header and appends Hypergraph + Facts. Skips the LLM pipeline entirely (no Ollama call, no degraded mode). Mutually exclusive with --content-file." },
+        { name: "--content-file <path>", description: "Same as --content but reads the body from a file. Preferred for multi-line markdown with backticks (avoids shell-quoting issues). Mutually exclusive with --content." },
+        { name: "--note <text>", description: "(LEGACY: see ADR-019) Sparse 1-line intent note. Persisted on facts.agentNote. If --content/--content-file is also given, this is stored but does NOT influence the rendered body — content wins." },
+        { name: "--no-llm", description: "Skip Stages B/C/D. Persist a T1-only handoff article (Ollama-free) inline. Implied by --content/--content-file." },
+        { name: "--sync", description: "Run the LLM pipeline inline and wait for it (~5-60s). Default is fire-and-forget. Ignored when --content/--content-file is given (agent-direct is always sync)." },
         { name: "--agent <id>", description: "Used with implicit close. Defaults to env detection." },
         { name: "--json", description: "Emit the closed Session record as JSON." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
       notes: [
-        "Default behavior: async fire-and-forget. The session is marked `closed` immediately (~100ms) and a detached worker subprocess generates the handoff article in the background (~30-60s on Ollama).",
-        "Use --sync when you need to read the article inline (e.g. CI smoke tests, debugging).",
+        "ADR-019 — Agent-direct handoffs (PREFERRED path): the executing agent (Claude/Codex/etc.) has full session context and authors a complete handoff body via --content-file. No information bottleneck through a sparse --note + Ollama expansion. Empirically more useful for cold-start agents.",
+        "Legacy LLM path (--note → Ollama expansion): still works for backward compat. Default is async fire-and-forget — the session is marked `closed` immediately (~100ms) and a detached worker subprocess generates the handoff article in the background (~30-60s on Ollama).",
+        "Use --sync (legacy path) when you need to read the article inline (e.g. CI smoke tests, debugging).",
         "Use --no-llm when Ollama is unavailable; the resulting handoff has Hypergraph + Facts but no narrative. This forces sync mode.",
         "Closing an abandoned session errors out — that history is finalized.",
         "If the async worker crashes, the next `session open` surfaces an orphan warning. To recover, re-run with `--sync` or call `session _generate-handoff <id>` directly.",
       ],
       examples: [
-        "monsthera session close",
-        'monsthera session close --note "Land M3 phase 5"',
+        "monsthera session close --content-file /tmp/handoff.md          # ADR-019 agent-direct, preferred",
+        "monsthera session close                                          # legacy: async LLM pipeline",
+        'monsthera session close --note "Land M3 phase 5"                # legacy: with --note for grounding',
       ],
     });
     return;
@@ -185,17 +190,37 @@ async function handleSessionClose(args: string[]): Promise<void> {
   await withContainer(args, async (container) => {
     const sessionIdRaw = parseFlag(args, "--session-id");
     const note = parseFlag(args, "--note") ?? null;
+    const contentInline = parseFlag(args, "--content");
+    const contentFile = parseFlag(args, "--content-file");
+
+    if (contentInline !== undefined && contentFile !== undefined) {
+      console.error("Use either --content or --content-file, not both.");
+      process.exit(1);
+    }
+    let content: string | null = null;
+    if (contentInline !== undefined) {
+      content = contentInline;
+    } else if (contentFile !== undefined) {
+      try {
+        content = await readFile(contentFile, "utf-8");
+      } catch (e) {
+        console.error(`Failed to read --content-file ${contentFile}: ${e instanceof Error ? e.message : String(e)}`);
+        process.exit(1);
+      }
+    }
+
     const noLlm = args.includes("--no-llm");
     const sync = args.includes("--sync");
     const asJson = args.includes("--json");
 
     const closeInput =
       sessionIdRaw !== undefined
-        ? { sessionId: makeSessionId(sessionIdRaw), note, noLlm, sync }
+        ? { sessionId: makeSessionId(sessionIdRaw), note, content, noLlm, sync }
         : {
             agentId: makeAgentId(resolveAgentId(args)),
             repo: container.config.repoPath,
             note,
+            content,
             noLlm,
             sync,
           };
@@ -232,7 +257,10 @@ async function handleSessionClose(args: string[]): Promise<void> {
       );
     } else if (result.value.handoffArticleId !== null) {
       process.stdout.write(`Handoff article: ${result.value.handoffArticleId}`);
-      if (result.value.degraded) {
+      const writer = result.value.session.quality.writer;
+      if (writer === "agent") {
+        process.stdout.write(` (agent-direct, writer=${result.value.session.quality.model})\n`);
+      } else if (result.value.degraded) {
         process.stdout.write(" (degraded — Ollama unavailable or --no-llm)\n");
       } else {
         const score = result.value.evalResult?.score;
@@ -452,7 +480,7 @@ function formatSession(s: Session): string {
   if (s.abandonReason) lines.push(`Reason:    ${s.abandonReason}`);
   if (s.quality.score !== null || s.quality.degraded || s.quality.model !== null) {
     lines.push(
-      `Quality:   score=${s.quality.score ?? "?"} degraded=${s.quality.degraded} model=${s.quality.model ?? "?"}`,
+      `Quality:   score=${s.quality.score ?? "?"} degraded=${s.quality.degraded} model=${s.quality.model ?? "?"} writer=${s.quality.writer}`,
     );
   }
   return lines.join("\n");
@@ -473,15 +501,17 @@ function formatSessionLine(s: Session): string {
  */
 function formatTeaser(current: Session, parent: Session | null, orphan: Session | null): string {
   const closeHint =
-    `→ Before exit / on \"cierra session\" / \"close session\": ` +
-    `\`monsthera session close --note \"<note>\"\` ` +
-    `(returns in ~100ms, Ollama runs in background).`;
+    `→ Before exit / on \"cierra session\" / \"close session\" (ADR-019 PREFERRED): ` +
+    `write the full handoff to a tmp file, then ` +
+    `\`monsthera session close --content-file /tmp/handoff.md\` ` +
+    `(synchronous, no Ollama, no information loss — you have full session context, use it).`;
   const noteTemplate =
-    `   The \`--note\` is the next agent's grounding. Aim to cover the 5 cold-start questions:\n` +
-    `   1) WHAT shipped (phases / features with names) · 2) WHY (intent + parent goal) · ` +
-    `3) NEXT (1-3 concrete actions with file:line or commands) · ` +
-    `4) WATCH-OUTS (blockers / deferred / gotchas) · ` +
-    `5) VERIFY (test commands or check). Suggested agent for next is a nice extra.`;
+    `   Your handoff body should cover the 5 cold-start questions the next agent will have:\n` +
+    `   ## TL;DR (2-3 sentences) · ## What happened (decisions + blockers + surprises) · ` +
+    `## What's next (### First action with imperative verb + file:line + verify command + suggested agent role).\n` +
+    `   Preserve identifiers verbatim (PR #NNN, commit SHA, file.ts:42). Use imperative voice. ` +
+    `Put watch-outs in ### Blockers, not in narrative.\n` +
+    `   Legacy --note path (sparse + Ollama-expanded) still works but produces lower-utility handoffs — see ADR-019.`;
 
   // Resume hint — symmetric counterpart to closeHint. Only emitted when there
   // IS a previous handoff to resume from. Agents with the CLAUDE.md snippet
