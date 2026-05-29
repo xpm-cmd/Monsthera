@@ -9,9 +9,6 @@ export default defineConfig([
     dts: true,
     sourcemap: true,
     clean: true,
-    define: {
-      __MONSTHERA_VERSION__: JSON.stringify("3.0.0-alpha.4"),
-    },
   },
   // CLI binary entry point
   {
@@ -23,9 +20,6 @@ export default defineConfig([
     clean: false,
     banner: {
       js: "#!/usr/bin/env node",
-    },
-    define: {
-      __MONSTHERA_VERSION__: JSON.stringify("3.0.0-alpha.4"),
     },
   },
 ]);
