@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 82 knowledge articles and 20 work articles.
-> Last updated: 2026-05-17 12:24:01
+> Auto-generated catalog of 81 knowledge articles and 20 work articles.
+> Last updated: 2026-05-29 12:53:51
 
 ## Knowledge
 
@@ -28,7 +28,7 @@
 - [Dashboard knowledge page UX flow](notes/dashboard-knowledge-page-ux-flow.md) — # Dashboard knowledge page UX flow  The knowledge page (`public/pages/knowledge.
 - [Dashboard UI component library](notes/dashboard-ui-component-library.md) — # Dashboard UI Component Library  ## Overview  All reusable UI primitives live i
 - [Dashboard work page UX flow](notes/dashboard-work-page-ux-flow.md) — # Dashboard work page UX flow  The work page (`public/pages/work.js`) manages wo
-- [Demo: Hedera v1 drift sample](notes/demo-drift-hedera.md) — # Demo article — intentional anti-example  This article exists so `pnpm demo:loc
+- [Demo: Hedera v1 drift sample](notes/demo-drift-hedera.md) — # Demo article — intentional anti-example  This article retains a sample of a wr
 - [Dolt persistence layer: connection, schema, and health monitoring](notes/dolt-persistence-layer-connection-schema-and-health-monitoring.md) — ## Overview  Monsthera uses Dolt (a MySQL-compatible version-controlled database
 - [Dolt repositories: search index and orchestration events](notes/dolt-repositories-search-index-and-orchestration-events.md) — ## Overview  There are now three Dolt repository classes: `DoltSearchIndexReposi
 - [In-memory repositories and degraded-mode fallbacks](notes/in-memory-repositories-and-degraded-mode-fallbacks.md) — ## Overview  Monsthera's in-memory repositories serve two roles at once:  - dete
@@ -90,8 +90,6 @@
 - [Handoff: 2026-05-16 claude-code (0 min)](notes/handoff-ses-20260516-061335-claude-code.md) — > **Session** `ses-20260516-061335-claude-code` · agent `claude-code` · 0 min >
 - [Handoff: 2026-05-16 claude-code (0 min)](notes/handoff-ses-20260516-061801-claude-code.md) — > **Session** `ses-20260516-061801-claude-code` · agent `claude-code` · 0 min >
 - [Handoff: 2026-05-16 claude-code (3 min)](notes/handoff-ses-20260516-042501-claude-code.md) — > **Session** `ses-20260516-042501-claude-code` · agent `claude-code` · 3 min >
-- [Handoff: 2026-05-17 claude-code (0 min)](notes/handoff-ses-20260517-114223-claude-code.md) — > **Session** `ses-20260517-114223-claude-code` · agent `claude-code` · 0 min >
-- [Handoff: 2026-05-17 claude-code (0 min)](notes/handoff-ses-20260517-114452-claude-code.md) — > **Session** `ses-20260517-114452-claude-code` · agent `claude-code` · 0 min >
 - [Handoff: 2026-05-17 claude-code (2 min)](notes/handoff-ses-20260517-122214-claude-code.md) — > **Session** `ses-20260517-122214-claude-code` · agent `claude-code` · 2 min >
 
 ### implementation
@@ -124,6 +122,10 @@
 - [GitNexus UI and Graph Patterns Worth Reimagining](notes/gitnexus-ui-and-graph-patterns-worth-reimagining.md) — ## Summary  GitNexus is useful as product/UX inspiration for Monsthera, especial
 - [IRIS Meta-Harness — Environment Bootstrapping and Implications for Monsthera](notes/iris-meta-harness-environment-bootstrapping-and-implications-for-monsthera.md) — Research note comparing Stanford IRIS Lab's `meta-harness-tbench2-artifact` ag
 - [Monsthera vs GitNexus Code Exploration Evaluation](notes/monsthera-vs-gitnexus-code-exploration-evaluation.md) — ## Evaluation  Monsthera and GitNexus both expose search, graph, embeddings, and
+
+### solution
+
+- [Dogfood review (2026-05-29): CLI --help, version drift, codeRefs extractor, lint exemption, dashboard split](notes/dogfood-review-2026-05-29-cli-help-version-drift-coderefs-extractor-lint-exemption-dashboard-split.md) — A dogfood review of Monsthera using its own CLI (`monsthera doctor|lint|code|sta
 
 ## Work
 
