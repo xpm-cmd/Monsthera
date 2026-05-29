@@ -4,7 +4,7 @@ title: Handoff: 2026-05-17 claude-code (2 min)
 slug: handoff-ses-20260517-122214-claude-code
 category: handoff
 tags: [session-handoff, agent:claude-code]
-codeRefs: [package.json, src/sessions/workspace-resolver.ts, tests/unit/sessions/file-repository-fallback.test.ts, tests/unit/sessions/service-brief.test.ts, tests/unit/tools/session-tools.test.ts, /tmp/handoff-test.md, src/sessions/handoff-renderer.ts, facts.json, docs/adrs/019-agent-direct-handoff.md, handoff-ses-20260516-042501-claude-code.md, src/sessions/file-repository.ts, src/sessions/in-memory-repository.ts, src/cli/session-commands.ts, src/tools/session-tools.ts, docs/agent-bootstrap-guide.md, src/sessions/schemas.ts, src/sessions/repository.ts, src/sessions/service.ts, tests/unit/sessions/handoff-renderer.test.ts, tests/unit/sessions/service.test.ts, dist/bin.js]
+codeRefs: [package.json, src/sessions/workspace-resolver.ts, tests/unit/sessions/file-repository-fallback.test.ts, tests/unit/sessions/service-brief.test.ts, tests/unit/tools/session-tools.test.ts, src/sessions/handoff-renderer.ts, docs/adrs/019-agent-direct-handoff.md, src/sessions/file-repository.ts, src/sessions/in-memory-repository.ts, src/cli/session-commands.ts, src/tools/session-tools.ts, docs/agent-bootstrap-guide.md, src/sessions/schemas.ts, src/sessions/repository.ts, src/sessions/service.ts, tests/unit/sessions/handoff-renderer.test.ts, tests/unit/sessions/service.test.ts, dist/bin.js]
 references: [handoff-ses-20260517-114452-claude-code, handoff-ses-20260517-122214-claude-code, handoff-ses-20260516-042501-claude-code]
 createdAt: 2026-05-17T12:24:01.758Z
 updatedAt: 2026-05-17T12:24:01.758Z
