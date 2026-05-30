@@ -13,6 +13,35 @@ import {
   withContainer,
 } from "./arg-helpers.js";
 import { printGroupHelp, printSubcommandHelp, wantsHelp } from "./help.js";
+import { applyTagDelta } from "../knowledge/tags.js";
+import { confirm } from "./prompt.js";
+import type { KnowledgeArticle } from "../knowledge/repository.js";
+
+/**
+ * Build a human-readable, field-level diff between an article and a proposed
+ * update `input`. Only fields that actually change are listed. `content` is
+ * summarized as a character-count delta rather than dumping the whole body,
+ * so a `--dry-run` preview stays terminal-friendly.
+ */
+function describeUpdateDiff(current: KnowledgeArticle, input: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+  if (typeof input.title === "string" && input.title !== current.title) {
+    lines.push(`  title: ${JSON.stringify(current.title)} → ${JSON.stringify(input.title)}`);
+  }
+  if (typeof input.category === "string" && input.category !== current.category) {
+    lines.push(`  category: ${JSON.stringify(current.category)} → ${JSON.stringify(input.category)}`);
+  }
+  if (typeof input.content === "string" && input.content !== current.content) {
+    lines.push(`  content: ${current.content.length} → ${input.content.length} chars`);
+  }
+  if (Array.isArray(input.tags)) {
+    const next = input.tags as string[];
+    if (JSON.stringify(next) !== JSON.stringify([...current.tags])) {
+      lines.push(`  tags: [${current.tags.join(", ")}] → [${next.join(", ")}]`);
+    }
+  }
+  return lines;
+}
 
 export async function handleKnowledge(args: string[]): Promise<void> {
   const subcommand = args[0];
@@ -83,6 +112,7 @@ async function handleKnowledgeRefs(args: string[]): Promise<void> {
       ],
       notes: [
         "Exactly one of --to, --from, --orphans is required.",
+        "Direction: an article's frontmatter `references:` are its OUTGOING citations (what it cites). `--from <id>` lists those outgoing edges; `--to <id>` lists INCOMING edges (who cites <id>); `--orphans` lists outgoing citations whose target does not resolve.",
         "Unlike `knowledge get` connections, this view is unbounded — use it for audits.",
       ],
       examples: [
@@ -345,11 +375,12 @@ async function handleKnowledgeGet(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge get",
       summary: "Fetch a knowledge article by id or slug.",
-      usage: "<id-or-slug>",
+      usage: "<id-or-slug> [--json]",
       positional: [
         { name: "<id-or-slug>", description: "Article id (k-xxxx) or slug." },
       ],
       flags: [
+        { name: "--json", description: "Emit the article as JSON (same shape as `list --json` items) instead of the human format." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
     });
@@ -362,20 +393,23 @@ async function handleKnowledgeGet(args: string[]): Promise<void> {
       console.error("Missing required argument: <id-or-slug>");
       process.exit(1);
     }
+    const asJson = args.includes("--json");
 
-    // Try by ID first, then by slug
+    // Try by ID first, then by slug.
     const result = await container.knowledgeService.getArticle(idOrSlug);
-    if (result.ok) {
-      process.stdout.write(formatArticle(result.value) + "\n");
-      return;
-    }
-
-    const slugResult = await container.knowledgeService.getArticleBySlug(idOrSlug);
-    if (!slugResult.ok) {
-      console.error(formatError(slugResult.error));
+    const found = result.ok
+      ? result
+      : await container.knowledgeService.getArticleBySlug(idOrSlug);
+    if (!found.ok) {
+      console.error(formatError(found.error));
       process.exit(1);
     }
-    process.stdout.write(formatArticle(slugResult.value) + "\n");
+
+    if (asJson) {
+      process.stdout.write(JSON.stringify(found.value, null, 2) + "\n");
+      return;
+    }
+    process.stdout.write(formatArticle(found.value) + "\n");
   });
 }
 
@@ -384,10 +418,11 @@ async function handleKnowledgeList(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge list",
       summary: "List knowledge articles.",
-      usage: "[--category <c>] [--json]",
+      usage: "[--category <c>] [--json] [--no-content]",
       flags: [
         { name: "--category <c>", description: "Filter by category." },
         { name: "--json", description: "Emit the full list as JSON (no table)." },
+        { name: "--no-content", description: "With --json, omit the (potentially large) `content` field from each item." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
     });
@@ -397,6 +432,7 @@ async function handleKnowledgeList(args: string[]): Promise<void> {
   await withContainer(args, async (container) => {
     const category = parseFlag(args, "--category");
     const asJson = args.includes("--json");
+    const noContent = args.includes("--no-content");
     const result = await container.knowledgeService.listArticles(category);
     if (!result.ok) {
       console.error(formatError(result.error));
@@ -404,7 +440,10 @@ async function handleKnowledgeList(args: string[]): Promise<void> {
     }
 
     if (asJson) {
-      process.stdout.write(JSON.stringify(result.value, null, 2) + "\n");
+      const payload = noContent
+        ? result.value.map(({ content: _content, ...rest }) => rest)
+        : result.value;
+      process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
       return;
     }
 
@@ -430,7 +469,7 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge update",
       summary: "Update fields of an existing knowledge article.",
-      usage: "<id> [--title <t>] [--category <c>] [--content <body>] [--tags t1,t2]",
+      usage: "<id> [--title <t>] [--category <c>] [--content <body>] [--tags t1,t2 | --add-tag t1,t2 --remove-tag t3]",
       positional: [
         { name: "<id>", description: "Article id (k-xxxx)." },
       ],
@@ -438,11 +477,16 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
         { name: "--title <t>", description: "New title." },
         { name: "--category <c>", description: "New category." },
         { name: "--content <body>", description: "New markdown body (literal string)." },
-        { name: "--tags t1,t2", description: "Replace the tag list with this comma-separated set." },
+        { name: "--tags t1,t2", description: "Replace the entire tag list with this comma-separated set." },
+        { name: "--add-tag t1,t2", description: "Add tags to the existing set (normalized + deduped). Mutually exclusive with --tags." },
+        { name: "--remove-tag t1,t2", description: "Remove tags from the existing set (case-insensitive). Mutually exclusive with --tags." },
+        { name: "--dry-run", description: "Print the field-level diff that would be applied and exit without writing." },
+        { name: "--quiet, -q", description: "On success, print a one-line summary instead of the full article body." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
       notes: [
-        "At least one of --title, --category, --content, or --tags is required.",
+        "At least one of --title, --category, --content, --tags, --add-tag, or --remove-tag is required.",
+        "--tags replaces the whole list; --add-tag/--remove-tag edit it incrementally. Do not combine them.",
       ],
     });
     return;
@@ -460,21 +504,61 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
     const category = parseFlag(args, "--category");
     const content = parseFlag(args, "--content");
     const tags = parseCommaSeparated(args, "--tags");
+    const addTags = parseCommaSeparated(args, "--add-tag");
+    const removeTags = parseCommaSeparated(args, "--remove-tag");
+
+    if (tags && (addTags || removeTags)) {
+      console.error("Use --tags (full replace) or --add-tag/--remove-tag (incremental), not both.");
+      process.exit(1);
+    }
 
     if (title) input.title = title;
     if (category) input.category = category;
     if (content) input.content = content;
     if (tags) input.tags = tags;
 
+    // Incremental tag edit: read the current tags, apply the delta, and let
+    // the normal updateArticle path re-normalize the result (idempotent).
+    if (addTags || removeTags) {
+      const current = await container.knowledgeService.getArticle(id);
+      if (!current.ok) {
+        console.error(formatError(current.error));
+        process.exit(1);
+      }
+      input.tags = applyTagDelta(current.value.tags, addTags ?? [], removeTags ?? []);
+    }
+
     if (Object.keys(input).length === 0) {
-      console.error("No update fields provided. Use --title, --category, --content, or --tags.");
+      console.error(
+        "No update fields provided. Use --title, --category, --content, --tags, --add-tag, or --remove-tag.",
+      );
       process.exit(1);
+    }
+
+    if (args.includes("--dry-run")) {
+      const current = await container.knowledgeService.getArticle(id);
+      if (!current.ok) {
+        console.error(formatError(current.error));
+        process.exit(1);
+      }
+      const diff = describeUpdateDiff(current.value, input);
+      if (diff.length === 0) {
+        process.stdout.write(`DRY RUN — no changes for ${id}\n`);
+        return;
+      }
+      process.stdout.write(`DRY RUN — would update ${id}:\n${diff.join("\n")}\n`);
+      return;
     }
 
     const result = await container.knowledgeService.updateArticle(id, input);
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
+    }
+    if (args.includes("--quiet") || args.includes("-q")) {
+      const fields = Object.keys(input).sort().join(", ");
+      process.stdout.write(`Updated ${result.value.id} (fields: ${fields})\n`);
+      return;
     }
     process.stdout.write(formatArticle(result.value) + "\n");
   });
@@ -485,12 +569,17 @@ async function handleKnowledgeDelete(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge delete",
       summary: "Delete a knowledge article by id.",
-      usage: "<id>",
+      usage: "<id> [--dry-run] [--yes]",
       positional: [
         { name: "<id>", description: "Article id (k-xxxx)." },
       ],
       flags: [
+        { name: "--dry-run", description: "Print which article would be deleted and exit without removing it." },
+        { name: "--yes, -y", description: "Skip the interactive confirmation prompt (required for unattended deletes in a terminal)." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "In an interactive terminal you are asked to confirm; pass --yes to skip. In a non-interactive context (pipe, CI) the delete proceeds without prompting.",
       ],
     });
     return;
@@ -501,6 +590,32 @@ async function handleKnowledgeDelete(args: string[]): Promise<void> {
     if (!id) {
       console.error("Missing required argument: <id>");
       process.exit(1);
+    }
+
+    // Resolve the article (id first, then slug) so dry-run and the confirm
+    // prompt can show a human-readable label.
+    let found = await container.knowledgeService.getArticle(id);
+    if (!found.ok) {
+      const bySlug = await container.knowledgeService.getArticleBySlug(id);
+      if (bySlug.ok) found = bySlug;
+    }
+    const label = found.ok ? `${found.value.id} (${found.value.title})` : id;
+
+    if (args.includes("--dry-run")) {
+      process.stdout.write(`DRY RUN — would delete ${label}\n`);
+      return;
+    }
+
+    // Destructive: in an interactive terminal, require confirmation unless
+    // --yes was passed. Non-interactive contexts (the explicit isTTY check)
+    // proceed unprompted so scripts and CI are not blocked on stdin.
+    const skipConfirm = args.includes("--yes") || args.includes("-y");
+    if (!skipConfirm && process.stdin.isTTY) {
+      const ok = await confirm(`Delete ${label}? This cannot be undone.`);
+      if (!ok) {
+        process.stdout.write("Aborted.\n");
+        return;
+      }
     }
 
     const result = await container.knowledgeService.deleteArticle(id);
