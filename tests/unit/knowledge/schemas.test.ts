@@ -223,3 +223,46 @@ describe("edge cases", () => {
     }
   });
 });
+
+// ─── 7. Tag normalization on the write path ──────────────────────────────────
+
+describe("tag normalization", () => {
+  it("normalizes tags in CreateArticleInputSchema (dequote + dedupe)", () => {
+    const result = CreateArticleInputSchema.safeParse({
+      ...validCreateInput,
+      tags: ["'family:kriging'", "family:kriging", " family:kriging "],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tags).toEqual(["family:kriging"]);
+    }
+  });
+
+  it("normalizes tags in UpdateArticleInputSchema and preserves first-seen casing", () => {
+    const result = UpdateArticleInputSchema.safeParse({ tags: ["Kriging", "kriging"] });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tags).toEqual(["Kriging"]);
+    }
+  });
+
+  it("validateCreateInput returns normalized tags", () => {
+    const result = validateCreateInput({
+      ...validCreateInput,
+      tags: ["'a'", "a", ""],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.tags).toEqual(["a"]);
+    }
+  });
+
+  it("still defaults tags to [] when omitted (transform does not break default)", () => {
+    const { tags: _tags, ...withoutTags } = validCreateInput;
+    const result = validateCreateInput(withoutTags);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.tags).toEqual([]);
+    }
+  });
+});

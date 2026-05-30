@@ -4,6 +4,7 @@ import { parseMarkdown } from "../knowledge/markdown.js";
 import { getCanonicalValueViolations } from "./guards.js";
 import { computePlanningHash } from "./planning-hash.js";
 import type { AntiExamplePhrase, AntiExampleToken, CanonicalValue } from "./policy-loader.js";
+import { normalizeTag } from "../knowledge/tags.js";
 
 /**
  * Finding shape emitted by `scanCorpus`. Kept as a discriminated union on
@@ -121,6 +122,23 @@ export type PlanningSectionTamperedFinding = {
   readonly actualHash: string | null;
 };
 
+/**
+ * Tag near-duplicate finding: an article's frontmatter `tags` contains 2+ raw
+ * entries that collapse to the same normalized key (differing by surrounding
+ * quotes, case, or whitespace — or exact duplicates). Warning, not error:
+ * this is corpus hygiene, not a correctness failure, and must not gate the
+ * `monsthera lint` exit code that the pre-commit hook depends on. The write
+ * path (normalizeTags in schemas.ts) prevents NEW dirty tags; this rule
+ * surfaces the historical backlog already on disk.
+ */
+export type TagNearDuplicateFinding = {
+  readonly file: string;
+  readonly severity: "warning";
+  readonly rule: "tag_near_duplicate";
+  readonly normalized: string;
+  readonly variants: readonly string[];
+};
+
 export type LintFinding =
   | CanonicalValueMismatchFinding
   | OrphanCitationFinding
@@ -128,12 +146,13 @@ export type LintFinding =
   | PhraseAntiExampleFinding
   | CitationValueMismatchFinding
   | VerifyDensityFinding
-  | PlanningSectionTamperedFinding;
+  | PlanningSectionTamperedFinding
+  | TagNearDuplicateFinding;
 
 export type LintInclude = "knowledge" | "work" | "both";
 
 /** Which registry families are active during a scan. */
-export type LintRegistry = "canonical-values" | "anti-examples" | "planning-hash" | "all";
+export type LintRegistry = "canonical-values" | "anti-examples" | "planning-hash" | "tag-hygiene" | "all";
 
 export interface LintScanInput {
   readonly markdownRoot: string;
@@ -228,6 +247,7 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
   const runCanonical = registry === "all" || registry === "canonical-values";
   const runAntiExamples = registry === "all" || registry === "anti-examples";
   const runPlanningHash = registry === "all" || registry === "planning-hash";
+  const runTagHygiene = registry === "all" || registry === "tag-hygiene";
 
   const findings: LintFinding[] = [];
 
@@ -296,6 +316,10 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
       if (runPlanningHash && dir === WORK_DIR) {
         const tamper = scanPlanningHash(parsed.value.frontmatter, body, relFile);
         if (tamper) findings.push(tamper);
+      }
+
+      if (runTagHygiene && !isLintExempt) {
+        findings.push(...scanTagNearDuplicates(parsed.value.frontmatter, relFile));
       }
     }
   }
@@ -676,4 +700,45 @@ function scanPlanningHash(
     expectedHash: expected,
     actualHash: actual,
   };
+}
+
+// ─── Tag-hygiene check ────────────────────────────────────────────────────
+
+/**
+ * Flag tag lists whose entries collapse to the same normalized key. One
+ * finding per duplicated key, listing the raw variants. Reuses normalizeTag
+ * (the write-path normalizer) so detection and prevention agree on identity.
+ * Skips articles with fewer than two tags — nothing can duplicate.
+ */
+function scanTagNearDuplicates(
+  frontmatter: Record<string, unknown>,
+  file: string,
+): readonly TagNearDuplicateFinding[] {
+  const raw = frontmatter["tags"];
+  const tags = Array.isArray(raw) ? raw.filter((t): t is string => typeof t === "string") : [];
+  if (tags.length < 2) return [];
+
+  const groups = new Map<string, string[]>();
+  for (const tag of tags) {
+    const cleaned = normalizeTag(tag);
+    if (cleaned === "") continue;
+    const key = cleaned.toLowerCase();
+    const variants = groups.get(key);
+    if (variants) variants.push(tag);
+    else groups.set(key, [tag]);
+  }
+
+  const findings: TagNearDuplicateFinding[] = [];
+  for (const [key, variants] of groups) {
+    if (variants.length >= 2) {
+      findings.push({
+        file,
+        severity: "warning",
+        rule: "tag_near_duplicate",
+        normalized: key,
+        variants: [...variants],
+      });
+    }
+  }
+  return findings;
 }

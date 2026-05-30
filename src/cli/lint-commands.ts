@@ -17,6 +17,7 @@ const VALID_REGISTRIES: readonly LintRegistry[] = [
   "canonical-values",
   "anti-examples",
   "planning-hash",
+  "tag-hygiene",
   "all",
 ];
 
@@ -43,7 +44,7 @@ export async function handleLint(args: string[]): Promise<void> {
         {
           name: "--registry <name>",
           description:
-            "Which registry family to apply: canonical-values, anti-examples, planning-hash, or all (default).",
+            "Which registry family to apply: canonical-values, anti-examples, planning-hash, tag-hygiene, or all (default).",
         },
         {
           name: "--with-citation-values",
@@ -63,7 +64,7 @@ export async function handleLint(args: string[]): Promise<void> {
       ],
       notes: [
         "Exit code 1 when any canonical_value_mismatch, token_drift, phrase_anti_example, citation_value_mismatch, or planning_section_tampered is found; 0 otherwise.",
-        "Orphan citations and verify_density_exceeded are warnings and do not affect exit code.",
+        "Orphan citations, verify_density_exceeded, and tag_near_duplicate are warnings and do not affect exit code.",
       ],
       examples: [
         "monsthera lint",
@@ -267,6 +268,10 @@ function formatFinding(f: LintFinding): string {
       const expected = f.expectedHash.slice(0, 8);
       const actual = f.actualHash ? f.actualHash.slice(0, 8) : "(missing)";
       return `${prefix}: planning section drift on ${f.articleId} (phase=${f.phase}, expected=${expected}, actual=${actual})`;
+    }
+    case "tag_near_duplicate": {
+      const variants = f.variants.map((v) => JSON.stringify(v)).join(", ");
+      return `${prefix}: tag near-duplicate "${f.normalized}" — variants ${variants}`;
     }
   }
 }
