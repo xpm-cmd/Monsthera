@@ -366,6 +366,76 @@ describe("CLI main()", () => {
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("not both"));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
+
+    it("knowledge update --dry-run previews the diff without writing", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Original", "--category", "context",
+          "--content", "body",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      const output = await captureStdout(() =>
+        main(["knowledge", "update", id, "--title", "Changed Title", "--dry-run", "--repo", repoPath]),
+      );
+      expect(output).toContain("DRY RUN");
+      expect(output).toContain("Original");
+      expect(output).toContain("Changed Title");
+      // The article on disk must be unchanged.
+      const got = await captureStdout(() =>
+        main(["knowledge", "get", id, "--repo", repoPath]),
+      );
+      expect(got).toContain("Original");
+      expect(got).not.toContain("Changed Title");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge delete --dry-run previews without removing", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Keep Me", "--category", "context",
+          "--content", "body",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      const output = await captureStdout(() =>
+        main(["knowledge", "delete", id, "--dry-run", "--repo", repoPath]),
+      );
+      expect(output).toContain("DRY RUN");
+      expect(output).toContain(id);
+      // Still present afterwards.
+      const got = await captureStdout(() =>
+        main(["knowledge", "get", id, "--repo", repoPath]),
+      );
+      expect(got).toContain("Keep Me");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge delete removes the article (non-TTY proceeds without a prompt)", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Delete Me", "--category", "context",
+          "--content", "body",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      const output = await captureStdout(() =>
+        main(["knowledge", "delete", id, "--repo", repoPath]),
+      );
+      expect(output).toContain("Deleted knowledge article");
+      // Gone afterwards.
+      await main(["knowledge", "get", id, "--repo", repoPath]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("NOT_FOUND"));
+    });
   });
 
   // ─── Work subcommand ─────────────────────────────────────────────────────

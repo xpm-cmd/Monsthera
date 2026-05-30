@@ -14,6 +14,34 @@ import {
 } from "./arg-helpers.js";
 import { printGroupHelp, printSubcommandHelp, wantsHelp } from "./help.js";
 import { applyTagDelta } from "../knowledge/tags.js";
+import { confirm } from "./prompt.js";
+import type { KnowledgeArticle } from "../knowledge/repository.js";
+
+/**
+ * Build a human-readable, field-level diff between an article and a proposed
+ * update `input`. Only fields that actually change are listed. `content` is
+ * summarized as a character-count delta rather than dumping the whole body,
+ * so a `--dry-run` preview stays terminal-friendly.
+ */
+function describeUpdateDiff(current: KnowledgeArticle, input: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+  if (typeof input.title === "string" && input.title !== current.title) {
+    lines.push(`  title: ${JSON.stringify(current.title)} → ${JSON.stringify(input.title)}`);
+  }
+  if (typeof input.category === "string" && input.category !== current.category) {
+    lines.push(`  category: ${JSON.stringify(current.category)} → ${JSON.stringify(input.category)}`);
+  }
+  if (typeof input.content === "string" && input.content !== current.content) {
+    lines.push(`  content: ${current.content.length} → ${input.content.length} chars`);
+  }
+  if (Array.isArray(input.tags)) {
+    const next = input.tags as string[];
+    if (JSON.stringify(next) !== JSON.stringify([...current.tags])) {
+      lines.push(`  tags: [${current.tags.join(", ")}] → [${next.join(", ")}]`);
+    }
+  }
+  return lines;
+}
 
 export async function handleKnowledge(args: string[]): Promise<void> {
   const subcommand = args[0];
@@ -442,6 +470,7 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
         { name: "--tags t1,t2", description: "Replace the entire tag list with this comma-separated set." },
         { name: "--add-tag t1,t2", description: "Add tags to the existing set (normalized + deduped). Mutually exclusive with --tags." },
         { name: "--remove-tag t1,t2", description: "Remove tags from the existing set (case-insensitive). Mutually exclusive with --tags." },
+        { name: "--dry-run", description: "Print the field-level diff that would be applied and exit without writing." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
       notes: [
@@ -495,6 +524,21 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
       process.exit(1);
     }
 
+    if (args.includes("--dry-run")) {
+      const current = await container.knowledgeService.getArticle(id);
+      if (!current.ok) {
+        console.error(formatError(current.error));
+        process.exit(1);
+      }
+      const diff = describeUpdateDiff(current.value, input);
+      if (diff.length === 0) {
+        process.stdout.write(`DRY RUN — no changes for ${id}\n`);
+        return;
+      }
+      process.stdout.write(`DRY RUN — would update ${id}:\n${diff.join("\n")}\n`);
+      return;
+    }
+
     const result = await container.knowledgeService.updateArticle(id, input);
     if (!result.ok) {
       console.error(formatError(result.error));
@@ -509,12 +553,17 @@ async function handleKnowledgeDelete(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge delete",
       summary: "Delete a knowledge article by id.",
-      usage: "<id>",
+      usage: "<id> [--dry-run] [--yes]",
       positional: [
         { name: "<id>", description: "Article id (k-xxxx)." },
       ],
       flags: [
+        { name: "--dry-run", description: "Print which article would be deleted and exit without removing it." },
+        { name: "--yes, -y", description: "Skip the interactive confirmation prompt (required for unattended deletes in a terminal)." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "In an interactive terminal you are asked to confirm; pass --yes to skip. In a non-interactive context (pipe, CI) the delete proceeds without prompting.",
       ],
     });
     return;
@@ -525,6 +574,32 @@ async function handleKnowledgeDelete(args: string[]): Promise<void> {
     if (!id) {
       console.error("Missing required argument: <id>");
       process.exit(1);
+    }
+
+    // Resolve the article (id first, then slug) so dry-run and the confirm
+    // prompt can show a human-readable label.
+    let found = await container.knowledgeService.getArticle(id);
+    if (!found.ok) {
+      const bySlug = await container.knowledgeService.getArticleBySlug(id);
+      if (bySlug.ok) found = bySlug;
+    }
+    const label = found.ok ? `${found.value.id} (${found.value.title})` : id;
+
+    if (args.includes("--dry-run")) {
+      process.stdout.write(`DRY RUN — would delete ${label}\n`);
+      return;
+    }
+
+    // Destructive: in an interactive terminal, require confirmation unless
+    // --yes was passed. Non-interactive contexts (the explicit isTTY check)
+    // proceed unprompted so scripts and CI are not blocked on stdin.
+    const skipConfirm = args.includes("--yes") || args.includes("-y");
+    if (!skipConfirm && process.stdin.isTTY) {
+      const ok = await confirm(`Delete ${label}? This cannot be undone.`);
+      if (!ok) {
+        process.stdout.write("Aborted.\n");
+        return;
+      }
     }
 
     const result = await container.knowledgeService.deleteArticle(id);
