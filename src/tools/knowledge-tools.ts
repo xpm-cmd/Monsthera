@@ -1,6 +1,7 @@
 import type { KnowledgeService } from "../knowledge/service.js";
 import type { StructureService, NeighborResult } from "../structure/service.js";
 import { successResponse, errorResponse, requireString, optionalString, optionalNumber, isErrorResponse, MAX_QUERY_LENGTH, MAX_TITLE_LENGTH } from "./validation.js";
+import { applyTagDelta } from "../knowledge/tags.js";
 
 /** MCP tool definition shape */
 export interface ToolDefinition {
@@ -22,6 +23,17 @@ export interface ToolResponse {
 
 /** Maximum number of articles accepted by batch_create_articles / batch_update_articles. */
 export const MAX_BATCH_ARTICLES = 100;
+
+/**
+ * Coerce an optional MCP `args` value to a string array for the incremental
+ * tag ops: `undefined` → `[]`; a non-array or array containing a non-string →
+ * `null` so the caller can return a VALIDATION_FAILED response.
+ */
+function toStringArray(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every((x) => typeof x === "string")) return null;
+  return value as string[];
+}
 
 /** Returns the 9 knowledge tool definitions for MCP ListTools */
 export function knowledgeToolDefinitions(): ToolDefinition[] {
@@ -75,7 +87,9 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           title: { type: "string", description: "New title" },
           category: { type: "string", description: "New category" },
           content: { type: "string", description: "New content" },
-          tags: { type: "array", items: { type: "string" }, description: "New tags" },
+          tags: { type: "array", items: { type: "string" }, description: "New tags (full replace). Mutually exclusive with add_tags/remove_tags." },
+          add_tags: { type: "array", items: { type: "string" }, description: "Tags to add to the existing set (normalized + deduped). Mutually exclusive with `tags`." },
+          remove_tags: { type: "array", items: { type: "string" }, description: "Tags to remove from the existing set (case-insensitive). Mutually exclusive with `tags`." },
           codeRefs: { type: "array", items: { type: "string" }, description: "New code refs" },
           references: { type: "array", items: { type: "string" }, description: "References to other articles (IDs or slugs)" },
           new_slug: { type: "string", description: "Optional: rename the article's slug. Collision-checked. All incoming references in other articles' `references` arrays are updated automatically. Use `rewrite_inline_wikilinks: true` to also update inline `[[old-slug]]` wikilinks in bodies." },
@@ -270,8 +284,27 @@ export async function handleKnowledgeTool(
     case "update_article": {
       const id = requireString(args, "id");
       if (isErrorResponse(id)) return id;
-      // Remaining fields passed to service — Zod validates inside service.updateArticle
-      const { id: _id, ...updateFields } = args;
+      // Destructure the incremental tag ops OUT before the spread: the service's
+      // Zod schema would silently strip unknown keys, so add_tags/remove_tags
+      // must be resolved here into a concrete `tags` array.
+      const { id: _id, add_tags, remove_tags, ...updateFields } = args;
+      const wantsDelta = add_tags !== undefined || remove_tags !== undefined;
+      if (wantsDelta && updateFields.tags !== undefined) {
+        return errorResponse(
+          "VALIDATION_FAILED",
+          "Use `tags` (full replace) or `add_tags`/`remove_tags` (incremental), not both.",
+        );
+      }
+      if (wantsDelta) {
+        const add = toStringArray(add_tags);
+        const remove = toStringArray(remove_tags);
+        if (add === null || remove === null) {
+          return errorResponse("VALIDATION_FAILED", "`add_tags` and `remove_tags` must be arrays of strings");
+        }
+        const current = await service.getArticle(id);
+        if (!current.ok) return errorResponse(current.error.code, current.error.message);
+        updateFields.tags = applyTagDelta(current.value.tags, add, remove);
+      }
       const result = await service.updateArticle(id, updateFields);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);

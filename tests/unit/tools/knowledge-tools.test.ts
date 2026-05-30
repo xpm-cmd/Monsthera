@@ -289,6 +289,42 @@ describe("update_article", () => {
     const body = JSON.parse(response.content[0]!.text) as { error: string };
     expect(body.error).toBe("VALIDATION_FAILED");
   });
+
+  it("add_tags appends to the existing tag set (CLI parity)", async () => {
+    const article = await seedArticle(service, { tags: ["alpha"] });
+    const response = await handleKnowledgeTool(
+      "update_article",
+      { id: article.id, add_tags: ["beta"] },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const updated = JSON.parse(response.content[0]!.text) as KnowledgeArticle;
+    expect(updated.tags).toEqual(["alpha", "beta"]);
+  });
+
+  it("remove_tags drops from the existing tag set (case-insensitive)", async () => {
+    const article = await seedArticle(service, { tags: ["Alpha", "beta"] });
+    const response = await handleKnowledgeTool(
+      "update_article",
+      { id: article.id, remove_tags: ["alpha"] },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const updated = JSON.parse(response.content[0]!.text) as KnowledgeArticle;
+    expect(updated.tags).toEqual(["beta"]);
+  });
+
+  it("rejects tags combined with add_tags as VALIDATION_FAILED", async () => {
+    const article = await seedArticle(service, { tags: ["alpha"] });
+    const response = await handleKnowledgeTool(
+      "update_article",
+      { id: article.id, tags: ["x"], add_tags: ["y"] },
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
 });
 
 // ---------------------------------------------------------------------------

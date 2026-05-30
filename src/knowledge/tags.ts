@@ -43,3 +43,23 @@ export function normalizeTags(tags: readonly string[]): string[] {
   }
   return out;
 }
+
+/**
+ * Apply an incremental tag change: drop every `remove` entry (matched on the
+ * normalized, case-folded key so `--remove-tag 'Foo'` removes a stored `Foo`),
+ * then append `add` entries. The result is run through `normalizeTags`, so the
+ * delta inherits the same cleaning, dedupe, and first-seen-order guarantees as
+ * the write path — one definition of tag identity across create, update, lint,
+ * and incremental edits.
+ */
+export function applyTagDelta(
+  current: readonly string[],
+  add: readonly string[],
+  remove: readonly string[],
+): string[] {
+  const removeKeys = new Set(
+    remove.map((t) => normalizeTag(t).toLowerCase()).filter((k) => k !== ""),
+  );
+  const kept = current.filter((t) => !removeKeys.has(normalizeTag(t).toLowerCase()));
+  return normalizeTags([...kept, ...add]);
+}

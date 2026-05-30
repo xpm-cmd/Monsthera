@@ -13,6 +13,7 @@ import {
   withContainer,
 } from "./arg-helpers.js";
 import { printGroupHelp, printSubcommandHelp, wantsHelp } from "./help.js";
+import { applyTagDelta } from "../knowledge/tags.js";
 
 export async function handleKnowledge(args: string[]): Promise<void> {
   const subcommand = args[0];
@@ -430,7 +431,7 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge update",
       summary: "Update fields of an existing knowledge article.",
-      usage: "<id> [--title <t>] [--category <c>] [--content <body>] [--tags t1,t2]",
+      usage: "<id> [--title <t>] [--category <c>] [--content <body>] [--tags t1,t2 | --add-tag t1,t2 --remove-tag t3]",
       positional: [
         { name: "<id>", description: "Article id (k-xxxx)." },
       ],
@@ -438,11 +439,14 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
         { name: "--title <t>", description: "New title." },
         { name: "--category <c>", description: "New category." },
         { name: "--content <body>", description: "New markdown body (literal string)." },
-        { name: "--tags t1,t2", description: "Replace the tag list with this comma-separated set." },
+        { name: "--tags t1,t2", description: "Replace the entire tag list with this comma-separated set." },
+        { name: "--add-tag t1,t2", description: "Add tags to the existing set (normalized + deduped). Mutually exclusive with --tags." },
+        { name: "--remove-tag t1,t2", description: "Remove tags from the existing set (case-insensitive). Mutually exclusive with --tags." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
       notes: [
-        "At least one of --title, --category, --content, or --tags is required.",
+        "At least one of --title, --category, --content, --tags, --add-tag, or --remove-tag is required.",
+        "--tags replaces the whole list; --add-tag/--remove-tag edit it incrementally. Do not combine them.",
       ],
     });
     return;
@@ -460,14 +464,34 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
     const category = parseFlag(args, "--category");
     const content = parseFlag(args, "--content");
     const tags = parseCommaSeparated(args, "--tags");
+    const addTags = parseCommaSeparated(args, "--add-tag");
+    const removeTags = parseCommaSeparated(args, "--remove-tag");
+
+    if (tags && (addTags || removeTags)) {
+      console.error("Use --tags (full replace) or --add-tag/--remove-tag (incremental), not both.");
+      process.exit(1);
+    }
 
     if (title) input.title = title;
     if (category) input.category = category;
     if (content) input.content = content;
     if (tags) input.tags = tags;
 
+    // Incremental tag edit: read the current tags, apply the delta, and let
+    // the normal updateArticle path re-normalize the result (idempotent).
+    if (addTags || removeTags) {
+      const current = await container.knowledgeService.getArticle(id);
+      if (!current.ok) {
+        console.error(formatError(current.error));
+        process.exit(1);
+      }
+      input.tags = applyTagDelta(current.value.tags, addTags ?? [], removeTags ?? []);
+    }
+
     if (Object.keys(input).length === 0) {
-      console.error("No update fields provided. Use --title, --category, --content, or --tags.");
+      console.error(
+        "No update fields provided. Use --title, --category, --content, --tags, --add-tag, or --remove-tag.",
+      );
       process.exit(1);
     }
 

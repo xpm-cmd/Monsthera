@@ -314,6 +314,58 @@ describe("CLI main()", () => {
       );
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
+
+    it("knowledge update --add-tag appends a tag to the existing set", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Tag Add", "--category", "context",
+          "--content", "body", "--tags", "alpha",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      const output = await captureStdout(() =>
+        main(["knowledge", "update", id, "--add-tag", "beta", "--repo", repoPath]),
+      );
+      expect(output).toContain("alpha, beta");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge update --remove-tag drops a tag from the existing set", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Tag Remove", "--category", "context",
+          "--content", "body", "--tags", "alpha,beta",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      const output = await captureStdout(() =>
+        main(["knowledge", "update", id, "--remove-tag", "alpha", "--repo", repoPath]),
+      );
+      expect(output).toContain("Tags:      beta");
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge update rejects --tags combined with --add-tag", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Tag Conflict", "--category", "context",
+          "--content", "body",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      await main(["knowledge", "update", id, "--tags", "x", "--add-tag", "y", "--repo", repoPath]);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("not both"));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
   });
 
   // ─── Work subcommand ─────────────────────────────────────────────────────
