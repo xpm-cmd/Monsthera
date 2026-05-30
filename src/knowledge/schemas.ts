@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 import type { Result } from "../core/result.js";
 import { ok, err } from "../core/result.js";
 import { ValidationError } from "../core/errors.js";
+import { normalizeTags } from "./tags.js";
 
 // ─── Canonical category constants ────────────────────────────────────────────
 //
@@ -34,7 +35,7 @@ export const CreateArticleInputSchema = z.object({
   title: z.string().min(1).max(200),
   category: z.string().min(1).max(100),
   content: z.string().min(1),
-  tags: z.array(z.string()).default([]),
+  tags: z.array(z.string()).transform(normalizeTags).default([]),
   codeRefs: z.array(z.string()).default([]),
   references: z.array(z.string()).default([]),
   slug: z
@@ -50,7 +51,7 @@ export const UpdateArticleInputSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   category: z.string().min(1).max(100).optional(),
   content: z.string().min(1).optional(),
-  tags: z.array(z.string()).optional(),
+  tags: z.array(z.string()).transform(normalizeTags).optional(),
   codeRefs: z.array(z.string()).optional(),
   references: z.array(z.string()).optional(),
   new_slug: z

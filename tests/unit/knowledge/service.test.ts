@@ -82,6 +82,16 @@ describe("createArticle", () => {
     if (result.ok) return;
     expect(result.error.code).toBe(ErrorCode.VALIDATION_FAILED);
   });
+
+  it("persists normalized tags (dequote + dedupe) end-to-end", async () => {
+    const result = await service.createArticle({
+      ...validCreateInput,
+      tags: ["'family:kriging'", "family:kriging", " family:kriging "],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.tags).toEqual(["family:kriging"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -183,6 +193,14 @@ describe("updateArticle", () => {
     expect(result.value.title).toBe(article.title);
     expect(result.value.content).toBe(article.content);
     expect(result.value.updatedAt).not.toBe(article.updatedAt);
+  });
+
+  it("normalizes tags supplied on update", async () => {
+    const article = await seedArticle(service);
+    const result = await service.updateArticle(article.id, { tags: ["Kriging", "kriging"] });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.tags).toEqual(["Kriging"]);
   });
 });
 
