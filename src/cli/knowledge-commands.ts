@@ -112,6 +112,7 @@ async function handleKnowledgeRefs(args: string[]): Promise<void> {
       ],
       notes: [
         "Exactly one of --to, --from, --orphans is required.",
+        "Direction: an article's frontmatter `references:` are its OUTGOING citations (what it cites). `--from <id>` lists those outgoing edges; `--to <id>` lists INCOMING edges (who cites <id>); `--orphans` lists outgoing citations whose target does not resolve.",
         "Unlike `knowledge get` connections, this view is unbounded — use it for audits.",
       ],
       examples: [
