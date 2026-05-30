@@ -436,6 +436,86 @@ describe("CLI main()", () => {
       await main(["knowledge", "get", id, "--repo", repoPath]);
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining("NOT_FOUND"));
     });
+
+    it("knowledge update --quiet prints a one-line summary, not the full body", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Quiet Me", "--category", "context",
+          "--content", "the full article body that should not be echoed",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      const output = await captureStdout(() =>
+        main(["knowledge", "update", id, "--title", "Quiet Me v2", "--quiet", "--repo", repoPath]),
+      );
+      expect(output).toContain(id);
+      expect(output).toContain("Updated");
+      expect(output).not.toContain("the full article body that should not be echoed");
+    });
+
+    it("knowledge get --json emits the single article as parseable JSON", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "JSON Get", "--category", "context",
+          "--content", "body", "--tags", "alpha",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      const output = await captureStdout(() =>
+        main(["knowledge", "get", id, "--json", "--repo", repoPath]),
+      );
+      const parsed = JSON.parse(output) as { id: string; title: string; tags: string[]; content: string };
+      expect(parsed.id).toBe(id);
+      expect(parsed.title).toBe("JSON Get");
+      expect(parsed.tags).toEqual(["alpha"]);
+      expect(parsed.content).toBe("body");
+    });
+
+    it("knowledge get --json works via slug too", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Slug JSON", "--category", "context",
+          "--content", "body",
+          "--repo", repoPath,
+        ]),
+      );
+      const output = await captureStdout(() =>
+        main(["knowledge", "get", "slug-json", "--json", "--repo", repoPath]),
+      );
+      const parsed = JSON.parse(output) as { slug: string };
+      expect(parsed.slug).toBe("slug-json");
+    });
+
+    it("knowledge list --json --no-content strips the content field", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Heavy", "--category", "context",
+          "--content", "a very long body that bloats list output",
+          "--repo", repoPath,
+        ]),
+      );
+      const withContent = await captureStdout(() =>
+        main(["knowledge", "list", "--json", "--repo", repoPath]),
+      );
+      expect((JSON.parse(withContent) as Array<{ content?: string }>)[0]).toHaveProperty("content");
+
+      const noContent = await captureStdout(() =>
+        main(["knowledge", "list", "--json", "--no-content", "--repo", repoPath]),
+      );
+      const items = JSON.parse(noContent) as Array<{ content?: string; id: string }>;
+      expect(items[0]).not.toHaveProperty("content");
+      expect(items[0]?.id).toMatch(/^k-/);
+    });
   });
 
   // ─── Work subcommand ─────────────────────────────────────────────────────

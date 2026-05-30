@@ -374,11 +374,12 @@ async function handleKnowledgeGet(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge get",
       summary: "Fetch a knowledge article by id or slug.",
-      usage: "<id-or-slug>",
+      usage: "<id-or-slug> [--json]",
       positional: [
         { name: "<id-or-slug>", description: "Article id (k-xxxx) or slug." },
       ],
       flags: [
+        { name: "--json", description: "Emit the article as JSON (same shape as `list --json` items) instead of the human format." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
     });
@@ -391,20 +392,23 @@ async function handleKnowledgeGet(args: string[]): Promise<void> {
       console.error("Missing required argument: <id-or-slug>");
       process.exit(1);
     }
+    const asJson = args.includes("--json");
 
-    // Try by ID first, then by slug
+    // Try by ID first, then by slug.
     const result = await container.knowledgeService.getArticle(idOrSlug);
-    if (result.ok) {
-      process.stdout.write(formatArticle(result.value) + "\n");
-      return;
-    }
-
-    const slugResult = await container.knowledgeService.getArticleBySlug(idOrSlug);
-    if (!slugResult.ok) {
-      console.error(formatError(slugResult.error));
+    const found = result.ok
+      ? result
+      : await container.knowledgeService.getArticleBySlug(idOrSlug);
+    if (!found.ok) {
+      console.error(formatError(found.error));
       process.exit(1);
     }
-    process.stdout.write(formatArticle(slugResult.value) + "\n");
+
+    if (asJson) {
+      process.stdout.write(JSON.stringify(found.value, null, 2) + "\n");
+      return;
+    }
+    process.stdout.write(formatArticle(found.value) + "\n");
   });
 }
 
@@ -413,10 +417,11 @@ async function handleKnowledgeList(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge list",
       summary: "List knowledge articles.",
-      usage: "[--category <c>] [--json]",
+      usage: "[--category <c>] [--json] [--no-content]",
       flags: [
         { name: "--category <c>", description: "Filter by category." },
         { name: "--json", description: "Emit the full list as JSON (no table)." },
+        { name: "--no-content", description: "With --json, omit the (potentially large) `content` field from each item." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
     });
@@ -426,6 +431,7 @@ async function handleKnowledgeList(args: string[]): Promise<void> {
   await withContainer(args, async (container) => {
     const category = parseFlag(args, "--category");
     const asJson = args.includes("--json");
+    const noContent = args.includes("--no-content");
     const result = await container.knowledgeService.listArticles(category);
     if (!result.ok) {
       console.error(formatError(result.error));
@@ -433,7 +439,10 @@ async function handleKnowledgeList(args: string[]): Promise<void> {
     }
 
     if (asJson) {
-      process.stdout.write(JSON.stringify(result.value, null, 2) + "\n");
+      const payload = noContent
+        ? result.value.map(({ content: _content, ...rest }) => rest)
+        : result.value;
+      process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
       return;
     }
 
@@ -471,6 +480,7 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
         { name: "--add-tag t1,t2", description: "Add tags to the existing set (normalized + deduped). Mutually exclusive with --tags." },
         { name: "--remove-tag t1,t2", description: "Remove tags from the existing set (case-insensitive). Mutually exclusive with --tags." },
         { name: "--dry-run", description: "Print the field-level diff that would be applied and exit without writing." },
+        { name: "--quiet, -q", description: "On success, print a one-line summary instead of the full article body." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
       notes: [
@@ -543,6 +553,11 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
+    }
+    if (args.includes("--quiet") || args.includes("-q")) {
+      const fields = Object.keys(input).sort().join(", ");
+      process.stdout.write(`Updated ${result.value.id} (fields: ${fields})\n`);
+      return;
     }
     process.stdout.write(formatArticle(result.value) + "\n");
   });
