@@ -182,6 +182,31 @@ const NOTES_DIR = "notes";
 const WORK_DIR = "work-articles";
 
 /**
+ * Articles tagged with one of these are intentional drift carriers — a
+ * demo fixture or the design doc that DOCUMENTS the anti-examples — so the
+ * content-drift rules (canonical-value + anti-example token/phrase) are
+ * skipped for them. Without this, `monsthera lint` can never exit 0 on its
+ * own corpus, which makes the `install-hook` pre-commit gate unusable.
+ *
+ * `drift-sample` is the pre-existing tag on the demo fixture; `lint-exempt`
+ * is the explicit, self-documenting opt-out for any other article that must
+ * embed a wrong-form string for documentation. Scoped to the registry
+ * content rules only — planning-hash tamper detection still runs.
+ */
+const LINT_EXEMPT_TAGS: readonly string[] = ["lint-exempt", "drift-sample"];
+
+/**
+ * True when an article's frontmatter `tags` include any LINT_EXEMPT_TAGS
+ * entry. Tolerates both the array form (`tags: [a, b]`) and a bare string,
+ * since the lightweight frontmatter parser yields either depending on shape.
+ */
+function hasExemptTag(frontmatter: Record<string, unknown>): boolean {
+  const raw = frontmatter["tags"];
+  const tags = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+  return tags.some((tag) => typeof tag === "string" && LINT_EXEMPT_TAGS.includes(tag));
+}
+
+/**
  * Scan a markdown corpus for canonical-value drift, token drift,
  * phrase anti-examples, planning-section drift, and (optionally) merge
  * pre-computed orphan findings. Pure w.r.t. the repo graph — callers
@@ -228,7 +253,12 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
       const body = parsed.value.body;
       const relFile = path.join(dir, fileName);
 
-      if (runCanonical) {
+      // Intentional drift carriers (demo fixtures, the drift design doc)
+      // opt out of the content-drift rules via a frontmatter tag; the
+      // planning-hash tamper check below still applies.
+      const isLintExempt = hasExemptTag(parsed.value.frontmatter);
+
+      if (runCanonical && !isLintExempt) {
         const violations = getCanonicalValueViolations(
           { content: body },
           input.canonicalValues,
@@ -249,7 +279,7 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
         }
       }
 
-      if (runAntiExamples) {
+      if (runAntiExamples && !isLintExempt) {
         findings.push(...scanTokenDrift(body, relFile, tokenContexts));
         findings.push(...scanPhraseAntiExamples(body, relFile, phrases));
       }

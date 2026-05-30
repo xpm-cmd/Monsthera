@@ -17,6 +17,12 @@
  * the command + path as a single "file" entry because `[^`]+` allowed
  * whitespace inside the backticks. The fixed regex requires path-shaped
  * content without spaces.
+ *
+ * The dogfood pass added a second guard (`isTransientOrArtifactRef`): even
+ * path-shaped, space-free tokens are rejected when they name transient
+ * scratch files (`/tmp/...`) or the sessions subsystem's own generated
+ * artifacts (`facts.json`, `<id>.facts.json`, `handoff-ses-<id>.md`), which
+ * never resolve to a tracked file and so would surface as stale code refs.
  */
 
 const CODE_EXTENSIONS = "ts|tsx|js|jsx|mjs|cjs|py|rs|go|md|sh|sql|json|yml|yaml|toml";
@@ -77,6 +83,41 @@ function isPathShaped(ref: string): boolean {
 }
 
 /**
+ * Transient or generated paths that ARE path-shaped (so they survive
+ * `isPathShaped`) but must never be persisted as `codeRefs[]`, because they
+ * do not resolve to a tracked file — persisting them guarantees a "stale
+ * code ref" finding on the next `doctor` run. Observed live in the dogfood
+ * pass: 6 such refs across 3 handoff notes.
+ *
+ *   - scratch paths under /tmp, /var, /private (dry-run artifacts)
+ *   - the session's own facts sidecar: `facts.json` / `<id>.facts.json`
+ *     (lives under knowledge/sessions/, never at the cited bare path)
+ *   - sibling handoff notes: `handoff-ses-<id>.md` — these are cross-links
+ *     that belong in `references[]` (collectArticleReferences already picks
+ *     them up from the markdown-link form), not in codeRefs[]
+ *   - any other session-id-prefixed artifact: `ses-<ts>-…`
+ *
+ * Rejecting by shape is safer than a blanket "bare filename" rule, which
+ * would also drop legitimate root files like `package.json` / `README.md`.
+ */
+const TRANSIENT_PATH_PREFIXES = ["/tmp/", "/var/", "/private/"] as const;
+const ARTIFACT_BASENAME_PATTERNS: readonly RegExp[] = [
+  /^facts\.json$/,
+  /\.facts\.json$/,
+  /^handoff-ses-/,
+  /^ses-\d/,
+];
+
+function isTransientOrArtifactRef(ref: string): boolean {
+  for (const prefix of TRANSIENT_PATH_PREFIXES) {
+    if (ref.startsWith(prefix)) return true;
+  }
+  const lastSlash = ref.lastIndexOf("/");
+  const basename = lastSlash === -1 ? ref : ref.slice(lastSlash + 1);
+  return ARTIFACT_BASENAME_PATTERNS.some((pattern) => pattern.test(basename));
+}
+
+/**
  * Extract code references from a rendered handoff body. Returns a
  * deduplicated, insertion-ordered list. The returned strings are the
  * inner content of the match (without surrounding backticks or
@@ -91,10 +132,10 @@ export function collectCodeRefs(body: string): string[] {
   const scoped = stripStructuralSections(body);
   const refs = new Set<string>();
   for (const match of scoped.matchAll(BACKTICKED_PATH)) {
-    if (match[1] && isPathShaped(match[1])) refs.add(match[1]);
+    if (match[1] && isPathShaped(match[1]) && !isTransientOrArtifactRef(match[1])) refs.add(match[1]);
   }
   for (const match of scoped.matchAll(PATH_CITATION)) {
-    if (match[1] && isPathShaped(match[1])) refs.add(match[1]);
+    if (match[1] && isPathShaped(match[1]) && !isTransientOrArtifactRef(match[1])) refs.add(match[1]);
   }
   return [...refs];
 }

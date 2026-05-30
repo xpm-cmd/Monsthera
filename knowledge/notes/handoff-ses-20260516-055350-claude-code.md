@@ -4,7 +4,7 @@ title: Handoff: 2026-05-16 claude-code (0 min)
 slug: handoff-ses-20260516-055350-claude-code
 category: handoff
 tags: [session-handoff, agent:claude-code]
-codeRefs: [pnpm test tests/unit/sessions/llm-summarizer.test.ts]
+codeRefs: []
 references: [handoff-ses-20260516-042501-claude-code]
 createdAt: 2026-05-16T05:54:56.735Z
 updatedAt: 2026-05-16T05:54:56.735Z

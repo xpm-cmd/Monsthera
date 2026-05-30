@@ -2,6 +2,7 @@
 import * as fs from "node:fs";
 import { handleSearchTool } from "../tools/search-tools.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
+import { printSubcommandHelp, wantsHelp } from "./help.js";
 
 /**
  * `monsthera pack` — end-to-end build_context_pack (+ optional
@@ -18,6 +19,31 @@ import { parseFlag, withContainer } from "./arg-helpers.js";
  * from stdin, both call `snapshotService.record` before the pack is built.
  */
 export async function handlePack(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera pack",
+      summary: "Build a ranked context pack (optionally record an environment snapshot first).",
+      usage:
+        "<query...> [--mode general|code|research] [--limit <n>] [--type knowledge|work|all] [--agent-id <a>] [--work-id <w>] [--include-content] [--verbose] [--json] [--record <path|->] [--repo <path>]",
+      positional: [{ name: "<query>", description: "Search query used to assemble the pack." }],
+      flags: [
+        { name: "--mode <m>", description: "general | code | research." },
+        { name: "--limit <n>", description: "Maximum number of pack items." },
+        { name: "--type <t>", description: "knowledge | work | all." },
+        { name: "--agent-id <a>", description: "Attach the agent's latest env snapshot." },
+        { name: "--work-id <w>", description: "Attach the snapshot recorded for this work." },
+        { name: "--include-content", description: "Inline full article bodies in the pack." },
+        { name: "--verbose", description: "Include full diagnostics and metadata." },
+        { name: "--json", description: "Emit the raw JSON pack instead of the rendered summary." },
+        {
+          name: "--record <path|->",
+          description: "Record a snapshot from a JSON file (or - for stdin) before building.",
+        },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
   // Collect positional args as the query (skipping flag values).
   const queryParts: string[] = [];
   for (let i = 0; i < args.length; i++) {

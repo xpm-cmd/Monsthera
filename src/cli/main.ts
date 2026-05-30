@@ -13,6 +13,7 @@ import {
   formatError,
 } from "./formatters.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
+import { printSubcommandHelp, wantsHelp } from "./help.js";
 import { handleKnowledge } from "./knowledge-commands.js";
 import { handleWork } from "./work-commands.js";
 import { handleIngest } from "./ingest-commands.js";
@@ -30,6 +31,18 @@ import { handleSession } from "./session-commands.js";
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
 async function handleServe(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera serve",
+      summary: "Start the MCP server (stdio transport).",
+      usage: "[--repo <path>] [--source <sqlite-path>]",
+      flags: [
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+        { name: "--source <path>", description: "Optional v2 SQLite source for migration-on-read." },
+      ],
+    });
+    return;
+  }
   const repoPath = parseFlag(args, "--repo", "-r") ?? process.cwd();
   const configResult = loadConfig(repoPath);
   const config = configResult.ok ? configResult.value : defaultConfig(repoPath);
@@ -40,6 +53,18 @@ async function handleServe(args: string[]): Promise<void> {
 }
 
 async function handleDashboard(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera dashboard",
+      summary: "Start the HTTP dashboard server.",
+      usage: "[--repo <path>] [--port <n>]",
+      flags: [
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+        { name: "--port, -p <n>", description: "Port to listen on.", default: "config.server.port" },
+      ],
+    });
+    return;
+  }
   const repoPath = parseFlag(args, "--repo", "-r") ?? process.cwd();
   const configResult = loadConfig(repoPath);
   const config = configResult.ok ? configResult.value : defaultConfig(repoPath);
@@ -52,6 +77,15 @@ async function handleDashboard(args: string[]): Promise<void> {
 }
 
 async function handleStatus(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera status",
+      summary: "Print system status as JSON and exit.",
+      usage: "[--repo <path>]",
+      flags: [{ name: "--repo, -r <path>", description: "Repository path.", default: "cwd" }],
+    });
+    return;
+  }
   await withContainer(args, async (container) => {
     const status = await container.status.getStatusAsync();
     process.stdout.write(JSON.stringify(status, null, 2) + "\n");
@@ -159,6 +193,22 @@ function handleHelp(): void {
 // ─── Search & Reindex ────────────────────────────────────────────────────────
 
 async function handleSearch(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera search",
+      summary: "Search across all knowledge and work articles.",
+      usage: "<query...> [--type knowledge|work|all] [--limit <n>] [--repo <path>]",
+      positional: [
+        { name: "<query>", description: "Search terms (1-3 terms AND, 4+ OR-ranked)." },
+      ],
+      flags: [
+        { name: "--type <t>", description: "Filter by article type: knowledge|work|all." },
+        { name: "--limit <n>", description: "Maximum number of results." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
   // Collect all non-flag args as the query
   const queryParts: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -195,6 +245,15 @@ async function handleSearch(args: string[]): Promise<void> {
 }
 
 async function handleReindex(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera reindex",
+      summary: "Rebuild the search index and the wiki index.md.",
+      usage: "[--repo <path>]",
+      flags: [{ name: "--repo, -r <path>", description: "Repository path.", default: "cwd" }],
+    });
+    return;
+  }
   await withContainer(args, async (container) => {
     process.stdout.write("Rebuilding search index...\n");
     const result = await container.searchService.fullReindex();
@@ -230,6 +289,27 @@ function parseMigrationMode(args: string[]): MigrationMode {
 }
 
 async function handleMigrate(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera migrate",
+      summary: "Run v2 → v3 migration from a SQLite source.",
+      usage:
+        "[--mode dry-run|validate|execute] [--scope work|knowledge|all] [--source <sqlite-path>] [--force] [--json] [--repo <path>]",
+      flags: [
+        { name: "--mode <m>", description: "dry-run | validate | execute.", default: "dry-run" },
+        { name: "--scope <s>", description: "work | knowledge | all.", default: "all" },
+        {
+          name: "--source <path>",
+          description: "SQLite source path.",
+          default: ".monsthera/monsthera.db",
+        },
+        { name: "--force", description: "Overwrite articles that already exist." },
+        { name: "--json", description: "Emit the migration report as JSON." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
   const repoPath = parseFlag(args, "--repo", "-r") ?? process.cwd();
   const configResult = loadConfig(repoPath);
   const config = configResult.ok ? configResult.value : defaultConfig(repoPath);

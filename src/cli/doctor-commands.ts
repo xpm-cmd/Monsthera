@@ -11,6 +11,7 @@ import { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import { parseMarkdown, serializeMarkdown } from "../knowledge/markdown.js";
 import { formatError } from "./formatters.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
+import { printSubcommandHelp, wantsHelp } from "./help.js";
 import { MonstheraError, StorageError } from "../core/errors.js";
 
 /**
@@ -353,6 +354,35 @@ async function seedCurrentDocs(container: MonstheraContainer): Promise<{
 }
 
 export async function handleDoctor(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera doctor",
+      summary:
+        "Run health checks and diagnostics; optionally repair stale code refs and the legacy corpus.",
+      usage:
+        "[--scope knowledge|work|all] [--fix-stale-code-refs] [--seed-current-docs] [--archive-legacy] [--repo <path>]",
+      flags: [
+        { name: "--scope <s>", description: "knowledge | work | all.", default: "all" },
+        {
+          name: "--fix-stale-code-refs",
+          description: "Prune codeRefs that no longer resolve on disk, then reindex.",
+        },
+        {
+          name: "--seed-current-docs",
+          description: "Re-import the canonical current-docs set into knowledge.",
+        },
+        {
+          name: "--archive-legacy",
+          description: "Move the legacy migration corpus out of the active set.",
+        },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      notes: [
+        "Read-only by default — the --fix-*/--seed-*/--archive-* flags are the only mutating paths.",
+      ],
+    });
+    return;
+  }
   await withContainer(args, async (container) => {
     process.stdout.write("Monsthera Doctor\n");
     process.stdout.write("================\n\n");

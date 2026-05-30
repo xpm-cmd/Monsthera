@@ -3,7 +3,7 @@ id: k-drift-prevention-design
 title: "Drift Prevention — Design"
 slug: drift-prevention-design
 category: guide
-tags: [drift, lint, design, hedera-retrospective, s5-closure]
+tags: [drift, lint, design, hedera-retrospective, s5-closure, lint-exempt]
 codeRefs:
   - src/work/lint.ts
   - src/work/planning-hash.ts

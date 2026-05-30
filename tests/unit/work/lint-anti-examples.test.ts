@@ -11,6 +11,7 @@ import type {
 import type {
   AntiExamplePhrase,
   AntiExampleToken,
+  CanonicalValue,
 } from "../../../src/work/policy-loader.js";
 
 function writeArticle(dir: string, slug: string, body: string): Promise<void> {
@@ -212,5 +213,92 @@ describe("scanCorpus — token drift", () => {
     });
 
     expect(res.findings.filter((f) => f.rule === "token_drift")).toHaveLength(0);
+  });
+});
+
+// Articles that legitimately quote a wrong-form value (the demo fixture, the
+// drift design doc) opt out of the content-drift rules via a frontmatter tag,
+// so `monsthera lint` can exit 0 on its own corpus and the install-hook
+// pre-commit gate is usable. The existing writeArticle() helper hardcodes
+// `tags: []`, so this block uses a tag-aware writer.
+function writeTaggedArticle(
+  dir: string,
+  slug: string,
+  tags: readonly string[],
+  body: string,
+): Promise<void> {
+  const frontmatter = [
+    "---",
+    `id: k-${slug}`,
+    `title: "${slug}"`,
+    `slug: ${slug}`,
+    "category: context",
+    `tags: [${tags.join(", ")}]`,
+    "codeRefs: []",
+    "references: []",
+    "createdAt: 2026-04-24T00:00:00.000Z",
+    "updatedAt: 2026-04-24T00:00:00.000Z",
+    "---",
+    "",
+    body,
+    "",
+  ].join("\n");
+  return fs.writeFile(path.join(dir, `${slug}.md`), frontmatter, "utf-8");
+}
+
+describe("scanCorpus — lint-exempt tag (intentional drift fixtures)", () => {
+  let root: string;
+  let notesDir: string;
+
+  beforeEach(async () => {
+    root = path.join(os.tmpdir(), `monsthera-lint-exempt-${randomUUID()}`);
+    notesDir = path.join(root, "notes");
+    await fs.mkdir(notesDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  const phrases: AntiExamplePhrase[] = [{ phrase: "22.4% bars", corrected: "22.35 bars" }];
+
+  // NB: prose deliberately avoids the forward-guard markers (do not,
+  // anti-example, stale) so a passing test proves the TAG is what
+  // suppressed the finding, not an incidental guard-marker on the line.
+  const DRIFT_LINE = "The calibration measured 22.4% bars in wave-2.";
+
+  it("skips the phrase rule for an article tagged lint-exempt", async () => {
+    await writeTaggedArticle(notesDir, "doc", ["lint-exempt"], DRIFT_LINE);
+    const res = await scanCorpus({ markdownRoot: root, canonicalValues: [], antiExamplePhrases: phrases });
+    expect(res.findings.some((f) => f.rule === "phrase_anti_example")).toBe(false);
+    expect(res.errorCount).toBe(0);
+  });
+
+  it("also honors the pre-existing drift-sample tag", async () => {
+    await writeTaggedArticle(notesDir, "demo", ["demo", "drift-sample"], DRIFT_LINE);
+    const res = await scanCorpus({ markdownRoot: root, canonicalValues: [], antiExamplePhrases: phrases });
+    expect(res.findings.some((f) => f.rule === "phrase_anti_example")).toBe(false);
+  });
+
+  it("skips the canonical-value rule for an exempt article", async () => {
+    // Canonical "bars" is 22.35; prose says "bars ... 22.4" → a mismatch the
+    // rule WOULD flag, but the exempt tag suppresses it.
+    const canonicalValues: CanonicalValue[] = [{ name: "bars", value: "22.35" }];
+    await writeTaggedArticle(notesDir, "doc", ["lint-exempt"], "The bars value was 22.4 here.");
+    const res = await scanCorpus({ markdownRoot: root, canonicalValues });
+    expect(res.findings.some((f) => f.rule === "canonical_value_mismatch")).toBe(false);
+  });
+
+  it("still flags a canonical-value mismatch WITHOUT an exempt tag (control)", async () => {
+    const canonicalValues: CanonicalValue[] = [{ name: "bars", value: "22.35" }];
+    await writeTaggedArticle(notesDir, "doc", ["design"], "The bars value was 22.4 here.");
+    const res = await scanCorpus({ markdownRoot: root, canonicalValues });
+    expect(res.findings.some((f) => f.rule === "canonical_value_mismatch")).toBe(true);
+  });
+
+  it("still flags an article WITHOUT an exempt tag (control)", async () => {
+    await writeTaggedArticle(notesDir, "doc", ["design", "lint"], DRIFT_LINE);
+    const res = await scanCorpus({ markdownRoot: root, canonicalValues: [], antiExamplePhrases: phrases });
+    expect(res.findings.some((f) => f.rule === "phrase_anti_example")).toBe(true);
   });
 });

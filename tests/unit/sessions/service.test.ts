@@ -245,7 +245,7 @@ _(none identified)_
         ok: true as const,
         value: { id: "k-fake", slug: input.slug ?? "handoff-fake", title: input.title },
       }),
-    } as unknown as Parameters<typeof SessionService>[2] extends infer D
+    } as unknown as ConstructorParameters<typeof SessionService>[2] extends infer D
       ? D extends { knowledgeService?: infer K }
         ? K
         : never

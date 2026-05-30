@@ -6,6 +6,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import * as path from "node:path";
 import type { MonstheraContainer } from "./core/container.js";
+import { VERSION } from "./core/constants.js";
 import { knowledgeToolDefinitions, handleKnowledgeTool } from "./tools/knowledge-tools.js";
 import type { ToolDefinition, ToolResponse } from "./tools/knowledge-tools.js";
 import { workToolDefinitions, handleWorkTool } from "./tools/work-tools.js";
@@ -248,7 +249,7 @@ export async function dispatchToolCall(
  */
 export async function startServer(container: MonstheraContainer): Promise<void> {
   const server = new Server(
-    { name: "monsthera", version: "3.0.0-alpha.4" },
+    { name: "monsthera", version: VERSION },
     { capabilities: { tools: {} } },
   );
 

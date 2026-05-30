@@ -4,7 +4,7 @@ title: Handoff: 2026-05-16 claude-code (0 min)
 slug: handoff-ses-20260516-060530-claude-code
 category: handoff
 tags: [session-handoff, agent:claude-code]
-codeRefs: [src/sessions/handoff-extractors.ts, src/sessions/service.ts:703, ses-20260516-060530-claude-code.facts.json, `)]
+codeRefs: [src/sessions/handoff-extractors.ts, src/sessions/service.ts:703]
 references: [handoff-ses-20260516-055350-claude-code]
 createdAt: 2026-05-16T06:06:39.098Z
 updatedAt: 2026-05-16T06:06:39.098Z

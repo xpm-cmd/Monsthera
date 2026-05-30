@@ -1078,4 +1078,46 @@ describe("CLI main()", () => {
       expect(output).toMatch(/\d+ work article/);
     });
   });
+
+  // ─── Top-level command --help (regression guard) ─────────────────────────
+  //
+  // Every top-level command must treat `--help` / `-h` as a terminal,
+  // side-effect-free request: print USAGE to stdout, exit 0, and never
+  // create a container, open a DB, run a reindex, or start a server. The
+  // command-GROUP commands (knowledge, work, code, …) already did this via
+  // wantsHelp(); these eight top-level commands silently ignored the flag
+  // and executed instead. `serve` / `dashboard` are covered separately
+  // because, pre-fix, they would start a long-running server and hang the
+  // test runner rather than fail cleanly.
+
+  describe("top-level command --help", () => {
+    // Non-server commands: safe to invoke even pre-fix (they return).
+    for (const cmd of ["status", "search", "reindex", "migrate", "doctor", "pack"]) {
+      it(`${cmd} --help prints usage and does not execute`, async () => {
+        const output = await captureStdout(() => main([cmd, "--help"]));
+        expect(output).toContain(`monsthera ${cmd}`);
+        expect(output).toContain("USAGE");
+        expect(exitSpy).not.toHaveBeenCalled();
+      });
+
+      it(`${cmd} -h short form also prints usage`, async () => {
+        const output = await captureStdout(() => main([cmd, "-h"]));
+        expect(output).toContain("USAGE");
+        expect(exitSpy).not.toHaveBeenCalled();
+      });
+    }
+
+    // Server commands: must short-circuit BEFORE startServer/startDashboard.
+    // If the fix regresses, these hang and fail by timeout rather than
+    // silently passing — which is the correct failure mode for "it started
+    // a server on --help".
+    for (const cmd of ["serve", "dashboard"]) {
+      it(`${cmd} --help prints usage without starting a server`, async () => {
+        const output = await captureStdout(() => main([cmd, "--help"]));
+        expect(output).toContain(`monsthera ${cmd}`);
+        expect(output).toContain("USAGE");
+        expect(exitSpy).not.toHaveBeenCalled();
+      });
+    }
+  });
 });

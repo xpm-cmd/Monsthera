@@ -191,6 +191,50 @@ describe("collectCodeRefs", () => {
       expect(refs).toContain("src/foo.ts");
     });
   });
+
+  describe("rejects transient + session-artifact paths (F6 dogfood)", () => {
+    // These path-shaped tokens pass the regex and the defensive filter but
+    // are not durable code refs — persisting them guarantees a "stale code
+    // ref" finding on every handoff. Observed live: doctor reported 6 such
+    // refs across 3 handoff notes (/tmp scratch files, facts.json sidecars,
+    // sibling handoff .md links).
+
+    it("rejects /tmp and other transient scratch paths", () => {
+      const refs = collectCodeRefs("wrote `/tmp/handoff-test.md` during the dry run");
+      expect(refs).not.toContain("/tmp/handoff-test.md");
+      expect(refs).toEqual([]);
+    });
+
+    it("rejects the bare facts.json sidecar name", () => {
+      const refs = collectCodeRefs("the `facts.json` sidecar carries the raw facts");
+      expect(refs).not.toContain("facts.json");
+      expect(refs).toEqual([]);
+    });
+
+    it("rejects a session-scoped *.facts.json sidecar", () => {
+      const refs = collectCodeRefs(
+        "see `ses-20260516-060530-claude-code.facts.json` for the raw trace",
+      );
+      expect(refs).toEqual([]);
+    });
+
+    it("rejects a backticked sibling handoff note (it belongs in references, not codeRefs)", () => {
+      const refs = collectCodeRefs(
+        "previous handoff `handoff-ses-20260516-042501-claude-code.md`",
+      );
+      expect(refs).not.toContain("handoff-ses-20260516-042501-claude-code.md");
+      expect(refs).toEqual([]);
+    });
+
+    it("keeps real source/root files alongside rejected artifacts", () => {
+      const body =
+        "bumped `package.json`, edited `src/sessions/service.ts`, wrote `facts.json`";
+      const refs = collectCodeRefs(body);
+      expect(refs).toContain("package.json");
+      expect(refs).toContain("src/sessions/service.ts");
+      expect(refs).not.toContain("facts.json");
+    });
+  });
 });
 
 describe("collectArticleReferences", () => {
