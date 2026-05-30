@@ -7,6 +7,7 @@ import { scanCorpus } from "../../../src/work/lint.js";
 import type {
   PhraseAntiExampleFinding,
   TokenDriftFinding,
+  TagNearDuplicateFinding,
 } from "../../../src/work/lint.js";
 import type {
   AntiExamplePhrase,
@@ -300,5 +301,53 @@ describe("scanCorpus — lint-exempt tag (intentional drift fixtures)", () => {
     await writeTaggedArticle(notesDir, "doc", ["design", "lint"], DRIFT_LINE);
     const res = await scanCorpus({ markdownRoot: root, canonicalValues: [], antiExamplePhrases: phrases });
     expect(res.findings.some((f) => f.rule === "phrase_anti_example")).toBe(true);
+  });
+});
+
+describe("scanCorpus — tag-hygiene (tag_near_duplicate)", () => {
+  let root: string;
+  let notesDir: string;
+
+  beforeEach(async () => {
+    root = path.join(os.tmpdir(), `monsthera-lint-tags-${randomUUID()}`);
+    notesDir = path.join(root, "notes");
+    await fs.mkdir(notesDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("flags an article whose tags collapse to one normalized key", async () => {
+    await writeTaggedArticle(notesDir, "split", ["'family:kriging'", "family:kriging"], "Body.");
+    const res = await scanCorpus({ markdownRoot: root, canonicalValues: [] });
+    const finding = res.findings.find(
+      (f): f is TagNearDuplicateFinding => f.rule === "tag_near_duplicate",
+    );
+    expect(finding).toBeDefined();
+    expect(finding?.normalized).toBe("family:kriging");
+    expect(finding?.severity).toBe("warning");
+    expect(res.warningCount).toBe(1);
+    expect(res.errorCount).toBe(0); // warning must not gate the exit code
+  });
+
+  it("does not flag a clean, distinct tag set (control)", async () => {
+    await writeTaggedArticle(notesDir, "clean", ["family:kriging", "method:idw"], "Body.");
+    const res = await scanCorpus({ markdownRoot: root, canonicalValues: [] });
+    expect(res.findings.some((f) => f.rule === "tag_near_duplicate")).toBe(false);
+  });
+
+  it("skips an article tagged lint-exempt", async () => {
+    await writeTaggedArticle(notesDir, "doc", ["lint-exempt", "'a'", "a"], "Body.");
+    const res = await scanCorpus({ markdownRoot: root, canonicalValues: [] });
+    expect(res.findings.some((f) => f.rule === "tag_near_duplicate")).toBe(false);
+  });
+
+  it("runs only under registry all / tag-hygiene", async () => {
+    await writeTaggedArticle(notesDir, "split", ["'a'", "a"], "Body.");
+    const off = await scanCorpus({ markdownRoot: root, registry: "canonical-values", canonicalValues: [] });
+    expect(off.findings.some((f) => f.rule === "tag_near_duplicate")).toBe(false);
+    const on = await scanCorpus({ markdownRoot: root, registry: "tag-hygiene", canonicalValues: [] });
+    expect(on.findings.some((f) => f.rule === "tag_near_duplicate")).toBe(true);
   });
 });
