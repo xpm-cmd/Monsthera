@@ -1,6 +1,11 @@
 /* eslint-disable no-console */
-import { parseRepoPath } from "./arg-helpers.js";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { parseRepoPath, withContainer } from "./arg-helpers.js";
 import { formatError } from "./formatters.js";
+import { loadConfig } from "../core/config.js";
+import { DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_FILE } from "../core/constants.js";
+import { OllamaEmbeddingProvider } from "../search/embedding.js";
 import { runSelfDoctor, type SelfDoctorReport } from "../ops/doctor.js";
 import {
   executeSelfUpdate,
@@ -25,6 +30,7 @@ function selfHelp(): string {
     "  restart [dolt]     Restart managed local Dolt daemon",
     "  doctor [--fix]     Diagnose blockers, stale metadata, and legacy pid files",
     "                     With --fix, adopt legacy pids and clean up stale metadata where safe",
+    "  enable-semantic    Verify Ollama, persist semanticEnabled, and reindex embeddings",
     "",
     "OPTIONS",
     "  --repo, -r <path>  Workspace repository path (defaults to cwd)",
@@ -170,11 +176,100 @@ export async function handleSelf(args: string[]): Promise<void> {
       return;
     }
 
+    case "enable-semantic": {
+      await enableSemantic(repoPath, asJson);
+      return;
+    }
+
     default:
       console.error(`Unknown self subcommand: ${command}`);
       console.error('Run "monsthera self --help" for usage.');
       process.exit(1);
   }
+}
+
+/**
+ * Pure merge: set `search.semanticEnabled = true` on a parsed config object,
+ * preserving every other field. Exported for testing.
+ */
+export function withSemanticEnabled(existing: Record<string, unknown>): Record<string, unknown> {
+  const search =
+    typeof existing["search"] === "object" && existing["search"] !== null && !Array.isArray(existing["search"])
+      ? (existing["search"] as Record<string, unknown>)
+      : {};
+  return { ...existing, search: { ...search, semanticEnabled: true } };
+}
+
+/** Merge `semanticEnabled=true` into the workspace config file, creating it if absent. */
+async function writeSemanticEnabled(repoPath: string): Promise<string> {
+  const dir = path.join(repoPath, DEFAULT_CONFIG_DIR);
+  const file = path.join(dir, DEFAULT_CONFIG_FILE);
+  await fs.mkdir(dir, { recursive: true });
+
+  let existing: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(await fs.readFile(file, "utf-8"));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      existing = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // No config file yet — start from an empty object.
+  }
+
+  await fs.writeFile(file, JSON.stringify(withSemanticEnabled(existing), null, 2) + "\n", "utf-8");
+  return file;
+}
+
+/**
+ * `monsthera self enable-semantic` — verify the Ollama embedding provider is
+ * reachable and the model is pulled, persist `semanticEnabled=true` to the
+ * workspace config, then reindex to generate embeddings. Refuses to enable
+ * when the provider is unavailable, surfacing the provider's own actionable
+ * error ("Run: ollama pull ...") rather than half-enabling a broken setup.
+ */
+async function enableSemantic(repoPath: string, asJson: boolean): Promise<void> {
+  const configResult = loadConfig(repoPath);
+  if (!configResult.ok) {
+    console.error(formatError(configResult.error));
+    process.exit(1);
+  }
+  const search = configResult.value.search;
+
+  const provider = new OllamaEmbeddingProvider({
+    ollamaUrl: search.ollamaUrl,
+    embeddingModel: search.embeddingModel,
+  });
+  const health = await provider.healthCheck();
+  if (!health.ok) {
+    console.error(`Cannot enable semantic search: ${health.error.message}`);
+    process.exit(1);
+  }
+
+  const configFile = await writeSemanticEnabled(repoPath);
+
+  const reindex = await withContainer(["--repo", repoPath], (container) =>
+    container.searchService.fullReindex(),
+  );
+  if (!reindex.ok) {
+    console.error(formatError(reindex.error));
+    process.exit(1);
+  }
+
+  if (asJson) {
+    process.stdout.write(
+      JSON.stringify({ ok: true, configFile, model: provider.modelName, ...reindex.value }, null, 2) + "\n",
+    );
+    return;
+  }
+  process.stdout.write(
+    [
+      "Semantic search enabled.",
+      `Provider: ${provider.modelName} (${provider.dimensions}d) — ready`,
+      `Reindexed: ${reindex.value.knowledgeCount} knowledge + ${reindex.value.workCount} work articles`,
+      `Config: ${configFile}`,
+      "",
+    ].join("\n"),
+  );
 }
 
 function printPlan(plan: { readonly steps: readonly string[]; readonly blockers: readonly string[] }): void {

@@ -14,6 +14,7 @@ import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
 import { MonstheraError, StorageError } from "../core/errors.js";
 import { PolicyLoader } from "../work/policy-loader.js";
+import { OllamaEmbeddingProvider } from "../search/embedding.js";
 
 /**
  * Fail-fast for CLI doctor flows: previously these helpers re-threw a
@@ -489,6 +490,26 @@ export async function handleDoctor(args: string[]): Promise<void> {
         );
       }
       process.stdout.write("\n");
+    }
+
+    process.stdout.write("Embeddings:\n");
+    if (!container.config.search.semanticEnabled) {
+      process.stdout.write("  Semantic search: disabled (BM25-only)\n");
+      process.stdout.write("  Enable with: monsthera self enable-semantic\n\n");
+    } else {
+      const embeddingProvider = new OllamaEmbeddingProvider({
+        ollamaUrl: container.config.search.ollamaUrl,
+        embeddingModel: container.config.search.embeddingModel,
+      });
+      const embeddingHealth = await embeddingProvider.healthCheck();
+      if (embeddingHealth.ok) {
+        process.stdout.write(
+          `  Provider: ${embeddingProvider.modelName} (${embeddingProvider.dimensions}d) — ready\n\n`,
+        );
+      } else {
+        process.stdout.write(`  Provider: ${embeddingProvider.modelName} — UNAVAILABLE\n`);
+        process.stdout.write(`  ${embeddingHealth.error.message}\n\n`);
+      }
     }
 
     const legacyArticles = await collectLegacyArticles(container, scope);

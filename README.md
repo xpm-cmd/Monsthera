@@ -140,6 +140,25 @@ pnpm exec tsx src/bin.ts ingest local --path docs/adrs --category docs --summary
 pnpm exec tsx src/bin.ts reindex
 ```
 
+## Semantic Search
+
+Search runs **BM25-only by default** — no external services required. To add
+hybrid semantic ranking (local embeddings via [Ollama](https://ollama.com)):
+
+```bash
+ollama pull nomic-embed-text                     # one-time: fetch the embedding model
+pnpm exec tsx src/bin.ts self enable-semantic    # verify Ollama, persist the flag, reindex
+```
+
+`self enable-semantic` refuses to proceed if Ollama is unreachable or the model
+is missing, printing the exact `ollama pull` command to run. `monsthera doctor`
+reports embedding-provider readiness, and `monsthera self enable-semantic --json`
+emits a machine-readable result.
+
+Ranking is tunable without code changes via `MONSTHERA_SEARCH_*` env vars
+(`BM25K1`, `TITLE_BOOST`, `FRESHNESS_FRESH_DAYS`, `FRESHNESS_STALE_DAYS`,
+`RERANK_ENABLED`, `RANK_PROFILE`); measure changes with `monsthera eval`.
+
 ## Design Documents
 
 - [Architecture v6](MonstheraV3/monsthera-architecture-v6-final.md) — Primary design source
