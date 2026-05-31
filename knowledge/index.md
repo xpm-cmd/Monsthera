@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 87 knowledge articles and 20 work articles.
-> Last updated: 2026-05-31 07:22:25
+> Auto-generated catalog of 88 knowledge articles and 20 work articles.
+> Last updated: 2026-05-31 07:38:54
 
 ## Knowledge
 
@@ -126,6 +126,7 @@
 ### solution
 
 - [Dogfood review (2026-05-29): CLI --help, version drift, codeRefs extractor, lint exemption, dashboard split](notes/dogfood-review-2026-05-29-cli-help-version-drift-coderefs-extractor-lint-exemption-dashboard-split.md) — A dogfood review of Monsthera using its own CLI (`monsthera doctor|lint|code|sta
+- [PR-10: Config-driven ranking knobs](notes/pr10-config-ranking-knobs.md) — Fourth PR of M2; prerequisite for PR-11's reranker.  ## What shipped (main @ 2fc
 - [PR-7: Context-pack ranking characterization pin](notes/pr7-context-pack-ranking-characterization.md) — First PR of M2 (knowledge-capability plan). Locks the context-pack ranking formu
 - [PR-8: Consolidated corpus staleness report](notes/pr8-corpus-staleness-report.md) — Second PR of M2. Folds per-item freshness into one whole-corpus, read-only stale
 - [PR-9: Deterministic cross-article contradiction detection](notes/pr9-contradiction-detection.md) — Third PR of M2. Surfaces when two corpus articles disagree on the same canonical

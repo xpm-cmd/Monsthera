@@ -21,6 +21,7 @@ import { KnowledgeService } from "../knowledge/service.js";
 import { FileSystemWorkArticleRepository } from "../work/file-repository.js";
 import { WorkService } from "../work/service.js";
 import { InMemorySearchIndexRepository } from "../search/in-memory-repository.js";
+import { StubReranker, CrossEncoderReranker } from "../search/reranker.js";
 import { InMemoryOrchestrationEventRepository } from "../orchestration/in-memory-repository.js";
 import { InMemoryConvoyRepository } from "../orchestration/in-memory-convoy-repository.js";
 import { StubEmbeddingProvider, OllamaEmbeddingProvider } from "../search/embedding.js";
@@ -455,6 +456,13 @@ export async function createContainer(
   }
   // PR-5: wire the generator into search (built after SearchService; mirrors setKnowledgeRepo).
   searchService.setTextGenerator(textGenerator);
+
+  // PR-11 — reranker stage. Cross-encoder over the text generator when enabled,
+  // otherwise a no-op stub. The stage itself is gated again by `rerankEnabled`
+  // inside SearchService, so a stub here is harmless.
+  searchService.setReranker(
+    config.search.rerankEnabled ? new CrossEncoderReranker(textGenerator) : new StubReranker(),
+  );
   const factsExtractor = new DefaultFactsExtractor({
     eventRepo: orchestrationRepo!,
     workRepo: workRepo!,
