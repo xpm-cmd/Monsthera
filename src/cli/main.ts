@@ -18,7 +18,7 @@ import { handleKnowledge } from "./knowledge-commands.js";
 import { handleWork } from "./work-commands.js";
 import { handleIngest } from "./ingest-commands.js";
 import { handleDoctor } from "./doctor-commands.js";
-import { handlePack } from "./context-commands.js";
+import { handlePack, handleThink } from "./context-commands.js";
 import { handleLint } from "./lint-commands.js";
 import { handleInstallHook, handleUninstallHook } from "./hook-commands.js";
 import { handleEvents } from "./events-commands.js";
@@ -114,6 +114,7 @@ function handleHelp(): void {
       "  ingest <subcommand>      Import local sources into knowledge",
       "  search <query>           Search across all articles",
       "  pack <query>             Build a ranked context pack (optionally record snapshot)",
+      "  think <query>            Synthesize a cited answer + gap analysis (knowledge + work)",
       "  reindex                  Rebuild the search index",
       "  migrate                  Run v2 -> v3 migration from SQLite",
       "  doctor                   Run health checks and diagnostics",
@@ -400,6 +401,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "pack":
         await handlePack(args.slice(1));
+        break;
+      case "think":
+        await handleThink(args.slice(1));
         break;
       case "lint":
         await handleLint(args.slice(1));

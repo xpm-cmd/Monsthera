@@ -56,16 +56,17 @@ async function seedAndIndex() {
 // ---------------------------------------------------------------------------
 
 describe("searchToolDefinitions", () => {
-  it("returns 5 tool definitions", () => {
+  it("returns 6 tool definitions", () => {
     const defs = searchToolDefinitions();
-    expect(defs).toHaveLength(5);
+    expect(defs).toHaveLength(6);
   });
 
-  it("includes search, build_context_pack, index_article, remove_from_index, reindex_all", () => {
+  it("includes search, think, build_context_pack, index_article, remove_from_index, reindex_all", () => {
     const names = searchToolDefinitions().map((d) => d.name);
     expect(names).toEqual(
       expect.arrayContaining([
         "search",
+        "think",
         "build_context_pack",
         "index_article",
         "remove_from_index",

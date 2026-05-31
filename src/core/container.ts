@@ -449,6 +449,8 @@ export async function createContainer(
       timeoutMs: config.llm.timeoutMs,
     });
   }
+  // PR-5: wire the generator into search (built after SearchService; mirrors setKnowledgeRepo).
+  searchService.setTextGenerator(textGenerator);
   const factsExtractor = new DefaultFactsExtractor({
     eventRepo: orchestrationRepo!,
     workRepo: workRepo!,
