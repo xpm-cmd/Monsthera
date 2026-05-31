@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 93 knowledge articles and 20 work articles.
-> Last updated: 2026-05-31 11:11:24
+> Auto-generated catalog of 94 knowledge articles and 20 work articles.
+> Last updated: 2026-05-31 11:15:29
 
 ## Knowledge
 
@@ -132,6 +132,7 @@
 - [PR-13a: Knowledge provenance (origin enum + doctor breakdown)](notes/pr13-provenance.md) — First half of **PR-13** (M3, knowledge-capability plan). Records where a knowled
 - [PR-14a: Custom-frontmatter query filter (ADR-020 P2)](notes/pr14-custom-frontmatter-query.md) — Closes **gap 2 of ADR-020**: custom frontmatter is now *queryable*. First of two
 - [PR-14b: Custom-frontmatter lint family (ADR-020 P3)](notes/pr14-custom-frontmatter-lint.md) — Closes **gap 3 of ADR-020**: custom frontmatter is now *validated*. Second of th
+- [PR-15: Git/PR history ingestion (M3 close)](notes/pr15-git-ingestion.md) — Final PR of **M3**. Ingests git history into knowledge — one article per commit
 - [PR-7: Context-pack ranking characterization pin](notes/pr7-context-pack-ranking-characterization.md) — First PR of M2 (knowledge-capability plan). Locks the context-pack ranking formu
 - [PR-8: Consolidated corpus staleness report](notes/pr8-corpus-staleness-report.md) — Second PR of M2. Folds per-item freshness into one whole-corpus, read-only stale
 - [PR-9: Deterministic cross-article contradiction detection](notes/pr9-contradiction-detection.md) — Third PR of M2. Surfaces when two corpus articles disagree on the same canonical
