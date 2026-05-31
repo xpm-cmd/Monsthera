@@ -1,0 +1,44 @@
+[
+  {
+    "query": "hybrid knowledge architecture overview",
+    "mode": "general",
+    "expectedArticleIds": ["k-ypsx5ask"],
+    "note": "Monsthera: Hybrid Knowledge Architecture v6"
+  },
+  {
+    "query": "work article model phases guards reviewers",
+    "mode": "code",
+    "expectedArticleIds": ["k-n3gtykv5"],
+    "note": "ADR-002: Work Article Model"
+  },
+  {
+    "query": "dual storage markdown dolt source of truth",
+    "mode": "code",
+    "expectedArticleIds": ["k-acodv9lb"],
+    "note": "ADR-001: Storage Model"
+  },
+  {
+    "query": "surface boundaries mcp cli dashboard container",
+    "mode": "code",
+    "expectedArticleIds": ["k-8dsb3up8"],
+    "note": "ADR-005: Surface Boundaries"
+  },
+  {
+    "query": "mcp tool catalog complete reference",
+    "mode": "general",
+    "expectedArticleIds": ["k-qhu1sw8h"],
+    "note": "MCP Tool Catalog — Complete Reference"
+  },
+  {
+    "query": "search service context pack indexing hybrid",
+    "mode": "code",
+    "expectedArticleIds": ["k-qszeow1i"],
+    "note": "SearchService: Unified search, indexing, and context packs"
+  },
+  {
+    "query": "orchestration convoys waves dispatch model",
+    "mode": "code",
+    "expectedArticleIds": ["k-40emzavw"],
+    "note": "ADR-004: Orchestration Model"
+  }
+]

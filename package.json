@@ -30,6 +30,7 @@
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --no-error-on-unmatched-pattern",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
     "coverage": "vitest run --coverage",
+    "eval": "tsx src/bin.ts eval",
     "prepare": "husky"
   },
   "packageManager": "pnpm@10.6.5",

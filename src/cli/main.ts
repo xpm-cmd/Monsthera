@@ -27,6 +27,7 @@ import { handleCode } from "./code-commands.js";
 import { handleWorkspace } from "./workspace-commands.js";
 import { handleSelf } from "./self-commands.js";
 import { handleSession } from "./session-commands.js";
+import { handleEval } from "./eval-commands.js";
 
 // ─── Top-level commands ─────────────────────────────────��───────────────────
 
@@ -117,6 +118,7 @@ function handleHelp(): void {
       "  migrate                  Run v2 -> v3 migration from SQLite",
       "  doctor                   Run health checks and diagnostics",
       "  lint                     Audit the corpus for drift (canonical values, anti-examples, planning sections, orphan citations)",
+      "  eval                     Score retrieval quality (P@k, R@k, NDCG@k, MRR) over the golden set",
       "  workspace <subcommand>   Inspect, migrate, back up, and restore the portable workspace",
       "  self <subcommand>        Inspect and operate this Monsthera installation",
       "  install-hook             Install a pre-commit hook that runs `monsthera lint` on staged knowledge/work .md files",
@@ -401,6 +403,9 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "lint":
         await handleLint(args.slice(1));
+        break;
+      case "eval":
+        await handleEval(args.slice(1));
         break;
       case "install-hook":
         await handleInstallHook(args.slice(1));
