@@ -9,6 +9,7 @@ import {
 } from "../core/article-trust.js";
 import { WikiBookkeeper } from "../knowledge/wiki-bookkeeper.js";
 import { parseMarkdown, serializeMarkdown } from "../knowledge/markdown.js";
+import { summarizeProvenance } from "../knowledge/provenance.js";
 import { formatError } from "./formatters.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
@@ -449,6 +450,21 @@ export async function handleDoctor(args: string[]): Promise<void> {
     process.stdout.write(`  Legacy-tagged knowledge: ${legacyKnowledge}\n`);
     process.stdout.write(`  Legacy-tagged work: ${legacyWork}\n`);
     process.stdout.write(`  Source-linked knowledge: ${sourceLinkedKnowledge}\n\n`);
+
+    if (knowledgeResult.ok) {
+      const provenance = summarizeProvenance(knowledgeResult.value);
+      process.stdout.write("Provenance (knowledge origin, PR-13):\n");
+      process.stdout.write(`  agent: ${provenance.counts.agent}\n`);
+      process.stdout.write(`  human: ${provenance.counts.human}\n`);
+      process.stdout.write(`  distilled: ${provenance.counts.distilled}\n`);
+      process.stdout.write(`  ingested: ${provenance.counts.ingested}\n`);
+      if (provenance.unrecognized.count > 0) {
+        process.stdout.write(
+          `  unrecognized: ${provenance.unrecognized.count} (${provenance.unrecognized.values.join(", ")})\n`,
+        );
+      }
+      process.stdout.write("\n");
+    }
 
     const stalenessResult = await container.structureService.buildStalenessReport();
     if (stalenessResult.ok) {
