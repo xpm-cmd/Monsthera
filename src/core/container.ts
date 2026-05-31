@@ -362,6 +362,7 @@ export async function createContainer(
     status,
     orchestrationRepo: orchestrationRepo!,
     bookkeeper,
+    knowledgeService,
     snapshotService,
     repoPath: config.repoPath,
     convoyRepo: convoyRepo!,

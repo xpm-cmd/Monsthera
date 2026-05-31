@@ -27,6 +27,12 @@ export interface WorkTemplateConfig {
    * Opt-in per template so bugfix / refactor / spike flows stay untouched.
    */
   readonly requiresSnapshotForImplementation?: boolean;
+  /**
+   * When true, advancing this template's article to `done` distills it into a
+   * `solution`/`decision` knowledge article (PR-6). Opt-in so research/chore
+   * flows don't spawn knowledge noise.
+   */
+  readonly distillOnDone?: boolean;
 }
 
 const STANDARD_PHASE_GRAPH: readonly PhaseGraphEdge[] = [
@@ -45,6 +51,7 @@ const SPIKE_PHASE_GRAPH: readonly PhaseGraphEdge[] = [
 export const WORK_TEMPLATES: Record<WorkTemplateType, WorkTemplateConfig> = {
   [WorkTemplate.FEATURE]: {
     template: WorkTemplate.FEATURE,
+    distillOnDone: true,
     requiredSections: ["Objective", "Context", "Acceptance Criteria", "Scope"],
     defaultEnrichmentRoles: [EnrichmentRole.ARCHITECTURE, EnrichmentRole.TESTING],
     minEnrichmentCount: 1,
@@ -54,6 +61,7 @@ export const WORK_TEMPLATES: Record<WorkTemplateType, WorkTemplateConfig> = {
   },
   [WorkTemplate.BUGFIX]: {
     template: WorkTemplate.BUGFIX,
+    distillOnDone: true,
     requiredSections: ["Objective", "Steps to Reproduce", "Acceptance Criteria"],
     defaultEnrichmentRoles: [EnrichmentRole.TESTING],
     minEnrichmentCount: 1,
@@ -62,6 +70,7 @@ export const WORK_TEMPLATES: Record<WorkTemplateType, WorkTemplateConfig> = {
   },
   [WorkTemplate.REFACTOR]: {
     template: WorkTemplate.REFACTOR,
+    distillOnDone: true,
     requiredSections: ["Objective", "Motivation", "Acceptance Criteria"],
     defaultEnrichmentRoles: [EnrichmentRole.ARCHITECTURE],
     minEnrichmentCount: 1,
