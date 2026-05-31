@@ -8,6 +8,7 @@ import type { StorageError } from "../core/errors.js";
 import type { KnowledgeArticle, KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticle, WorkArticleRepository } from "../work/repository.js";
 import { normalizeCodeRefPath, resolveCodeRef } from "../core/code-refs.js";
+import { inspectKnowledgeArticle, inspectWorkArticle } from "../context/insights.js";
 import { extractInlineArticleIds, extractWikilinks, stripCodeRegions } from "./wikilink.js";
 
 /** Tags shared by up to this many articles get full pairwise edges. */
@@ -149,6 +150,61 @@ export interface CodeRefOwnerIndex {
   readonly knowledgeById: ReadonlyMap<string, KnowledgeArticle>;
   /** Work articles indexed by their `w:` node ID. */
   readonly workById: ReadonlyMap<string, WorkArticle>;
+}
+
+/**
+ * A corpus article whose freshness signal is `stale` — older than the
+ * 45-day attention window, or (knowledge only) whose linked source file
+ * is newer than the article itself. `ageDays` is absent only when the
+ * article carries no usable `updatedAt`.
+ */
+export interface StaleArticleEntry {
+  readonly id: string;
+  readonly type: "knowledge" | "work";
+  readonly title: string;
+  readonly slug?: string;
+  readonly ageDays?: number;
+  readonly detail: string;
+  readonly sourcePath?: string;
+}
+
+/** A codeRef on some article that no longer resolves to a file on disk. */
+export interface StaleCodeRefEntry {
+  readonly articleId: string;
+  readonly type: "knowledge" | "work";
+  readonly title: string;
+  readonly codeRef: string;
+}
+
+/**
+ * A knowledge article whose imported source file changed after the article
+ * was last updated — a re-import candidate, distinct from age staleness.
+ */
+export interface SourceNewerEntry {
+  readonly id: string;
+  readonly title: string;
+  readonly slug: string;
+  readonly sourcePath: string;
+  readonly sourceUpdatedAt?: string;
+  readonly articleUpdatedAt: string;
+}
+
+/**
+ * Consolidated, read-only staleness signal across the whole corpus. Folds
+ * `buildContextPack`'s per-item freshness up to corpus scope for
+ * `monsthera doctor` and the `refs_stale` MCP tool.
+ */
+export interface StalenessReport {
+  readonly staleArticles: readonly StaleArticleEntry[];
+  readonly staleCodeRefs: readonly StaleCodeRefEntry[];
+  readonly sourceNewer: readonly SourceNewerEntry[];
+  readonly summary: {
+    readonly knowledgeScanned: number;
+    readonly workScanned: number;
+    readonly staleArticleCount: number;
+    readonly staleCodeRefCount: number;
+    readonly sourceNewerCount: number;
+  };
 }
 
 export interface StructureServiceDeps {
@@ -814,6 +870,98 @@ export class StructureService {
     }
 
     return ok(findings);
+  }
+
+  /**
+   * Build a consolidated, read-only staleness report across the whole
+   * corpus. Three independent, individually actionable signals:
+   *  - `staleArticles` — knowledge/work whose freshness is `stale`,
+   *    sorted most-stale-first so callers can bound their own display.
+   *  - `staleCodeRefs` — codeRefs that no longer resolve on disk.
+   *  - `sourceNewer`   — knowledge whose imported source changed after the
+   *    article was last updated (a re-import candidate).
+   *
+   * Reuses `inspectKnowledgeArticle` / `inspectWorkArticle` (the same
+   * freshness logic `buildContextPack` applies per item) and the service's
+   * own `codeRefExists`, so the report can never drift from those surfaces.
+   */
+  async buildStalenessReport(): Promise<Result<StalenessReport, StorageError>> {
+    const [knowledgeResult, workResult] = await Promise.all([
+      this.knowledgeRepo.findMany(),
+      this.workRepo.findMany(),
+    ]);
+    if (!knowledgeResult.ok) return knowledgeResult;
+    if (!workResult.ok) return workResult;
+
+    const knowledgeArticles = knowledgeResult.value;
+    const workArticles = workResult.value;
+
+    const staleArticles: StaleArticleEntry[] = [];
+    const staleCodeRefs: StaleCodeRefEntry[] = [];
+    const sourceNewer: SourceNewerEntry[] = [];
+
+    for (const article of knowledgeArticles) {
+      const diagnostics = await inspectKnowledgeArticle(article, { repoPath: this.repoPath });
+      if (diagnostics.freshness.state === "stale") {
+        staleArticles.push({
+          id: article.id,
+          type: "knowledge",
+          title: article.title,
+          slug: article.slug,
+          ageDays: diagnostics.freshness.ageDays,
+          detail: diagnostics.freshness.detail,
+          sourcePath: article.sourcePath,
+        });
+      }
+      if (diagnostics.freshness.sourceSyncState === "source-newer" && article.sourcePath) {
+        sourceNewer.push({
+          id: article.id,
+          title: article.title,
+          slug: article.slug,
+          sourcePath: article.sourcePath,
+          sourceUpdatedAt: diagnostics.freshness.sourceUpdatedAt,
+          articleUpdatedAt: article.updatedAt,
+        });
+      }
+      for (const codeRef of article.codeRefs) {
+        if (!(await this.codeRefExists(codeRef))) {
+          staleCodeRefs.push({ articleId: article.id, type: "knowledge", title: article.title, codeRef });
+        }
+      }
+    }
+
+    for (const article of workArticles) {
+      const diagnostics = inspectWorkArticle(article);
+      if (diagnostics.freshness.state === "stale") {
+        staleArticles.push({
+          id: article.id,
+          type: "work",
+          title: article.title,
+          ageDays: diagnostics.freshness.ageDays,
+          detail: diagnostics.freshness.detail,
+        });
+      }
+      for (const codeRef of article.codeRefs) {
+        if (!(await this.codeRefExists(codeRef))) {
+          staleCodeRefs.push({ articleId: article.id, type: "work", title: article.title, codeRef });
+        }
+      }
+    }
+
+    staleArticles.sort((a, b) => (b.ageDays ?? 0) - (a.ageDays ?? 0));
+
+    return ok({
+      staleArticles,
+      staleCodeRefs,
+      sourceNewer,
+      summary: {
+        knowledgeScanned: knowledgeArticles.length,
+        workScanned: workArticles.length,
+        staleArticleCount: staleArticles.length,
+        staleCodeRefCount: staleCodeRefs.length,
+        sourceNewerCount: sourceNewer.length,
+      },
+    });
   }
 
   private async codeRefExists(codeRef: string): Promise<boolean> {

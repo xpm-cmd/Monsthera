@@ -62,6 +62,15 @@ export function refsToolDefinitions(): ToolDefinition[] {
         },
       },
     },
+    {
+      name: "refs_stale",
+      description:
+        "Consolidated, read-only staleness report for the whole corpus. Returns `staleArticles` (knowledge/work older than the 45-day attention window, or — for knowledge — whose linked source file is newer than the article), `staleCodeRefs` (codeRefs that no longer resolve on disk), and `sourceNewer` (knowledge whose imported source changed after its last update, i.e. re-import candidates), plus a summary. Sibling of `refs_orphans` for hygiene sweeps; pairs with `monsthera doctor`.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {},
+      },
+    },
   ];
 }
 
@@ -121,6 +130,12 @@ export async function handleRefsTool(
       findings.push(...res.value);
     }
     return successResponse({ findings });
+  }
+
+  if (name === "refs_stale") {
+    const result = await structureService.buildStalenessReport();
+    if (!result.ok) return errorResponse(result.error.code, result.error.message);
+    return successResponse(result.value);
   }
 
   return errorResponse("NOT_FOUND", `Unknown tool: ${name}`);

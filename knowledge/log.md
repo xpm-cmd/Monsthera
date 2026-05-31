@@ -186,3 +186,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-05-17 12:24:01]** create knowledge | Handoff: 2026-05-17 claude-code (2 min) (k-gsxgt3qx)
 - **[2026-05-29 12:51:45]** reindex knowledge | Reindex: 80 knowledge, 20 work
 - **[2026-05-29 12:53:51]** create knowledge | Dogfood review (2026-05-29): CLI --help, version drift, codeRefs extractor, lint exemption, dashboard split (k-yu5can16)
+- **[2026-05-31 06:46:25]** create knowledge | PR-7: Context-pack ranking characterization pin (k-174l945h)
