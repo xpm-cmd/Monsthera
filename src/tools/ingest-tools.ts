@@ -63,6 +63,21 @@ export function ingestToolDefinitions(): ToolDefinition[] {
         required: ["sourcePath"],
       },
     },
+    {
+      name: "ingest_git_history",
+      description:
+        "Ingest commits from a git revision range or a merged GitHub PR into knowledge — one article per commit with provenance origin=ingested and sourcePath git:<sha> (PR-15). Provide exactly one of `range` or `prNumber`.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          range: { type: "string", description: "Git revision range, e.g. HEAD~5..HEAD or main..feature" },
+          prNumber: { type: "number", description: "Merged GitHub PR number (resolved via its merge commit)" },
+          category: { type: "string", description: "Optional category override (default git-history)" },
+          tags: { type: "array", items: { type: "string" }, description: "Optional extra tags applied to every commit article" },
+          replaceExisting: { type: "boolean", description: "Update commits already ingested with the same sourcePath (default true)" },
+        },
+      },
+    },
   ];
 }
 
@@ -114,6 +129,30 @@ export async function handleIngestTool(
         replaceExisting: args.replaceExisting as boolean | undefined,
         noImportedTag: args.noImportedTag as boolean | undefined,
       });
+      if (!result.ok) return errorResponse(result.error.code, result.error.message);
+      return successResponse(result.value);
+    }
+    case "ingest_git_history": {
+      const hasRange = typeof args.range === "string" && args.range.length > 0;
+      const hasPr = args.prNumber !== undefined;
+      if (hasRange === hasPr) {
+        return errorResponse("VALIDATION_FAILED", 'Provide exactly one of "range" or "prNumber"');
+      }
+
+      const category = optionalString(args, "category", 100);
+      if (isErrorResponse(category)) return category;
+
+      const tags = optionalStringArray(args, "tags");
+      if (isErrorResponse(tags)) return tags;
+
+      if (args.replaceExisting !== undefined && typeof args.replaceExisting !== "boolean") {
+        return errorResponse("VALIDATION_FAILED", '"replaceExisting" must be a boolean');
+      }
+      const replaceExisting = args.replaceExisting as boolean | undefined;
+
+      const result = hasRange
+        ? await service.importGitHistory({ range: args.range, category, tags, replaceExisting })
+        : await service.importPr({ prNumber: args.prNumber, category, tags, replaceExisting });
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
     }

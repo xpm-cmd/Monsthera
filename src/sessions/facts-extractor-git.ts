@@ -192,9 +192,40 @@ export async function listCommitsInWindow(
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   });
   if (!result.ok) return ok([]);
+  return ok(parseCommitLines(result.value.stdout));
+}
 
+export interface ListCommitsInRangeOptions {
+  readonly repo: string;
+  readonly range: string;
+  readonly runner: CommandRunner;
+  readonly timeoutMs?: number;
+}
+
+/**
+ * List git commits in a revision `range` (e.g. `HEAD~5..HEAD`, `main..feature`)
+ * via `git log <range> --format=%H|%s|%cI`, newest-first. Unlike
+ * `listCommitsInWindow` (date-bounded, used by session facts where a missing
+ * checkout is non-fatal), a git failure here returns `err` so a caller can
+ * surface a bad range to the user — PR-15 ingestion treats it as a real error.
+ */
+export async function listCommitsInRange(
+  options: ListCommitsInRangeOptions,
+): Promise<Result<SessionFactsCommit[], StorageError>> {
+  const result = await options.runner({
+    command: "git",
+    args: ["log", options.range, "--format=%H|%s|%cI"],
+    cwd: options.repo,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  });
+  if (!result.ok) return err(result.error);
+  return ok(parseCommitLines(result.value.stdout));
+}
+
+/** Parse `%H|%s|%cI` git-log lines into commits. Shared by the window + range helpers. */
+function parseCommitLines(stdout: string): SessionFactsCommit[] {
   const commits: SessionFactsCommit[] = [];
-  for (const raw of result.value.stdout.split("\n")) {
+  for (const raw of stdout.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
     const firstPipe = line.indexOf("|");
@@ -206,5 +237,5 @@ export async function listCommitsInWindow(
     if (!sha || !subject || !timestamp) continue;
     commits.push({ sha, subject, timestamp });
   }
-  return ok(commits);
+  return commits;
 }

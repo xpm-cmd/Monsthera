@@ -194,3 +194,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-05-31 08:03:56]** create knowledge | PR-12: Embedding onboarding ergonomics (M2 close) (k-pupprz0g)
 - **[2026-05-31 10:21:14]** create knowledge | PR-13a: Knowledge provenance (origin enum + doctor breakdown) (k-pajgyr76)
 - **[2026-05-31 10:51:51]** create knowledge | PR-14a: Custom-frontmatter query filter (ADR-020 P2) (k-v27p0qw2)
+- **[2026-05-31 11:11:24]** create knowledge | PR-14b: Custom-frontmatter lint family (ADR-020 P3) (k-eiv217in)

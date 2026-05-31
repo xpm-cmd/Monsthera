@@ -7,11 +7,16 @@ import type { Logger } from "../core/logger.js";
 import { err, ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import type { StatusReporter } from "../core/status.js";
-import { timestamp } from "../core/types.js";
-import type { KnowledgeArticleRepository } from "../knowledge/repository.js";
+import { slug, timestamp } from "../core/types.js";
+import type { KnowledgeArticleRepository, KnowledgeArticle } from "../knowledge/repository.js";
 import { parseMarkdown } from "../knowledge/markdown.js";
+import { ORIGIN } from "../knowledge/provenance.js";
 import type { SearchMutationSync } from "../search/sync.js";
-import { validateIngestLocalInput } from "./schemas.js";
+import { realCommandRunner } from "../ops/command-runner.js";
+import type { CommandRunner } from "../ops/command-runner.js";
+import { listCommitsInRange } from "../sessions/facts-extractor-git.js";
+import type { SessionFactsCommit } from "../sessions/schemas.js";
+import { validateIngestLocalInput, validateIngestGitInput, validateIngestPrInput } from "./schemas.js";
 import type { IngestMode } from "./schemas.js";
 
 const SUPPORTED_EXTENSIONS = new Set([".md", ".markdown", ".txt", ".text"]);
@@ -46,7 +51,11 @@ export interface IngestServiceDeps {
   readonly logger: Logger;
   readonly searchSync?: SearchMutationSync;
   readonly status?: StatusReporter;
+  /** Injectable git runner (PR-15). Defaults to the real shell-backed runner; tests stub it. */
+  readonly commandRunner?: CommandRunner;
 }
+
+const GIT_INGEST_TIMEOUT_MS = 10_000;
 
 export class IngestService {
   private readonly knowledgeRepo: KnowledgeArticleRepository;
@@ -54,6 +63,7 @@ export class IngestService {
   private readonly logger: Logger;
   private readonly searchSync?: SearchMutationSync;
   private readonly status?: StatusReporter;
+  private readonly commandRunner: CommandRunner;
 
   constructor(deps: IngestServiceDeps) {
     this.knowledgeRepo = deps.knowledgeRepo;
@@ -61,6 +71,7 @@ export class IngestService {
     this.logger = deps.logger.child({ domain: "ingest" });
     this.searchSync = deps.searchSync;
     this.status = deps.status;
+    this.commandRunner = deps.commandRunner ?? realCommandRunner;
   }
 
   async importLocal(
@@ -185,6 +196,165 @@ export class IngestService {
       sourcePath: this.normalizeSourcePath(targetPath),
       mode: validated.value.mode,
       scannedFileCount: sourceFiles.length,
+      importedCount: items.length,
+      createdCount,
+      updatedCount,
+      items,
+    });
+  }
+
+  /**
+   * Ingest the commits in a git revision range (PR-15) as one knowledge article
+   * per commit, each tagged `ingested`/`git` with provenance `origin: ingested`
+   * (PR-13) and `sourcePath: git:<sha>`. Idempotent via the sourcePath dedup —
+   * re-ingesting a range updates rather than duplicates. A git failure (e.g. a
+   * bad range) surfaces as an error rather than an empty import.
+   */
+  async importGitHistory(
+    input: unknown,
+  ): Promise<Result<IngestBatchResult, ValidationError | NotFoundError | StorageError>> {
+    const validated = validateIngestGitInput(input);
+    if (!validated.ok) return validated;
+
+    const commits = await listCommitsInRange({
+      repo: this.repoPath,
+      range: validated.value.range,
+      runner: this.commandRunner,
+      timeoutMs: GIT_INGEST_TIMEOUT_MS,
+    });
+    if (!commits.ok) return commits;
+
+    return this.ingestCommits(commits.value, validated.value.range, {
+      category: validated.value.category,
+      tags: validated.value.tags,
+      replaceExisting: validated.value.replaceExisting,
+    });
+  }
+
+  /**
+   * Ingest a merged GitHub pull request (PR-15) by resolving its merge commit
+   * ("Merge pull request #N …") and ingesting the commit range
+   * `<merge>^1..<merge>^2`. Limitation: only PRs landed as GitHub merge commits
+   * are resolvable (squash/rebase merges leave no such marker).
+   */
+  async importPr(
+    input: unknown,
+  ): Promise<Result<IngestBatchResult, ValidationError | NotFoundError | StorageError>> {
+    const validated = validateIngestPrInput(input);
+    if (!validated.ok) return validated;
+    const prNumber = validated.value.prNumber;
+
+    const mergeResult = await this.commandRunner({
+      command: "git",
+      args: ["log", "--all", `--grep=Merge pull request #${prNumber} `, "--format=%H", "-1"],
+      cwd: this.repoPath,
+      timeoutMs: GIT_INGEST_TIMEOUT_MS,
+    });
+    if (!mergeResult.ok) return err(mergeResult.error);
+    const mergeSha = mergeResult.value.stdout.trim();
+    if (mergeSha === "") {
+      return err(new NotFoundError("PullRequestMergeCommit", `#${prNumber}`));
+    }
+
+    const range = `${mergeSha}^1..${mergeSha}^2`;
+    const commits = await listCommitsInRange({
+      repo: this.repoPath,
+      range,
+      runner: this.commandRunner,
+      timeoutMs: GIT_INGEST_TIMEOUT_MS,
+    });
+    if (!commits.ok) return commits;
+
+    return this.ingestCommits(commits.value, range, {
+      category: validated.value.category,
+      tags: [...validated.value.tags, `pr-${prNumber}`],
+      replaceExisting: validated.value.replaceExisting,
+    });
+  }
+
+  /** Shared commit→article ingestion used by importGitHistory and importPr. */
+  private async ingestCommits(
+    commits: readonly SessionFactsCommit[],
+    range: string,
+    opts: { category?: string; tags: readonly string[]; replaceExisting: boolean },
+  ): Promise<Result<IngestBatchResult, NotFoundError | StorageError>> {
+    const importedAt = timestamp();
+    if (commits.length === 0) {
+      return ok({
+        importedAt,
+        sourcePath: range,
+        mode: "raw",
+        scannedFileCount: 0,
+        importedCount: 0,
+        createdCount: 0,
+        updatedCount: 0,
+        items: [],
+      });
+    }
+
+    const knowledgeResult = await this.knowledgeRepo.findMany();
+    if (!knowledgeResult.ok) return knowledgeResult;
+    const existingBySourcePath = new Map(
+      knowledgeResult.value
+        .filter((article) => article.sourcePath)
+        .map((article) => [article.sourcePath!, article]),
+    );
+
+    const category = opts.category ?? "git-history";
+    const tags = dedupeStrings([...opts.tags, "ingested", "git"]);
+    const items: IngestedKnowledgeItem[] = [];
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    for (const commit of commits) {
+      const sourcePath = `git:${commit.sha}`;
+      const title = truncateCommitTitle(commit.subject);
+      const content = buildCommitContent(commit, range);
+      const existing = opts.replaceExisting ? existingBySourcePath.get(sourcePath) : undefined;
+
+      if (existing) {
+        const updated = await this.knowledgeRepo.update(existing.id, {
+          title,
+          category,
+          content,
+          tags: [...tags],
+          codeRefs: [],
+          sourcePath,
+          extraFrontmatter: { origin: ORIGIN.INGESTED },
+        });
+        if (!updated.ok) return updated;
+        existingBySourcePath.set(sourcePath, updated.value);
+        await this.syncIndexedArticle(updated.value.id);
+        updatedCount += 1;
+        items.push(toIngestedItem(updated.value, "updated"));
+        continue;
+      }
+
+      const created = await this.knowledgeRepo.create({
+        title,
+        slug: slug(`git-${commit.sha}`),
+        category,
+        content,
+        tags: [...tags],
+        codeRefs: [],
+        sourcePath,
+        extraFrontmatter: { origin: ORIGIN.INGESTED },
+      });
+      if (!created.ok) return created;
+      existingBySourcePath.set(sourcePath, created.value);
+      await this.syncIndexedArticle(created.value.id);
+      createdCount += 1;
+      items.push(toIngestedItem(created.value, "created"));
+    }
+
+    await this.refreshCounts(importedAt);
+    this.logger.info("Completed git ingest", { range, scannedFileCount: commits.length, createdCount, updatedCount });
+
+    return ok({
+      importedAt,
+      sourcePath: range,
+      mode: "raw",
+      scannedFileCount: commits.length,
       importedCount: items.length,
       createdCount,
       updatedCount,
@@ -397,6 +567,37 @@ function inferCategory(sourcePath: string): string {
 
 function dedupeStrings(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function truncateCommitTitle(subject: string): string {
+  const title = subject.trim() || "Untitled commit";
+  return title.length <= 200 ? title : `${title.slice(0, 199).trimEnd()}…`;
+}
+
+function buildCommitContent(commit: SessionFactsCommit, range: string): string {
+  return [
+    `## Commit \`${commit.sha.slice(0, 12)}\``,
+    "",
+    `- **SHA:** \`${commit.sha}\``,
+    `- **Date:** ${commit.timestamp}`,
+    `- **Subject:** ${commit.subject}`,
+    "",
+    `Ingested from git history (range \`${range}\`).`,
+    "",
+  ].join("\n");
+}
+
+function toIngestedItem(article: KnowledgeArticle, status: "created" | "updated"): IngestedKnowledgeItem {
+  return {
+    sourcePath: article.sourcePath ?? "",
+    articleId: article.id,
+    slug: article.slug,
+    title: article.title,
+    category: article.category,
+    status,
+    tagCount: article.tags.length,
+    codeRefCount: article.codeRefs.length,
+  };
 }
 
 function buildSummaryContent(input: {

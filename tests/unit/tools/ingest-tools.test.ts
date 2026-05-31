@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
 import { createLogger } from "../../../src/core/logger.js";
 import { IngestService } from "../../../src/ingest/service.js";
+import type { CommandRunner } from "../../../src/ops/command-runner.js";
+import { ok } from "../../../src/core/result.js";
 import {
   ingestToolDefinitions,
   handleIngestTool,
@@ -48,10 +50,9 @@ async function createService(): Promise<IngestService> {
 }
 
 describe("ingestToolDefinitions", () => {
-  it("returns the ingest_local_sources tool definition", () => {
+  it("returns the local + git ingest tool definitions", () => {
     const defs = ingestToolDefinitions();
-    expect(defs).toHaveLength(1);
-    expect(defs[0]?.name).toBe("ingest_local_sources");
+    expect(defs.map((d) => d.name)).toEqual(["ingest_local_sources", "ingest_git_history"]);
   });
 });
 
@@ -104,5 +105,40 @@ describe("handleIngestTool", () => {
     const body = JSON.parse(response.content[0]!.text) as { error: string; message: string };
     expect(body.error).toBe("NOT_FOUND");
     expect(body.message).toContain("does_not_exist");
+  });
+});
+
+describe("handleIngestTool — ingest_git_history (PR-15)", () => {
+  function gitService(): IngestService {
+    const runner: CommandRunner = async (spec) =>
+      ok({ stdout: spec.args[0] === "log" ? "aaa111|feat: x|2026-05-12T23:05:00+10:00\n" : "", stderr: "" });
+    return new IngestService({
+      knowledgeRepo: new InMemoryKnowledgeArticleRepository(),
+      repoPath: "/tmp/git-tool-repo",
+      logger: createLogger({ level: "error", output: () => {} }),
+      commandRunner: runner,
+    });
+  }
+
+  it("ingests a range and returns origin=ingested articles", async () => {
+    const response = await handleIngestTool("ingest_git_history", { range: "HEAD~1..HEAD" }, gitService());
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { createdCount: number; items: Array<{ sourcePath: string }> };
+    expect(body.createdCount).toBe(1);
+    expect(body.items[0]?.sourcePath).toBe("git:aaa111");
+  });
+
+  it("rejects providing neither range nor prNumber", async () => {
+    const response = await handleIngestTool("ingest_git_history", {}, gitService());
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects providing both range and prNumber", async () => {
+    const response = await handleIngestTool("ingest_git_history", { range: "a..b", prNumber: 1 }, gitService());
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
   });
 });

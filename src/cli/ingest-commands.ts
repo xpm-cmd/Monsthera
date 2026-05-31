@@ -13,6 +13,7 @@ export async function handleIngest(args: string[]): Promise<void> {
       summary: "Import local sources into knowledge.",
       subcommands: [
         { name: "local", summary: "Import a file or directory of Markdown/text into knowledge." },
+        { name: "git", summary: "Ingest commits from a git range or merged PR into knowledge (origin: ingested)." },
       ],
     });
     return;
@@ -21,6 +22,9 @@ export async function handleIngest(args: string[]): Promise<void> {
   switch (subcommand) {
     case "local":
       await handleLocalIngest(subArgs);
+      break;
+    case "git":
+      await handleGitIngest(subArgs);
       break;
     default:
       console.error(`Unknown ingest subcommand: ${subcommand}`);
@@ -90,6 +94,76 @@ async function handleLocalIngest(args: string[]): Promise<void> {
         `Source:       ${result.value.sourcePath}`,
         `Mode:         ${result.value.mode}`,
         `Scanned:      ${result.value.scannedFileCount}`,
+        `Imported:     ${result.value.importedCount}`,
+        `Created:      ${result.value.createdCount}`,
+        `Updated:      ${result.value.updatedCount}`,
+        `Imported at:  ${result.value.importedAt}`,
+        "",
+      ].join("\n"),
+    );
+
+    if (result.value.items.length > 0) {
+      process.stdout.write(formatTable(
+        ["STATUS", "TITLE", "CATEGORY", "SLUG", "SOURCE"],
+        result.value.items.map((item) => [
+          item.status,
+          item.title,
+          item.category,
+          item.slug,
+          item.sourcePath,
+        ]),
+      ) + "\n");
+    }
+  });
+}
+
+async function handleGitIngest(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera ingest git",
+      summary: "Ingest commits from a git revision range or a merged PR into knowledge (one article per commit, origin: ingested).",
+      usage: "(--range <rev-range> | --pr <number>) [--category <c>] [--tags t1,t2] [--no-replace]",
+      flags: [
+        { name: "--range <r>", description: "Git revision range, e.g. HEAD~5..HEAD or main..feature." },
+        { name: "--pr <n>", description: "Merged GitHub PR number (resolved via its merge commit)." },
+        { name: "--category <c>", description: "Override category for ingested commits (default git-history)." },
+        { name: "--tags t1,t2", description: "Comma-separated extra tags applied to every commit article." },
+        { name: "--no-replace", description: "Skip commits already ingested (same sourcePath)." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+      examples: [
+        "monsthera ingest git --range HEAD~10..HEAD",
+        "monsthera ingest git --pr 137 --category release-notes",
+      ],
+    });
+    return;
+  }
+
+  await withContainer(args, async (container) => {
+    const range = parseFlag(args, "--range");
+    const prRaw = parseFlag(args, "--pr");
+    if ((range && prRaw) || (!range && !prRaw)) {
+      console.error("Provide exactly one of --range <rev-range> or --pr <number>.");
+      process.exit(1);
+    }
+
+    const category = parseFlag(args, "--category");
+    const tags = parseCommaSeparated(args, "--tags");
+    const replaceExisting = !args.includes("--no-replace");
+
+    const result = range
+      ? await container.ingestService.importGitHistory({ range, category, tags, replaceExisting })
+      : await container.ingestService.importPr({ prNumber: Number(prRaw), category, tags, replaceExisting });
+
+    if (!result.ok) {
+      console.error(formatError(result.error));
+      process.exit(1);
+    }
+
+    process.stdout.write(
+      [
+        `Source:       ${result.value.sourcePath}`,
+        `Scanned:      ${result.value.scannedFileCount} commit(s)`,
         `Imported:     ${result.value.importedCount}`,
         `Created:      ${result.value.createdCount}`,
         `Updated:      ${result.value.updatedCount}`,
