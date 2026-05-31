@@ -17,6 +17,8 @@ import type { SnapshotService } from "../context/snapshot-service.js";
 import { validateCreateWorkInput, validateUpdateWorkInput } from "./schemas.js";
 import { WORK_TEMPLATES } from "./templates.js";
 import { readHeadLockfileHashes } from "./lockfile-hashes.js";
+import type { KnowledgeService } from "../knowledge/service.js";
+import { distilledSlug, deriveDistilledCategory, buildDistilledTitle, buildDistilledBody } from "./distillation.js";
 
 // ─── WorkService ─────────────────────────────────────────────────────────────
 
@@ -39,6 +41,12 @@ export interface WorkServiceDeps {
    * care about convoys keep passing without a fake repo.
    */
   convoyRepo?: ConvoyRepository;
+  /**
+   * Optional: when wired, completing a work article (advance to `done`) on a
+   * template with `distillOnDone` emits a distilled `solution`/`decision`
+   * knowledge article. Decoupled so tests without knowledge wiring still pass.
+   */
+  knowledgeService?: Pick<KnowledgeService, "createArticle" | "getArticleBySlug">;
 }
 
 export class WorkService {
@@ -51,6 +59,7 @@ export class WorkService {
   private readonly snapshotService?: SnapshotService;
   private readonly repoPath?: string;
   private readonly convoyRepo?: ConvoyRepository;
+  private readonly knowledgeService?: Pick<KnowledgeService, "createArticle" | "getArticleBySlug">;
 
   constructor(deps: WorkServiceDeps) {
     this.repo = deps.workRepo;
@@ -62,6 +71,7 @@ export class WorkService {
     this.snapshotService = deps.snapshotService;
     this.repoPath = deps.repoPath;
     this.convoyRepo = deps.convoyRepo;
+    this.knowledgeService = deps.knowledgeService;
   }
 
   async createWork(
@@ -160,6 +170,9 @@ export class WorkService {
       if (targetPhase === WorkPhase.CANCELLED) {
         await this.emitConvoyLeadCancelledWarnings(result.value.id, options?.reason ?? "");
       }
+      if (targetPhase === WorkPhase.DONE) {
+        await this.maybeDistillToKnowledge(result.value);
+      }
       await this.bookkeeper?.appendLog("advance", "work", `${result.value.title} → ${result.value.phase}`, result.value.id);
       await this.rebuildIndex();
     }
@@ -202,6 +215,52 @@ export class WorkService {
         reason,
       };
       await this.logEvent(cancelledWorkId, "convoy_lead_cancelled_warning", details as unknown as Record<string, unknown>);
+    }
+  }
+
+  /**
+   * On completion, distill the work article into a durable `solution`/`decision`
+   * knowledge article — opt-in per template via `distillOnDone`. Deterministic
+   * (no LLM in the advance path; richer synthesis is a later async step).
+   *
+   * Fail-open: every error is warn-logged and swallowed — the advance already
+   * succeeded and must not be undone by a distillation hiccup (mirrors
+   * `emitConvoyLeadCancelledWarnings`). Idempotent: a deterministic slug plus an
+   * ALREADY_EXISTS short-circuit mean a re-completion never duplicates.
+   */
+  private async maybeDistillToKnowledge(article: WorkArticle): Promise<void> {
+    try {
+      if (!this.knowledgeService) return;
+      if (!WORK_TEMPLATES[article.template].distillOnDone) return;
+
+      const slug = distilledSlug(article.id);
+      const existing = await this.knowledgeService.getArticleBySlug(slug);
+      if (existing.ok) return; // already distilled
+
+      const category = deriveDistilledCategory(article);
+      const result = await this.knowledgeService.createArticle({
+        title: buildDistilledTitle(article, category),
+        slug,
+        category,
+        content: buildDistilledBody(article),
+        tags: [...article.tags, "distilled"],
+        codeRefs: [...article.codeRefs],
+        references: [article.id],
+        extraFrontmatter: { origin: "distilled", distilled_from: article.id },
+      });
+      if (!result.ok && result.error.code !== "ALREADY_EXISTS") {
+        this.logger.warn("Work→knowledge distillation failed", {
+          operation: "maybeDistillToKnowledge",
+          workId: article.id,
+          error: result.error.message,
+        });
+      }
+    } catch (e) {
+      this.logger.warn("Work→knowledge distillation threw", {
+        operation: "maybeDistillToKnowledge",
+        workId: article.id,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
 
