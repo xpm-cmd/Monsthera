@@ -301,6 +301,26 @@ async function handleKnowledgeVerifyCitations(args: string[]): Promise<void> {
   });
 }
 
+/**
+ * Collect repeatable `--field key=value` flags into a custom-frontmatter map
+ * (ADR-020). Values are strings (CLI input). Throws on a malformed pair so the
+ * caller sees a clear message rather than silently dropping a field.
+ */
+function parseFields(args: string[]): Record<string, string> | undefined {
+  const fields: Record<string, string> = {};
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== "--field") continue;
+    const pair = args[i + 1];
+    if (pair === undefined) continue;
+    const eq = pair.indexOf("=");
+    if (eq <= 0) {
+      throw new Error(`--field expects key=value, got "${pair}"`);
+    }
+    fields[pair.slice(0, eq)] = pair.slice(eq + 1);
+  }
+  return Object.keys(fields).length > 0 ? fields : undefined;
+}
+
 async function handleKnowledgeCreate(args: string[]): Promise<void> {
   if (wantsHelp(args)) {
     printSubcommandHelp({
@@ -314,6 +334,7 @@ async function handleKnowledgeCreate(args: string[]): Promise<void> {
         { name: "--content-file <path>", description: "Read the markdown body verbatim from disk. Avoids shell heredoc corruption of backticks etc." },
         { name: "--tags t1,t2", description: "Comma-separated tag list." },
         { name: "--code-refs r1,r2", description: "Comma-separated code-reference paths." },
+        { name: "--field key=value", description: "Custom frontmatter field (repeatable). Persisted verbatim (ADR-020)." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
       notes: [
@@ -360,6 +381,8 @@ async function handleKnowledgeCreate(args: string[]): Promise<void> {
     const input: Record<string, unknown> = { title, category, content };
     if (tags) input.tags = tags;
     if (codeRefs) input.codeRefs = codeRefs;
+    const fields = parseFields(args);
+    if (fields) input.extraFrontmatter = fields;
 
     const result = await container.knowledgeService.createArticle(input);
     if (!result.ok) {
@@ -480,6 +503,7 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
         { name: "--tags t1,t2", description: "Replace the entire tag list with this comma-separated set." },
         { name: "--add-tag t1,t2", description: "Add tags to the existing set (normalized + deduped). Mutually exclusive with --tags." },
         { name: "--remove-tag t1,t2", description: "Remove tags from the existing set (case-insensitive). Mutually exclusive with --tags." },
+        { name: "--field key=value", description: "Set a custom frontmatter field (repeatable). Replaces the article's custom-field map (ADR-020)." },
         { name: "--dry-run", description: "Print the field-level diff that would be applied and exit without writing." },
         { name: "--quiet, -q", description: "On success, print a one-line summary instead of the full article body." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
@@ -516,6 +540,8 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
     if (category) input.category = category;
     if (content) input.content = content;
     if (tags) input.tags = tags;
+    const fields = parseFields(args);
+    if (fields) input.extraFrontmatter = fields;
 
     // Incremental tag edit: read the current tags, apply the delta, and let
     // the normal updateArticle path re-normalize the result (idempotent).
@@ -530,7 +556,7 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
 
     if (Object.keys(input).length === 0) {
       console.error(
-        "No update fields provided. Use --title, --category, --content, --tags, --add-tag, or --remove-tag.",
+        "No update fields provided. Use --title, --category, --content, --tags, --add-tag, --remove-tag, or --field.",
       );
       process.exit(1);
     }

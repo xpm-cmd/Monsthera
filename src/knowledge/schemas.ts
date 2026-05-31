@@ -44,6 +44,10 @@ export const CreateArticleInputSchema = z.object({
     .max(200)
     .regex(SLUG_PATTERN, "slug must match ^[a-z0-9-]+$ (lowercase alphanumerics and hyphens only)")
     .optional(),
+  // ADR-020: typed/custom frontmatter. Unknown keys are NOT auto-routed (that
+  // would mask typos in the fields above); callers pass an explicit object,
+  // which the repo persists and round-trips verbatim.
+  extraFrontmatter: z.record(z.string(), z.unknown()).optional(),
 });
 
 /** Schema for update input — all fields optional */
@@ -61,6 +65,8 @@ export const UpdateArticleInputSchema = z.object({
     .regex(SLUG_PATTERN, "new_slug must match ^[a-z0-9-]+$ (lowercase alphanumerics and hyphens only)")
     .optional(),
   rewrite_inline_wikilinks: z.boolean().optional(),
+  // ADR-020: replaces the prior custom-frontmatter map when supplied (see repo update).
+  extraFrontmatter: z.record(z.string(), z.unknown()).optional(),
 });
 
 // ─── Inferred types ───────────────────────────────────────────────────────────
