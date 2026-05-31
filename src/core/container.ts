@@ -57,6 +57,8 @@ import {
 import { realCommandRunner } from "../ops/command-runner.js";
 import type { LLMSummarizer } from "../sessions/llm-summarizer.js";
 import { OllamaSummarizer } from "../sessions/llm-summarizer.js";
+import { OllamaTextGenerator, OpenAITextGenerator, StubTextGenerator } from "./text-generator.js";
+import type { TextGenerator } from "./text-generator.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -85,6 +87,8 @@ export interface MonstheraContainer extends Disposable {
   readonly codeInventoryService: CodeInventoryService;
   readonly sessionRepo: SessionRepository;
   readonly sessionService: SessionService;
+  /** General-purpose LLM text generator (think synthesis + work→knowledge distillation). Stub when `llm.enabled` is false. */
+  readonly textGenerator: TextGenerator;
 }
 
 /**
@@ -421,6 +425,30 @@ export async function createContainer(
         timeoutMs: config.sessions.llmTimeoutMs,
       })
     : null;
+
+  // General-purpose text generator (PR-3): provider-pluggable; consumed by
+  // think synthesis (PR-5) and work→knowledge distillation (PR-6). The API key
+  // is read from env only, never from the validated config object.
+  let textGenerator: TextGenerator;
+  if (!config.llm.enabled) {
+    textGenerator = new StubTextGenerator();
+  } else if (config.llm.provider === "openai") {
+    const apiKey = process.env["MONSTHERA_LLM_API_KEY"] ?? process.env["OPENAI_API_KEY"] ?? "";
+    textGenerator = new OpenAITextGenerator({
+      baseUrl: config.llm.baseUrl,
+      apiKey,
+      model: config.llm.model,
+      temperature: config.llm.temperature,
+      timeoutMs: config.llm.timeoutMs,
+    });
+  } else {
+    textGenerator = new OllamaTextGenerator({
+      ollamaUrl: config.search.ollamaUrl,
+      model: config.llm.model,
+      temperature: config.llm.temperature,
+      timeoutMs: config.llm.timeoutMs,
+    });
+  }
   const factsExtractor = new DefaultFactsExtractor({
     eventRepo: orchestrationRepo!,
     workRepo: workRepo!,
@@ -613,6 +641,7 @@ export async function createContainer(
     codeInventoryService,
     sessionRepo,
     sessionService,
+    textGenerator,
     async dispose() {
       logger.info("Shutting down container");
       await stack.dispose();
