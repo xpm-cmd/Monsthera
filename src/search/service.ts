@@ -78,6 +78,17 @@ export interface ContextPack {
 
 // ─── Deps interface ───────────────────────────────────────────────────────────
 
+/**
+ * Search config as the service consumes it. The PR-10 ranking knobs are
+ * optional here so call sites and tests can omit them — SearchService falls
+ * back to the same defaults the schema applies (freshness thresholds flow
+ * into `inspect*`, which default 14/45 on `undefined`). The container always
+ * passes a fully-parsed `MonstheraConfig["search"]`, which satisfies this.
+ */
+type RankingKnob = "bm25K1" | "titleBoost" | "freshnessFreshDays" | "freshnessStaleDays" | "rerankEnabled" | "rankProfile";
+type SearchServiceConfig = Omit<MonstheraConfig["search"], RankingKnob> &
+  Partial<Pick<MonstheraConfig["search"], RankingKnob>>;
+
 export interface SearchServiceDeps {
   searchRepo: SearchIndexRepository;
   knowledgeRepo: KnowledgeArticleRepository;
@@ -85,7 +96,7 @@ export interface SearchServiceDeps {
   embeddingProvider: EmbeddingProvider;
   /** Optional general-purpose LLM (PR-3). When absent or stub, `think` degrades to ranked sources. */
   textGenerator?: TextGenerator;
-  config: MonstheraConfig["search"];
+  config: SearchServiceConfig;
   logger: Logger;
   status?: StatusReporter;
   runtimeState?: RuntimeStateStore;
@@ -107,7 +118,7 @@ export class SearchService {
   private readonly knowledgeRepo: KnowledgeArticleRepository;
   private readonly workRepo: WorkArticleRepository;
   private readonly embeddingProvider: EmbeddingProvider;
-  private readonly config: MonstheraConfig["search"];
+  private readonly config: SearchServiceConfig;
   private readonly logger: Logger;
   private readonly status?: StatusReporter;
   private readonly runtimeState?: RuntimeStateStore;
@@ -622,7 +633,11 @@ export class SearchService {
           }
           return articleResult;
         }
-        const diagnostics = await inspectKnowledgeArticle(articleResult.value, { repoPath: this.repoPath });
+        const diagnostics = await inspectKnowledgeArticle(articleResult.value, {
+          repoPath: this.repoPath,
+          freshDays: this.config.freshnessFreshDays,
+          staleDays: this.config.freshnessStaleDays,
+        });
         items.push(this.buildKnowledgeContextItem(hit, articleResult.value, diagnostics, mode));
         continue;
       }
@@ -635,7 +650,10 @@ export class SearchService {
         }
         return articleResult;
       }
-      const diagnostics = inspectWorkArticle(articleResult.value);
+      const diagnostics = inspectWorkArticle(articleResult.value, {
+        freshDays: this.config.freshnessFreshDays,
+        staleDays: this.config.freshnessStaleDays,
+      });
       items.push(this.buildWorkContextItem(hit, articleResult.value, diagnostics, mode));
     }
 

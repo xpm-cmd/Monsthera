@@ -267,7 +267,10 @@ export async function createContainer(
 
   // Fall through to in-memory if Dolt didn't initialize
   if (!searchRepo) {
-    searchRepo = new InMemorySearchIndexRepository();
+    searchRepo = new InMemorySearchIndexRepository({
+      bm25K1: config.search.bm25K1,
+      titleBoost: config.search.titleBoost,
+    });
     orchestrationRepo = new InMemoryOrchestrationEventRepository();
     convoyRepo = new InMemoryConvoyRepository({ eventRepo: orchestrationRepo, logger });
 

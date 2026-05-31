@@ -15,6 +15,7 @@ describe.skipIf(!ollamaAvailable)("semantic search integration", () => {
     const config = {
       ...defaultConfig(process.cwd()),
       search: {
+        ...defaultConfig(process.cwd()).search,
         semanticEnabled: true,
         embeddingProvider: "ollama" as const,
         embeddingModel: "nomic-embed-text",

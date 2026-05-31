@@ -70,14 +70,18 @@ function ageDaysFrom(updatedAt?: string): number | undefined {
   return Math.max(0, Math.floor((Date.now() - time) / 86_400_000));
 }
 
-function freshnessFromAge(ageDays: number | undefined): ContextFreshness {
+function freshnessFromAge(
+  ageDays: number | undefined,
+  freshDays = 14,
+  staleDays = 45,
+): ContextFreshness {
   if (ageDays === undefined) {
     return { state: "unknown", label: "unknown", detail: "Updated time is unavailable." };
   }
-  if (ageDays <= 14) {
+  if (ageDays <= freshDays) {
     return { state: "fresh", label: "fresh", detail: `Updated ${ageDays} day(s) ago.`, ageDays };
   }
-  if (ageDays <= 45) {
+  if (ageDays <= staleDays) {
     return { state: "attention", label: "attention", detail: `Updated ${ageDays} day(s) ago.`, ageDays };
   }
   return { state: "stale", label: "stale", detail: `Updated ${ageDays} day(s) ago.`, ageDays };
@@ -111,12 +115,12 @@ async function inspectSourceSync(
 
 export async function inspectKnowledgeArticle(
   article: KnowledgeArticle,
-  opts?: { repoPath?: string },
+  opts?: { repoPath?: string; freshDays?: number; staleDays?: number },
 ): Promise<KnowledgeContextDiagnostics> {
   const ageDays = ageDaysFrom(article.updatedAt);
   const sourceSync = await inspectSourceSync(opts?.repoPath, article.sourcePath, article.updatedAt);
 
-  let freshness = freshnessFromAge(ageDays);
+  let freshness = freshnessFromAge(ageDays, opts?.freshDays, opts?.staleDays);
   if (sourceSync.state === "source-newer") {
     freshness = {
       state: "stale",
@@ -191,9 +195,12 @@ export async function inspectKnowledgeArticle(
   };
 }
 
-export function inspectWorkArticle(article: WorkArticle): WorkContextDiagnostics {
+export function inspectWorkArticle(
+  article: WorkArticle,
+  opts?: { freshDays?: number; staleDays?: number },
+): WorkContextDiagnostics {
   const ageDays = ageDaysFrom(article.updatedAt);
-  const freshness = freshnessFromAge(ageDays);
+  const freshness = freshnessFromAge(ageDays, opts?.freshDays, opts?.staleDays);
   const template = getTemplateConfig(article.template);
   const requiredSectionsCovered = template.requiredSections.filter((section) => article.content.includes(`## ${section}`)).length;
   const hasOwner = Boolean(article.lead || article.assignee);

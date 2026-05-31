@@ -24,6 +24,16 @@ const SearchConfigSchema = z.object({
   embeddingProvider: z.enum(["ollama"]).default("ollama"),
   alpha: z.number().min(0).max(1).default(0.5),
   ollamaUrl: z.string().default("http://localhost:11434"),
+  // ── Ranking knobs (PR-10). Every field is defaulted to the value that was
+  // previously hardcoded, so an unset config reproduces today's ranking
+  // exactly (the PR-7 characterization pins stay green). Override via
+  // MONSTHERA_SEARCH_* env vars; measure changes with `monsthera eval`.
+  bm25K1: z.number().min(0).default(1.2),
+  titleBoost: z.number().min(0).default(3.0),
+  freshnessFreshDays: z.number().min(0).default(14),
+  freshnessStaleDays: z.number().min(0).default(45),
+  rerankEnabled: z.boolean().default(false),
+  rankProfile: z.enum(["conservative", "balanced", "tokenmax"]).default("balanced"),
 });
 
 const OrchestrationConfigSchema = z.object({
@@ -254,6 +264,44 @@ export function applyEnvOverrides(config: Record<string, unknown>): Record<strin
         ? (result["search"] as Record<string, unknown>)
         : {}),
       ollamaUrl: process.env["MONSTHERA_OLLAMA_URL"],
+    };
+  }
+
+  // Ranking knobs (PR-10). Numeric vars are skipped silently when unparseable
+  // so a typo never crashes config load — the schema default applies instead.
+  for (const [envVar, field] of [
+    ["MONSTHERA_SEARCH_BM25K1", "bm25K1"],
+    ["MONSTHERA_SEARCH_TITLE_BOOST", "titleBoost"],
+    ["MONSTHERA_SEARCH_FRESHNESS_FRESH_DAYS", "freshnessFreshDays"],
+    ["MONSTHERA_SEARCH_FRESHNESS_STALE_DAYS", "freshnessStaleDays"],
+  ] as const) {
+    const raw = process.env[envVar];
+    if (raw === undefined) continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) continue;
+    result["search"] = {
+      ...(typeof result["search"] === "object" && result["search"] !== null
+        ? (result["search"] as Record<string, unknown>)
+        : {}),
+      [field]: value,
+    };
+  }
+
+  if (process.env["MONSTHERA_SEARCH_RERANK_ENABLED"] !== undefined) {
+    result["search"] = {
+      ...(typeof result["search"] === "object" && result["search"] !== null
+        ? (result["search"] as Record<string, unknown>)
+        : {}),
+      rerankEnabled: process.env["MONSTHERA_SEARCH_RERANK_ENABLED"] === "true",
+    };
+  }
+
+  if (process.env["MONSTHERA_SEARCH_RANK_PROFILE"] !== undefined) {
+    result["search"] = {
+      ...(typeof result["search"] === "object" && result["search"] !== null
+        ? (result["search"] as Record<string, unknown>)
+        : {}),
+      rankProfile: process.env["MONSTHERA_SEARCH_RANK_PROFILE"],
     };
   }
 
