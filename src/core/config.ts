@@ -52,6 +52,23 @@ const SessionsConfigSchema = z.object({
   llmTimeoutMs: z.number().min(1000).default(60_000),
 });
 
+/**
+ * General-purpose text generator (think synthesis + work→knowledge
+ * distillation). Distinct from `sessions.*` (which is the session-summarizer
+ * specialization). Default disabled ⇒ a stub is used and those features
+ * degrade gracefully. `apiKey` is intentionally absent — it is a secret read
+ * only from MONSTHERA_LLM_API_KEY / OPENAI_API_KEY at container build time.
+ */
+const LlmConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  provider: z.enum(["ollama", "openai"]).default("ollama"),
+  model: z.string().default("gemma4:latest"),
+  temperature: z.number().min(0).max(1).default(0.2),
+  timeoutMs: z.number().min(1000).default(60_000),
+  /** Base URL for the `openai` provider (OpenAI, Azure, OpenRouter, vLLM, LM Studio…). Ignored for `ollama`, which reuses `search.ollamaUrl`. */
+  baseUrl: z.string().default("https://api.openai.com/v1"),
+});
+
 const ServerConfigSchema = z.object({
   port: z.number().default(3000),
   host: z.string().default("localhost"),
@@ -66,6 +83,7 @@ export const MonstheraConfigSchema = z.object({
   dashboard: DashboardConfigSchema.default(() => DashboardConfigSchema.parse({})),
   context: ContextConfigSchema.default(() => ContextConfigSchema.parse({})),
   sessions: SessionsConfigSchema.default(() => SessionsConfigSchema.parse({})),
+  llm: LlmConfigSchema.default(() => LlmConfigSchema.parse({})),
   verbosity: z.enum(["quiet", "normal", "verbose", "debug"]).default("normal"),
 });
 
@@ -269,6 +287,34 @@ export function applyEnvOverrides(config: Record<string, unknown>): Record<strin
         ? (result["sessions"] as Record<string, unknown>)
         : {}),
       ...sessionsPatch,
+    };
+  }
+
+  // LLM (general text generator) overrides. apiKey is read at container build
+  // time, not here — it must never land in the validated config object.
+  const llmPatch: Record<string, unknown> = {};
+  if (process.env["MONSTHERA_LLM_ENABLED"] !== undefined) {
+    llmPatch["enabled"] = process.env["MONSTHERA_LLM_ENABLED"] === "true";
+  }
+  if (process.env["MONSTHERA_LLM_PROVIDER"] !== undefined) {
+    llmPatch["provider"] = process.env["MONSTHERA_LLM_PROVIDER"];
+  }
+  if (process.env["MONSTHERA_LLM_MODEL"] !== undefined) {
+    llmPatch["model"] = process.env["MONSTHERA_LLM_MODEL"];
+  }
+  if (process.env["MONSTHERA_LLM_BASE_URL"] !== undefined) {
+    llmPatch["baseUrl"] = process.env["MONSTHERA_LLM_BASE_URL"];
+  }
+  if (process.env["MONSTHERA_LLM_TIMEOUT_MS"] !== undefined) {
+    const ms = Number(process.env["MONSTHERA_LLM_TIMEOUT_MS"]);
+    if (Number.isFinite(ms) && ms > 0) llmPatch["timeoutMs"] = ms;
+  }
+  if (Object.keys(llmPatch).length > 0) {
+    result["llm"] = {
+      ...(typeof result["llm"] === "object" && result["llm"] !== null
+        ? (result["llm"] as Record<string, unknown>)
+        : {}),
+      ...llmPatch,
     };
   }
 
