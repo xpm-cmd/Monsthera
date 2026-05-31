@@ -37,6 +37,30 @@ export function searchToolDefinitions(): ToolDefinition[] {
       },
     },
     {
+      name: "think",
+      description:
+        "Synthesize a single cited answer to a query across knowledge AND work articles, plus an explicit gap analysis (stale sources, uncited context, missing/contradictory coverage). Runs build_context_pack, then composes prose grounded ONLY in the retrieved sources — every citation resolves to a real article id; invented markers are pruned. Degrades to the ranked sources (no prose) when no LLM is configured. Use when you want the answer, not just the pages.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          query: { type: "string", description: "The question to answer from the brain." },
+          mode: {
+            type: "string",
+            enum: ["general", "code", "research"],
+            description: "Bias retrieval toward planning, code, or investigation.",
+          },
+          type: {
+            type: "string",
+            enum: ["knowledge", "work", "all"],
+            description: "Corpus to synthesize over. Default all (knowledge + work).",
+          },
+          max_context_items: { type: "number", description: "How many ranked sources to synthesize over (default 8)." },
+          verbose: { type: "boolean", description: "Include the full underlying contextPack in the response." },
+        },
+        required: ["query"],
+      },
+    },
+    {
       name: "build_context_pack",
       description:
         "Recommended first step before coding or investigation. Builds a ranked context pack using search plus freshness, quality, and code-link signals so agents can read less, plan faster, and then open only the top knowledge/work items. Pass `include_content: true` to inline the full body of each ranked item (skips the per-result get_article / get_work round-trip).",
@@ -209,6 +233,21 @@ export async function handleSearchTool(
       const result = await service.search(args);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);
+    }
+    case "think": {
+      const result = await service.think(args);
+      if (!result.ok) return errorResponse(result.error.code, result.error.message);
+      const r = result.value;
+      const slim = {
+        query: r.query,
+        mode: r.mode,
+        answer: r.answer,
+        degraded: r.degraded,
+        citations: r.citations,
+        gaps: r.gaps,
+        summary: r.contextPack.summary,
+      };
+      return successResponse(args.verbose === true ? { ...slim, contextPack: r.contextPack } : slim);
     }
     case "build_context_pack": {
       if (args.include_content !== undefined && typeof args.include_content !== "boolean") {

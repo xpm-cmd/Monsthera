@@ -191,6 +191,111 @@ interface ContextPackResponse {
   };
 }
 
+/**
+ * `monsthera think` — synthesized, cited answer (+ gap analysis) across
+ * knowledge and work. Routes through the same `think` MCP handler the server
+ * uses, so CLI and MCP stay in lockstep.
+ */
+export async function handleThink(args: string[]): Promise<void> {
+  if (wantsHelp(args)) {
+    printSubcommandHelp({
+      command: "monsthera think",
+      summary: "Synthesize a cited answer (+ gap analysis) across knowledge and work.",
+      usage: "<query...> [--mode general|code|research] [--type knowledge|work|all] [--max-items <n>] [--verbose] [--json] [--repo <path>]",
+      positional: [{ name: "<query>", description: "The question to answer from the brain." }],
+      flags: [
+        { name: "--mode <m>", description: "general | code | research." },
+        { name: "--type <t>", description: "knowledge | work | all (default all)." },
+        { name: "--max-items <n>", description: "Ranked sources to synthesize over (default 8)." },
+        { name: "--verbose", description: "Include the full underlying context pack." },
+        { name: "--json", description: "Emit the raw think result as JSON." },
+        { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
+      ],
+    });
+    return;
+  }
+
+  const queryParts: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === undefined) continue;
+    if (arg.startsWith("-")) {
+      if (arg !== "--json" && arg !== "--verbose") i++;
+      continue;
+    }
+    queryParts.push(arg);
+  }
+  const query = queryParts.join(" ");
+  if (!query) {
+    console.error("Missing required argument: <query>");
+    console.error('Run "monsthera think <query> [--flags]".');
+    process.exit(1);
+    return;
+  }
+
+  const mode = parseFlag(args, "--mode");
+  const type = parseFlag(args, "--type");
+  const maxItems = parseFlag(args, "--max-items");
+  const asJson = args.includes("--json");
+  const verbose = args.includes("--verbose");
+
+  await withContainer(args, async (container) => {
+    const thinkArgs: Record<string, unknown> = { query };
+    if (mode !== undefined) thinkArgs.mode = mode;
+    if (type !== undefined) thinkArgs.type = type;
+    if (maxItems !== undefined) thinkArgs.max_context_items = Number(maxItems);
+    if (verbose) thinkArgs.verbose = true;
+
+    const response = await handleSearchTool("think", thinkArgs, container.searchService, {
+      knowledgeRepo: container.knowledgeRepo,
+      workRepo: container.workRepo,
+      snapshotService: container.snapshotService,
+    });
+
+    const textBlock = response.content[0];
+    if (!textBlock || textBlock.type !== "text") {
+      console.error("think returned no text content");
+      process.exit(1);
+      return;
+    }
+    if (response.isError) {
+      console.error(textBlock.text);
+      process.exit(1);
+      return;
+    }
+    if (asJson) {
+      process.stdout.write(textBlock.text + "\n");
+      return;
+    }
+    process.stdout.write(renderThink(JSON.parse(textBlock.text)) + "\n");
+  });
+}
+
+interface ThinkResponse {
+  readonly query: string;
+  readonly mode: string;
+  readonly answer: string;
+  readonly degraded: boolean;
+  readonly citations: readonly { marker: string; articleId: string; title: string }[];
+  readonly gaps: readonly { kind: string; detail: string }[];
+}
+
+function renderThink(r: ThinkResponse): string {
+  const lines: string[] = [r.answer.trim(), ""];
+  if (r.citations.length > 0) {
+    lines.push("Citations:");
+    for (const c of r.citations) lines.push(`  ${c.marker} ${c.title} (${c.articleId})`);
+  }
+  if (r.gaps.length > 0) {
+    lines.push("", "Gaps:");
+    for (const g of r.gaps) lines.push(`  [${g.kind}] ${g.detail}`);
+  }
+  if (r.degraded) {
+    lines.push("", "(degraded: no LLM configured — set MONSTHERA_LLM_ENABLED=true and a provider)");
+  }
+  return lines.join("\n");
+}
+
 function renderPack(pack: ContextPackResponse, recordedSnapshotId?: string): string {
   const lines: string[] = [];
   lines.push(`Pack: query="${pack.query}" mode=${pack.mode}`);

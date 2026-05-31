@@ -21,6 +21,17 @@ import {
   isLegacyQuery,
   isLegacyWorkArticle,
 } from "../core/article-trust.js";
+import type { TextGenerator } from "../core/text-generator.js";
+import { ThinkLlmOutputSchema } from "./think-schemas.js";
+import type { ThinkResult, ThinkLlmOutput, KnowledgeGap } from "./think-schemas.js";
+import {
+  buildThinkPrompt,
+  mapAndPruneCitations,
+  deriveDeterministicGaps,
+  mapLlmGaps,
+  DEGRADED_ANSWER,
+  EMPTY_ANSWER,
+} from "./think-synthesis.js";
 
 export interface ContextPackItem {
   readonly id: string;
@@ -69,6 +80,8 @@ export interface SearchServiceDeps {
   knowledgeRepo: KnowledgeArticleRepository;
   workRepo: WorkArticleRepository;
   embeddingProvider: EmbeddingProvider;
+  /** Optional general-purpose LLM (PR-3). When absent or stub, `think` degrades to ranked sources. */
+  textGenerator?: TextGenerator;
   config: MonstheraConfig["search"];
   logger: Logger;
   status?: StatusReporter;
@@ -98,6 +111,8 @@ export class SearchService {
   private readonly repoPath?: string;
   /** ADR-017 §D4 — feeds the M3 phase-4 breadcrumb. Optional. */
   private readonly inventoryService?: CodeInventoryService;
+  /** PR-3 — general-purpose LLM for `think` synthesis. Optional; absent ⇒ degraded. Set via deps or setTextGenerator. */
+  private textGenerator?: TextGenerator;
 
   /** Cached result of the last canary query (null = never ran) */
   private canaryHealthy: boolean | null = null;
@@ -113,6 +128,92 @@ export class SearchService {
     this.runtimeState = deps.runtimeState;
     this.repoPath = deps.repoPath;
     if (deps.inventoryService) this.inventoryService = deps.inventoryService;
+    if (deps.textGenerator) this.textGenerator = deps.textGenerator;
+  }
+
+  /**
+   * Inject the text generator post-construction. The container builds the
+   * generator after SearchService, so it wires it here (mirrors
+   * `WorkService.setKnowledgeRepo`). Tests can instead pass it via deps.
+   */
+  setTextGenerator(generator: TextGenerator): void {
+    this.textGenerator = generator;
+  }
+
+  // ─── think (synthesis) ───────────────────────────────────────────────────────
+
+  /**
+   * Synthesize ONE cited answer across knowledge AND work (default type=all),
+   * with a gap analysis. Runs `buildContextPack` for retrieval + ranking, then
+   * composes prose grounded ONLY in the retrieved sources — every citation is
+   * validated against a real article id (invented markers are pruned). Degrades
+   * to the ranked sources (no prose) when no LLM is configured or reachable, so
+   * it works even with the default stub provider.
+   */
+  async think(input: unknown): Promise<Result<ThinkResult, ValidationError | StorageError>> {
+    const raw = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+    const maxItems =
+      typeof raw["max_context_items"] === "number"
+        ? (raw["max_context_items"] as number)
+        : typeof raw["limit"] === "number"
+          ? (raw["limit"] as number)
+          : 8;
+    const packInput = { ...raw, limit: maxItems, type: raw["type"] ?? "all" };
+
+    const packResult = await this.buildContextPack(packInput);
+    if (!packResult.ok) return packResult;
+    const pack = packResult.value;
+    const items = pack.items;
+    const base = { generatedAt: pack.generatedAt, query: pack.query, mode: pack.mode, contextPack: pack };
+
+    if (items.length === 0) {
+      return ok({
+        ...base,
+        answer: EMPTY_ANSWER,
+        degraded: this.textGenerator === undefined,
+        citations: [],
+        gaps: [{ kind: "missing" as const, detail: "No sources retrieved for this query.", articleIds: [] }],
+      });
+    }
+
+    const degradedResult = (): Result<ThinkResult, ValidationError | StorageError> =>
+      ok({ ...base, answer: DEGRADED_ANSWER, degraded: true, citations: [], gaps: deriveDeterministicGaps(items, new Set()) });
+
+    const gen = this.textGenerator;
+    if (gen === undefined) return degradedResult();
+    const health = await gen.healthCheck();
+    if (!health.ok) return degradedResult();
+
+    const contents = await this.loadItemContents(items);
+    const generated = await gen.generate(buildThinkPrompt(pack.query, items, contents), { json: true, temperature: 0.2 });
+    const parsed = generated.ok ? this.parseThinkOutput(generated.value) : null;
+    if (parsed === null) return degradedResult();
+
+    const { answer, citations, citedIds } = mapAndPruneCitations(parsed.answer, items);
+    const gaps: KnowledgeGap[] = [...deriveDeterministicGaps(items, citedIds), ...mapLlmGaps(parsed.gaps, items)];
+    return ok({ ...base, answer, degraded: false, citations, gaps });
+  }
+
+  private async loadItemContents(items: readonly ContextPackItem[]): Promise<string[]> {
+    return Promise.all(
+      items.map(async (it) => {
+        const repo = it.type === "knowledge" ? this.knowledgeRepo : this.workRepo;
+        const found = await repo.findById(it.id);
+        return found.ok ? found.value.content : it.snippet;
+      }),
+    );
+  }
+
+  private parseThinkOutput(rawText: string): ThinkLlmOutput | null {
+    if (rawText.trim().length === 0) return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawText.trim());
+    } catch {
+      return null;
+    }
+    const result = ThinkLlmOutputSchema.safeParse(parsed);
+    return result.success ? result.data : null;
   }
 
   // ─── health ────────────────────────────────────────────────────────────────
