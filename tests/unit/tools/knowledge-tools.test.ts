@@ -803,6 +803,63 @@ describe("list_articles combinable filters", () => {
 });
 
 // ---------------------------------------------------------------------------
+// list_articles — custom-frontmatter filter (PR-14a, ADR-020 P2)
+// ---------------------------------------------------------------------------
+
+describe("list_articles custom-frontmatter filter", () => {
+  let service: KnowledgeService;
+  let low: KnowledgeArticle;
+  let human: KnowledgeArticle;
+
+  beforeEach(async () => {
+    service = createService();
+    low = await seedArticle(service, {
+      title: "Low score",
+      extraFrontmatter: { replicability_score: 0.5, origin: "agent" },
+    });
+    await seedArticle(service, {
+      title: "High score",
+      extraFrontmatter: { replicability_score: 0.95, origin: "agent" },
+    });
+    human = await seedArticle(service, {
+      title: "Human authored",
+      extraFrontmatter: { origin: "human" },
+    });
+  });
+
+  it("filters by numeric comparison", async () => {
+    const response = await handleKnowledgeTool(
+      "list_articles",
+      { filter: "custom.replicability_score<0.8" },
+      service,
+    );
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(1);
+    expect(body.items[0]!.id).toBe(low.id);
+  });
+
+  it("filters by string equality", async () => {
+    const response = await handleKnowledgeTool("list_articles", { filter: "custom.origin=human" }, service);
+    expect(response.isError).toBeUndefined();
+    const body = JSON.parse(response.content[0]!.text) as { total: number; items: { id: string }[] };
+    expect(body.total).toBe(1);
+    expect(body.items[0]!.id).toBe(human.id);
+  });
+
+  it("rejects a malformed filter with VALIDATION_FAILED", async () => {
+    const response = await handleKnowledgeTool(
+      "list_articles",
+      { filter: "replicability_score<0.8" }, // missing custom. prefix
+      service,
+    );
+    expect(response.isError).toBe(true);
+    const body = JSON.parse(response.content[0]!.text) as { error: string };
+    expect(body.error).toBe("VALIDATION_FAILED");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // search_articles
 // ---------------------------------------------------------------------------
 
