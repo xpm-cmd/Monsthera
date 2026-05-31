@@ -191,3 +191,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-05-31 07:22:25]** create knowledge | PR-9: Deterministic cross-article contradiction detection (k-s07gu3dm)
 - **[2026-05-31 07:38:54]** create knowledge | PR-10: Config-driven ranking knobs (k-gtgddgs3)
 - **[2026-05-31 07:54:47]** create knowledge | PR-11: Relevance reranker stage (k-ovlxucc1)
+- **[2026-05-31 08:03:56]** create knowledge | PR-12: Embedding onboarding ergonomics (M2 close) (k-pupprz0g)
