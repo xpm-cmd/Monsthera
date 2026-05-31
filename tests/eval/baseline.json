@@ -1,0 +1,133 @@
+{
+  "target": "pack",
+  "k": 5,
+  "caseCount": 7,
+  "aggregate": {
+    "precisionAtK": 0.2,
+    "recallAtK": 1,
+    "ndcgAtK": 1,
+    "mrr": 1
+  },
+  "cases": [
+    {
+      "query": "hybrid knowledge architecture overview",
+      "expected": [
+        "k-ypsx5ask"
+      ],
+      "rankedTopK": [
+        "k-ypsx5ask",
+        "k-zoawqis5",
+        "k-2jb9bh3p",
+        "k-qszeow1i",
+        "k-qhu1sw8h"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "work article model phases guards reviewers",
+      "expected": [
+        "k-n3gtykv5"
+      ],
+      "rankedTopK": [
+        "k-n3gtykv5",
+        "k-40emzavw",
+        "k-qlgfto92",
+        "k-g0buqcg5",
+        "k-acodv9lb"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "dual storage markdown dolt source of truth",
+      "expected": [
+        "k-acodv9lb"
+      ],
+      "rankedTopK": [
+        "k-acodv9lb",
+        "k-2njgnd6v",
+        "k-klbt2h37",
+        "k-ypsx5ask",
+        "k-q2wz8nb0"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "surface boundaries mcp cli dashboard container",
+      "expected": [
+        "k-8dsb3up8"
+      ],
+      "rankedTopK": [
+        "k-8dsb3up8",
+        "k-fqn5b57c",
+        "k-yu5can16",
+        "k-to46fuoi",
+        "k-hvaoejze"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "mcp tool catalog complete reference",
+      "expected": [
+        "k-qhu1sw8h"
+      ],
+      "rankedTopK": [
+        "k-qhu1sw8h",
+        "k-koa51gtj",
+        "k-c04vr46t",
+        "k-uuz80fga",
+        "k-fqn5b57c"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "search service context pack indexing hybrid",
+      "expected": [
+        "k-qszeow1i"
+      ],
+      "rankedTopK": [
+        "k-qszeow1i",
+        "k-ypsx5ask",
+        "k-zoawqis5",
+        "k-x8umv6et",
+        "k-pwksnl38"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "orchestration convoys waves dispatch model",
+      "expected": [
+        "k-40emzavw"
+      ],
+      "rankedTopK": [
+        "k-40emzavw",
+        "k-convoy-requires-resync-design-decisions",
+        "k-agent-dispatch-design-decisions",
+        "k-to46fuoi",
+        "k-n3gtykv5"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    }
+  ],
+  "semanticEnabled": false
+}
