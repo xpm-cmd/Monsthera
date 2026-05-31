@@ -2,9 +2,11 @@
 import * as path from "node:path";
 import type { MonstheraContainer } from "../core/container.js";
 import { PolicyLoader } from "../work/policy-loader.js";
+import type { CanonicalValue } from "../work/policy-loader.js";
 import { DEFAULT_VERIFY_DENSITY_THRESHOLD, scanCorpus } from "../work/lint.js";
 import type {
   CitationValueMismatchFinding,
+  ContradictionLintFinding,
   LintFinding,
   LintInclude,
   LintRegistry,
@@ -18,6 +20,7 @@ const VALID_REGISTRIES: readonly LintRegistry[] = [
   "anti-examples",
   "planning-hash",
   "tag-hygiene",
+  "contradictions",
   "all",
 ];
 
@@ -44,7 +47,7 @@ export async function handleLint(args: string[]): Promise<void> {
         {
           name: "--registry <name>",
           description:
-            "Which registry family to apply: canonical-values, anti-examples, planning-hash, tag-hygiene, or all (default).",
+            "Which registry family to apply: canonical-values, anti-examples, planning-hash, tag-hygiene, contradictions, or all (default).",
         },
         {
           name: "--with-citation-values",
@@ -71,6 +74,7 @@ export async function handleLint(args: string[]): Promise<void> {
         "monsthera lint --include knowledge --format text",
         "monsthera lint --registry anti-examples",
         "monsthera lint --registry planning-hash",
+        "monsthera lint --registry contradictions",
         "monsthera lint --with-citation-values",
       ],
     });
@@ -145,6 +149,11 @@ export async function handleLint(args: string[]): Promise<void> {
       ? await collectCitationValueFindings(container)
       : [];
 
+    const runContradictions = registry === "all" || registry === "contradictions";
+    const contradictionFindings = runContradictions
+      ? await collectContradictionFindings(container, canonicalValues)
+      : [];
+
     const result = await scanCorpus({
       markdownRoot,
       include,
@@ -155,6 +164,7 @@ export async function handleLint(args: string[]): Promise<void> {
       antiExamplePhrases,
       orphanFindings,
       citationValueFindings,
+      contradictionFindings,
       ...(verifyDensityThreshold !== undefined ? { verifyDensityThreshold } : {}),
     });
 
@@ -229,6 +239,44 @@ async function collectCitationValueFindings(
   return findings;
 }
 
+/**
+ * Compute cross-article contradictions via `StructureService` and map them
+ * into lint findings. `file` resolves to `articleA`'s markdown-root-relative
+ * path so the CLI output stays consistent with every other rule.
+ */
+async function collectContradictionFindings(
+  container: MonstheraContainer,
+  canonicalValues: readonly CanonicalValue[],
+): Promise<readonly ContradictionLintFinding[]> {
+  const result = await container.structureService.detectContradictions(canonicalValues);
+  if (!result.ok) return [];
+
+  const [knowledge, work] = await Promise.all([
+    container.knowledgeRepo.findMany(),
+    container.workRepo.findMany(),
+  ]);
+  const fileById = new Map<string, string>();
+  if (knowledge.ok) {
+    for (const a of knowledge.value) fileById.set(a.id, path.join("notes", `${a.slug}.md`));
+  }
+  if (work.ok) {
+    for (const a of work.value) fileById.set(a.id, path.join("work-articles", `${a.id}.md`));
+  }
+
+  return result.value.map((c) => ({
+    file: fileById.get(c.articleA) ?? "",
+    severity: "warning" as const,
+    rule: "contradiction" as const,
+    articleA: c.articleA,
+    articleB: c.articleB,
+    name: c.name,
+    valueA: c.valueA,
+    valueB: c.valueB,
+    sharedVia: c.sharedVia,
+    sharedKey: c.sharedKey,
+  }));
+}
+
 function formatFindingsTable(findings: readonly LintFinding[]): string {
   if (findings.length === 0) return "No findings.";
   const lines: string[] = [];
@@ -272,6 +320,10 @@ function formatFinding(f: LintFinding): string {
     case "tag_near_duplicate": {
       const variants = f.variants.map((v) => JSON.stringify(v)).join(", ");
       return `${prefix}: tag near-duplicate "${f.normalized}" — variants ${variants}`;
+    }
+    case "contradiction": {
+      const via = f.sharedVia === "shared_tag" ? `tag ${f.sharedKey}` : `code ${f.sharedKey}`;
+      return `${prefix}: contradiction on "${f.name}" — ${f.articleA}=${f.valueA} vs ${f.articleB}=${f.valueB} (shared ${via})`;
     }
   }
 }

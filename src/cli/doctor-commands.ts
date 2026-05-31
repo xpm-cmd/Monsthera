@@ -13,6 +13,7 @@ import { formatError } from "./formatters.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
 import { MonstheraError, StorageError } from "../core/errors.js";
+import { PolicyLoader } from "../work/policy-loader.js";
 
 /**
  * Fail-fast for CLI doctor flows: previously these helpers re-threw a
@@ -467,6 +468,25 @@ export async function handleDoctor(args: string[]): Promise<void> {
         for (const entry of report.sourceNewer.slice(0, 5)) {
           process.stdout.write(`    - ${entry.title} <- ${entry.sourcePath}\n`);
         }
+      }
+      process.stdout.write("\n");
+    }
+
+    const policyLoader = new PolicyLoader({
+      knowledgeRepo: container.knowledgeRepo,
+      logger: container.logger,
+    });
+    const canonicalValues = await policyLoader.getCanonicalValues();
+    const contradictionsResult = await container.structureService.detectContradictions(canonicalValues);
+    if (contradictionsResult.ok) {
+      const contradictions = contradictionsResult.value;
+      process.stdout.write("Cross-article contradictions (deterministic, read-only):\n");
+      process.stdout.write(`  Canonical values in registry: ${canonicalValues.length}\n`);
+      process.stdout.write(`  Contradictory pairs: ${contradictions.length}\n`);
+      for (const c of contradictions.slice(0, 5)) {
+        process.stdout.write(
+          `    - "${c.name}": ${c.articleA}=${c.valueA} vs ${c.articleB}=${c.valueB} (shared ${c.sharedVia})\n`,
+        );
       }
       process.stdout.write("\n");
     }

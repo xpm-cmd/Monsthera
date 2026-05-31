@@ -139,8 +139,31 @@ export type TagNearDuplicateFinding = {
   readonly variants: readonly string[];
 };
 
+/**
+ * Cross-article contradiction: two graph-adjacent articles (sharing a tag
+ * or a code ref) state different values for the same canonical name.
+ * Warning, not error — disagreement between notes is a review signal, not a
+ * build-breaking failure, and must not gate the pre-commit lint exit code.
+ * Produced by `StructureService.detectContradictions` and merged in when the
+ * `contradictions` registry family is active. `file` is the markdown-root-
+ * relative path of `articleA`.
+ */
+export type ContradictionLintFinding = {
+  readonly file: string;
+  readonly severity: "warning";
+  readonly rule: "contradiction";
+  readonly articleA: string;
+  readonly articleB: string;
+  readonly name: string;
+  readonly valueA: string;
+  readonly valueB: string;
+  readonly sharedVia: "shared_tag" | "code_ref";
+  readonly sharedKey: string;
+};
+
 export type LintFinding =
   | CanonicalValueMismatchFinding
+  | ContradictionLintFinding
   | OrphanCitationFinding
   | TokenDriftFinding
   | PhraseAntiExampleFinding
@@ -152,7 +175,7 @@ export type LintFinding =
 export type LintInclude = "knowledge" | "work" | "both";
 
 /** Which registry families are active during a scan. */
-export type LintRegistry = "canonical-values" | "anti-examples" | "planning-hash" | "tag-hygiene" | "all";
+export type LintRegistry = "canonical-values" | "anti-examples" | "planning-hash" | "tag-hygiene" | "contradictions" | "all";
 
 export interface LintScanInput {
   readonly markdownRoot: string;
@@ -189,6 +212,14 @@ export interface LintScanInput {
    * threshold` emit a `verify_density_exceeded` warning.
    */
   readonly verifyDensityThreshold?: number;
+  /**
+   * Cross-article contradictions produced by
+   * `StructureService.detectContradictions`. Merged as warnings when the
+   * `contradictions` registry family is active. Absent by default — the CLI
+   * computes them only under `--registry contradictions|all` to avoid the
+   * graph + canonical-extraction cost on unrelated scans.
+   */
+  readonly contradictionFindings?: readonly ContradictionLintFinding[];
 }
 
 export interface LintScanResult {
@@ -248,6 +279,7 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
   const runAntiExamples = registry === "all" || registry === "anti-examples";
   const runPlanningHash = registry === "all" || registry === "planning-hash";
   const runTagHygiene = registry === "all" || registry === "tag-hygiene";
+  const runContradictions = registry === "all" || registry === "contradictions";
 
   const findings: LintFinding[] = [];
 
@@ -326,6 +358,7 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
 
   if (input.orphanFindings) findings.push(...input.orphanFindings);
   if (input.citationValueFindings) findings.push(...input.citationValueFindings);
+  if (runContradictions && input.contradictionFindings) findings.push(...input.contradictionFindings);
 
   return {
     findings,

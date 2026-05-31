@@ -1,5 +1,7 @@
 import type { ContextPackItem } from "./service.js";
 import type { ThinkCitation, KnowledgeGap, ThinkLlmOutput } from "./think-schemas.js";
+import { extractStatedCanonicalValues, normaliseCanonicalNumber } from "../work/guards.js";
+import type { CanonicalValue } from "../work/policy-loader.js";
 
 /** Inline citation marker, e.g. `[3]`. */
 const MARKER_RE = /\[(\d+)\]/g;
@@ -122,6 +124,57 @@ export function deriveDeterministicGaps(
     });
   }
 
+  return gaps;
+}
+
+/**
+ * Deterministic `contradictory` gaps among pack items: two retrieved sources
+ * that state different values for the same canonical name. Pack items are
+ * co-retrieved for one query, so they are already topically related — no
+ * graph-adjacency filter is needed here (unlike corpus-wide
+ * `StructureService.detectContradictions`). Reuses the same name→number
+ * extraction as the `canonical_value_mismatch` lint rule. Empty registry or
+ * fewer than two sources → no gaps. Pure and LLM-free, which is what lets
+ * `think` populate `contradictory` even in the degraded path.
+ */
+export function deriveContradictionGaps(
+  items: readonly ContextPackItem[],
+  contents: readonly string[],
+  canonicalValues: readonly CanonicalValue[],
+): KnowledgeGap[] {
+  if (canonicalValues.length === 0 || items.length < 2) return [];
+
+  // name -> normalizedValue -> { ids stating it, a representative raw token }
+  const byName = new Map<string, Map<string, { ids: Set<string>; raw: string }>>();
+  items.forEach((item, idx) => {
+    const content = contents[idx] ?? item.snippet;
+    const seen = new Set<string>(); // dedupe (name|normalized) within one source
+    for (const stated of extractStatedCanonicalValues({ content }, canonicalValues)) {
+      const normalized = normaliseCanonicalNumber(stated.found);
+      const dedupeKey = `${stated.name}|${normalized}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+
+      const groups = byName.get(stated.name) ?? new Map<string, { ids: Set<string>; raw: string }>();
+      const group = groups.get(normalized) ?? { ids: new Set<string>(), raw: stated.found };
+      group.ids.add(item.id);
+      groups.set(normalized, group);
+      byName.set(stated.name, groups);
+    }
+  });
+
+  const gaps: KnowledgeGap[] = [];
+  for (const [name, groups] of byName) {
+    if (groups.size < 2) continue; // all sources agree on this name
+    const articleIds = [...new Set([...groups.values()].flatMap((g) => [...g.ids]))];
+    if (articleIds.length < 2) continue; // a single source stating two values is not cross-source
+    const rawValues = [...groups.values()].map((g) => g.raw);
+    gaps.push({
+      kind: "contradictory",
+      detail: `Retrieved sources disagree on "${name}": ${rawValues.join(" vs ")}. Reconcile before relying on either figure.`,
+      articleIds,
+    });
+  }
   return gaps;
 }
 
