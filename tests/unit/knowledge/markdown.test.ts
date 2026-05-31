@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { parseMarkdown, serializeMarkdown } from "../../../src/knowledge/markdown.js";
+import {
+  parseMarkdown,
+  serializeMarkdown,
+  serializeFrontmatterValue,
+  patchFrontmatter,
+} from "../../../src/knowledge/markdown.js";
 
 // ---------------------------------------------------------------------------
 // parseMarkdown
@@ -199,5 +204,106 @@ describe("edge cases", () => {
     if (!result.ok) return;
     expect(result.value.frontmatter).toEqual({ title: "Article" });
     expect(result.value.body).toBe("# Main Heading\n## Sub Heading\nContent.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// serializeFrontmatterValue (shared value serializer — T5)
+// ---------------------------------------------------------------------------
+describe("serializeFrontmatterValue", () => {
+  it("23. serializes a string array as inline [a, b, c]", () => {
+    expect(serializeFrontmatterValue(["a", "b", "c"])).toBe("[a, b, c]");
+  });
+
+  it("24. serializes an empty array as []", () => {
+    expect(serializeFrontmatterValue([])).toBe("[]");
+  });
+
+  it("25. serializes scalars via String()", () => {
+    expect(serializeFrontmatterValue("Hello")).toBe("Hello");
+    expect(serializeFrontmatterValue(42)).toBe("42");
+    expect(serializeFrontmatterValue(true)).toBe("true");
+  });
+
+  it("26. agrees with serializeMarkdown's array + scalar formatting", () => {
+    // The serializer and the patcher MUST agree, so serializeMarkdown is
+    // expressed in terms of serializeFrontmatterValue. Lock that in.
+    expect(serializeMarkdown({ tags: ["a", "b"] }, "B")).toContain(
+      `tags: ${serializeFrontmatterValue(["a", "b"])}`,
+    );
+    expect(serializeMarkdown({ port: 3000 }, "B")).toContain(
+      `port: ${serializeFrontmatterValue(3000)}`,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// patchFrontmatter (minimal-diff line patch — T5)
+// ---------------------------------------------------------------------------
+describe("patchFrontmatter", () => {
+  // A flow-style file with a double-quoted colon-title and a body that also
+  // contains a colon — the shapes a full re-serialize would mangle.
+  const raw = [
+    "---",
+    'title: "API: Design"',
+    "tags: [a, b]",
+    "updatedAt: 2026-05-15T10:00:00Z",
+    "---",
+    "",
+    "Body: with a colon.",
+    "",
+  ].join("\n");
+
+  it("27. rewrites only the changed key's line, leaving all other bytes intact", () => {
+    const out = patchFrontmatter(raw, { tags: "[a, b, c]" });
+    expect(out).toBe(
+      [
+        "---",
+        'title: "API: Design"',
+        "tags: [a, b, c]",
+        "updatedAt: 2026-05-15T10:00:00Z",
+        "---",
+        "",
+        "Body: with a colon.",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("28. preserves a double-quoted colon-title verbatim when patching another key", () => {
+    const out = patchFrontmatter(raw, { updatedAt: "2026-05-31T00:00:00Z" });
+    expect(out).not.toBeNull();
+    expect(out).toContain('title: "API: Design"');
+    expect(out).toContain("updatedAt: 2026-05-31T00:00:00Z");
+    // The old timestamp is gone; everything else (incl. the body colon) stays.
+    expect(out).toContain("Body: with a colon.");
+    expect(out).not.toContain("updatedAt: 2026-05-15T10:00:00Z");
+  });
+
+  it("29. patches multiple changed keys in a single pass", () => {
+    const out = patchFrontmatter(raw, {
+      tags: "[x]",
+      updatedAt: "2026-06-01T00:00:00Z",
+    });
+    expect(out).toContain("tags: [x]");
+    expect(out).toContain("updatedAt: 2026-06-01T00:00:00Z");
+    expect(out).toContain('title: "API: Design"');
+  });
+
+  it("30. returns null for block-style list frontmatter (unsafe to line-patch)", () => {
+    const block = ["---", "tags:", "  - a", "  - b", "---", "", "Body."].join("\n");
+    expect(patchFrontmatter(block, { tags: "[a, b, c]" })).toBeNull();
+  });
+
+  it("31. returns null when a changed key is not present as its own line", () => {
+    expect(patchFrontmatter(raw, { sourcePath: "notes/x.md" })).toBeNull();
+  });
+
+  it("32. returns null when the opening delimiter is missing", () => {
+    expect(patchFrontmatter("title: x\n---\nBody.", { title: "y" })).toBeNull();
+  });
+
+  it("33. returns null when there is no closing delimiter", () => {
+    expect(patchFrontmatter("---\ntitle: x\n", { title: "y" })).toBeNull();
   });
 });
