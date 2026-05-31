@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractDiffSignals,
   listCodeTouchedSinceBase,
+  listCommitsInRange,
   listCommitsInWindow,
   resolveBaseSha,
 } from "../../../src/sessions/facts-extractor-git.js";
@@ -98,6 +99,42 @@ describe("listCommitsInWindow", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toEqual([]);
+  });
+});
+
+describe("listCommitsInRange (PR-15)", () => {
+  it("invokes `git log <range> --format=%H|%s|%cI` and parses commits", async () => {
+    const stdout = [
+      "aaa111deadbeef|feat: add foo|2026-05-12T23:05:00+10:00",
+      "bbb222cafef00d|fix: bug in bar|2026-05-12T23:15:30+10:00",
+      "",
+    ].join("\n");
+    const { runner, calls } = recordingRunner(stdout);
+
+    const result = await listCommitsInRange({ repo: "/tmp/repo", range: "HEAD~2..HEAD", runner });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual([
+      { sha: "aaa111deadbeef", subject: "feat: add foo", timestamp: "2026-05-12T23:05:00+10:00" },
+      { sha: "bbb222cafef00d", subject: "fix: bug in bar", timestamp: "2026-05-12T23:15:30+10:00" },
+    ]);
+    expect(calls[0]!.command).toBe("git");
+    expect(calls[0]!.args).toEqual(["log", "HEAD~2..HEAD", "--format=%H|%s|%cI"]);
+    expect(calls[0]!.cwd).toBe("/tmp/repo");
+  });
+
+  it("returns err when git fails (bad range surfaces to the caller, unlike the date-window helper)", async () => {
+    const runner: CommandRunner = async () => err(new StorageError("fatal: bad revision 'nope..nope'"));
+    const result = await listCommitsInRange({ repo: "/tmp/repo", range: "nope..nope", runner });
+    expect(result.ok).toBe(false);
+  });
+
+  it("returns ok([]) when the range contains no commits", async () => {
+    const { runner } = recordingRunner("\n");
+    const result = await listCommitsInRange({ repo: "/tmp/repo", range: "HEAD..HEAD", runner });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual([]);
   });
 });
 
