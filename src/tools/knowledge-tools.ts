@@ -2,6 +2,7 @@ import type { KnowledgeService } from "../knowledge/service.js";
 import type { StructureService, NeighborResult } from "../structure/service.js";
 import { successResponse, errorResponse, requireString, optionalString, optionalNumber, isErrorResponse, MAX_QUERY_LENGTH, MAX_TITLE_LENGTH } from "./validation.js";
 import { applyTagDelta } from "../knowledge/tags.js";
+import { parseCustomFilter, matchesCustomFilter, type CustomFilter } from "../knowledge/custom-filter.js";
 
 /** MCP tool definition shape */
 export interface ToolDefinition {
@@ -113,7 +114,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_articles",
-      description: "List knowledge articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_article (or batch_get_articles for many) to read full content. Filters: `category`, `tag` (single tag; matches if the article carries it), `hasCodeRefs` (true = articles grounded in code, false = prose-only).",
+      description: "List knowledge articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_article (or batch_get_articles for many) to read full content. Filters: `category`, `tag` (single tag; matches if the article carries it), `hasCodeRefs` (true = articles grounded in code, false = prose-only), `filter` (custom-frontmatter `custom.<key><op><value>`, ADR-020).",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -122,6 +123,10 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           hasCodeRefs: {
             type: "boolean",
             description: "Filter by presence of code references — true returns only articles with at least one codeRef, false returns only prose-only articles",
+          },
+          filter: {
+            type: "string",
+            description: "Custom-frontmatter filter `custom.<key><op><value>` where <op> is one of =, <, <=, >, >=. Equality is string-based; comparisons are numeric. Only scalar fields are filterable — objects/arrays never match (ADR-020/ADR-012). e.g. `custom.replicability_score<0.8` or `custom.origin=human`.",
           },
           limit: { type: "number", description: "Max results (1-100, default 20)" },
           offset: { type: "number", description: "Skip N results (default 0)" },
@@ -330,6 +335,15 @@ export async function handleKnowledgeTool(
         }
         hasCodeRefs = args.hasCodeRefs;
       }
+      let customFilter: CustomFilter | undefined;
+      if (args.filter !== undefined) {
+        if (typeof args.filter !== "string") {
+          return errorResponse("VALIDATION_FAILED", `"filter" must be a string`);
+        }
+        const parsed = parseCustomFilter(args.filter);
+        if (!parsed.ok) return errorResponse("VALIDATION_FAILED", parsed.error);
+        customFilter = parsed.value;
+      }
       const rawLimit = typeof args.limit === "number" ? args.limit : 20;
       const limit = Math.max(1, Math.min(rawLimit, 100));
       const rawOffset = typeof args.offset === "number" ? args.offset : 0;
@@ -344,6 +358,7 @@ export async function handleKnowledgeTool(
         if (tag !== undefined && !a.tags.includes(tag)) return false;
         if (hasCodeRefs === true && a.codeRefs.length === 0) return false;
         if (hasCodeRefs === false && a.codeRefs.length > 0) return false;
+        if (customFilter !== undefined && !matchesCustomFilter(a.extraFrontmatter, customFilter)) return false;
         return true;
       });
       const total = filtered.length;

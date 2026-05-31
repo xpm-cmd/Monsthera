@@ -16,6 +16,7 @@ import { printGroupHelp, printSubcommandHelp, wantsHelp } from "./help.js";
 import { applyTagDelta } from "../knowledge/tags.js";
 import { confirm } from "./prompt.js";
 import type { KnowledgeArticle } from "../knowledge/repository.js";
+import { parseCustomFilter, matchesCustomFilter, type CustomFilter } from "../knowledge/custom-filter.js";
 
 /**
  * Build a human-readable, field-level diff between an article and a proposed
@@ -441,9 +442,10 @@ async function handleKnowledgeList(args: string[]): Promise<void> {
     printSubcommandHelp({
       command: "monsthera knowledge list",
       summary: "List knowledge articles.",
-      usage: "[--category <c>] [--json] [--no-content]",
+      usage: "[--category <c>] [--filter custom.<key><op><value>] [--json] [--no-content]",
       flags: [
         { name: "--category <c>", description: "Filter by category." },
+        { name: "--filter <expr>", description: "Custom-frontmatter filter `custom.<key><op><value>` (op: =, <, <=, >, >=). Equality is string-based; comparisons numeric. Scalars only (ADR-020). e.g. custom.replicability_score<0.8" },
         { name: "--json", description: "Emit the full list as JSON (no table)." },
         { name: "--no-content", description: "With --json, omit the (potentially large) `content` field from each item." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
@@ -456,27 +458,43 @@ async function handleKnowledgeList(args: string[]): Promise<void> {
     const category = parseFlag(args, "--category");
     const asJson = args.includes("--json");
     const noContent = args.includes("--no-content");
+    const filterExpr = parseFlag(args, "--filter");
+    let customFilter: CustomFilter | undefined;
+    if (filterExpr !== undefined) {
+      const parsed = parseCustomFilter(filterExpr);
+      if (!parsed.ok) {
+        console.error(`Invalid --filter: ${parsed.error}`);
+        process.exit(1);
+      }
+      customFilter = parsed.value;
+    }
     const result = await container.knowledgeService.listArticles(category);
     if (!result.ok) {
       console.error(formatError(result.error));
       process.exit(1);
     }
 
+    let articles = result.value;
+    if (customFilter !== undefined) {
+      const cf = customFilter;
+      articles = articles.filter((a) => matchesCustomFilter(a.extraFrontmatter, cf));
+    }
+
     if (asJson) {
       const payload = noContent
-        ? result.value.map(({ content: _content, ...rest }) => rest)
-        : result.value;
+        ? articles.map(({ content: _content, ...rest }) => rest)
+        : articles;
       process.stdout.write(JSON.stringify(payload, null, 2) + "\n");
       return;
     }
 
-    if (result.value.length === 0) {
+    if (articles.length === 0) {
       process.stdout.write("No knowledge articles found.\n");
       return;
     }
 
     const headers = ["ID", "TITLE", "CATEGORY", "TAGS", "UPDATED"];
-    const rows = result.value.map((a) => [
+    const rows = articles.map((a) => [
       a.id,
       a.title,
       a.category,
