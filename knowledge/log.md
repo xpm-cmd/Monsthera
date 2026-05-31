@@ -190,3 +190,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-05-31 06:59:30]** create knowledge | PR-8: Consolidated corpus staleness report (k-2jeulllv)
 - **[2026-05-31 07:22:25]** create knowledge | PR-9: Deterministic cross-article contradiction detection (k-s07gu3dm)
 - **[2026-05-31 07:38:54]** create knowledge | PR-10: Config-driven ranking knobs (k-gtgddgs3)
+- **[2026-05-31 07:54:47]** create knowledge | PR-11: Relevance reranker stage (k-ovlxucc1)
