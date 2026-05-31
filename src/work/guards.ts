@@ -201,16 +201,30 @@ export function content_matches_canonical_values(
  * treated as descriptive and skipped. When the numbers match, no violation is
  * emitted. Only a true mismatch surfaces.
  */
-export function getCanonicalValueViolations(
+/** A numeric value an article's prose states for a canonical-value name. */
+export interface StatedCanonicalValue {
+  readonly name: string;
+  readonly found: string;
+  readonly lineHint: string;
+}
+
+/**
+ * Extract every numeric value an article states for each canonical name —
+ * regardless of whether it matches the canonical figure. Same name→number
+ * window heuristic as the violation check. Shared by
+ * `getCanonicalValueViolations` (which filters to mismatches against the
+ * registry) and cross-article contradiction detection (which compares what
+ * two articles state for the same name).
+ */
+export function extractStatedCanonicalValues(
   article: { readonly content: string },
   canonicalValues: readonly CanonicalValue[],
-): readonly CanonicalValueViolation[] {
+): readonly StatedCanonicalValue[] {
   if (canonicalValues.length === 0) return [];
 
-  const violations: CanonicalValueViolation[] = [];
+  const stated: StatedCanonicalValue[] = [];
 
   for (const cv of canonicalValues) {
-    const expectedNormalised = normaliseNumericToken(cv.value);
     const nameEscaped = cv.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const matcher = new RegExp(
       `\\b${nameEscaped}\\b([\\s\\S]{0,${CANONICAL_VALUE_NUMBER_WINDOW}}?)(\\$?-?\\d[\\d,]*(?:\\.\\d+)?)`,
@@ -218,19 +232,45 @@ export function getCanonicalValueViolations(
     );
 
     for (const match of article.content.matchAll(matcher)) {
-      const found = match[2] ?? "";
-      if (normaliseNumericToken(found) === expectedNormalised) continue;
-
-      violations.push({
+      stated.push({
         name: cv.name,
-        expected: cv.value,
-        found,
+        found: match[2] ?? "",
         lineHint: extractLine(article.content, match.index ?? 0),
       });
     }
   }
 
+  return stated;
+}
+
+export function getCanonicalValueViolations(
+  article: { readonly content: string },
+  canonicalValues: readonly CanonicalValue[],
+): readonly CanonicalValueViolation[] {
+  if (canonicalValues.length === 0) return [];
+
+  const expectedByName = new Map(canonicalValues.map((cv) => [cv.name, cv.value]));
+  const violations: CanonicalValueViolation[] = [];
+
+  for (const stated of extractStatedCanonicalValues(article, canonicalValues)) {
+    const expected = expectedByName.get(stated.name);
+    if (expected === undefined) continue;
+    if (normaliseNumericToken(stated.found) === normaliseNumericToken(expected)) continue;
+
+    violations.push({
+      name: stated.name,
+      expected,
+      found: stated.found,
+      lineHint: stated.lineHint,
+    });
+  }
+
   return violations;
+}
+
+/** Strip `$`, commas, and whitespace so "$0.010" and "0.010" compare equal. */
+export function normaliseCanonicalNumber(raw: string): string {
+  return normaliseNumericToken(raw);
 }
 
 function normaliseNumericToken(raw: string): string {

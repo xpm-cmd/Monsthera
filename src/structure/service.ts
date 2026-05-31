@@ -9,6 +9,9 @@ import type { KnowledgeArticle, KnowledgeArticleRepository } from "../knowledge/
 import type { WorkArticle, WorkArticleRepository } from "../work/repository.js";
 import { normalizeCodeRefPath, resolveCodeRef } from "../core/code-refs.js";
 import { inspectKnowledgeArticle, inspectWorkArticle } from "../context/insights.js";
+import { extractStatedCanonicalValues, normaliseCanonicalNumber } from "../work/guards.js";
+import type { CanonicalValue } from "../work/policy-loader.js";
+import { normalizeTag } from "../knowledge/tags.js";
 import { extractInlineArticleIds, extractWikilinks, stripCodeRegions } from "./wikilink.js";
 
 /** Tags shared by up to this many articles get full pairwise edges. */
@@ -205,6 +208,26 @@ export interface StalenessReport {
     readonly staleCodeRefCount: number;
     readonly sourceNewerCount: number;
   };
+}
+
+/**
+ * Two corpus articles that state DIFFERENT values for the same canonical
+ * name and are graph-adjacent (share a tag or a code ref). The canonical
+ * registry supplies the vocabulary of quantities worth checking; adjacency
+ * bounds the comparison and filters out coincidental number reuse across
+ * unrelated topics. Article ids are ordered (`articleA < articleB`) so a
+ * pair surfaces once regardless of scan order. Deterministic — no LLM.
+ */
+export interface ContradictionFinding {
+  readonly articleA: string;
+  readonly articleB: string;
+  readonly name: string;
+  readonly valueA: string;
+  readonly valueB: string;
+  readonly sharedVia: "shared_tag" | "code_ref";
+  readonly sharedKey: string;
+  readonly lineHintA: string;
+  readonly lineHintB: string;
 }
 
 export interface StructureServiceDeps {
@@ -964,6 +987,123 @@ export class StructureService {
     });
   }
 
+  /**
+   * Detect cross-article contradictions: graph-adjacent articles (sharing a
+   * tag or a code ref) that state DIFFERENT values for the same canonical
+   * name. Deterministic — reuses the same name→number extraction as the
+   * `canonical_value_mismatch` lint rule (`extractStatedCanonicalValues`),
+   * but compares articles against each other rather than against the
+   * registry's expected figure. The registry only supplies the vocabulary
+   * of quantities worth checking; an empty registry yields no findings.
+   *
+   * Adjacency bounds the work and suppresses coincidental number reuse:
+   * two notes about unrelated subsystems that both mention "timeout: 30"
+   * are not flagged unless they actually share a tag or code ref.
+   *
+   * Pass `opts.articleId` (id or slug) to restrict findings to pairs
+   * involving that article. An LLM tier is intentionally out of scope here;
+   * this is the deterministic foundation it would build on.
+   */
+  async detectContradictions(
+    canonicalValues: readonly CanonicalValue[],
+    opts?: { articleId?: string },
+  ): Promise<Result<readonly ContradictionFinding[], StorageError>> {
+    if (canonicalValues.length === 0) return ok([]);
+
+    const [knowledgeResult, workResult] = await Promise.all([
+      this.knowledgeRepo.findMany(),
+      this.workRepo.findMany(),
+    ]);
+    if (!knowledgeResult.ok) return knowledgeResult;
+    if (!workResult.ok) return workResult;
+
+    const entries: ContradictionArticle[] = [
+      ...knowledgeResult.value.map((a) => ({
+        id: a.id as string,
+        slug: a.slug as string,
+        content: a.content,
+        tags: new Set(a.tags.map(normalizeTag)),
+        codeRefs: new Set(a.codeRefs.map(normalizeCodeRefPath)),
+      })),
+      ...workResult.value.map((a) => ({
+        id: a.id as string,
+        slug: undefined,
+        content: a.content,
+        tags: new Set(a.tags.map(normalizeTag)),
+        codeRefs: new Set(a.codeRefs.map(normalizeCodeRefPath)),
+      })),
+    ];
+
+    // name -> normalizedValue -> articles stating that value for that name
+    const byName = new Map<string, Map<string, StatedRef[]>>();
+    for (const entry of entries) {
+      const seen = new Set<string>(); // dedupe (name|normalized) within one article
+      for (const stated of extractStatedCanonicalValues(entry, canonicalValues)) {
+        const normalized = normaliseCanonicalNumber(stated.found);
+        const dedupeKey = `${stated.name}|${normalized}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+
+        const valueGroups = byName.get(stated.name) ?? new Map<string, StatedRef[]>();
+        const group = valueGroups.get(normalized) ?? [];
+        group.push({ entry, raw: stated.found, lineHint: stated.lineHint });
+        valueGroups.set(normalized, group);
+        byName.set(stated.name, valueGroups);
+      }
+    }
+
+    const findings: ContradictionFinding[] = [];
+    const emittedPairs = new Set<string>(); // dedupe unordered (idA|idB|name)
+
+    for (const [name, valueGroups] of byName) {
+      const normalizedValues = [...valueGroups.keys()];
+      if (normalizedValues.length < 2) continue; // every article agrees on this name
+
+      for (let i = 0; i < normalizedValues.length; i++) {
+        for (let j = i + 1; j < normalizedValues.length; j++) {
+          const groupA = valueGroups.get(normalizedValues[i]!) ?? [];
+          const groupB = valueGroups.get(normalizedValues[j]!) ?? [];
+          for (const left of groupA) {
+            for (const right of groupB) {
+              if (left.entry.id === right.entry.id) continue;
+
+              const adjacency = articleAdjacency(left.entry, right.entry);
+              if (!adjacency) continue;
+
+              const leftFirst = left.entry.id < right.entry.id;
+              const a = leftFirst ? left : right;
+              const b = leftFirst ? right : left;
+
+              const pairKey = `${a.entry.id}|${b.entry.id}|${name}`;
+              if (emittedPairs.has(pairKey)) continue;
+              emittedPairs.add(pairKey);
+
+              findings.push({
+                articleA: a.entry.id,
+                articleB: b.entry.id,
+                name,
+                valueA: a.raw,
+                valueB: b.raw,
+                sharedVia: adjacency.via,
+                sharedKey: adjacency.key,
+                lineHintA: a.lineHint,
+                lineHintB: b.lineHint,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (opts?.articleId) {
+      const resolvedId =
+        entries.find((e) => e.id === opts.articleId || e.slug === opts.articleId)?.id ?? opts.articleId;
+      return ok(findings.filter((f) => f.articleA === resolvedId || f.articleB === resolvedId));
+    }
+
+    return ok(findings);
+  }
+
   private async codeRefExists(codeRef: string): Promise<boolean> {
     const resolved = resolveCodeRef(this.repoPath, codeRef);
 
@@ -1080,4 +1220,41 @@ function extractLineAt(text: string, index: number): string {
   const lineStart = text.lastIndexOf("\n", index) + 1;
   const lineEnd = text.indexOf("\n", index);
   return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
+}
+
+// ─── Helpers for detectContradictions ──────────────────────────────────────
+
+/** Normalized view of an article for cross-article contradiction comparison. */
+interface ContradictionArticle {
+  readonly id: string;
+  readonly slug?: string;
+  readonly content: string;
+  readonly tags: ReadonlySet<string>;
+  readonly codeRefs: ReadonlySet<string>;
+}
+
+/** One article's stated value for a canonical name, with provenance. */
+interface StatedRef {
+  readonly entry: ContradictionArticle;
+  readonly raw: string;
+  readonly lineHint: string;
+}
+
+/**
+ * Whether two articles are graph-adjacent for contradiction purposes —
+ * they share a normalized tag or a normalized code ref. Tags take priority
+ * over code refs so the reported `sharedKey` is the most human-meaningful
+ * link. Returns `undefined` when the articles are unrelated.
+ */
+function articleAdjacency(
+  a: ContradictionArticle,
+  b: ContradictionArticle,
+): { via: "shared_tag" | "code_ref"; key: string } | undefined {
+  for (const tag of a.tags) {
+    if (tag.length > 0 && b.tags.has(tag)) return { via: "shared_tag", key: tag };
+  }
+  for (const ref of a.codeRefs) {
+    if (ref.length > 0 && b.codeRefs.has(ref)) return { via: "code_ref", key: ref };
+  }
+  return undefined;
 }

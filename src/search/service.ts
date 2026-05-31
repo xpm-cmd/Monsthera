@@ -28,10 +28,13 @@ import {
   buildThinkPrompt,
   mapAndPruneCitations,
   deriveDeterministicGaps,
+  deriveContradictionGaps,
   mapLlmGaps,
   DEGRADED_ANSWER,
   EMPTY_ANSWER,
 } from "./think-synthesis.js";
+import { PolicyLoader } from "../work/policy-loader.js";
+import type { CanonicalValue } from "../work/policy-loader.js";
 
 export interface ContextPackItem {
   readonly id: string;
@@ -176,21 +179,38 @@ export class SearchService {
       });
     }
 
+    // Load item bodies + the canonical-value registry once: the LLM prompt
+    // and the deterministic contradiction gaps both need them, and the
+    // contradiction signal must surface even on the degraded path so `think`
+    // populates `contradictory` without an LLM.
+    const contents = await this.loadItemContents(items);
+    const canonicalValues = await this.loadCanonicalValues();
+    const contradictionGaps = deriveContradictionGaps(items, contents, canonicalValues);
+
     const degradedResult = (): Result<ThinkResult, ValidationError | StorageError> =>
-      ok({ ...base, answer: DEGRADED_ANSWER, degraded: true, citations: [], gaps: deriveDeterministicGaps(items, new Set()) });
+      ok({
+        ...base,
+        answer: DEGRADED_ANSWER,
+        degraded: true,
+        citations: [],
+        gaps: [...deriveDeterministicGaps(items, new Set()), ...contradictionGaps],
+      });
 
     const gen = this.textGenerator;
     if (gen === undefined) return degradedResult();
     const health = await gen.healthCheck();
     if (!health.ok) return degradedResult();
 
-    const contents = await this.loadItemContents(items);
     const generated = await gen.generate(buildThinkPrompt(pack.query, items, contents), { json: true, temperature: 0.2 });
     const parsed = generated.ok ? this.parseThinkOutput(generated.value) : null;
     if (parsed === null) return degradedResult();
 
     const { answer, citations, citedIds } = mapAndPruneCitations(parsed.answer, items);
-    const gaps: KnowledgeGap[] = [...deriveDeterministicGaps(items, citedIds), ...mapLlmGaps(parsed.gaps, items)];
+    const gaps: KnowledgeGap[] = [
+      ...deriveDeterministicGaps(items, citedIds),
+      ...contradictionGaps,
+      ...mapLlmGaps(parsed.gaps, items),
+    ];
     return ok({ ...base, answer, degraded: false, citations, gaps });
   }
 
@@ -202,6 +222,21 @@ export class SearchService {
         return found.ok ? found.value.content : it.snippet;
       }),
     );
+  }
+
+  /**
+   * Load the canonical-value registry for deterministic contradiction
+   * detection in `think`. Degrade-safe: any failure (no policy article, repo
+   * error) yields an empty registry, which simply produces no contradiction
+   * gaps — `think` never fails because the registry is absent.
+   */
+  private async loadCanonicalValues(): Promise<readonly CanonicalValue[]> {
+    try {
+      const loader = new PolicyLoader({ knowledgeRepo: this.knowledgeRepo, logger: this.logger });
+      return await loader.getCanonicalValues();
+    } catch {
+      return [];
+    }
   }
 
   private parseThinkOutput(rawText: string): ThinkLlmOutput | null {
