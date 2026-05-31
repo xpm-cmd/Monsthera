@@ -831,7 +831,7 @@ function isContextPackMode(value: unknown): value is "general" | "code" | "resea
   return value === "general" || value === "code" || value === "research";
 }
 
-function scoreContextPackItem(input: {
+export function scoreContextPackItem(input: {
   baseScore: number;
   qualityScore: number;
   freshness: "fresh" | "attention" | "stale" | "unknown";
