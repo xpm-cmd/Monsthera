@@ -19,6 +19,7 @@ import { WORK_TEMPLATES } from "./templates.js";
 import { readHeadLockfileHashes } from "./lockfile-hashes.js";
 import type { KnowledgeService } from "../knowledge/service.js";
 import { distilledSlug, deriveDistilledCategory, buildDistilledTitle, buildDistilledBody } from "./distillation.js";
+import { ORIGIN } from "../knowledge/provenance.js";
 
 // ─── WorkService ─────────────────────────────────────────────────────────────
 
@@ -246,7 +247,7 @@ export class WorkService {
         tags: [...article.tags, "distilled"],
         codeRefs: [...article.codeRefs],
         references: [article.id],
-        extraFrontmatter: { origin: "distilled", distilled_from: article.id },
+        extraFrontmatter: { origin: ORIGIN.DISTILLED, distilled_from: article.id },
       });
       if (!result.ok && result.error.code !== "ALREADY_EXISTS") {
         this.logger.warn("Work→knowledge distillation failed", {

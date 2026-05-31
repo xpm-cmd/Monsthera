@@ -1,5 +1,6 @@
 import { WorkTemplate } from "../core/types.js";
 import type { WorkArticle } from "./repository.js";
+import { ORIGIN } from "../knowledge/provenance.js";
 
 /**
  * Work→knowledge distillation (PR-6). Pure helpers that turn a completed work
@@ -37,7 +38,7 @@ export function buildDistilledTitle(article: WorkArticle, category: "solution" |
  * blockers, verify_count, fabrications).
  */
 export function buildDistilledBody(article: WorkArticle): string {
-  const lines: string[] = [`> Distilled from work [${article.id}] on completion. Origin: \`distilled\`.`, ""];
+  const lines: string[] = [`> Distilled from work [${article.id}] on completion. Origin: \`${ORIGIN.DISTILLED}\`.`, ""];
 
   if (article.content.trim().length > 0) {
     lines.push(article.content.trim(), "");
