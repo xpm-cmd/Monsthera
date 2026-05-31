@@ -45,6 +45,16 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
   /** IDs modified since last reindex — enables incremental rebuilds. */
   private readonly dirtyIds = new Set<string>();
 
+  /** BM25 saturation + title-field boost. Config-tunable (PR-10); default to
+   * the previously-hardcoded constants so no-arg construction is unchanged. */
+  private readonly bm25K1: number;
+  private readonly titleBoost: number;
+
+  constructor(tuning?: { readonly bm25K1?: number; readonly titleBoost?: number }) {
+    this.bm25K1 = tuning?.bm25K1 ?? BM25_K1;
+    this.titleBoost = tuning?.titleBoost ?? TITLE_BOOST;
+  }
+
   // -------------------------------------------------------------------------
   // indexArticle
   // -------------------------------------------------------------------------
@@ -320,9 +330,9 @@ export class InMemorySearchIndexRepository implements SearchIndexRepository {
       if (tf === 0) continue;
 
       const df = this.invertedIndex.get(term)?.size ?? 0;
-      const saturatedTf = tf / (tf + BM25_K1);
+      const saturatedTf = tf / (tf + this.bm25K1);
       const idf = Math.log((N - df + 0.5) / (df + 0.5) + 1);
-      const fieldBoost = docTitleTerms.has(term) ? TITLE_BOOST : 1.0;
+      const fieldBoost = docTitleTerms.has(term) ? this.titleBoost : 1.0;
 
       totalScore += saturatedTf * idf * fieldBoost;
     }
