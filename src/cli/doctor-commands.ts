@@ -379,6 +379,7 @@ export async function handleDoctor(args: string[]): Promise<void> {
       ],
       notes: [
         "Read-only by default — the --fix-*/--seed-*/--archive-* flags are the only mutating paths.",
+        "Includes a consolidated corpus-staleness report (stale articles, broken code refs, source-newer); the same data is available via the refs_stale MCP tool.",
       ],
     });
     return;
@@ -446,6 +447,29 @@ export async function handleDoctor(args: string[]): Promise<void> {
     process.stdout.write(`  Legacy-tagged knowledge: ${legacyKnowledge}\n`);
     process.stdout.write(`  Legacy-tagged work: ${legacyWork}\n`);
     process.stdout.write(`  Source-linked knowledge: ${sourceLinkedKnowledge}\n\n`);
+
+    const stalenessResult = await container.structureService.buildStalenessReport();
+    if (stalenessResult.ok) {
+      const report = stalenessResult.value;
+      const staleKnowledge = report.staleArticles.filter((a) => a.type === "knowledge").length;
+      const staleWork = report.staleArticles.filter((a) => a.type === "work").length;
+      process.stdout.write("Corpus staleness (consolidated, read-only):\n");
+      process.stdout.write(`  Scanned: ${report.summary.knowledgeScanned} knowledge, ${report.summary.workScanned} work\n`);
+      process.stdout.write(`  Stale articles (age / source-newer): ${report.summary.staleArticleCount} (knowledge ${staleKnowledge}, work ${staleWork})\n`);
+      process.stdout.write(`  Stale code refs (broken on disk): ${report.summary.staleCodeRefCount}\n`);
+      process.stdout.write(`  Source-newer (re-import candidates): ${report.summary.sourceNewerCount}\n`);
+      for (const entry of report.staleArticles.slice(0, 5)) {
+        const age = entry.ageDays !== undefined ? `${entry.ageDays}d` : "unknown age";
+        process.stdout.write(`    - [${entry.type}] ${entry.title} (${age})\n`);
+      }
+      if (report.sourceNewer.length > 0) {
+        process.stdout.write("  Source-newer detail:\n");
+        for (const entry of report.sourceNewer.slice(0, 5)) {
+          process.stdout.write(`    - ${entry.title} <- ${entry.sourcePath}\n`);
+        }
+      }
+      process.stdout.write("\n");
+    }
 
     const legacyArticles = await collectLegacyArticles(container, scope);
     process.stdout.write("Legacy migration corpus:\n");
