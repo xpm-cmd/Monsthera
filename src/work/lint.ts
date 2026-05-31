@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { parseMarkdown } from "../knowledge/markdown.js";
 import { getCanonicalValueViolations } from "./guards.js";
 import { computePlanningHash } from "./planning-hash.js";
-import type { AntiExamplePhrase, AntiExampleToken, CanonicalValue } from "./policy-loader.js";
+import type { AntiExamplePhrase, AntiExampleToken, CanonicalValue, CustomFrontmatterRule } from "./policy-loader.js";
 import { normalizeTag } from "../knowledge/tags.js";
 
 /**
@@ -161,6 +161,23 @@ export type ContradictionLintFinding = {
   readonly sharedKey: string;
 };
 
+/**
+ * Custom-frontmatter policy violation (PR-14b, ADR-020 P3): an article's custom
+ * frontmatter does not satisfy a `CustomFrontmatterRule` declared for its
+ * category — a required field is missing, a field is the wrong scalar type, or
+ * a numeric field is out of range. Severity defaults to `warning` (corpus
+ * hygiene, does not gate pre-commit) but a policy rule may raise it to `error`.
+ */
+export type CustomFrontmatterFinding = {
+  readonly file: string;
+  readonly severity: "warning" | "error";
+  readonly rule: "custom_frontmatter_violation";
+  readonly articleCategory: string;
+  readonly key: string;
+  readonly problem: "missing_required" | "wrong_type" | "out_of_range";
+  readonly detail: string;
+};
+
 export type LintFinding =
   | CanonicalValueMismatchFinding
   | ContradictionLintFinding
@@ -170,12 +187,20 @@ export type LintFinding =
   | CitationValueMismatchFinding
   | VerifyDensityFinding
   | PlanningSectionTamperedFinding
-  | TagNearDuplicateFinding;
+  | TagNearDuplicateFinding
+  | CustomFrontmatterFinding;
 
 export type LintInclude = "knowledge" | "work" | "both";
 
 /** Which registry families are active during a scan. */
-export type LintRegistry = "canonical-values" | "anti-examples" | "planning-hash" | "tag-hygiene" | "contradictions" | "all";
+export type LintRegistry =
+  | "canonical-values"
+  | "anti-examples"
+  | "planning-hash"
+  | "tag-hygiene"
+  | "contradictions"
+  | "custom-frontmatter"
+  | "all";
 
 export interface LintScanInput {
   readonly markdownRoot: string;
@@ -220,6 +245,13 @@ export interface LintScanInput {
    * graph + canonical-extraction cost on unrelated scans.
    */
   readonly contradictionFindings?: readonly ContradictionLintFinding[];
+  /**
+   * Per-category custom-frontmatter expectations (PR-14b), from
+   * `PolicyLoader.getCustomFrontmatterRules`. Applied per-article when the
+   * `custom-frontmatter` registry family is active. Absent/empty → the family
+   * emits nothing, so the rule is inert until a policy declares expectations.
+   */
+  readonly customFrontmatterRules?: readonly CustomFrontmatterRule[];
 }
 
 export interface LintScanResult {
@@ -280,8 +312,11 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
   const runPlanningHash = registry === "all" || registry === "planning-hash";
   const runTagHygiene = registry === "all" || registry === "tag-hygiene";
   const runContradictions = registry === "all" || registry === "contradictions";
+  const runCustomFrontmatter = registry === "all" || registry === "custom-frontmatter";
 
   const findings: LintFinding[] = [];
+
+  const customFrontmatterRules = runCustomFrontmatter ? (input.customFrontmatterRules ?? []) : [];
 
   const tokens = runAntiExamples ? (input.antiExampleTokens ?? []) : [];
   const phrases = runAntiExamples ? (input.antiExamplePhrases ?? []) : [];
@@ -352,6 +387,10 @@ export async function scanCorpus(input: LintScanInput): Promise<LintScanResult> 
 
       if (runTagHygiene && !isLintExempt) {
         findings.push(...scanTagNearDuplicates(parsed.value.frontmatter, relFile));
+      }
+
+      if (runCustomFrontmatter && customFrontmatterRules.length > 0) {
+        findings.push(...scanCustomFrontmatter(parsed.value.frontmatter, customFrontmatterRules, relFile));
       }
     }
   }
@@ -773,5 +812,60 @@ function scanTagNearDuplicates(
       });
     }
   }
+  return findings;
+}
+
+/**
+ * Validate one article's custom frontmatter against the rules that target its
+ * category (PR-14b, ADR-020 P3). Values arrive pre-coerced from the markdown
+ * parser (numbers/booleans/strings), so the type check is a direct `typeof`.
+ * An absent-but-not-required field is fine; a missing required field, a
+ * wrong-typed value, or an out-of-range number each emit one finding at the
+ * rule's severity.
+ */
+function scanCustomFrontmatter(
+  frontmatter: Record<string, unknown>,
+  rules: readonly CustomFrontmatterRule[],
+  file: string,
+): readonly CustomFrontmatterFinding[] {
+  const category = typeof frontmatter["category"] === "string" ? frontmatter["category"] : "";
+  const findings: CustomFrontmatterFinding[] = [];
+
+  for (const rule of rules) {
+    if (rule.category !== category) continue;
+    const make = (
+      problem: CustomFrontmatterFinding["problem"],
+      detail: string,
+    ): CustomFrontmatterFinding => ({
+      file,
+      severity: rule.severity,
+      rule: "custom_frontmatter_violation",
+      articleCategory: category,
+      key: rule.key,
+      problem,
+      detail,
+    });
+
+    const value = frontmatter[rule.key];
+    if (value === undefined || value === null) {
+      if (rule.required) findings.push(make("missing_required", `required custom field "${rule.key}" is missing`));
+      continue;
+    }
+
+    if (rule.type !== undefined && typeof value !== rule.type) {
+      findings.push(make("wrong_type", `expected ${rule.type}, got ${typeof value}`));
+      continue;
+    }
+
+    if (rule.min !== undefined || rule.max !== undefined) {
+      const num = typeof value === "number" ? value : Number(value);
+      if (!Number.isFinite(num)) {
+        findings.push(make("wrong_type", `expected a number for range check, got "${String(value)}"`));
+      } else if ((rule.min !== undefined && num < rule.min) || (rule.max !== undefined && num > rule.max)) {
+        findings.push(make("out_of_range", `value ${num} outside [${rule.min ?? "-inf"}, ${rule.max ?? "inf"}]`));
+      }
+    }
+  }
+
   return findings;
 }

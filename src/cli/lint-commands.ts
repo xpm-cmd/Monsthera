@@ -21,6 +21,7 @@ const VALID_REGISTRIES: readonly LintRegistry[] = [
   "planning-hash",
   "tag-hygiene",
   "contradictions",
+  "custom-frontmatter",
   "all",
 ];
 
@@ -47,7 +48,7 @@ export async function handleLint(args: string[]): Promise<void> {
         {
           name: "--registry <name>",
           description:
-            "Which registry family to apply: canonical-values, anti-examples, planning-hash, tag-hygiene, contradictions, or all (default).",
+            "Which registry family to apply: canonical-values, anti-examples, planning-hash, tag-hygiene, contradictions, custom-frontmatter, or all (default).",
         },
         {
           name: "--with-citation-values",
@@ -75,6 +76,7 @@ export async function handleLint(args: string[]): Promise<void> {
         "monsthera lint --registry anti-examples",
         "monsthera lint --registry planning-hash",
         "monsthera lint --registry contradictions",
+        "monsthera lint --registry custom-frontmatter",
         "monsthera lint --with-citation-values",
       ],
     });
@@ -122,12 +124,13 @@ export async function handleLint(args: string[]): Promise<void> {
       knowledgeRepo: container.knowledgeRepo,
       logger: container.logger,
     });
-    const [canonicalValues, antiExampleTokens, antiExamplePhrases, policyDensityThreshold] =
+    const [canonicalValues, antiExampleTokens, antiExamplePhrases, policyDensityThreshold, customFrontmatterRules] =
       await Promise.all([
         policyLoader.getCanonicalValues(),
         policyLoader.getAntiExampleTokens(),
         policyLoader.getAntiExamplePhrases(),
         policyLoader.getMaxVerifyDensity(),
+        policyLoader.getCustomFrontmatterRules(),
       ]);
 
     const verifyDensityThreshold = verifyDensityOff
@@ -165,6 +168,7 @@ export async function handleLint(args: string[]): Promise<void> {
       orphanFindings,
       citationValueFindings,
       contradictionFindings,
+      customFrontmatterRules,
       ...(verifyDensityThreshold !== undefined ? { verifyDensityThreshold } : {}),
     });
 
@@ -325,5 +329,7 @@ function formatFinding(f: LintFinding): string {
       const via = f.sharedVia === "shared_tag" ? `tag ${f.sharedKey}` : `code ${f.sharedKey}`;
       return `${prefix}: contradiction on "${f.name}" — ${f.articleA}=${f.valueA} vs ${f.articleB}=${f.valueB} (shared ${via})`;
     }
+    case "custom_frontmatter_violation":
+      return `${prefix}: custom-frontmatter ${f.problem} — "${f.key}" (${f.articleCategory}): ${f.detail}`;
   }
 }

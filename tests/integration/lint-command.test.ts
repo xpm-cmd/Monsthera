@@ -97,6 +97,74 @@ async function seedCorpus(repoPath: string): Promise<void> {
   await fs.writeFile(path.join(notesDir, "drifted-article.md"), drifted, "utf-8");
 }
 
+async function seedCustomFrontmatterCorpus(repoPath: string): Promise<void> {
+  const notesDir = path.join(repoPath, "knowledge", "notes");
+  await fs.mkdir(notesDir, { recursive: true });
+
+  const rulesJson = JSON.stringify([
+    { category: "experiment", key: "replicability_score", required: true, type: "number", min: 0, max: 0.8 },
+  ]);
+
+  const policy = [
+    "---",
+    "id: k-cf-policy",
+    'title: "Custom Frontmatter Policy"',
+    "slug: cf-policy",
+    "category: policy",
+    "tags: [policy]",
+    "codeRefs: []",
+    "references: []",
+    `policy_custom_frontmatter_json: '${rulesJson}'`,
+    "createdAt: 2026-04-24T00:00:00.000Z",
+    "updatedAt: 2026-04-24T00:00:00.000Z",
+    "---",
+    "",
+    "Policy body.",
+    "",
+  ].join("\n");
+
+  // experiment article missing the required replicability_score → violation.
+  const missing = [
+    "---",
+    "id: k-exp-missing",
+    'title: "Experiment Missing Score"',
+    "slug: exp-missing",
+    "category: experiment",
+    "tags: []",
+    "codeRefs: []",
+    "references: []",
+    "createdAt: 2026-04-24T00:00:00.000Z",
+    "updatedAt: 2026-04-24T00:00:00.000Z",
+    "---",
+    "",
+    "No score here.",
+    "",
+  ].join("\n");
+
+  // experiment article with a valid in-range score → no violation.
+  const valid = [
+    "---",
+    "id: k-exp-valid",
+    'title: "Experiment Valid"',
+    "slug: exp-valid",
+    "category: experiment",
+    "tags: []",
+    "codeRefs: []",
+    "references: []",
+    "replicability_score: 0.5",
+    "createdAt: 2026-04-24T00:00:00.000Z",
+    "updatedAt: 2026-04-24T00:00:00.000Z",
+    "---",
+    "",
+    "Has a valid score.",
+    "",
+  ].join("\n");
+
+  await fs.writeFile(path.join(notesDir, "cf-policy.md"), policy, "utf-8");
+  await fs.writeFile(path.join(notesDir, "exp-missing.md"), missing, "utf-8");
+  await fs.writeFile(path.join(notesDir, "exp-valid.md"), valid, "utf-8");
+}
+
 describe("Integration: monsthera lint", () => {
   beforeAll(async () => {
     await ensureBuilt();
@@ -132,6 +200,40 @@ describe("Integration: monsthera lint", () => {
 
     // Logs went to stderr, not stdout.
     expect(res.stdout).not.toMatch(/"level"\s*:\s*"(info|warn|debug)"/);
+
+    await fs.rm(repoPath, { recursive: true, force: true });
+  }, 120_000);
+
+  it("reports a custom-frontmatter required-field violation as a warning (PR-14b)", async () => {
+    const repoPath = path.join("/tmp", `monsthera-lint-${randomUUID()}`);
+    await fs.mkdir(repoPath, { recursive: true });
+    await seedCustomFrontmatterCorpus(repoPath);
+
+    const res = spawnSync(
+      "node",
+      [binPath, "lint", "--repo", repoPath, "--registry", "custom-frontmatter"],
+      { encoding: "utf-8", env: { ...process.env, NO_COLOR: "1" } },
+    );
+
+    // Warning severity must not gate the exit code.
+    expect(res.status).toBe(0);
+
+    const parsed = res.stdout
+      .trim()
+      .split("\n")
+      .filter((l) => l.length > 0)
+      .map((l) => JSON.parse(l));
+
+    const violation = parsed.find(
+      (f) => f.rule === "custom_frontmatter_violation" && f.file.includes("exp-missing.md"),
+    );
+    expect(violation).toBeDefined();
+    expect(violation.problem).toBe("missing_required");
+    expect(violation.key).toBe("replicability_score");
+    expect(violation.severity).toBe("warning");
+
+    // The valid experiment article and the policy article produced no violation.
+    expect(parsed.find((f) => f.file.includes("exp-valid.md"))).toBeUndefined();
 
     await fs.rm(repoPath, { recursive: true, force: true });
   }, 120_000);

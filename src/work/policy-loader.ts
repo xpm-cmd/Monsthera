@@ -87,6 +87,26 @@ const AntiExamplePhraseSchema = z.object({
 
 const AntiExamplePhrasesArraySchema = z.array(AntiExamplePhraseSchema);
 
+/**
+ * Schema for a single custom-frontmatter expectation (PR-14b, ADR-020 P3).
+ * Carried inside `policy_custom_frontmatter_json` on a `category: policy`
+ * article (same JSON-string detour as canonical values — ADR-010). Declares,
+ * per target article `category`, that a custom field `key` must be present
+ * (`required`) / of a scalar `type` / within a numeric `[min, max]` range.
+ * `severity` defaults to `warning`; a policy may raise a rule to `error`.
+ */
+const CustomFrontmatterRuleSchema = z.object({
+  category: z.string().min(1),
+  key: z.string().min(1),
+  required: z.boolean().default(false),
+  type: z.enum(["string", "number", "boolean"]).optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  severity: z.enum(["warning", "error"]).default("warning"),
+});
+
+const CustomFrontmatterRulesArraySchema = z.array(CustomFrontmatterRuleSchema);
+
 // ─── Domain types ─────────────────────────────────────────────────────────
 
 export interface PolicyAppliesTo {
@@ -166,6 +186,24 @@ export const ANTI_EXAMPLE_TOKENS_FRONTMATTER_KEY = "policy_anti_example_tokens_j
 export const ANTI_EXAMPLE_PHRASES_FRONTMATTER_KEY = "policy_anti_example_phrases_json";
 
 /**
+ * A single custom-frontmatter expectation (PR-14b, ADR-020 P3). Applies to
+ * articles whose `category` matches; asserts the named custom field is present
+ * (when `required`), of the expected scalar `type`, and within `[min, max]`.
+ */
+export interface CustomFrontmatterRule {
+  readonly category: string;
+  readonly key: string;
+  readonly required: boolean;
+  readonly type?: "string" | "number" | "boolean";
+  readonly min?: number;
+  readonly max?: number;
+  readonly severity: "warning" | "error";
+}
+
+/** Frontmatter field whose JSON-string value holds a `CustomFrontmatterRule[]`. */
+export const CUSTOM_FRONTMATTER_FRONTMATTER_KEY = "policy_custom_frontmatter_json";
+
+/**
  * Frontmatter field carrying the maximum acceptable `[verify]`-marker
  * density (markers / citations). Policy articles may set this to
  * override the lint default of 0.20. First-wins across multiple
@@ -193,6 +231,7 @@ export class PolicyLoader {
   private antiExampleTokensCache: readonly AntiExampleToken[] | null = null;
   private antiExamplePhrasesCache: readonly AntiExamplePhrase[] | null = null;
   private maxVerifyDensityCache: number | null | undefined = undefined;
+  private customFrontmatterRulesCache: readonly CustomFrontmatterRule[] | null = null;
 
   constructor(private readonly deps: PolicyLoaderDeps) {}
 
@@ -212,6 +251,7 @@ export class PolicyLoader {
       this.antiExampleTokensCache = [];
       this.antiExamplePhrasesCache = [];
       this.maxVerifyDensityCache = null;
+      this.customFrontmatterRulesCache = [];
       return this.cache;
     }
 
@@ -225,6 +265,7 @@ export class PolicyLoader {
     this.antiExampleTokensCache = this.loadAntiExampleTokens(articlesResult.value);
     this.antiExamplePhrasesCache = this.loadAntiExamplePhrases(articlesResult.value);
     this.maxVerifyDensityCache = this.loadMaxVerifyDensity(articlesResult.value);
+    this.customFrontmatterRulesCache = this.loadCustomFrontmatterRules(articlesResult.value);
     return this.cache;
   }
 
@@ -278,6 +319,18 @@ export class PolicyLoader {
     }
     await this.refresh();
     return this.maxVerifyDensityCache ?? undefined;
+  }
+
+  /**
+   * Custom-frontmatter expectations (PR-14b). Aggregated across every policy
+   * article carrying a non-empty `policy_custom_frontmatter_json`. Unlike
+   * canonical values there is no uniqueness key — every valid rule contributes,
+   * so a field can carry several independent checks.
+   */
+  async getCustomFrontmatterRules(): Promise<readonly CustomFrontmatterRule[]> {
+    if (this.customFrontmatterRulesCache) return this.customFrontmatterRulesCache;
+    await this.refresh();
+    return this.customFrontmatterRulesCache ?? [];
   }
 
   /** Filter policies applicable to a specific article + transition. Pure. */
@@ -429,6 +482,42 @@ export class PolicyLoader {
     }
 
     return [...byPhrase.values()];
+  }
+
+  /**
+   * Aggregate custom-frontmatter rules (PR-14b) across every policy article
+   * carrying `policy_custom_frontmatter_json`. Same log-and-skip failure model
+   * as the other loaders; there is no uniqueness key, so every valid rule is
+   * kept (a field may carry several independent checks).
+   */
+  private loadCustomFrontmatterRules(
+    articles: readonly KnowledgeArticle[],
+  ): readonly CustomFrontmatterRule[] {
+    const rules: CustomFrontmatterRule[] = [];
+
+    for (const article of articles) {
+      const parsed = readJsonFrontmatterArray(
+        article,
+        CUSTOM_FRONTMATTER_FRONTMATTER_KEY,
+        CustomFrontmatterRulesArraySchema,
+        this.deps.logger,
+      );
+      if (!parsed) continue;
+
+      for (const entry of parsed) {
+        rules.push({
+          category: entry.category,
+          key: entry.key,
+          required: entry.required,
+          ...(entry.type !== undefined ? { type: entry.type } : {}),
+          ...(entry.min !== undefined ? { min: entry.min } : {}),
+          ...(entry.max !== undefined ? { max: entry.max } : {}),
+          severity: entry.severity,
+        });
+      }
+    }
+
+    return rules;
   }
 
   /**
