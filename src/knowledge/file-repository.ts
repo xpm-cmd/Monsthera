@@ -6,7 +6,7 @@ import { AlreadyExistsError, NotFoundError, StorageError, ValidationError } from
 import { withFileLock } from "../core/file-lock.js";
 import { generateArticleId, articleId, slug, timestamp } from "../core/types.js";
 import type { ArticleId, Slug, Timestamp } from "../core/types.js";
-import { parseMarkdown, serializeMarkdown } from "./markdown.js";
+import { parseMarkdown, serializeMarkdown, serializeFrontmatterValue, patchFrontmatter } from "./markdown.js";
 import { uniqueSlug } from "./slug.js";
 import { validateFrontmatter } from "./schemas.js";
 import type {
@@ -47,6 +47,28 @@ function extractExtraFrontmatter(
     hasAny = true;
   }
   return hasAny ? extras : undefined;
+}
+
+/**
+ * Build the ordered frontmatter map written for an article. Shared by the full
+ * serialize path (`writeArticle`) and the minimal-diff path (`update`) so both
+ * agree on exactly which keys exist and how each value serializes — the patcher
+ * compares against this to decide which lines changed.
+ */
+function buildArticleFrontmatter(article: KnowledgeArticle): Record<string, unknown> {
+  return {
+    id: article.id,
+    title: article.title,
+    slug: article.slug,
+    category: article.category,
+    tags: [...article.tags],
+    codeRefs: [...article.codeRefs],
+    references: [...article.references],
+    ...(article.sourcePath ? { sourcePath: article.sourcePath } : {}),
+    createdAt: article.createdAt,
+    updatedAt: article.updatedAt,
+    ...(article.extraFrontmatter ?? {}),
+  };
 }
 
 /**
@@ -188,19 +210,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
   ): Promise<Result<KnowledgeArticle, AlreadyExistsError | StorageError>> {
     await this.ensureDirectory();
 
-    const frontmatter = {
-      id: article.id,
-      title: article.title,
-      slug: article.slug,
-      category: article.category,
-      tags: [...article.tags],
-      codeRefs: [...article.codeRefs],
-      references: [...article.references],
-      ...(article.sourcePath ? { sourcePath: article.sourcePath } : {}),
-      createdAt: article.createdAt,
-      updatedAt: article.updatedAt,
-      ...(article.extraFrontmatter ?? {}),
-    };
+    const frontmatter = buildArticleFrontmatter(article);
 
     const targetPath = this.articlePath(article.slug);
     const serialized = serializeMarkdown(frontmatter, article.content);
@@ -233,6 +243,64 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
           new AlreadyExistsError("KnowledgeArticle", article.slug),
         );
       }
+      return err(new StorageError(`Failed to write knowledge article: ${article.id}`, { cause: String(error) }));
+    }
+  }
+
+  /**
+   * Minimal-diff write for the in-place update path (slug unchanged). Reads the
+   * current on-disk bytes and rewrites ONLY the frontmatter lines whose value
+   * actually changed (plus `updatedAt`), leaving every other line — quoted
+   * titles, custom fields, original formatting — and the body byte-identical.
+   *
+   * Returns `null` to tell the caller to fall back to a full `writeArticle`
+   * when a minimal patch isn't safe or applicable:
+   *   - the slug changed (a rename writes a new file; full serialize is right),
+   *   - the file isn't readable here (e.g. it lives only in the worktree
+   *     fallback dir, so there's nothing to patch in primary),
+   *   - it doesn't parse, or the BODY changed (the body is written verbatim, so
+   *     a content edit is not a frontmatter diff), or
+   *   - `patchFrontmatter` declines (block-style / external-shaped frontmatter).
+   */
+  private async tryMinimalDiffWrite(
+    article: KnowledgeArticle,
+    previousSlug: Slug,
+  ): Promise<Result<KnowledgeArticle, StorageError> | null> {
+    if (previousSlug !== article.slug) return null;
+
+    const targetPath = this.articlePath(article.slug);
+    let raw: string;
+    try {
+      raw = await fs.readFile(targetPath, "utf-8");
+    } catch {
+      return null;
+    }
+
+    const parsed = parseMarkdown(raw);
+    if (!parsed.ok) return null;
+    if (parsed.value.body !== article.content) return null;
+
+    const onDisk = parsed.value.frontmatter;
+    const next = buildArticleFrontmatter(article);
+
+    const changes: Record<string, string> = {};
+    for (const [key, value] of Object.entries(next)) {
+      const nextSerialized = serializeFrontmatterValue(value);
+      const hadKey = Object.prototype.hasOwnProperty.call(onDisk, key);
+      const diskSerialized = hadKey ? serializeFrontmatterValue(onDisk[key]) : undefined;
+      if (nextSerialized !== diskSerialized) changes[key] = nextSerialized;
+    }
+    // `update` always advances updatedAt; force the line even if the serialized
+    // string happens to match (e.g. sub-millisecond updates).
+    changes["updatedAt"] = serializeFrontmatterValue(next["updatedAt"]);
+
+    const patched = patchFrontmatter(raw, changes);
+    if (patched === null) return null;
+
+    try {
+      await fs.writeFile(targetPath, patched, "utf-8");
+      return ok(article);
+    } catch (error) {
       return err(new StorageError(`Failed to write knowledge article: ${article.id}`, { cause: String(error) }));
     }
   }
@@ -361,6 +429,10 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
         updatedAt: timestamp(),
       };
 
+      // Prefer a minimal-diff patch (rewrites only the changed frontmatter
+      // lines + updatedAt); fall back to a full serialize when that isn't safe.
+      const minimal = await this.tryMinimalDiffWrite(updated, existing.slug);
+      if (minimal !== null) return minimal;
       return this.writeArticle(updated, existing.slug);
     });
   }

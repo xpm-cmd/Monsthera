@@ -119,16 +119,25 @@ export function parseMarkdown(raw: string): Result<ParsedMarkdown, ValidationErr
   return ok({ frontmatter, body });
 }
 
+/**
+ * Serialize a single frontmatter value to its inline YAML string form:
+ * arrays become `[a, b, c]`, everything else is stringified bare. Shared by
+ * `serializeMarkdown` (full write) and `patchFrontmatter` (minimal-diff write)
+ * so the two paths produce byte-identical values for a given input.
+ */
+export function serializeFrontmatterValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.join(", ")}]`;
+  }
+  return String(value);
+}
+
 /** Serialize frontmatter and body back to a markdown string */
 export function serializeMarkdown(frontmatter: Record<string, unknown>, body: string): string {
   const lines: string[] = ["---"];
 
   for (const [key, value] of Object.entries(frontmatter)) {
-    if (Array.isArray(value)) {
-      lines.push(`${key}: [${value.join(", ")}]`);
-    } else {
-      lines.push(`${key}: ${String(value)}`);
-    }
+    lines.push(`${key}: ${serializeFrontmatterValue(value)}`);
   }
 
   lines.push("---");
@@ -136,4 +145,53 @@ export function serializeMarkdown(frontmatter: Record<string, unknown>, body: st
   lines.push(body);
 
   return lines.join("\n");
+}
+
+/**
+ * Patch only the named frontmatter keys in a raw markdown string, preserving
+ * every other byte — other frontmatter lines (and their original quoting and
+ * spacing) and the entire body — exactly. This is the minimal-diff write path
+ * used by `update`, so a single-field edit no longer canonicalizes the whole
+ * file (collapsing block-style lists to flow, stripping quotes, reordering).
+ *
+ * `changes` maps a frontmatter key to its already-serialized replacement value
+ * (use `serializeFrontmatterValue`). Returns `null` — the signal for the caller
+ * to fall back to a full `serializeMarkdown` — unless the document is safe to
+ * line-patch:
+ *   - it opens with `---\n` and has a `\n---\n` closing delimiter,
+ *   - every frontmatter line is a single-line `key:` entry (no block-style
+ *     list items, no indented continuations, no blank lines), and
+ *   - every changed key is present on its own line.
+ * That guard is what keeps block-style / external corpora safe: they take the
+ * unchanged full-serialize path rather than being half-patched.
+ */
+export function patchFrontmatter(raw: string, changes: Record<string, string>): string | null {
+  const OPEN = "---\n";
+  if (!raw.startsWith(OPEN)) return null;
+
+  // The first `\n---\n` after the opening delimiter closes the frontmatter.
+  // Frontmatter lines are all `key: value`, so this can't false-match a value.
+  const closeIdx = raw.indexOf("\n---\n", OPEN.length);
+  if (closeIdx === -1) return null;
+
+  const frontmatterText = raw.slice(OPEN.length, closeIdx);
+  const rest = raw.slice(closeIdx); // closing delimiter + body, kept verbatim
+
+  const unseenKeys = new Set(Object.keys(changes));
+  const patchedLines: string[] = [];
+  for (const line of frontmatterText.split("\n")) {
+    const keyMatch = line.match(/^([A-Za-z0-9_]+):/);
+    if (keyMatch === null) return null; // block-style / non-simple line → unsafe
+    const key = keyMatch[1]!;
+    if (Object.prototype.hasOwnProperty.call(changes, key)) {
+      unseenKeys.delete(key);
+      patchedLines.push(`${key}: ${changes[key]}`);
+    } else {
+      patchedLines.push(line);
+    }
+  }
+
+  if (unseenKeys.size > 0) return null; // a changed key had no line to patch
+
+  return OPEN + patchedLines.join("\n") + rest;
 }
