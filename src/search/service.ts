@@ -35,6 +35,7 @@ import {
 } from "./think-synthesis.js";
 import { PolicyLoader } from "../work/policy-loader.js";
 import type { CanonicalValue } from "../work/policy-loader.js";
+import type { Reranker } from "./reranker.js";
 
 export interface ContextPackItem {
   readonly id: string;
@@ -96,6 +97,8 @@ export interface SearchServiceDeps {
   embeddingProvider: EmbeddingProvider;
   /** Optional general-purpose LLM (PR-3). When absent or stub, `think` degrades to ranked sources. */
   textGenerator?: TextGenerator;
+  /** Optional reranker (PR-11). When absent or `rerankEnabled` is off, search keeps the hybrid order. */
+  reranker?: Reranker;
   config: SearchServiceConfig;
   logger: Logger;
   status?: StatusReporter;
@@ -127,6 +130,8 @@ export class SearchService {
   private readonly inventoryService?: CodeInventoryService;
   /** PR-3 — general-purpose LLM for `think` synthesis. Optional; absent ⇒ degraded. Set via deps or setTextGenerator. */
   private textGenerator?: TextGenerator;
+  /** PR-11 — optional relevance reranker stage. Absent or disabled ⇒ no reranking. Set via deps or setReranker. */
+  private reranker?: Reranker;
 
   /** Cached result of the last canary query (null = never ran) */
   private canaryHealthy: boolean | null = null;
@@ -143,6 +148,7 @@ export class SearchService {
     this.repoPath = deps.repoPath;
     if (deps.inventoryService) this.inventoryService = deps.inventoryService;
     if (deps.textGenerator) this.textGenerator = deps.textGenerator;
+    if (deps.reranker) this.reranker = deps.reranker;
   }
 
   /**
@@ -152,6 +158,11 @@ export class SearchService {
    */
   setTextGenerator(generator: TextGenerator): void {
     this.textGenerator = generator;
+  }
+
+  /** Inject the reranker post-construction (mirrors `setTextGenerator`). */
+  setReranker(reranker: Reranker): void {
+    this.reranker = reranker;
   }
 
   // ─── think (synthesis) ───────────────────────────────────────────────────────
@@ -341,10 +352,11 @@ export class SearchService {
 
     // Hybrid merge: normalize BM25 scores and combine with cosine similarity
     const merged = this.mergeResults(bm25Result.value, semanticResult.value, this.config.alpha);
-    const reranked = await this.rerankForTrust(query, merged);
+    const relevanceReranked = await this.applyReranker(query, merged);
+    const trustReranked = await this.rerankForTrust(query, relevanceReranked);
 
     // Apply offset + limit
-    const page = reranked.slice(offset, offset + limit);
+    const page = trustReranked.slice(offset, offset + limit);
     return ok(page);
   }
 
@@ -393,6 +405,68 @@ export class SearchService {
 
     merged.sort((a, b) => b.hybridScore - a.hybridScore);
     return merged.map((m) => m.result);
+  }
+
+  /** Reranker pool size by profile — how many top hits the LLM re-scores. */
+  private rerankTopK(): number {
+    switch (this.config.rankProfile) {
+      case "conservative":
+        return 10;
+      case "tokenmax":
+        return 40;
+      default:
+        return 20;
+    }
+  }
+
+  /**
+   * PR-11 relevance reranker stage — sits between the hybrid merge and the
+   * trust rerank. Re-scores the top-K candidates with the configured
+   * `Reranker` (a cross-encoder over `container.textGenerator` in production,
+   * a no-op stub by default) and reorders them; the tail is left untouched.
+   *
+   * Fail-open at every step: disabled flag, no reranker, an unhealthy or
+   * erroring reranker all return the input order unchanged, so a flaky LLM
+   * can never break `search`. In hermetic / semantic-off runs this path is
+   * not reached at all, which is why the eval baseline is preserved.
+   */
+  private async applyReranker(query: string, results: SearchResult[]): Promise<SearchResult[]> {
+    if (!this.config.rerankEnabled || this.reranker === undefined || results.length < 2) {
+      return results;
+    }
+
+    const topK = Math.min(results.length, this.rerankTopK());
+    const head = results.slice(0, topK);
+    const tail = results.slice(topK);
+
+    const health = await this.reranker.healthCheck();
+    if (!health.ok) {
+      this.logger.warn("Reranker unhealthy; keeping hybrid order", {
+        operation: "rerank",
+        reranker: this.reranker.name,
+      });
+      return results;
+    }
+
+    const candidates = head.map((r) => ({ id: r.id, text: `${r.title}\n${r.snippet}` }));
+    const scored = await this.reranker.rerank(query, candidates);
+    if (!scored.ok) {
+      this.logger.warn("Reranker failed; keeping hybrid order", {
+        operation: "rerank",
+        reranker: this.reranker.name,
+        error: scored.error.message,
+      });
+      return results;
+    }
+
+    const scoreById = new Map(scored.value.map((s) => [s.id, s.score]));
+    // Reweight each hit's hybrid score by its [0,1] relevance, then re-sort.
+    // A neutral 1.0 (the stub, or an id the reranker omitted) leaves the score
+    // untouched, so the downstream trust rerank sees exactly today's scores —
+    // making a stub or disabled reranker an exact no-op.
+    const reweighted = head.map((r) => ({ ...r, score: r.score * (scoreById.get(r.id) ?? 1) }));
+    reweighted.sort((a, b) => b.score - a.score);
+    return [...reweighted, ...tail];
   }
 
   private async rerankForTrust(query: string, results: SearchResult[]): Promise<SearchResult[]> {
