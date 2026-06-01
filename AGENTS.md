@@ -125,6 +125,30 @@ Fields:
 
 The field is a JSON string because the flat markdown parser does not round-trip nested YAML (see ADR-010). Keep the outer single quotes, use valid JSON inside. After editing, run `monsthera lint` to verify the registry parses — malformed JSON is logged and the registry silently drops the offending article.
 
+## How to declare custom-frontmatter rules
+
+Custom frontmatter fields (ADR-020) — `replicability_score`, `owner`, anything beyond the ten standard keys — are **authorable** (`knowledge create --field key=value`, or the MCP `extraFrontmatter` object), **queryable** (`knowledge list --filter "custom.<key><op><value>"`), and **validatable** per category via a policy article. A rule asserts that articles in a category must carry a field of a given type / scalar range.
+
+Add a JSON array to a `category: policy` article's `policy_custom_frontmatter_json` (same JSON-string detour as canonical values — ADR-010):
+
+```yaml
+---
+# ... standard frontmatter, category: policy ...
+policy_custom_frontmatter_json: '[{"category":"experiment","key":"replicability_score","required":true,"type":"number","min":0,"max":1,"severity":"warning"}]'
+---
+```
+
+Fields per rule:
+
+- `category` (required) — the article category the rule targets.
+- `key` (required) — the custom-frontmatter field to check.
+- `required` (default `false`) — flag the article when the field is absent.
+- `type` — `string` | `number` | `boolean`; flags a type mismatch when present.
+- `min` / `max` — inclusive numeric bounds for a scalar field.
+- `severity` (default `warning`) — `warning` is corpus hygiene and does **not** gate the pre-commit hook; set `error` to gate.
+
+Run `monsthera lint --registry custom-frontmatter` to apply. The family is inert until a policy declares rules (a corpus with no such policy lints clean). See [`docs/adrs/020-custom-frontmatter-fields.md`](docs/adrs/020-custom-frontmatter-fields.md) for the full rationale.
+
 ## Structured reason fields convention
 
 When advancing a work article, prefer structured flags over packing prose into `--reason`. Structured fields land on `phase_history[*].metadata`, survive the frontmatter round-trip via the existing `phaseHistoryJson` blob, and are directly queryable via `monsthera work list --metadata-filter` and the MCP `search_work_by_metadata` tool.
