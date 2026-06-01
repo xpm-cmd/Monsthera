@@ -135,10 +135,21 @@ Inside the dashboard you can now:
 
 ```bash
 pnpm exec tsx src/bin.ts knowledge create --title "API Design" --category architecture --content "REST vs GraphQL..."
+pnpm exec tsx src/bin.ts knowledge create --title "Run 42" --category solution --field replicability_score=0.91   # custom frontmatter (ADR-020)
+pnpm exec tsx src/bin.ts knowledge list --filter "custom.replicability_score<0.8"   # query by a custom field
 pnpm exec tsx src/bin.ts work create --title "Add auth" --template feature --author agent-1 --priority high
 pnpm exec tsx src/bin.ts ingest local --path docs/adrs --category docs --summary
+pnpm exec tsx src/bin.ts ingest git --range HEAD~10..HEAD     # ingest commits as knowledge (origin: ingested)
+pnpm exec tsx src/bin.ts lint --registry custom-frontmatter   # validate custom fields against a policy
+pnpm exec tsx src/bin.ts doctor                               # health + provenance / staleness / contradiction report
 pnpm exec tsx src/bin.ts reindex
 ```
+
+### Custom frontmatter & provenance
+
+Custom frontmatter (ADR-020) is first-class: **authorable** (`--field key=value`, or the MCP `extraFrontmatter` object on `create_article`/`update_article`), **queryable** (`knowledge list --filter "custom.<key><op><value>"` and the `list_articles` MCP tool — `=` is string equality, `<`/`<=`/`>`/`>=` are numeric, scalars only), and **validatable** (`lint --registry custom-frontmatter` against per-category rules declared in a `policy` article — see [`AGENTS.md`](AGENTS.md) for the recipe).
+
+Every article carries provenance under `origin` (`agent` | `human` | `distilled` | `ingested`), resolved at read-time so the default (`agent`) is never written to disk. `monsthera doctor` reports the corpus provenance breakdown alongside staleness and cross-article contradictions.
 
 ## Semantic Search
 

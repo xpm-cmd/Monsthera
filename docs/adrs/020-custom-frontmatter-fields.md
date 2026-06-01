@@ -1,10 +1,23 @@
 # ADR-020: Typed / Custom Frontmatter Fields
 
-**Status:** Proposed
+**Status:** Accepted — implemented (2026-05-31; all three gaps closed)
 **Date:** 2026-05-30
 **Deciders:** Monsthera core
 **Supersedes:** none
 **Related:** ADR-001 (Storage Model), ADR-005 (Surface Boundaries), ADR-007 (Policy Articles), ADR-012 (Drift Prevention Closure)
+
+---
+
+## Implementation status
+
+This ADR shipped in full across three PRs. The present-tense "gaps are open" framing in **Context** below is the historical record as written on 2026-05-30; the gaps are now closed:
+
+- **Phase 0 — storage round-trip:** pre-existing (blessed as canonical here).
+- **Phase 1 — authoring (gap 1):** PR #125 — `extraFrontmatter` accepted on the create/update input schemas; CLI `--field key=value`; MCP `extraFrontmatter` object on `create_article`/`update_article`.
+- **Phase 2 — query (gap 2):** PR #138 — `--filter custom.<key><op><value>` on `knowledge list` + the `list_articles` MCP tool (`src/knowledge/custom-filter.ts`). **Deviation:** the `custom.<key>` *search-term emission* (Decision §"Query / index integration" and Implementation note P2) was deferred — the tokenizer splits on every non-alphanumeric char (`/[^a-z0-9]+/`), so a namespaced `custom.<key>` term cannot survive without a tokenizer change that risks the ranking characterization pins. The in-memory `--filter` predicate (tokenizer-independent) delivers the queryability the gap required and keeps retrieval eval-neutral.
+- **Phase 3 — validation (gap 3):** PR #139 — `custom-frontmatter` lint family + per-category policy rules via `policy_custom_frontmatter_json` (`src/work/lint.ts`, `src/work/policy-loader.ts`).
+
+Provenance (`origin`) shipped alongside in PR #137, and git ingestion sets `origin: ingested` in PR #140. Knowledge notes: `pr14-custom-frontmatter-query`, `pr14-custom-frontmatter-lint`, `pr13-provenance`.
 
 ---
 
@@ -24,7 +37,7 @@ So the "cheap passthrough so custom fields survive read-modify-write" that earli
 2. **Custom fields are not queryable.** Nothing in `src/search/` indexes `extraFrontmatter`. You can read a custom field on an article you already have, but you cannot find articles *by* one (e.g. "every `solution` with `replicability_score < 0.8`").
 3. **Custom fields are not lintable.** `src/work/lint.ts` never sees `extraFrontmatter`. There is no way to assert "every article in this category must carry `replicability_score` ∈ [0,1]" or to flag stray/garbage keys. This is the gap that let the missing scores slip through.
 
-This ADR decides how to close (1), (2), and (3). It is design-only — no code ships with it.
+This ADR decides how to close (1), (2), and (3). It was design-only when written (2026-05-30); see **Implementation status** above for the PRs that have since shipped all three.
 
 ## Decision
 
