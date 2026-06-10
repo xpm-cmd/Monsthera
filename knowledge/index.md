@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 133 knowledge articles and 27 work articles.
-> Last updated: 2026-06-10 23:23:55
+> Auto-generated catalog of 134 knowledge articles and 27 work articles.
+> Last updated: 2026-06-10 23:28:02
 
 ## Knowledge
 
@@ -178,6 +178,7 @@
 - [Wave D0: router del dashboard partido en routes/ por dominio — 1433 → 189 líneas, cero cambio de comportamiento](notes/wave-d0-router-del-dashboard-partido-en-routes-por-dominio-1433-189-lneas-cero-cambio-de-comportamiento.md) — Rama `refactor/d0-dashboard-routes`, apilada sobre #159. El archivo más grande d
 - [Wave D1: responsive del sidebar, search results-first, y el badge fantasma de Convoys](notes/wave-d1-responsive-del-sidebar-search-results-first-y-el-badge-fantasma-de-convoys.md) — Rama `feat/d1-dashboard-ux-prio1`, apilada sobre #160. Los tres hallazgos PRIO-1
 - [Wave D2: página Sessions, card de retrieval-quality, y heroes colapsables persistentes](notes/wave-d2-pgina-sessions-card-de-retrieval-quality-y-heroes-colapsables-persistentes.md) — Rama `feat/d2-dashboard-features`, apilada sobre #161. Hallazgos (c)/(e)/(f) del
+- [Wave D3: assets self-hosted (cero CDN), footer informativo, y las 7 notas dashboard-* refrescadas](notes/wave-d3-assets-self-hosted-cero-cdn-footer-informativo-y-las-7-notas-dashboard-refrescadas.md) — Rama `chore/d3-dashboard-polish`, apilada sobre #162. Cierra Wave D.  ## (g) Pol
 
 ## Work
 

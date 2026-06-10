@@ -245,3 +245,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 23:22:23]** update knowledge | Dashboard REST API endpoints (k-kmnflb56)
 - **[2026-06-10 23:23:06]** update knowledge | Dashboard UI component library (k-imz9hai0)
 - **[2026-06-10 23:23:55]** update knowledge | Dashboard work page UX flow (k-5nuw1j8i)
+- **[2026-06-10 23:28:02]** create knowledge | Wave D3: assets self-hosted (cero CDN), footer informativo, y las 7 notas dashboard-* refrescadas (k-zuks8lor)
