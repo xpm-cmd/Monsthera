@@ -215,3 +215,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 09:42:22]** create knowledge | PR-16: index navegable — filePath runtime + exclusión gitignore-aware (Banyan P0-AB) (k-zv7qfvll)
 - **[2026-06-10 10:02:17]** create knowledge | PR-17: precisión de orphan_citation — forma de ID + resolución por stem (Banyan P0-C) (k-x4xfniba)
 - **[2026-06-10 10:23:59]** create knowledge | PR-18: semantic onboarding honesto — enable-semantic verificado cross-repo (Banyan P1) (k-7j6lirme)
+- **[2026-06-10 10:43:04]** create knowledge | PR-19: Lean symbol extraction en el code inventory (Banyan P2) (k-hjc2eo08)

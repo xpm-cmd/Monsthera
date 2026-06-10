@@ -305,7 +305,11 @@ export class TextMateSymbolExtractor implements SymbolExtractor {
   constructor(private readonly logger?: Logger) {}
 
   supports(extension: string): boolean {
-    return languageForExtension(extension) !== null;
+    // Only claim extensions whose language is grammar-backed. `.lean` maps
+    // to the `lean` language id but has no Shiki descriptor — it belongs to
+    // the `LeanSymbolExtractor` (see `default-extractor.ts`).
+    const languageId = languageForExtension(extension);
+    return languageId !== null && descriptorFor(languageId) !== null;
   }
 
   async extract(input: {

@@ -103,6 +103,10 @@ const DESCRIPTORS: Record<string, LanguageDescriptor> = {
 };
 
 const EXTENSION_TO_LANGUAGE: Readonly<Record<string, string>> = {
+  // `.lean` has no DESCRIPTORS entry: Lean is extracted by the regex-based
+  // `LeanSymbolExtractor`, not by a Shiki grammar. The mapping lives here so
+  // the inventory service tags `.lean` files with the `lean` language id.
+  ".lean": "lean",
   ".ts": "typescript",
   ".mts": "typescript",
   ".cts": "typescript",
