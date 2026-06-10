@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 119 knowledge articles and 22 work articles.
-> Last updated: 2026-06-10 10:43:04
+> Auto-generated catalog of 120 knowledge articles and 22 work articles.
+> Last updated: 2026-06-10 10:57:31
 
 ## Knowledge
 
@@ -158,6 +158,7 @@
 - [PR-17: precisión de orphan_citation — forma de ID + resolución por stem (Banyan P0-C)](notes/pr-17-precisin-de-orphan-citation-forma-de-id-resolucin-por-stem-banyan-p0-c.md) — Segundo fix consumer-driven Banyan (ver [[pr-16-index-navegable-filepath-runtime
 - [PR-18: semantic onboarding honesto — enable-semantic verificado cross-repo (Banyan P1)](notes/pr-18-semantic-onboarding-honesto-enable-semantic-verificado-cross-repo-banyan-p1.md) — Tercer fix consumer-driven Banyan. Rama `feat/banyan-p1-semantic`. El "semantic
 - [PR-19: Lean symbol extraction en el code inventory (Banyan P2)](notes/pr-19-lean-symbol-extraction-en-el-code-inventory-banyan-p2.md) — Cuarto fix consumer-driven Banyan. Rama `feat/banyan-p2-lean-inventory`. `code r
+- [PR-20: work tracking quickstart para consumidores (Banyan P3, docs-only)](notes/pr-20-work-tracking-quickstart-para-consumidores-banyan-p3-docs-only.md) — Quinto y último fix consumer-driven Banyan. Rama `docs/banyan-p3-work-quickstart
 - [PR-7: Context-pack ranking characterization pin](notes/pr7-context-pack-ranking-characterization.md) — First PR of M2 (knowledge-capability plan). Locks the context-pack ranking formu
 - [PR-8: Consolidated corpus staleness report](notes/pr8-corpus-staleness-report.md) — Second PR of M2. Folds per-item freshness into one whole-corpus, read-only stale
 - [PR-9: Deterministic cross-article contradiction detection](notes/pr9-contradiction-detection.md) — Third PR of M2. Surfaces when two corpus articles disagree on the same canonical
