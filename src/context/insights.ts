@@ -70,6 +70,44 @@ function ageDaysFrom(updatedAt?: string): number | undefined {
   return Math.max(0, Math.floor((Date.now() - time) / 86_400_000));
 }
 
+/**
+ * Per-category freshness windows. A single 14/45 window treats an ADR like a
+ * handoff, so the staleness report floods with durable decisions that haven't
+ * actually rotted (the 2026-06-10 audit flagged 63/114 articles "stale"). The
+ * window is resolved from `article.category`:
+ *
+ *  - durable (decision/architecture/adr/guide/reference): reviewed on a
+ *    quarterly-ish cadence -> fresh 90 / stale 180.
+ *  - semi-durable (pattern/solution/gotcha): drift with the code they describe,
+ *    faster than a decision, slower than a handoff -> fresh 30 / stale 90.
+ *  - ephemeral/unknown (context/handoff and everything else): session-scoped,
+ *    SHOULD rot fast -> fresh 14 / stale 45 (the historical default, kept so the
+ *    common case is unchanged).
+ *
+ * Resolution is case-insensitive. Unknown categories fall through to DEFAULT.
+ * Explicit `opts.{freshDays,staleDays}` still win over this map (per-field) —
+ * `SearchService` passes config 14/45, so build_context_pack keeps its single
+ * window, while `refs_stale` / `monsthera doctor` (which pass no override) pick
+ * up the category-aware windows for free.
+ */
+const DEFAULT_FRESHNESS_WINDOW = { freshDays: 14, staleDays: 45 } as const;
+
+const FRESHNESS_WINDOW_BY_CATEGORY: Readonly<Record<string, { freshDays: number; staleDays: number }>> = {
+  decision: { freshDays: 90, staleDays: 180 },
+  architecture: { freshDays: 90, staleDays: 180 },
+  adr: { freshDays: 90, staleDays: 180 },
+  guide: { freshDays: 90, staleDays: 180 },
+  reference: { freshDays: 90, staleDays: 180 },
+  pattern: { freshDays: 30, staleDays: 90 },
+  solution: { freshDays: 30, staleDays: 90 },
+  gotcha: { freshDays: 30, staleDays: 90 },
+};
+
+function freshnessWindowForCategory(category: string | undefined): { freshDays: number; staleDays: number } {
+  if (!category) return DEFAULT_FRESHNESS_WINDOW;
+  return FRESHNESS_WINDOW_BY_CATEGORY[category.toLowerCase()] ?? DEFAULT_FRESHNESS_WINDOW;
+}
+
 function freshnessFromAge(
   ageDays: number | undefined,
   freshDays = 14,
@@ -120,7 +158,12 @@ export async function inspectKnowledgeArticle(
   const ageDays = ageDaysFrom(article.updatedAt);
   const sourceSync = await inspectSourceSync(opts?.repoPath, article.sourcePath, article.updatedAt);
 
-  let freshness = freshnessFromAge(ageDays, opts?.freshDays, opts?.staleDays);
+  // Resolve the window per-field: an explicit opt wins; otherwise fall to the
+  // category-aware window (which itself defaults to 14/45 for unknown categories).
+  const categoryWindow = freshnessWindowForCategory(article.category);
+  const freshDays = opts?.freshDays ?? categoryWindow.freshDays;
+  const staleDays = opts?.staleDays ?? categoryWindow.staleDays;
+  let freshness = freshnessFromAge(ageDays, freshDays, staleDays);
   if (sourceSync.state === "source-newer") {
     freshness = {
       state: "stale",
