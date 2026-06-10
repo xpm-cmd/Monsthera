@@ -2,6 +2,7 @@ import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import type { MonstheraError } from "../core/errors.js";
 import { StorageError } from "../core/errors.js";
+import { ollamaRequest, normalizeOllamaBaseUrl } from "../core/ollama-client.js";
 
 /** Interface for embedding providers (Ollama, HuggingFace, etc.) */
 export interface EmbeddingProvider {
@@ -49,43 +50,30 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     embeddingModel: string;
     dimensions?: number;
   }) {
-    this.baseUrl = options.ollamaUrl.replace(/\/+$/, "");
+    this.baseUrl = normalizeOllamaBaseUrl(options.ollamaUrl);
     this.modelName = options.embeddingModel;
     // nomic-embed-text default; overridable for other models
     this.dimensions = options.dimensions ?? 768;
   }
 
   async embed(text: string): Promise<Result<number[], MonstheraError>> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/embeddings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: this.modelName, prompt: text }),
-      });
+    // Deliberately no timeoutMs: bulk reindex embeds can be slow and the
+    // embedding path has never had a request timeout.
+    const result = await ollamaRequest({
+      url: `${this.baseUrl}/api/embeddings`,
+      method: "POST",
+      body: { model: this.modelName, prompt: text },
+      includeBodyDetail: true,
+      statusErrorMessage: "Ollama embedding failed",
+      transportErrorMessage: "Ollama embedding request failed",
+    });
+    if (!result.ok) return result;
 
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        return err(
-          new StorageError(`Ollama embedding failed (${response.status})`, {
-            status: response.status,
-            body,
-          }),
-        );
-      }
-
-      const data = (await response.json()) as { embedding?: number[] };
-      if (!Array.isArray(data.embedding)) {
-        return err(new StorageError("Ollama response missing embedding array"));
-      }
-
-      return ok(data.embedding);
-    } catch (e) {
-      return err(
-        new StorageError("Ollama embedding request failed", {
-          cause: e instanceof Error ? e.message : String(e),
-        }),
-      );
+    const data = result.value as { embedding?: number[] };
+    if (!Array.isArray(data.embedding)) {
+      return err(new StorageError("Ollama response missing embedding array"));
     }
+    return ok(data.embedding);
   }
 
   async embedBatch(texts: string[]): Promise<Result<number[][], MonstheraError>> {
@@ -99,24 +87,17 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
   }
 
   async healthCheck(): Promise<Result<{ ready: true }, MonstheraError>> {
-    // 1. Check if Ollama is reachable
-    let tagsResponse: Response;
-    try {
-      tagsResponse = await fetch(`${this.baseUrl}/api/tags`);
-    } catch (e) {
-      return err(
-        new StorageError(`Ollama not reachable at ${this.baseUrl}`, {
-          cause: e instanceof Error ? e.message : String(e),
-        }),
-      );
-    }
-
-    if (!tagsResponse.ok) {
-      return err(new StorageError(`Ollama API error (${tagsResponse.status})`));
-    }
+    // 1. Check if Ollama is reachable (no timeout — pre-consolidation semantics)
+    const tags = await ollamaRequest({
+      url: `${this.baseUrl}/api/tags`,
+      method: "GET",
+      statusErrorMessage: "Ollama API error",
+      transportErrorMessage: `Ollama not reachable at ${this.baseUrl}`,
+    });
+    if (!tags.ok) return tags;
 
     // 2. Check if the model is available
-    const data = (await tagsResponse.json()) as { models?: Array<{ name: string }> };
+    const data = tags.value as { models?: Array<{ name: string }> };
     const models = data.models ?? [];
     const modelBase = this.modelName.split(":")[0]!;
     const available = models.some(
