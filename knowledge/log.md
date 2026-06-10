@@ -236,3 +236,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 12:41:32]** update work | Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission (w-bjggjpsg)
 - **[2026-06-10 12:42:29]** create work | Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host (w-y0wuvaix)
 - **[2026-06-10 12:55:51]** create knowledge | Wave D0: router del dashboard partido en routes/ por dominio — 1433 → 189 líneas, cero cambio de comportamiento (k-gqkb0d2i)
+- **[2026-06-10 22:56:54]** create knowledge | Wave D1: responsive del sidebar, search results-first, y el badge fantasma de Convoys (k-vvamtwke)
