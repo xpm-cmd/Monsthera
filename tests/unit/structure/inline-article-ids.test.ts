@@ -51,6 +51,18 @@ describe("extractInlineArticleIds", () => {
     expect(extractInlineArticleIds(content)).toEqual(["k-real-id"]);
   });
 
+  it("ignores IDs inside a soft-wrapped (multi-line) inline code span", () => {
+    // convoy-hardening-design-decisions.md regression: a single inline-code
+    // span wrapped across a newline (CommonMark joins the line ending to a
+    // space) carries example ids w-x / w-a / w-b that must NOT be cited.
+    const content = [
+      "2. CLI ergonomics. `monsthera convoy create --lead w-x --members",
+      "   w-a,w-b --goal 'g'` is the muscle-memory shape from S3.",
+      "Real follow-up: w-prose-id.",
+    ].join("\n");
+    expect(extractInlineArticleIds(content)).toEqual(["w-prose-id"]);
+  });
+
   it("ignores IDs inside HTML comments", () => {
     const content = "<!-- draft: k-todo -->\nProduction: k-live.";
     expect(extractInlineArticleIds(content)).toEqual(["k-live"]);

@@ -53,10 +53,15 @@ export function stripCodeRegions(content: string): string {
   //    stricter than CommonMark but good enough for stripping purposes.
   result = result.replace(/^([ \t]{0,3})(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1\2[ \t]*$/gm, "");
 
-  // 3. Inline code: 1-3 backticks, non-greedy, does not cross newlines.
-  //    The (?!\1) lookahead ensures a run opened with N backticks won't
-  //    be closed by a shorter run.
-  result = result.replace(/(`{1,3})(?:(?!\1)[^\n])+?\1/g, "");
+  // 3. Inline code: 1-3 backticks, non-greedy. A code span may soft-wrap
+  //    across single line endings (CommonMark joins them to spaces), so the
+  //    body matches non-fence characters OR a single newline that is NOT
+  //    followed by another newline. Stopping at a blank line bounds the
+  //    damage from a stray unmatched backtick: it can never swallow a
+  //    following paragraph (and its wikilinks / k-*/w-* ids) whole.
+  //    The (?!\1) lookahead still ensures a run opened with N backticks
+  //    won't be closed by a shorter run.
+  result = result.replace(/(`{1,3})(?:(?!\1)[^\n]|\n(?!\n))+?\1/g, "");
 
   return result;
 }

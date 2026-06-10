@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 98 knowledge articles and 22 work articles.
-> Last updated: 2026-06-10 08:55:22
+> Auto-generated catalog of 115 knowledge articles and 22 work articles.
+> Last updated: 2026-06-10 09:21:05
 
 ## Knowledge
 
@@ -12,7 +12,22 @@
 - [ADR-003: Migration Boundary](notes/adr-003-migration-boundary.md) — ## Source - Path: `docs/adrs/003-migration-boundary.md`  ## Overview  ADR-003 de
 - [ADR-004: Orchestration Model](notes/adr-004-orchestration-model.md) — ## ADR-004: Orchestration Model  Status: Accepted | Date: 2026-04-07  ### What s
 - [ADR-005: Surface Boundaries](notes/adr-005-surface-boundaries.md) — ## Status Accepted — 2026-04-07  ## Decision Monsthera exposes three distinct su
+- [ADR-006: Opt-in `snapshot_ready` Guard for `enrichment → implementation`](notes/adr-006-opt-in-snapshot-ready-guard-for-enrichment-implementation.md) — # ADR-006: Opt-in `snapshot_ready` Guard for `enrichment → implementation`  **St
+- [ADR-007: Knowledge-Driven Policy Articles](notes/adr-007-policy-articles.md) — # ADR-007: Knowledge-Driven Policy Articles  **Status:** Accepted **Date:** 2026
+- [ADR-008: Agent Dispatch Contract](notes/adr-008-agent-dispatch-contract.md) — # ADR-008: Agent Dispatch Contract  **Status:** Accepted **Date:** 2026-04-25 **
+- [ADR-009: Convoys, Requires-as-Hard-Block, and Mid-Session Resync](notes/adr-009-convoys-requires-resync.md) — # ADR-009: Convoys, Requires-as-Hard-Block, and Mid-Session Resync  **Status:**
+- [ADR-010: Orchestrator Ergonomics & Audit Tooling (PR A)](notes/adr-010-orchestrator-ergonomics-audit-tooling-pr-a.md) — # ADR-010: Orchestrator Ergonomics & Audit Tooling (PR A)  **Status:** Accepted
+- [ADR-011: Orchestrator CLI Ergonomics (PR B)](notes/adr-011-orchestrator-cli-ergonomics-pr-b.md) — # ADR-011: Orchestrator CLI Ergonomics (PR B)  **Status:** Accepted **Date:** 20
+- [ADR-012: Drift Prevention Closure (S5 PR B)](notes/adr-012-drift-prevention-closure.md) — # ADR-012: Drift Prevention Closure (S5 PR B)  **Status:** Accepted **Date:** 20
+- [ADR-013: Convoy Hardening — get, provenance events, single-convoy invariant](notes/adr-013-convoy-hardening.md) — # ADR-013: Convoy Hardening — get, provenance events, single-convoy invariant  *
+- [ADR-014: Convoy Dashboard — dedicated page, sidebar badge, lifecycle ribbon](notes/adr-014-convoy-dashboard.md) — # ADR-014: Convoy Dashboard — dedicated page, sidebar badge, lifecycle ribbon  *
+- [ADR-014: Portable Workspace Operations](notes/adr-014-portable-workspace-operations.md) — # ADR-014: Portable Workspace Operations  ## Status  Accepted — 2026-04-26  ## C
 - [ADR-015 Code Intelligence Strategy](notes/adr-015-code-intelligence-strategy.md) — ## Source - Path: `docs/adrs/015-code-intelligence-strategy.md` - Status: Accept
+- [ADR-016: Self update rollback and doctor](notes/adr-016-self-update-rollback-and-doctor.md) — # ADR-016: Self update rollback and doctor  ## Status  Accepted — 2026-04-26  ##
+- [ADR-017: Code Intelligence M3 — Lightweight Code Inventory](notes/adr-017-code-intelligence-m3-lightweight-inventory.md) — # ADR-017: Code Intelligence M3 — Lightweight Code Inventory  **Status:** Accept
+- [ADR-018: Cognitive handoff sessions](notes/adr-018-cognitive-handoff-sessions.md) — # ADR-018: Cognitive handoff sessions  **Status:** Accepted **Date:** 2026-05-16
+- [ADR-019: Agent-direct handoff (reversal of ADR-018 D2/D3)](notes/adr-019-agent-direct-handoff-reversal-of-adr-018-d2d3.md) — # ADR-019: Agent-direct handoff (reversal of ADR-018 D2/D3)  **Status:** Accepte
+- [ADR-020: Typed / Custom Frontmatter Fields](notes/adr-020-typed-custom-frontmatter-fields.md) — # ADR-020: Typed / Custom Frontmatter Fields  **Status:** Accepted — implemented
 - [Monsthera: Hybrid Knowledge Architecture v6](notes/monsthera-hybrid-knowledge-architecture-v6.md) — ## Overview  Monsthera is a TypeScript MCP server for AI agent coordination. Thi
 
 ### context
@@ -56,6 +71,7 @@
 - [Decision: convoys, requires-as-hard-block, mid-session resync](notes/convoy-requires-resync-design-decisions.md) — ADR-009 captures the formal decision (convoy types, hard-block guard, new event
 - [Monsthera stale code ref repair and orchestration audit](notes/monsthera-stale-code-ref-repair-and-orchestration-audit.md) — ## Summary Dead-code cleanup removed the unused wiki bookkeeper constructor fiel
 - [Monsthera trust ranking and current-docs ingest](notes/monsthera-trust-ranking-and-current-docs-ingest.md) — ## Summary Monsthera reliability was improved by importing the current Monsthera
+- [P2: Per-category staleness windows in insights.ts](notes/p2-per-category-staleness-windows-in-insightsts.md) — ## Problem The 2026-06-10 audit flagged 63 of 114 articles "stale". Staleness us
 - [S5 plan: convoy dashboard](notes/s5-plan-convoy-dashboard.md) — # S5 plan: convoy dashboard (S4 v2)  S4 v1 (PR #86) closed the operational loop
 
 ### design
@@ -130,6 +146,7 @@
 - [P1 eval honesty — golden-set expansion + contamination guardrail](notes/p1-eval-honesty-golden-set-expansion-contamination-guardrail.md) — Wave 2 of the 2026-06-10 audit (see [[auditora-integral-2026-06-10-backlog-prior
 - [P1 eval honesty — run-level engine detection + doctor liveness](notes/p1-eval-honesty-run-level-engine-detection-doctor-liveness.md) — Wave 2 (slice 2) of the 2026-06-10 audit (work `w-zluxybat`, branch `feat/p1-eva
 - [PR P0 shipped — audit hardening (auth GET, host bind, SDK bump, CI gates)](notes/pr-p0-shipped-audit-hardening-auth-get-host-bind-sdk-bump-ci-gates.md) — Wave 1 de la auditoría 2026-06-10 (ver [[auditora-integral-2026-06-10-backlog-pr
+- [PR P2 shipped — corpus & lint hygiene (ADR import, orphan FP fix, staleness por categoría)](notes/pr-p2-shipped-corpus-lint-hygiene-adr-import-orphan-fp-fix-staleness-por-categora.md) — Wave 3 de la auditoría 2026-06-10 (ver [[auditora-integral-2026-06-10-backlog-pr
 - [PR-10: Config-driven ranking knobs](notes/pr10-config-ranking-knobs.md) — Fourth PR of M2; prerequisite for PR-11's reranker.  ## What shipped (main @ 2fc
 - [PR-11: Relevance reranker stage](notes/pr11-reranker-stage.md) — Fifth PR of M2. Optional relevance-reranking stage for hybrid search; consumes t
 - [PR-12: Embedding onboarding ergonomics (M2 close)](notes/pr12-embedding-onboarding.md) — Sixth and final PR of M2. Makes enabling semantic search a one-liner.  ## What s

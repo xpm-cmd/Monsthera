@@ -79,6 +79,24 @@ describe("stripCodeRegions", () => {
     const input = "span ``code with ` backtick and [[nope]]`` done";
     expect(stripCodeRegions(input)).not.toContain("[[nope]]");
   });
+  it("removes inline code that soft-wraps across a single newline", () => {
+    // CommonMark code spans may contain line endings (joined to spaces).
+    // A backtick opened on one line and closed on the next must still be
+    // treated as code so its contents do not leak as wikilinks/ids.
+    const input = "ergonomics `monsthera create --lead [[w-x]] --members\n[[w-a]],[[w-b]]` is the shape";
+    const out = stripCodeRegions(input);
+    expect(out).not.toContain("[[w-x]]");
+    expect(out).not.toContain("[[w-a]]");
+    expect(out).not.toContain("[[w-b]]");
+    expect(out).toContain("is the shape");
+  });
+  it("does not let an unclosed inline backtick swallow a following paragraph", () => {
+    // A lone backtick must not eat across a blank line (paragraph break),
+    // or real wikilinks in the next paragraph would silently vanish.
+    const input = "a stray ` backtick here\n\nNext paragraph [[real-link]] stays.";
+    const out = stripCodeRegions(input);
+    expect(out).toContain("[[real-link]]");
+  });
   it("removes HTML comments", () => {
     const input = "<!-- [[hidden]] -->visible [[shown]]";
     const out = stripCodeRegions(input);

@@ -14,6 +14,20 @@ import type { CanonicalValue } from "../work/policy-loader.js";
 import { normalizeTag } from "../knowledge/tags.js";
 import { extractInlineArticleIds, extractWikilinks, stripCodeRegions } from "./wikilink.js";
 
+/**
+ * A reference token that is an external URL (`http://` / `https://`) is a
+ * legitimate citation to something outside the corpus — a GitHub repo, an
+ * upstream spec — not a dangling pointer to a missing article. Such tokens
+ * must never enter `missingReferences`, otherwise `monsthera lint`,
+ * `knowledge refs --orphans`, and the `refs_orphans` MCP tool all report
+ * them as broken citations and `missingReferenceCount` is inflated. They
+ * are also never resolvable to a `k:`/`w:` node, so excluding them costs no
+ * real edges. Authored ids (`k-foo`, `w-bar`) and slugs are unaffected.
+ */
+function isExternalReference(ref: string): boolean {
+  return /^https?:\/\//i.test(ref);
+}
+
 /** Tags shared by up to this many articles get full pairwise edges. */
 const SHARED_TAG_DIRECT_THRESHOLD = 15;
 /** Tags shared by up to this many articles get a hub node instead of pairwise edges. */
@@ -352,7 +366,7 @@ export class StructureService {
             kind: "reference",
             label: "references",
           });
-        } else {
+        } else if (!isExternalReference(ref)) {
           missingReferences.add(`${article.id}:${ref}`);
         }
       }
@@ -438,6 +452,7 @@ export class StructureService {
           continue;
         }
 
+        if (isExternalReference(ref)) continue;
         missingReferences.add(`${article.id}:${ref}`);
       }
 
