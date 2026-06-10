@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { execFile } from "node:child_process";
 import type { Logger } from "../core/logger.js";
 import type { KnowledgeArticle } from "./repository.js";
 import { POLICY_CATEGORY } from "./schemas.js";
@@ -18,7 +19,7 @@ export class WikiBookkeeper {
   private readonly logPath: string;
 
   constructor(
-    markdownRoot: string,
+    private readonly markdownRoot: string,
     private readonly logger: Logger,
   ) {
     this.indexPath = path.join(markdownRoot, "index.md");
@@ -105,11 +106,29 @@ export class WikiBookkeeper {
     workArticles: readonly WorkArticle[],
   ): Promise<void> {
     try {
+      // Gitignored articles are LOCAL session state (e.g. consumers that
+      // gitignore handoff notes): listing them produces an index that
+      // dangles on every fresh checkout. Exclude them per FILE — the link
+      // target doubles as the check-ignore candidate path — and surface
+      // only a count, never the names (the whole point is they don't
+      // appear). Non-git roots degrade to "nothing ignored".
+      const ignored = await detectIgnoredPaths(this.markdownRoot, [
+        ...knowledgeArticles.map(knowledgeLinkPath),
+        ...workArticles.map(workLinkPath),
+      ]);
+      const knowledge = knowledgeArticles.filter((article) => !ignored.has(knowledgeLinkPath(article)));
+      const work = workArticles.filter((article) => !ignored.has(workLinkPath(article)));
+      const omittedCount =
+        (knowledgeArticles.length - knowledge.length) + (workArticles.length - work.length);
+
       const lines: string[] = [
         "# Monsthera Index",
         "",
-        `> Auto-generated catalog of ${knowledgeArticles.length} knowledge articles and ${workArticles.length} work articles.`,
+        `> Auto-generated catalog of ${knowledge.length} knowledge articles and ${work.length} work articles.`,
         `> Last updated: ${new Date().toISOString().slice(0, 19).replace("T", " ")}`,
+        ...(omittedCount > 0
+          ? [`> ${omittedCount} local-only article(s) omitted (gitignored).`]
+          : []),
         "",
       ];
 
@@ -118,7 +137,7 @@ export class WikiBookkeeper {
       lines.push("");
 
       const knowledgeByCategory = new Map<string, KnowledgeArticle[]>();
-      for (const article of knowledgeArticles) {
+      for (const article of knowledge) {
         const cat = article.category || "uncategorized";
         let bucket = knowledgeByCategory.get(cat);
         if (!bucket) {
@@ -140,7 +159,7 @@ export class WikiBookkeeper {
         } else {
           for (const article of articles) {
             const snippet = article.content.slice(0, 80).replace(/\n/g, " ").trim();
-            lines.push(`- [${article.title}](notes/${article.slug}.md) — ${snippet}`);
+            lines.push(`- [${article.title}](${knowledgeLinkPath(article)}) — ${snippet}`);
           }
         }
         lines.push("");
@@ -151,7 +170,7 @@ export class WikiBookkeeper {
       lines.push("");
 
       const workByPhase = new Map<string, WorkArticle[]>();
-      for (const article of workArticles) {
+      for (const article of work) {
         const phase = article.phase || "planning";
         let bucket = workByPhase.get(phase);
         if (!bucket) {
@@ -176,7 +195,7 @@ export class WikiBookkeeper {
         for (const article of articles) {
           const priority = article.priority ? ` [${article.priority}]` : "";
           const snippet = (article.content || "").slice(0, 60).replace(/\n/g, " ").trim();
-          lines.push(`- [${article.title}](work-articles/${article.id}.md)${priority} — ${snippet}`);
+          lines.push(`- [${article.title}](${workLinkPath(article)})${priority} — ${snippet}`);
         }
         lines.push("");
       }
@@ -206,7 +225,7 @@ function renderPolicySection(lines: string[], articles: readonly KnowledgeArticl
     const roles = formatList(fm.policy_requires_roles);
     const refs = formatList(fm.policy_requires_articles);
     lines.push(
-      `| [${article.title}](notes/${article.slug}.md) | ${templates} | ${transition} | ${roles} | ${refs} |`,
+      `| [${article.title}](${knowledgeLinkPath(article)}) | ${templates} | ${transition} | ${roles} | ${refs} |`,
     );
   }
 }
@@ -214,4 +233,53 @@ function renderPolicySection(lines: string[], articles: readonly KnowledgeArticl
 function formatList(value: unknown): string {
   if (!Array.isArray(value) || value.length === 0) return "—";
   return value.map((v) => String(v)).join(", ");
+}
+
+/**
+ * Index-relative link target for a knowledge article: the REAL backing file
+ * when the repository provided it (externally authored corpora are often
+ * ID-named while the frontmatter slug stays clean — linking by slug dangles),
+ * else the historical slug-derived path for repositories that don't track
+ * file paths (e.g. in-memory).
+ */
+function knowledgeLinkPath(article: KnowledgeArticle): string {
+  return article.filePath ?? `notes/${article.slug}.md`;
+}
+
+/** Index-relative link target for a work article (work files are id-named). */
+function workLinkPath(article: WorkArticle): string {
+  return `work-articles/${article.id}.md`;
+}
+
+/**
+ * Ask git which of `relativePaths` (relative to `cwd`) are ignored, via
+ * `git check-ignore --stdin -z` — execFile with an argv array (never a
+ * shell), NUL-delimited input/output so arbitrary filenames round-trip
+ * without quoting.
+ *
+ * Exit codes: 0 → stdout lists the ignored paths; 1 → none ignored;
+ * 128 → `cwd` is not in a git work tree; ENOENT → git is not installed.
+ * Every outcome except exit 0 leaves stdout empty, so parsing stdout
+ * uniformly degrades to "nothing ignored" — the pre-exclusion behavior.
+ */
+function detectIgnoredPaths(
+  cwd: string,
+  relativePaths: readonly string[],
+): Promise<ReadonlySet<string>> {
+  if (relativePaths.length === 0) return Promise.resolve(new Set());
+  return new Promise((resolve) => {
+    const child = execFile(
+      "git",
+      ["check-ignore", "--stdin", "-z"],
+      { cwd },
+      (_error, stdout) => {
+        resolve(new Set(stdout.split("\0").filter((p) => p.length > 0)));
+      },
+    );
+    // EPIPE surfaces on stdin when git is missing or exits before reading;
+    // swallow it — the completion callback still fires with empty stdout.
+    child.stdin?.on("error", () => {});
+    child.stdin?.write(relativePaths.join("\0") + "\0");
+    child.stdin?.end();
+  });
 }
