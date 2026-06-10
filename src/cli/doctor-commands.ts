@@ -14,8 +14,8 @@ import { formatError } from "./formatters.js";
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
 import { MonstheraError, StorageError } from "../core/errors.js";
+import type { Result } from "../core/result.js";
 import { PolicyLoader } from "../work/policy-loader.js";
-import { OllamaEmbeddingProvider } from "../search/embedding.js";
 
 /**
  * Fail-fast for CLI doctor flows: previously these helpers re-threw a
@@ -356,6 +356,49 @@ async function seedCurrentDocs(container: MonstheraContainer): Promise<{
   return { importedCount, createdCount, updatedCount };
 }
 
+/**
+ * Render the "Embeddings:" diagnostic block for `monsthera doctor`. Pure and
+ * exported so the unreachable-provider remediation can be unit-tested without
+ * a live container.
+ *
+ * `health` is the result of the provider's `healthCheck()` (or `undefined`
+ * when semantic search is disabled, in which case no probe was made). When
+ * semantic is enabled but the probe failed, the block names the silent BM25
+ * fallback and prints the exact remediation (`ollama pull …` or
+ * `MONSTHERA_SEMANTIC_ENABLED=false`).
+ */
+export function renderEmbeddingDiagnostic(input: {
+  semanticEnabled: boolean;
+  modelName: string;
+  dimensions: number;
+  embeddingModel: string;
+  health: Result<{ ready: true }, MonstheraError> | undefined;
+}): string {
+  const lines: string[] = ["Embeddings:"];
+  if (!input.semanticEnabled) {
+    lines.push("  Semantic search: disabled (BM25-only)");
+    lines.push("  Enable with: monsthera self enable-semantic");
+    return lines.join("\n") + "\n\n";
+  }
+  if (input.health?.ok) {
+    lines.push(`  Provider: ${input.modelName} (${input.dimensions}d) — ready`);
+    return lines.join("\n") + "\n\n";
+  }
+  lines.push(`  Provider: ${input.modelName} — UNAVAILABLE`);
+  if (input.health !== undefined && !input.health.ok) {
+    lines.push(`  ${input.health.error.message}`);
+  }
+  lines.push(
+    "  Semantic search is enabled but the embedding provider is unreachable — " +
+      "queries are silently falling back to BM25.",
+  );
+  lines.push(
+    `  Fix: run \`ollama pull ${input.embeddingModel}\` (and ensure Ollama is running), ` +
+      "or set MONSTHERA_SEMANTIC_ENABLED=false to disable semantic search.",
+  );
+  return lines.join("\n") + "\n\n";
+}
+
 export async function handleDoctor(args: string[]): Promise<void> {
   if (wantsHelp(args)) {
     printSubcommandHelp({
@@ -508,25 +551,22 @@ export async function handleDoctor(args: string[]): Promise<void> {
       process.stdout.write("\n");
     }
 
-    process.stdout.write("Embeddings:\n");
-    if (!container.config.search.semanticEnabled) {
-      process.stdout.write("  Semantic search: disabled (BM25-only)\n");
-      process.stdout.write("  Enable with: monsthera self enable-semantic\n\n");
-    } else {
-      const embeddingProvider = new OllamaEmbeddingProvider({
-        ollamaUrl: container.config.search.ollamaUrl,
+    // Probe the REAL wired provider (not a freshly reconstructed one) so this
+    // matches the engine `monsthera eval` and the hot path actually use. A
+    // diagnostic command is the right place for the live network call — the
+    // latency is acceptable here, unlike on the `status` hot path.
+    const embeddingHealth = container.config.search.semanticEnabled
+      ? await container.embeddingProvider.healthCheck()
+      : undefined;
+    process.stdout.write(
+      renderEmbeddingDiagnostic({
+        semanticEnabled: container.config.search.semanticEnabled,
+        modelName: container.embeddingProvider.modelName,
+        dimensions: container.embeddingProvider.dimensions,
         embeddingModel: container.config.search.embeddingModel,
-      });
-      const embeddingHealth = await embeddingProvider.healthCheck();
-      if (embeddingHealth.ok) {
-        process.stdout.write(
-          `  Provider: ${embeddingProvider.modelName} (${embeddingProvider.dimensions}d) — ready\n\n`,
-        );
-      } else {
-        process.stdout.write(`  Provider: ${embeddingProvider.modelName} — UNAVAILABLE\n`);
-        process.stdout.write(`  ${embeddingHealth.error.message}\n\n`);
-      }
-    }
+        health: embeddingHealth,
+      }),
+    );
 
     const legacyArticles = await collectLegacyArticles(container, scope);
     process.stdout.write("Legacy migration corpus:\n");

@@ -1,0 +1,43 @@
+[
+  {
+    "query": "search ranking bm25 semantic hybrid trust reranking",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": [
+      "k-zoawqis5",
+      "k-qszeow1i",
+      "k-cg3xlfgt"
+    ],
+    "forbiddenArticleIds": ["k-kmnflb56", "k-imz9hai0"],
+    "note": "Search-ranking + SearchService + trust-signal cluster. Dashboard REST API and UI component notes are unrelated to ranking internals — forbidden."
+  },
+  {
+    "query": "context pack builder scoring diagnostics mode ranking",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-x8umv6et", "k-174l945h"],
+    "note": "Context-pack-builder scoring note + PR-7 ranking characterization pin; the pack-ranking pair."
+  },
+  {
+    "query": "config driven ranking knobs reranker stage",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-gtgddgs3", "k-ovlxucc1"],
+    "forbiddenArticleIds": ["k-pupprz0g"],
+    "note": "PR-10 config knobs + PR-11 reranker stage. PR-12 embedding onboarding is about enabling embeddings, not ranking knobs/reranking — forbidden."
+  },
+  {
+    "query": "bm25 scoring fallback in-memory index degraded mode",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-0bz1r6n0", "k-q2wz8nb0"],
+    "note": "In-memory search-index BM25 note + in-memory repositories/degraded-mode note; the fallback pair."
+  },
+  {
+    "query": "trust signal legacy content search demotion",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-cg3xlfgt"],
+    "note": "Trust Signal System note — single-answer precision anchor."
+  }
+]

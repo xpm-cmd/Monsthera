@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { parseFlag, withContainer } from "./arg-helpers.js";
 import { printSubcommandHelp, wantsHelp } from "./help.js";
 import { loadGoldenCases } from "../eval/golden.js";
-import { runEval, type EvalReport, type EvalTarget } from "../eval/harness.js";
+import { runEval, detectEngine, type EvalReport, type EvalTarget } from "../eval/harness.js";
 
 /**
  * `monsthera eval` — run the retrieval-quality harness (C1) over the golden
@@ -21,7 +21,7 @@ export async function handleEval(args: string[]): Promise<void> {
       usage: "[--target pack|search] [--k <n>] [--golden <dir>] [--baseline <file>] [--json] [--repo <path>]",
       flags: [
         { name: "--target <t>", description: "pack (build_context_pack) | search. Default: pack." },
-        { name: "--k <n>", description: "Cutoff for P@k / R@k / NDCG@k. Default: 5." },
+        { name: "--k <n>", description: "Cutoff for P@k / R@k / NDCG@k. Default: 10." },
         { name: "--golden <dir>", description: "Golden-set dir. Default: <repo>/tests/eval/golden." },
         { name: "--baseline <file>", description: "Print aggregate deltas vs this baseline JSON (non-gating)." },
         { name: "--json", description: "Emit the raw report as JSON." },
@@ -37,7 +37,7 @@ export async function handleEval(args: string[]): Promise<void> {
     process.exit(1);
   }
   const kRaw = parseFlag(args, "--k");
-  const k = kRaw !== undefined ? Number(kRaw) : 5;
+  const k = kRaw !== undefined ? Number(kRaw) : 10;
   if (!Number.isInteger(k) || k < 1) {
     console.error(`Invalid --k "${kRaw}" (expected a positive integer).`);
     process.exit(1);
@@ -61,10 +61,17 @@ export async function handleEval(args: string[]): Promise<void> {
       return;
     }
 
-    const report = await runEval({ provider: container.searchService, cases, target, k });
     const semanticEnabled = container.config.search.semanticEnabled;
+    // Resolve the engine that will ACTUALLY answer this run before scoring.
+    // `semanticEnabled` is config intent; `engine` is reality — when semantic
+    // is enabled but the provider is unreachable, this resolves to
+    // `bm25-fallback` and the header/JSON stop claiming "semantic=on".
+    const engine = await detectEngine(container.embeddingProvider, semanticEnabled);
+    const report = await runEval({ provider: container.searchService, cases, target, k, engine });
 
     if (asJson) {
+      // Keep `semanticEnabled` (intent) alongside `report.engine` (reality) so
+      // both the configured flag and the engine that actually ran are visible.
       process.stdout.write(JSON.stringify({ ...report, semanticEnabled }, null, 2) + "\n");
     } else {
       process.stdout.write(renderReport(report, semanticEnabled) + "\n");
@@ -78,23 +85,29 @@ export async function handleEval(args: string[]): Promise<void> {
 
 function renderReport(report: EvalReport, semanticEnabled: boolean): string {
   const lines: string[] = [];
+  // `engine` is the engine that actually ran (reality); `semantic` is the
+  // config flag (intent). When they disagree — semantic=on but
+  // engine=bm25-fallback — the provider was unreachable and BM25 answered.
   lines.push(
     `Eval — target=${report.target} k=${report.k} cases=${report.caseCount} ` +
-      `semantic=${semanticEnabled ? "on" : "off"}`,
+      `engine=${report.engine} semantic=${semanticEnabled ? "on" : "off"}`,
   );
   lines.push("");
   for (const c of report.cases) {
     const flag = c.error !== undefined ? ` ERROR(${c.error})` : "";
+    const contam =
+      c.contamination !== undefined ? ` C=${c.contamination}${c.contamination > 0 ? " !" : ""}` : "";
     lines.push(
       `  P@k=${c.precision.toFixed(3)} R@k=${c.recall.toFixed(3)} ` +
-        `NDCG=${c.ndcg.toFixed(3)} RR=${c.reciprocalRank.toFixed(3)}  ${c.query}${flag}`,
+        `NDCG=${c.ndcg.toFixed(3)} RR=${c.reciprocalRank.toFixed(3)}${contam}  ${c.query}${flag}`,
     );
   }
   lines.push("");
   const a = report.aggregate;
   lines.push(
     `AGGREGATE  P@${report.k}=${a.precisionAtK.toFixed(4)} R@${report.k}=${a.recallAtK.toFixed(4)} ` +
-      `NDCG@${report.k}=${a.ndcgAtK.toFixed(4)} MRR=${a.mrr.toFixed(4)}`,
+      `NDCG@${report.k}=${a.ndcgAtK.toFixed(4)} MRR=${a.mrr.toFixed(4)} ` +
+      `CONTAM=${a.contaminationRate.toFixed(4)}`,
   );
   return lines.join("\n");
 }
@@ -123,4 +136,8 @@ function printBaselineDeltas(report: EvalReport, baselinePath: string): void {
   process.stdout.write(`  R@${report.k}=${fmt(a.recallAtK, base.recallAtK)}\n`);
   process.stdout.write(`  NDCG@${report.k}=${fmt(a.ndcgAtK, base.ndcgAtK)}\n`);
   process.stdout.write(`  MRR=${fmt(a.mrr, base.mrr)}\n`);
+  // contaminationRate is additive; tolerate older baselines that predate it.
+  if (base.contaminationRate !== undefined) {
+    process.stdout.write(`  CONTAM=${fmt(a.contaminationRate, base.contaminationRate)}\n`);
+  }
 }

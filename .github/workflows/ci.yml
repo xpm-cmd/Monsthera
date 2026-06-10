@@ -7,7 +7,7 @@ on:
 
 # CI corre sin Dolt ni Ollama: el contenedor degrada a almacenamiento in-memory
 # (allowDegraded) y embeddings stub. Verificado: la suite completa pasa en estas
-# condiciones (2044 tests). Esto mantiene el CI hermético y rápido.
+# condiciones (2226 tests). Esto mantiene el CI hermético y rápido.
 env:
   MONSTHERA_DOLT_ENABLED: "false"
   MONSTHERA_SEMANTIC_ENABLED: "false"

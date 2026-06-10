@@ -1,14 +1,133 @@
 {
   "target": "pack",
-  "k": 5,
-  "caseCount": 7,
+  "k": 10,
+  "caseCount": 28,
+  "engine": "bm25-fallback",
   "aggregate": {
-    "precisionAtK": 0.2,
-    "recallAtK": 1,
-    "ndcgAtK": 1,
-    "mrr": 1
+    "precisionAtK": 0.1929,
+    "recallAtK": 0.9821,
+    "ndcgAtK": 0.9449,
+    "mrr": 0.9821,
+    "contaminationRate": 0.6364
   },
   "cases": [
+    {
+      "query": "dashboard architecture spa routing data flow state",
+      "expected": [
+        "k-2jb9bh3p",
+        "k-l7oy85r0",
+        "k-jgazhhz6"
+      ],
+      "rankedTopK": [
+        "k-2jb9bh3p",
+        "k-l7oy85r0",
+        "k-5nuw1j8i",
+        "k-8dsb3up8",
+        "k-w8xru25o",
+        "k-ypsx5ask",
+        "k-jgazhhz6",
+        "k-fqn5b57c",
+        "k-vo0fhcxl",
+        "k-kmnflb56"
+      ],
+      "precision": 0.3,
+      "recall": 1,
+      "ndcg": 0.9218,
+      "reciprocalRank": 1,
+      "contamination": 0
+    },
+    {
+      "query": "dashboard page ux flow knowledge work",
+      "expected": [
+        "k-w8xru25o",
+        "k-5nuw1j8i",
+        "k-jgazhhz6"
+      ],
+      "rankedTopK": [
+        "k-5nuw1j8i",
+        "k-w8xru25o",
+        "k-l7oy85r0",
+        "k-2jb9bh3p",
+        "k-convoy-dashboard-design-decisions",
+        "k-jgazhhz6",
+        "k-gzzzt7uk",
+        "k-91f42ekj",
+        "k-kmnflb56",
+        "k-imz9hai0"
+      ],
+      "precision": 0.3,
+      "recall": 1,
+      "ndcg": 0.9325,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "dashboard ui component library primitives",
+      "expected": [
+        "k-imz9hai0"
+      ],
+      "rankedTopK": [
+        "k-imz9hai0",
+        "k-gzzzt7uk",
+        "k-l7oy85r0",
+        "k-k2ylcsm9",
+        "k-91f42ekj",
+        "k-8dsb3up8",
+        "k-2jb9bh3p",
+        "k-kmnflb56",
+        "k-jgazhhz6",
+        "k-convoy-dashboard-design-decisions"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "dashboard rest api endpoints routes",
+      "expected": [
+        "k-kmnflb56"
+      ],
+      "rankedTopK": [
+        "k-kmnflb56",
+        "k-2jb9bh3p",
+        "k-8dsb3up8",
+        "k-jgazhhz6",
+        "k-fqn5b57c",
+        "k-code-intel-m2-impl",
+        "k-3zo9w9dg",
+        "k-k2ylcsm9",
+        "k-l7oy85r0",
+        "k-imz9hai0"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1,
+      "contamination": 2
+    },
+    {
+      "query": "convoy dashboard panel sidebar badge ribbon",
+      "expected": [
+        "k-convoy-dashboard-design-decisions",
+        "k-91f42ekj"
+      ],
+      "rankedTopK": [
+        "k-convoy-dashboard-design-decisions",
+        "k-91f42ekj",
+        "k-w8xru25o",
+        "k-imz9hai0",
+        "k-jgazhhz6",
+        "k-5nuw1j8i",
+        "k-convoy-hardening-design-decisions",
+        "k-code-intel-m2-impl",
+        "k-2jb9bh3p",
+        "k-gzzzt7uk"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
     {
       "query": "hybrid knowledge architecture overview",
       "expected": [
@@ -19,26 +138,14 @@
         "k-zoawqis5",
         "k-2jb9bh3p",
         "k-qszeow1i",
-        "k-qhu1sw8h"
+        "k-qhu1sw8h",
+        "k-ovlxucc1",
+        "k-gi8pj4gg",
+        "k-acodv9lb",
+        "k-hvaoejze",
+        "k-8d85l75r"
       ],
-      "precision": 0.2,
-      "recall": 1,
-      "ndcg": 1,
-      "reciprocalRank": 1
-    },
-    {
-      "query": "work article model phases guards reviewers",
-      "expected": [
-        "k-n3gtykv5"
-      ],
-      "rankedTopK": [
-        "k-n3gtykv5",
-        "k-40emzavw",
-        "k-qlgfto92",
-        "k-g0buqcg5",
-        "k-acodv9lb"
-      ],
-      "precision": 0.2,
+      "precision": 0.1,
       "recall": 1,
       "ndcg": 1,
       "reciprocalRank": 1
@@ -53,12 +160,18 @@
         "k-2njgnd6v",
         "k-klbt2h37",
         "k-ypsx5ask",
-        "k-q2wz8nb0"
+        "k-q2wz8nb0",
+        "k-7tu6a89q",
+        "k-n8wdamc0",
+        "w-guptmc33",
+        "k-code-intel-m3-impl",
+        "k-jgazhhz6"
       ],
-      "precision": 0.2,
+      "precision": 0.1,
       "recall": 1,
       "ndcg": 1,
-      "reciprocalRank": 1
+      "reciprocalRank": 1,
+      "contamination": 2
     },
     {
       "query": "surface boundaries mcp cli dashboard container",
@@ -70,9 +183,14 @@
         "k-fqn5b57c",
         "k-yu5can16",
         "k-to46fuoi",
-        "k-hvaoejze"
+        "k-code-intel-m2-impl",
+        "k-hvaoejze",
+        "k-kmnflb56",
+        "k-2jb9bh3p",
+        "k-jgazhhz6",
+        "k-code-intel-m3-impl"
       ],
-      "precision": 0.2,
+      "precision": 0.1,
       "recall": 1,
       "ndcg": 1,
       "reciprocalRank": 1
@@ -87,24 +205,102 @@
         "k-koa51gtj",
         "k-c04vr46t",
         "k-uuz80fga",
-        "k-fqn5b57c"
+        "k-fqn5b57c",
+        "w-0ieze72s",
+        "k-to46fuoi",
+        "k-gu0h02zt",
+        "k-gsxgt3qx",
+        "k-b577ihrv"
       ],
-      "precision": 0.2,
+      "precision": 0.1,
       "recall": 1,
       "ndcg": 1,
-      "reciprocalRank": 1
+      "reciprocalRank": 1,
+      "contamination": 0
     },
     {
-      "query": "search service context pack indexing hybrid",
+      "query": "search service unified indexing context pack",
       "expected": [
         "k-qszeow1i"
       ],
       "rankedTopK": [
         "k-qszeow1i",
+        "k-174l945h",
         "k-ypsx5ask",
-        "k-zoawqis5",
         "k-x8umv6et",
-        "k-pwksnl38"
+        "k-pwksnl38",
+        "k-gi8pj4gg",
+        "k-klbt2h37",
+        "w-0ieze72s",
+        "k-zoawqis5",
+        "k-s07gu3dm"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "migration boundary v2 v3 cutover decision",
+      "expected": [
+        "k-rksv8m51"
+      ],
+      "rankedTopK": [
+        "k-rksv8m51",
+        "k-convoy-dashboard-design-decisions",
+        "k-cg3xlfgt",
+        "k-j8joojbe",
+        "k-t2ihkk5i",
+        "k-b577ihrv",
+        "w-z0o5hfx9",
+        "k-3swbuc36",
+        "k-ypsx5ask",
+        "k-8dsb3up8"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "knowledge service crud search sync wiki integration",
+      "expected": [
+        "k-g7zu4ki4"
+      ],
+      "rankedTopK": [
+        "k-g7zu4ki4",
+        "k-qszeow1i",
+        "k-koa51gtj",
+        "k-c04vr46t",
+        "k-ypsx5ask",
+        "k-n3gtykv5",
+        "k-5o4nk93g",
+        "k-g0buqcg5",
+        "k-uuz80fga",
+        "k-vo0fhcxl"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "custom frontmatter fields query and lint",
+      "expected": [
+        "k-v27p0qw2",
+        "k-eiv217in"
+      ],
+      "rankedTopK": [
+        "k-eiv217in",
+        "k-v27p0qw2",
+        "k-8d85l75r",
+        "k-zj0lp1yv",
+        "k-doed4dzy",
+        "k-pajgyr76",
+        "k-gu0h02zt",
+        "k-pupprz0g",
+        "k-3zo9w9dg",
+        "k-t27zzmvw"
       ],
       "precision": 0.2,
       "recall": 1,
@@ -112,22 +308,363 @@
       "reciprocalRank": 1
     },
     {
-      "query": "orchestration convoys waves dispatch model",
+      "query": "convoy orchestration design dispatch waves resync",
       "expected": [
+        "k-40emzavw",
+        "k-agent-dispatch-design-decisions",
+        "k-convoy-requires-resync-design-decisions",
+        "k-convoy-hardening-design-decisions"
+      ],
+      "rankedTopK": [
+        "k-convoy-requires-resync-design-decisions",
+        "k-91f42ekj",
+        "k-convoy-dashboard-design-decisions",
+        "k-convoy-hardening-design-decisions",
+        "k-40emzavw",
+        "k-agent-dispatch-design-decisions",
+        "k-vo0fhcxl",
+        "k-code-intel-m2-impl",
+        "k-to46fuoi",
+        "k-5umd9fff"
+      ],
+      "precision": 0.4,
+      "recall": 1,
+      "ndcg": 0.8486,
+      "reciprocalRank": 1,
+      "contamination": 1
+    },
+    {
+      "query": "agent dispatch contract events not spawning",
+      "expected": [
+        "k-agent-dispatch-design-decisions",
         "k-40emzavw"
       ],
       "rankedTopK": [
-        "k-40emzavw",
-        "k-convoy-requires-resync-design-decisions",
         "k-agent-dispatch-design-decisions",
+        "k-vo0fhcxl",
+        "k-klbt2h37",
+        "k-7tu6a89q",
+        "k-eiv217in",
         "k-to46fuoi",
-        "k-n3gtykv5"
+        "k-gsxgt3qx",
+        "k-40emzavw",
+        "k-5umd9fff",
+        "k-3zo9w9dg"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 0.8066,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "wave planning execution batching dispatch",
+      "expected": [
+        "k-4e666q5w",
+        "k-40emzavw"
+      ],
+      "rankedTopK": [
+        "k-4e666q5w",
+        "k-u16rujhn",
+        "k-40emzavw",
+        "k-agent-dispatch-design-decisions",
+        "k-5nuw1j8i",
+        "k-uuz80fga",
+        "k-to46fuoi",
+        "k-qhu1sw8h",
+        "k-c8uur83h",
+        "k-7tu6a89q"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 0.9197,
+      "reciprocalRank": 1,
+      "contamination": 0
+    },
+    {
+      "query": "convoy single-convoy invariant hardening provenance events",
+      "expected": [
+        "k-convoy-hardening-design-decisions",
+        "k-convoy-requires-resync-design-decisions"
+      ],
+      "rankedTopK": [
+        "k-convoy-hardening-design-decisions",
+        "k-91f42ekj",
+        "k-convoy-dashboard-design-decisions",
+        "k-pajgyr76",
+        "k-k2ylcsm9",
+        "k-agent-dispatch-design-decisions",
+        "k-3zo9w9dg",
+        "k-n8wdamc0",
+        "k-code-intel-m2-impl",
+        "k-7tu6a89q"
+      ],
+      "precision": 0.1,
+      "recall": 0.5,
+      "ndcg": 0.6131,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "search ranking bm25 semantic hybrid trust reranking",
+      "expected": [
+        "k-zoawqis5",
+        "k-qszeow1i",
+        "k-cg3xlfgt"
+      ],
+      "rankedTopK": [
+        "k-zoawqis5",
+        "k-cg3xlfgt",
+        "k-ypsx5ask",
+        "k-qszeow1i",
+        "k-ovlxucc1",
+        "k-0bz1r6n0",
+        "k-t2ihkk5i",
+        "k-174l945h",
+        "k-gtgddgs3",
+        "k-klbt2h37"
+      ],
+      "precision": 0.3,
+      "recall": 1,
+      "ndcg": 0.9675,
+      "reciprocalRank": 1,
+      "contamination": 0
+    },
+    {
+      "query": "context pack builder scoring diagnostics mode ranking",
+      "expected": [
+        "k-x8umv6et",
+        "k-174l945h"
+      ],
+      "rankedTopK": [
+        "k-x8umv6et",
+        "k-174l945h",
+        "k-qszeow1i",
+        "k-gtgddgs3",
+        "k-ypsx5ask",
+        "k-0bz1r6n0",
+        "k-pwksnl38",
+        "k-fqn5b57c",
+        "k-c04vr46t",
+        "k-kmnflb56"
       ],
       "precision": 0.2,
       "recall": 1,
       "ndcg": 1,
       "reciprocalRank": 1
+    },
+    {
+      "query": "config driven ranking knobs reranker stage",
+      "expected": [
+        "k-gtgddgs3",
+        "k-ovlxucc1"
+      ],
+      "rankedTopK": [
+        "k-gtgddgs3",
+        "k-ovlxucc1",
+        "k-174l945h",
+        "k-pupprz0g",
+        "k-zoawqis5",
+        "k-3zo9w9dg",
+        "k-vo0fhcxl",
+        "k-x8umv6et",
+        "k-t2ihkk5i",
+        "k-gsxgt3qx"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1,
+      "contamination": 1
+    },
+    {
+      "query": "bm25 scoring fallback in-memory index degraded mode",
+      "expected": [
+        "k-0bz1r6n0",
+        "k-q2wz8nb0"
+      ],
+      "rankedTopK": [
+        "k-0bz1r6n0",
+        "k-q2wz8nb0",
+        "k-x8umv6et",
+        "k-qszeow1i",
+        "k-ypsx5ask",
+        "k-zoawqis5",
+        "k-klbt2h37",
+        "k-code-intel-m3-impl",
+        "k-acodv9lb",
+        "k-5umd9fff"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "trust signal legacy content search demotion",
+      "expected": [
+        "k-cg3xlfgt"
+      ],
+      "rankedTopK": [
+        "k-cg3xlfgt",
+        "k-zoawqis5",
+        "k-t2ihkk5i",
+        "k-rksv8m51",
+        "k-qszeow1i",
+        "k-5o4nk93g",
+        "k-ypsx5ask",
+        "k-ovlxucc1",
+        "k-8dsb3up8",
+        "k-klbt2h37"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "work article model phases guards reviewers templates",
+      "expected": [
+        "k-n3gtykv5",
+        "k-qlgfto92",
+        "k-ofsgt3dd",
+        "k-g0buqcg5"
+      ],
+      "rankedTopK": [
+        "k-n3gtykv5",
+        "k-40emzavw",
+        "k-qlgfto92",
+        "k-g0buqcg5",
+        "k-4e666q5w",
+        "k-to46fuoi",
+        "k-s07gu3dm",
+        "k-ofsgt3dd",
+        "k-uuz80fga",
+        "k-acodv9lb"
+      ],
+      "precision": 0.4,
+      "recall": 1,
+      "ndcg": 0.8768,
+      "reciprocalRank": 1,
+      "contamination": 0
+    },
+    {
+      "query": "work phase history skipped guard audit trail",
+      "expected": [
+        "k-qti3v876",
+        "k-qlgfto92"
+      ],
+      "rankedTopK": [
+        "k-qti3v876",
+        "k-qlgfto92",
+        "k-g0buqcg5",
+        "k-gu0h02zt",
+        "k-uuz80fga",
+        "k-n3gtykv5",
+        "k-fqn5b57c",
+        "k-to46fuoi",
+        "k-k2ylcsm9",
+        "k-40emzavw"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "code intelligence strategy inventory milestones",
+      "expected": [
+        "k-quo5tdc1",
+        "k-code-intel-m3-impl",
+        "k-code-intel-m2-impl",
+        "k-6qapdb1a"
+      ],
+      "rankedTopK": [
+        "k-quo5tdc1",
+        "k-code-intel-m3-impl",
+        "k-6qapdb1a",
+        "k-code-intel-m2-impl",
+        "k-jk03wk0q",
+        "k-b577ihrv",
+        "k-g0buqcg5",
+        "k-ypsx5ask",
+        "k-5umd9fff",
+        "k-ofsgt3dd"
+      ],
+      "precision": 0.4,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "dolt persistence connection schema health repositories",
+      "expected": [
+        "k-2njgnd6v",
+        "k-klbt2h37"
+      ],
+      "rankedTopK": [
+        "k-2njgnd6v",
+        "k-klbt2h37",
+        "k-acodv9lb",
+        "k-q2wz8nb0",
+        "k-ypsx5ask",
+        "k-0bz1r6n0",
+        "k-3zo9w9dg",
+        "k-code-intel-m3-impl",
+        "k-qszeow1i",
+        "k-5umd9fff"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1,
+      "contamination": 1
+    },
+    {
+      "query": "environment snapshot cold start context pack work",
+      "expected": [
+        "w-0ieze72s",
+        "w-guptmc33"
+      ],
+      "rankedTopK": [
+        "w-uvp3azdf",
+        "w-0ieze72s",
+        "w-ksaf2rcr",
+        "w-guptmc33",
+        "w-r85lzqhv",
+        "w-y988ky96",
+        "w-21c2n6q5",
+        "w-dzur84o8",
+        "w-w7yhmqse",
+        "w-zxi617cw"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 0.6509,
+      "reciprocalRank": 0.5
+    },
+    {
+      "query": "file repository lost update lock read modify write",
+      "expected": [
+        "w-mc21yp9s",
+        "w-5zsmz0f7"
+      ],
+      "rankedTopK": [
+        "w-mc21yp9s",
+        "w-y988ky96",
+        "w-5zsmz0f7",
+        "w-guptmc33",
+        "w-w7yhmqse",
+        "w-0ieze72s",
+        "w-r85lzqhv",
+        "w-zxi617cw",
+        "w-qqzud6wf",
+        "w-df869qxf"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 0.9197,
+      "reciprocalRank": 1,
+      "contamination": 0
     }
   ],
-  "semanticEnabled": false
+  "semanticEnabled": true
 }

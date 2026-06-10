@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 96 knowledge articles and 22 work articles.
-> Last updated: 2026-06-10 08:36:42
+> Auto-generated catalog of 98 knowledge articles and 22 work articles.
+> Last updated: 2026-06-10 08:55:22
 
 ## Knowledge
 
@@ -127,6 +127,8 @@
 ### solution
 
 - [Dogfood review (2026-05-29): CLI --help, version drift, codeRefs extractor, lint exemption, dashboard split](notes/dogfood-review-2026-05-29-cli-help-version-drift-coderefs-extractor-lint-exemption-dashboard-split.md) — A dogfood review of Monsthera using its own CLI (`monsthera doctor|lint|code|sta
+- [P1 eval honesty — golden-set expansion + contamination guardrail](notes/p1-eval-honesty-golden-set-expansion-contamination-guardrail.md) — Wave 2 of the 2026-06-10 audit (see [[auditora-integral-2026-06-10-backlog-prior
+- [P1 eval honesty — run-level engine detection + doctor liveness](notes/p1-eval-honesty-run-level-engine-detection-doctor-liveness.md) — Wave 2 (slice 2) of the 2026-06-10 audit (work `w-zluxybat`, branch `feat/p1-eva
 - [PR P0 shipped — audit hardening (auth GET, host bind, SDK bump, CI gates)](notes/pr-p0-shipped-audit-hardening-auth-get-host-bind-sdk-bump-ci-gates.md) — Wave 1 de la auditoría 2026-06-10 (ver [[auditora-integral-2026-06-10-backlog-pr
 - [PR-10: Config-driven ranking knobs](notes/pr10-config-ranking-knobs.md) — Fourth PR of M2; prerequisite for PR-11's reranker.  ## What shipped (main @ 2fc
 - [PR-11: Relevance reranker stage](notes/pr11-reranker-stage.md) — Fifth PR of M2. Optional relevance-reranking stage for hybrid search; consumes t
