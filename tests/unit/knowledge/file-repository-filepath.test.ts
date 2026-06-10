@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { FileSystemKnowledgeArticleRepository } from "../../../src/knowledge/file-repository.js";
 import { parseMarkdown } from "../../../src/knowledge/markdown.js";
+import { slug } from "../../../src/core/types.js";
 
 /**
  * P0-B (Banyan ISSUE-004) — `KnowledgeArticle.filePath` runtime metadata.
@@ -106,5 +107,85 @@ describe("FileSystemKnowledgeArticleRepository — filePath runtime metadata", (
     expect(reread.ok).toBe(true);
     if (!reread.ok) return;
     expect(reread.value.filePath).toBe(`notes/${created.value.slug}.md`);
+  });
+});
+
+/**
+ * Follow-up to P0-B (gotcha recorded in PR-16): every WRITE still resolved
+ * its target as `notes/<slug>.md`, so updating an ID-named article wrote a
+ * brand-new slug-named file and left the original behind, and deleting one
+ * was a silent no-op (`force: true` swallowed the ENOENT). Writes must land
+ * on the file the article was actually read from.
+ */
+describe("FileSystemKnowledgeArticleRepository — writes honor filePath (ID-named files)", () => {
+  it("update() with a body edit rewrites the SAME ID-named file, no duplicate", async () => {
+    await seedRaw(ID_NAMED_FILE, ID_NAMED_RAW);
+    const repo = new FileSystemKnowledgeArticleRepository(root);
+
+    const updated = await repo.update("k-9999test", { content: "Edited body." });
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+
+    const entries = await fs.readdir(path.join(root, "notes"));
+    expect(entries).toEqual([ID_NAMED_FILE]);
+    const raw = await fs.readFile(path.join(root, "notes", ID_NAMED_FILE), "utf-8");
+    expect(raw).toContain("Edited body.");
+    expect(updated.value.filePath).toBe(`notes/${ID_NAMED_FILE}`);
+  });
+
+  it("update() with a frontmatter-only edit patches the SAME ID-named file (minimal-diff path)", async () => {
+    await seedRaw(ID_NAMED_FILE, ID_NAMED_RAW);
+    const repo = new FileSystemKnowledgeArticleRepository(root);
+
+    const updated = await repo.update("k-9999test", { tags: ["lean"] });
+    expect(updated.ok).toBe(true);
+
+    const entries = await fs.readdir(path.join(root, "notes"));
+    expect(entries).toEqual([ID_NAMED_FILE]);
+    const raw = await fs.readFile(path.join(root, "notes", ID_NAMED_FILE), "utf-8");
+    expect(raw).toContain("Body of the externally authored note.");
+
+    const reread = await repo.findById("k-9999test");
+    expect(reread.ok).toBe(true);
+    if (!reread.ok) return;
+    expect(reread.value.tags).toEqual(["lean"]);
+  });
+
+  it("update() with a title change moves the ID-named file to the canonical slug path", async () => {
+    await seedRaw(ID_NAMED_FILE, ID_NAMED_RAW);
+    const repo = new FileSystemKnowledgeArticleRepository(root);
+
+    const updated = await repo.update("k-9999test", { title: "Renamed Externally" });
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.value.slug).toBe("renamed-externally");
+
+    const entries = await fs.readdir(path.join(root, "notes"));
+    expect(entries).toEqual(["renamed-externally.md"]);
+    expect(updated.value.filePath).toBe("notes/renamed-externally.md");
+  });
+
+  it("writeWithSlug (explicit rename) on an ID-named file removes the original", async () => {
+    await seedRaw(ID_NAMED_FILE, ID_NAMED_RAW);
+    const repo = new FileSystemKnowledgeArticleRepository(root);
+
+    const renamed = await repo.writeWithSlug("k-9999test", { slug: slug("explicit-target") });
+    expect(renamed.ok).toBe(true);
+    if (!renamed.ok) return;
+
+    const entries = await fs.readdir(path.join(root, "notes"));
+    expect(entries).toEqual(["explicit-target.md"]);
+    expect(renamed.value.filePath).toBe("notes/explicit-target.md");
+  });
+
+  it("delete() on an ID-named file removes the real file (not a silent no-op)", async () => {
+    await seedRaw(ID_NAMED_FILE, ID_NAMED_RAW);
+    const repo = new FileSystemKnowledgeArticleRepository(root);
+
+    const deleted = await repo.delete("k-9999test");
+    expect(deleted.ok).toBe(true);
+
+    const entries = await fs.readdir(path.join(root, "notes"));
+    expect(entries).toEqual([]);
   });
 });

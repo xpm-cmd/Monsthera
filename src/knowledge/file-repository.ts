@@ -108,6 +108,20 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     return path.join(this.notesDir, `${slugValue}.md`);
   }
 
+  /**
+   * Where writes (and the lock) for an existing article should land.
+   * Prefers the runtime `filePath` observed at read time — externally
+   * authored corpora name files by id, not slug — resolved against the
+   * PRIMARY root only: writes never target the worktree fallback.
+   * Articles without one (fresh creates, in-memory constructions) use
+   * the canonical slug-named path.
+   */
+  private resolveWritePath(article: Pick<KnowledgeArticle, "slug" | "filePath">): string {
+    return article.filePath
+      ? path.join(this.markdownRoot, article.filePath)
+      : this.articlePath(article.slug);
+  }
+
   private async ensureDirectory(): Promise<void> {
     await fs.mkdir(this.notesDir, { recursive: true });
   }
@@ -234,7 +248,12 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
 
     const frontmatter = buildArticleFrontmatter(article);
 
-    const targetPath = this.articlePath(article.slug);
+    // A rename lands at the canonical slug-named path (the old file name
+    // embedded the old slug); an in-place write goes back to the file the
+    // article was read from, so ID-named files are rewritten, never
+    // duplicated.
+    const isRename = previousSlug !== undefined && previousSlug !== article.slug;
+    const targetPath = isRename ? this.articlePath(article.slug) : this.resolveWritePath(article);
     const serialized = serializeMarkdown(frontmatter, article.content);
     // A target slug different from `previousSlug` (or no previousSlug at
     // all, which is the create path) means we expect the destination
@@ -242,7 +261,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     // refuses the write atomically if a concurrent caller raced us to
     // the same slug — this closes the slug TOCTOU between `loadAll()`
     // and `writeFile`.
-    const exclusive = !previousSlug || previousSlug !== article.slug;
+    const exclusive = !previousSlug || isRename;
 
     try {
       if (exclusive) {
@@ -255,12 +274,17 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       } else {
         await fs.writeFile(targetPath, serialized, "utf-8");
       }
-      if (previousSlug && previousSlug !== article.slug) {
-        await fs.rm(this.articlePath(previousSlug), { force: true });
+      if (isRename) {
+        // Remove the OLD file at its real location (ID-named files do
+        // not live at notes/<previousSlug>.md).
+        const previousPath = article.filePath
+          ? path.join(this.markdownRoot, article.filePath)
+          : this.articlePath(previousSlug);
+        await fs.rm(previousPath, { force: true });
       }
-      // Refresh the runtime filePath: writes always land at the slug-named
-      // primary path, so a rename must not leak the OLD file's location.
-      return ok({ ...article, filePath: `notes/${article.slug}.md` });
+      // Refresh the runtime filePath so a rename does not leak the OLD
+      // file's location.
+      return ok({ ...article, filePath: this.relativeArticlePath(targetPath) });
     } catch (error) {
       if (isNodeError(error) && error.code === "EEXIST") {
         return err(
@@ -292,7 +316,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
   ): Promise<Result<KnowledgeArticle, StorageError> | null> {
     if (previousSlug !== article.slug) return null;
 
-    const targetPath = this.articlePath(article.slug);
+    const targetPath = this.resolveWritePath(article);
     let raw: string;
     try {
       raw = await fs.readFile(targetPath, "utf-8");
@@ -417,7 +441,10 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     const lookup = await this.findById(id);
     if (!lookup.ok) return lookup;
 
-    return withFileLock(this.articlePath(lookup.value.slug), async () => {
+    // Lock the file the article actually lives in — keying on the
+    // slug-derived path would lock (and O_CREAT-touch!) a phantom file
+    // for ID-named articles.
+    return withFileLock(this.resolveWritePath(lookup.value), async () => {
       const existingResult = await this.findById(id);
       if (!existingResult.ok) return existingResult;
 
@@ -490,7 +517,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     if (!existingResult.ok) return existingResult;
 
     try {
-      await fs.rm(this.articlePath(existingResult.value.slug), { force: true });
+      await fs.rm(this.resolveWritePath(existingResult.value), { force: true });
       return ok(undefined);
     } catch (error) {
       return err(new StorageError(`Failed to delete knowledge article: ${id}`, { cause: String(error) }));
