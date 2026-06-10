@@ -367,8 +367,22 @@ export class SearchService {
 
   /**
    * Merge BM25 and semantic results using weighted combination.
-   * BM25 scores are normalized to [0,1], cosine similarity is already [0,1].
-   * finalScore = alpha * norm_bm25 + (1 - alpha) * cosine
+   *
+   * Two scale corrections (C1, 2026-06-10) keep the hybrid path compatible
+   * with everything downstream that was calibrated against RAW bm25 scores:
+   *
+   * 1. Cosine is min-max stretched PER QUERY across the semantic candidate
+   *    set. Raw cosines cluster in a narrow band (~0.45-0.65 on this
+   *    corpus), so unstretched they contribute a near-constant term that
+   *    dilutes bm25 discrimination instead of adding signal.
+   * 2. The alpha-mix is rescaled back to bm25 magnitude (× maxBm25).
+   *    `scoreContextPackItem` adds static boosts of up to ~+4 that were
+   *    implicitly tuned against raw bm25 scores (5-15 for good matches);
+   *    feeding it [0,1] hybrid scores let the boosts crush the search
+   *    signal 4:1 — measured as NDCG@10 0.098 vs 0.877 (bm25) on the
+   *    golden set before this fix.
+   *
+   * finalScore = (alpha * norm_bm25 + (1 - alpha) * stretched_cosine) * maxBm25
    */
   private mergeResults(
     bm25Results: SearchResult[],
@@ -378,6 +392,16 @@ export class SearchService {
     // Normalize BM25 scores to [0, 1]
     const maxBm25 = bm25Results.reduce((max, r) => Math.max(max, r.score), 0);
     const normFactor = maxBm25 > 0 ? maxBm25 : 1;
+
+    // Per-query min-max stretch for the cosine term. When every candidate
+    // shares the same cosine the semantic signal carries no ordering
+    // information — credit semantic hits with 1 so they still edge out
+    // docs the semantic search did not surface at all.
+    const cosines = semanticResults.map((s) => s.score);
+    const minCos = cosines.length > 0 ? Math.min(...cosines) : 0;
+    const maxCos = cosines.length > 0 ? Math.max(...cosines) : 0;
+    const stretch = (c: number): number =>
+      maxCos > minCos ? (c - minCos) / (maxCos - minCos) : 1;
 
     // Build a map of all candidates
     const candidates = new Map<string, { bm25: SearchResult | null; normBm25: number; cosine: number }>();
@@ -389,11 +413,11 @@ export class SearchService {
     for (const s of semanticResults) {
       const existing = candidates.get(s.id);
       if (existing) {
-        existing.cosine = s.score;
+        existing.cosine = stretch(s.score);
       } else {
         // Semantic-only candidate — we need BM25 result data for snippet/title
         // Skip if we don't have it (BM25 provides the display data)
-        candidates.set(s.id, { bm25: null, normBm25: 0, cosine: s.score });
+        candidates.set(s.id, { bm25: null, normBm25: 0, cosine: stretch(s.score) });
       }
     }
 
@@ -401,7 +425,7 @@ export class SearchService {
     const merged: Array<{ result: SearchResult; hybridScore: number }> = [];
     for (const [, entry] of candidates) {
       if (entry.bm25 === null) continue; // can't display without BM25 data (title, snippet)
-      const hybridScore = alpha * entry.normBm25 + (1 - alpha) * entry.cosine;
+      const hybridScore = (alpha * entry.normBm25 + (1 - alpha) * entry.cosine) * normFactor;
       merged.push({
         result: { ...entry.bm25, score: hybridScore },
         hybridScore,

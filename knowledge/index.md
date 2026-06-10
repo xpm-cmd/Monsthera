@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 127 knowledge articles and 25 work articles.
-> Last updated: 2026-06-10 12:20:37
+> Auto-generated catalog of 127 knowledge articles and 26 work articles.
+> Last updated: 2026-06-10 12:22:58
 
 ## Knowledge
 
@@ -175,11 +175,12 @@
 
 ## Work
 
-### planning (3)
+### planning (4)
 
 - [findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](work-articles/w-c09d7wa9.md) [medium] — ## Objective  Descubierto durante Wave A1 (write path). `Fil
 - [Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](work-articles/w-ymavjqkd.md) [high] — ## Objective  Dos quick fixes consumer-driven descubiertos e
 - [Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](work-articles/w-4vc60xph.md) [medium] — ## Objective  Tres quick wins DX de la auditoría (k-3zo9w9dg
+- [Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](work-articles/w-bjggjpsg.md) [high] — ## Objective  El plan original de C1 ("recapturar baseline c
 
 ### done (21)
 
