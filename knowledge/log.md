@@ -249,3 +249,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 23:29:32]** create work | Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3 (w-j7ao5fak)
 - **[2026-06-10 23:29:51]** update work | Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host (w-y0wuvaix)
 - **[2026-06-10 23:30:41]** create work | Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review (w-s16wia61)
+- **[2026-06-10 23:42:39]** create knowledge | Wave E1: work/lint.ts partido en rules/ por familia — 871 → 408, findings del corpus byte-idénticos (k-talge4d2)
