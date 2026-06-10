@@ -1,7 +1,7 @@
 # Monsthera Index
 
 > Auto-generated catalog of 135 knowledge articles and 29 work articles.
-> Last updated: 2026-06-10 23:42:39
+> Last updated: 2026-06-10 23:43:26
 
 ## Knowledge
 
@@ -191,7 +191,7 @@
 - [Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](work-articles/w-4vc60xph.md) [medium] — ## Objective  Tres quick wins DX de la auditoría (k-3zo9w9dg
 - [Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](work-articles/w-bjggjpsg.md) [high] — ## Objective  (Ver historial: C1 reformulado por el descubri
 - [Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](work-articles/w-y0wuvaix.md) [medium] — ## Objective  (Original en historial.) Hallazgos (a)-(h) del
-- [Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](work-articles/w-s16wia61.md) [medium] — ## Objective  Primer split de Wave E (auditoría P3, preceden
+- [Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](work-articles/w-s16wia61.md) [medium] — ## Objective  (Original en historial.) Split de `src/work/li
 
 ### done (21)
 

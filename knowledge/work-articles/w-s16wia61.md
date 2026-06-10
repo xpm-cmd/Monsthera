@@ -11,7 +11,7 @@ codeRefs: [src/work/lint.ts]
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-10T23:30:40.945Z
-updatedAt: 2026-06-10T23:30:40.945Z
+updatedAt: 2026-06-10T23:43:25.856Z
 enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"claude-code","status":"pending"}]}
 reviewersJson: {"items":[]}
 phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T23:30:40.945Z"}]}
@@ -19,13 +19,10 @@ phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T23:30:40
 
 ## Objective
 
-Primer split de Wave E (auditoría P3, precedente: think-synthesis/handoff-renderer y el D0 routes/). `src/work/lint.ts` (~871 líneas) → `src/work/rules/` por finding type. Cero cambio de comportamiento; suite como arnés.
+(Original en historial.) Split de `src/work/lint.ts` → `src/work/rules/`, cero cambio de comportamiento, luego PAUSA contractual.
 
-**Regla del handoff: tras E1, PARAR y pedir review del usuario antes de E2-E4** (container.ts, structure/service.ts, search/service.ts) — un refactor de 800+ líneas no se encadena a ciegas aunque el gate pase.
+## Status 2026-06-10 — E1 COMPLETO, PAUSA ACTIVA
 
-## Acceptance Criteria
+PR #164 (`refactor/e1-lint-rules`), nota k-talge4d2. lint.ts 871→408; 7 módulos rules/ (anti-examples 252 · verify-density 70 · custom-frontmatter 60 · canonical-values 49 · tag-hygiene 44 · planning-hash 38 · shared 14). Superficie pública intacta (cero ediciones en consumidores/tests). Doble arnés: 876 tests sin tocar + **findings del lint real byte-idénticos al baseline pre-refactor**. Gate completo verde (2322 tests).
 
-- Suite de lint (lint-*.test.ts y consumidores) verde sin tocar aserciones.
-- lint.ts reducido a orquestación/composición; un módulo por familia de regla.
-- Gate completo + nota solution + PR apilado sobre #163.
-- DESPUÉS: pausa explícita — E2-E4 NO arrancan sin OK del usuario.
+**PAUSA CONTRACTUAL EN EFECTO**: E2 (core/container.ts, 681) · E3 (structure/service.ts, 1260) · E4 (search/service.ts, ~1090) esperan review explícito del usuario. Wave F (backlog opcional) también post-review.
