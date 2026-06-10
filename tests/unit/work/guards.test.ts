@@ -5,6 +5,7 @@ import {
   has_objective,
   has_acceptance_criteria,
   min_enrichment_met,
+  minEnrichmentRecoveryHint,
   implementation_linked,
   all_reviewers_approved,
 } from "../../../src/work/guards.js";
@@ -122,6 +123,40 @@ describe("min_enrichment_met", () => {
   it("returns true when min is 0 and roles is empty", () => {
     const article = makeArticle({ enrichmentRoles: [] });
     expect(min_enrichment_met(article, 0)).toBe(true);
+  });
+
+  describe("minEnrichmentRecoveryHint", () => {
+    it("names the pending roles, the progress count, and the exact remedies", () => {
+      const article = makeArticle({
+        id: workId("w-hint0001"),
+        enrichmentRoles: [
+          { role: "testing", agentId: agentId("agent-t"), status: "pending" as const },
+          { role: "security", agentId: agentId("agent-s"), status: "pending" as const },
+          { role: "architecture", agentId: agentId("agent-a"), status: "contributed" as const, contributedAt: timestamp() },
+        ],
+      });
+
+      const hint = minEnrichmentRecoveryHint(article, 3);
+      expect(hint).toContain("1/3");
+      expect(hint).toContain("pending: testing, security");
+      expect(hint).toContain("work enrich w-hint0001 --role <role> --status contributed|skipped");
+      expect(hint).toContain("contribute_enrichment");
+      expect(hint).toContain("--skip-guard-reason");
+    });
+
+    it("still explains progress and remedies when no roles are pending but the count is short", () => {
+      const article = makeArticle({
+        id: workId("w-hint0002"),
+        enrichmentRoles: [
+          { role: "testing", agentId: agentId("agent-t"), status: "contributed" as const, contributedAt: timestamp() },
+        ],
+      });
+
+      const hint = minEnrichmentRecoveryHint(article, 2);
+      expect(hint).toContain("1/2");
+      expect(hint).not.toContain("pending:");
+      expect(hint).toContain("work enrich w-hint0002 --role");
+    });
   });
 
   it("returns false when count < min", () => {

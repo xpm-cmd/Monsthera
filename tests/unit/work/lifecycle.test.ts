@@ -568,3 +568,45 @@ describe("checkTransition — skipGuard escape hatch (Tier 2.1)", () => {
     }
   });
 });
+
+// ─── Guard failure messages are actionable (Banyan P3 follow-up) ───
+
+describe("checkTransition — actionable min_enrichment_met failure", () => {
+  it("names the pending roles and both remedies in the error message", () => {
+    const article = makeArticle({
+      id: workId("w-msg00001"),
+      phase: WorkPhase.ENRICHMENT,
+      template: WorkTemplate.FEATURE,
+      enrichmentRoles: [
+        { role: "architecture", agentId: agentId("agent-a"), status: "pending" },
+        { role: "testing", agentId: agentId("agent-t"), status: "pending" },
+      ],
+    });
+
+    const result = checkTransition(article, WorkPhase.IMPLEMENTATION);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.name).toBe("GuardFailedError");
+    expect(result.error.message).toContain("min_enrichment_met");
+    expect(result.error.message).toContain("0/1");
+    expect(result.error.message).toContain("pending: architecture, testing");
+    expect(result.error.message).toContain(
+      "work enrich w-msg00001 --role <role> --status contributed|skipped",
+    );
+    expect(result.error.message).toContain("--skip-guard-reason");
+  });
+
+  it("guards without a recovery hint keep the plain transition message", () => {
+    const article = makeArticle({
+      phase: WorkPhase.PLANNING,
+      template: WorkTemplate.FEATURE,
+      content: "",
+    });
+
+    const result = checkTransition(article, WorkPhase.ENRICHMENT);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.message).toContain('Guard "has_objective" failed for transition');
+    expect(result.error.message).not.toContain("work enrich");
+  });
+});

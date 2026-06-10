@@ -547,3 +547,29 @@ describe("index rebuilds", () => {
     expect(bookkeeper.rebuildIndex).toHaveBeenCalledTimes(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Guard failure surfaces an actionable message (what the CLI prints verbatim)
+// ---------------------------------------------------------------------------
+
+describe("advancePhase — actionable GUARD_FAILED message", () => {
+  it("enrichment→implementation failure names pending roles and remedies", async () => {
+    const { service } = createService();
+    const article = await seedWork(service, {
+      content: "## Objective\n\nDo it.\n\n## Acceptance Criteria\n\n- done",
+    });
+
+    const toEnrichment = await service.advancePhase(article.id, WorkPhase.ENRICHMENT);
+    expect(toEnrichment.ok).toBe(true);
+
+    const blocked = await service.advancePhase(article.id, WorkPhase.IMPLEMENTATION);
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) return;
+    expect(blocked.error.code).toBe(ErrorCode.GUARD_FAILED);
+    expect(blocked.error.message).toContain("pending: architecture, testing");
+    expect(blocked.error.message).toContain(
+      `work enrich ${article.id} --role <role> --status contributed|skipped`,
+    );
+    expect(blocked.error.message).toContain("--skip-guard-reason");
+  });
+});
