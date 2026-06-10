@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 132 knowledge articles and 27 work articles.
-> Last updated: 2026-06-10 22:56:54
+> Auto-generated catalog of 133 knowledge articles and 27 work articles.
+> Last updated: 2026-06-10 23:09:42
 
 ## Knowledge
 
@@ -177,6 +177,7 @@
 - [Wave C3: escalares de extraFrontmatter como términos de búsqueda — cierra el último deferred de ADR-020](notes/wave-c3-escalares-de-extrafrontmatter-como-trminos-de-bsqueda-cierra-el-ltimo-deferred-de-adr-020.md) — Rama `feat/c3-cf-search-terms`, apilada sobre #158. Cierra el deferred "cf searc
 - [Wave D0: router del dashboard partido en routes/ por dominio — 1433 → 189 líneas, cero cambio de comportamiento](notes/wave-d0-router-del-dashboard-partido-en-routes-por-dominio-1433-189-lneas-cero-cambio-de-comportamiento.md) — Rama `refactor/d0-dashboard-routes`, apilada sobre #159. El archivo más grande d
 - [Wave D1: responsive del sidebar, search results-first, y el badge fantasma de Convoys](notes/wave-d1-responsive-del-sidebar-search-results-first-y-el-badge-fantasma-de-convoys.md) — Rama `feat/d1-dashboard-ux-prio1`, apilada sobre #160. Los tres hallazgos PRIO-1
+- [Wave D2: página Sessions, card de retrieval-quality, y heroes colapsables persistentes](notes/wave-d2-pgina-sessions-card-de-retrieval-quality-y-heroes-colapsables-persistentes.md) — Rama `feat/d2-dashboard-features`, apilada sobre #161. Hallazgos (c)/(e)/(f) del
 
 ## Work
 
