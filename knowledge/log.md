@@ -248,3 +248,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 23:28:02]** create knowledge | Wave D3: assets self-hosted (cero CDN), footer informativo, y las 7 notas dashboard-* refrescadas (k-zuks8lor)
 - **[2026-06-10 23:29:32]** create work | Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3 (w-j7ao5fak)
 - **[2026-06-10 23:29:51]** update work | Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host (w-y0wuvaix)
+- **[2026-06-10 23:30:41]** create work | Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review (w-s16wia61)
