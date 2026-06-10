@@ -1,7 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { inspectKnowledgeArticle, inspectWorkArticle } from "../../../src/context/insights.js";
 import type { KnowledgeArticle } from "../../../src/knowledge/repository.js";
 import type { WorkArticle } from "../../../src/work/repository.js";
+
+// Freeze the clock at midnight UTC so threshold-boundary fixtures (e.g. an
+// exactly-45-day-old article) cannot flip across a day boundary between
+// fixture creation and the inspect* call.
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-06-10T00:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const daysAgo = (n: number): string => new Date(Date.now() - n * 86_400_000).toISOString();
 

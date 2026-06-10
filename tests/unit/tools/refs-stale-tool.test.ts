@@ -1,7 +1,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { vi } from "vitest";
 import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
 import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
 import { createLogger } from "../../../src/core/logger.js";
@@ -22,6 +23,18 @@ async function makeService() {
   });
   return { service, knowledgeRepo };
 }
+
+// Freeze the clock exactly at midnight UTC — the boundary where day-granular
+// staleness math used to race real time between fixture creation and the
+// service's own Date.now() read.
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-06-10T00:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const daysAgo = (n: number): string => new Date(Date.now() - n * 86_400_000).toISOString();
 

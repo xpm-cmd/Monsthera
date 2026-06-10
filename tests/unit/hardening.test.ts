@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { InMemoryKnowledgeArticleRepository } from "../../src/knowledge/in-memory-repository.js";
 import { InMemoryWorkArticleRepository } from "../../src/work/in-memory-repository.js";
 import { InMemorySearchIndexRepository } from "../../src/search/in-memory-repository.js";
@@ -181,13 +181,19 @@ describe("StatusReporter hardening", () => {
     expect(status.stats).toBeUndefined();
   });
 
-  it("uptime increases over time", async () => {
-    const reporter = createStatusReporter("1.0.0");
-    const s1 = reporter.getStatus();
-    // Wait a tiny bit so uptime advances
-    await new Promise((r) => setTimeout(r, 10));
-    const s2 = reporter.getStatus();
-    expect(s2.uptime).toBeGreaterThan(s1.uptime);
+  it("uptime increases over time", () => {
+    // Fake timers (incl. Date) make the uptime delta deterministic instead
+    // of racing a real 10ms sleep against timer resolution.
+    vi.useFakeTimers();
+    try {
+      const reporter = createStatusReporter("1.0.0");
+      const s1 = reporter.getStatus();
+      vi.advanceTimersByTime(10);
+      const s2 = reporter.getStatus();
+      expect(s2.uptime).toBe(s1.uptime + 10);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("version is returned correctly", () => {
