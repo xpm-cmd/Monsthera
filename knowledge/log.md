@@ -230,3 +230,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 12:20:37]** update work | Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido (w-4vc60xph)
 - **[2026-06-10 12:22:58]** create work | Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission (w-bjggjpsg)
 - **[2026-06-10 12:32:49]** create knowledge | Wave C1: el colapso semántico era un mismatch de escala — NDCG 0.098 → 0.899, semantic ahora supera a bm25 (k-73ofos2z)
+- **[2026-06-10 12:35:03]** create knowledge | Decisión C2: salience (PR-13b) descartado para siempre — inmedible por construcción y contraindicado por la evidencia de C1 (k-r51xph09)

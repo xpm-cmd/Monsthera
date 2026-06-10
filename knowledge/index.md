@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 128 knowledge articles and 26 work articles.
-> Last updated: 2026-06-10 12:32:49
+> Auto-generated catalog of 129 knowledge articles and 26 work articles.
+> Last updated: 2026-06-10 12:35:03
 
 ## Knowledge
 
@@ -65,6 +65,7 @@
 
 ### decision
 
+- [Decisión C2: salience (PR-13b) descartado para siempre — inmedible por construcción y contraindicado por la evidencia de C1](notes/decisin-c2-salience-pr-13b-descartado-para-siempre-inmedible-por-construccin-y-contraindicado-por-la-evidencia-de-c1.md) — Cierra el deferred PR-13b (salience bonus en ranking, diferido en M3 por "eval s
 - [Decision: agent dispatch contract — events, not spawning](notes/agent-dispatch-design-decisions.md) — ADR-008 captures the formal decision (event lifecycle, dispatcher shape). This n
 - [Decision: convoy dashboard — panel, sidebar badge, ribbon](notes/convoy-dashboard-design-decisions.md) — ADR-014 captures the formal decisions: dedicated page, sidebar badge as the sing
 - [Decision: convoy hardening — get, provenance events, single-convoy invariant](notes/convoy-hardening-design-decisions.md) — ADR-013 captures the formal decision (event types, the single-convoy invariant,
