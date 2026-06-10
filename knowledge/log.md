@@ -225,3 +225,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 11:52:58]** update work | Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo (w-ymavjqkd)
 - **[2026-06-10 11:54:54]** create work | Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido (w-4vc60xph)
 - **[2026-06-10 11:59:37]** create knowledge | Wave B1: ingest git visible en help top-level + relojes deterministas en tests time-sensitive (k-zydgbqeg)
+- **[2026-06-10 12:12:54]** create knowledge | Wave B2: "When to use" en las 69 tool descriptions MCP — schemas byte-idénticos (k-w9r21jkj)

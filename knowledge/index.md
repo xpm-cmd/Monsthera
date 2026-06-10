@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 125 knowledge articles and 25 work articles.
-> Last updated: 2026-06-10 11:59:37
+> Auto-generated catalog of 126 knowledge articles and 25 work articles.
+> Last updated: 2026-06-10 12:12:54
 
 ## Knowledge
 
@@ -170,6 +170,7 @@
 - [Wave A1: write path honra filePath — update/delete sobre archivos ID-named](notes/wave-a1-write-path-honra-filepath-updatedelete-sobre-archivos-id-named.md) — Cierra el gotcha registrado en PR-16 (k-zv7qfvll): todo el write path resolvía s
 - [Wave A2: GUARD_FAILED min_enrichment_met ahora nombra roles pendientes y remedios](notes/wave-a2-guard-failed-min-enrichment-met-ahora-nombra-roles-pendientes-y-remedios.md) — Cierra la fricción #1 del quickstart de work tracking (k-e9atys0k): `GUARD_FAILE
 - [Wave B1: ingest git visible en help top-level + relojes deterministas en tests time-sensitive](notes/wave-b1-ingest-git-visible-en-help-top-level-relojes-deterministas-en-tests-time-sensitive.md) — Wave B1 (auditoría P3). Rama `fix/b1-ingest-help-flaky-clocks`, apilada sobre #1
+- [Wave B2: "When to use" en las 69 tool descriptions MCP — schemas byte-idénticos](notes/wave-b2-when-to-use-en-las-69-tool-descriptions-mcp-schemas-byte-idnticos.md) — Wave B2 (auditoría P3). Rama `chore/b2-tool-descriptions-when-to-use`, apilada s
 
 ## Work
 
