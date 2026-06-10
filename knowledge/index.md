@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 134 knowledge articles and 27 work articles.
-> Last updated: 2026-06-10 23:28:02
+> Auto-generated catalog of 134 knowledge articles and 28 work articles.
+> Last updated: 2026-06-10 23:29:51
 
 ## Knowledge
 
@@ -182,13 +182,14 @@
 
 ## Work
 
-### planning (5)
+### planning (6)
 
 - [findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](work-articles/w-c09d7wa9.md) [medium] — ## Objective  Descubierto durante Wave A1 (write path). `Fil
+- [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
 - [Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](work-articles/w-ymavjqkd.md) [high] — ## Objective  Dos quick fixes consumer-driven descubiertos e
 - [Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](work-articles/w-4vc60xph.md) [medium] — ## Objective  Tres quick wins DX de la auditoría (k-3zo9w9dg
 - [Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](work-articles/w-bjggjpsg.md) [high] — ## Objective  (Ver historial: C1 reformulado por el descubri
-- [Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](work-articles/w-y0wuvaix.md) [medium] — ## Objective  Hallazgos verificados con el dashboard corrien
+- [Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](work-articles/w-y0wuvaix.md) [medium] — ## Objective  (Original en historial.) Hallazgos (a)-(h) del
 
 ### done (21)
 

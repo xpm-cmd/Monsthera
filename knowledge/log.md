@@ -246,3 +246,5 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 23:23:06]** update knowledge | Dashboard UI component library (k-imz9hai0)
 - **[2026-06-10 23:23:55]** update knowledge | Dashboard work page UX flow (k-5nuw1j8i)
 - **[2026-06-10 23:28:02]** create knowledge | Wave D3: assets self-hosted (cero CDN), footer informativo, y las 7 notas dashboard-* refrescadas (k-zuks8lor)
+- **[2026-06-10 23:29:32]** create work | Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3 (w-j7ao5fak)
+- **[2026-06-10 23:29:51]** update work | Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host (w-y0wuvaix)
