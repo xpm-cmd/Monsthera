@@ -12,7 +12,7 @@ export function wikiToolDefinitions(): ToolDefinition[] {
     {
       name: "get_wiki_index",
       description:
-        "Read `knowledge/index.md` — the auto-maintained catalog of ALL knowledge articles (grouped by category) and work articles (grouped by phase), with relative links and short snippets. Best first move for a broad overview of what exists before picking a search query. The file is rebuilt on every create/update/delete and at startup; read once per task rather than per loop.",
+        "Read `knowledge/index.md` — the auto-maintained catalog of ALL knowledge articles (grouped by category) and work articles (grouped by phase), with relative links and short snippets. Best first move for a broad overview of what exists before picking a search query. The file is rebuilt on every create/update/delete and at startup; read once per task rather than per loop. When to use: when entering an unfamiliar corpus or when you cannot yet phrase a search query — skim it to pick vocabulary, then switch to search or build_context_pack for targeted retrieval.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -21,7 +21,7 @@ export function wikiToolDefinitions(): ToolDefinition[] {
     {
       name: "get_wiki_log",
       description:
-        "Read `knowledge/log.md` — the append-only mutation log. Every create/update/delete/advance/reindex/rename records a timestamped line. Use to understand recent activity, reconstruct change order, or answer \"what changed recently?\" without scanning git history. Pass `tail` to cap the response at the last N entries (header lines are always preserved).",
+        "Read `knowledge/log.md` — the append-only mutation log. Every create/update/delete/advance/reindex/rename records a timestamped line. Use to understand recent activity, reconstruct change order, or answer \"what changed recently?\" without scanning git history. Pass `tail` to cap the response at the last N entries (header lines are always preserved). When to use: when recency is the question — what changed since your last session, or whether another agent touched an article; for content lookups, use search instead.",
       inputSchema: {
         type: "object" as const,
         properties: {

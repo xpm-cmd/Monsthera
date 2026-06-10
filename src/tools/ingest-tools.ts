@@ -43,7 +43,7 @@ export function ingestToolDefinitions(): ToolDefinition[] {
     {
       name: "ingest_local_sources",
       description:
-        "Import a local markdown/text file or directory into knowledge. Use mode=summary to normalize large source documents into concise knowledge articles.",
+        "Import a local markdown/text file or directory into knowledge. Use mode=summary to normalize large source documents into concise knowledge articles. When to use: when source material already exists as markdown or text files on disk — importing beats retyping it through create_article; for insights authored in-session, create_article is still the right call.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -66,7 +66,7 @@ export function ingestToolDefinitions(): ToolDefinition[] {
     {
       name: "ingest_git_history",
       description:
-        "Ingest commits from a git revision range or a merged GitHub PR into knowledge — one article per commit with provenance origin=ingested and sourcePath git:<sha> (PR-15). Provide exactly one of `range` or `prNumber`.",
+        "Ingest commits from a git revision range or a merged GitHub PR into knowledge — one article per commit with provenance origin=ingested and sourcePath git:<sha> (PR-15). Provide exactly one of `range` or `prNumber`. When to use: when shipped commits or a merged PR should become searchable knowledge with provenance — typically backfilling history after a feature lands; for prose documents on disk, use ingest_local_sources.",
       inputSchema: {
         type: "object" as const,
         properties: {

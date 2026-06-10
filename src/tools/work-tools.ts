@@ -17,7 +17,7 @@ export function workToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "create_work",
-      description: "Create the work article that will act as the handoff contract for execution. Add objective, acceptance criteria, owners, references, and code refs as early as possible so the contract is ready for pickup — fewer round-trips than create + update. Search sync happens automatically; use reindex_all only after bulk imports or recovery work.",
+      description: "Create the work article that will act as the handoff contract for execution. Add objective, acceptance criteria, owners, references, and code refs as early as possible so the contract is ready for pickup — fewer round-trips than create + update. Search sync happens automatically; use reindex_all only after bulk imports or recovery work. When to use: at the start of any tracked, multi-step, or handoff-bound effort that needs lifecycle phases and review gates; for reference material with no execution lifecycle, prefer create_article.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -37,7 +37,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "get_work",
-      description: "Open a work article by ID to inspect the current contract, lifecycle phase, blockers, ownership, and review state.",
+      description: "Open a work article by ID to inspect the current contract, lifecycle phase, blockers, ownership, and review state. When to use: before picking up, advancing, or reviewing a specific item you already know by id; to scan many items by phase or filter, prefer list_work.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -48,7 +48,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "update_work",
-      description: "Update an existing work article to tighten the contract before or during execution. Add owners, references, code refs, blockers, and review expectations as context becomes clear. Search sync happens automatically; manual reindex is not needed for normal edits.",
+      description: "Update an existing work article to tighten the contract before or during execution. Add owners, references, code refs, blockers, and review expectations as context becomes clear. Search sync happens automatically; manual reindex is not needed for normal edits. When to use: whenever scope, ownership, references, or content shift while the work stays in its current phase; phase changes go through advance_phase, not here.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -67,7 +67,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "delete_work",
-      description: "Delete a work article by ID. Search sync happens automatically; manual remove_from_index is only for repair flows.",
+      description: "Delete a work article by ID. Search sync happens automatically; manual remove_from_index is only for repair flows. When to use: only for items created by mistake or true duplicates; for work that will not happen, prefer advance_phase to cancelled so the history survives.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -78,7 +78,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_work",
-      description: "List work articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_work to read full content. Filters: `phase`, `priority`, `assignee` (agent id), `tag` (single tag; matches if the work carries it), `wave` (shorthand: matches tag `wave-<name>` or the literal name), `phaseAgeDays` (minimum days in current phase), `blocked` (true = has unresolved dependencies, false = clear to pick up).",
+      description: "List work articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_work to read full content. Filters: `phase`, `priority`, `assignee` (agent id), `tag` (single tag; matches if the work carries it), `wave` (shorthand: matches tag `wave-<name>` or the literal name), `phaseAgeDays` (minimum days in current phase), `blocked` (true = has unresolved dependencies, false = clear to pick up). When to use: when triaging the queue — what is blocked, stale in a phase, or assigned to an agent; when the only criterion is a phase-history metadata value, search_work_by_metadata is the direct route.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -120,7 +120,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "advance_phase",
-      description: "Advance a work article to the next phase only when the guards pass and the next owner or review gate is explicit. Pass `reason` when cancelling; use `skip_guard: { reason }` for auditable guard bypass in legitimate edge cases. Use `metadata` to persist structured payload on the new phase-history entry (e.g. `success_test`, `blockers`, `verdicts`, `fabrications`, `verify_count`) instead of packing everything into `reason`.",
+      description: "Advance a work article to the next phase only when the guards pass and the next owner or review gate is explicit. Pass `reason` when cancelling; use `skip_guard: { reason }` for auditable guard bypass in legitimate edge cases. Use `metadata` to persist structured payload on the new phase-history entry (e.g. `success_test`, `blockers`, `verdicts`, `fabrications`, `verify_count`) instead of packing everything into `reason`. When to use: the moment work actually crosses a lifecycle boundary — picked up, sent to review, completed, abandoned; this is the only way to change phase, since update_work cannot.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -154,7 +154,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "contribute_enrichment",
-      description: "Record an enrichment contribution or an explicit skip for a specialist role on a work article.",
+      description: "Record an enrichment contribution or an explicit skip for a specialist role on a work article. When to use: during the enrichment phase, once per specialist role you cover; an explicit skip counts toward the min_enrichment_met guard, so record it instead of staying silent.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -167,7 +167,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "assign_reviewer",
-      description: "Assign a real reviewer to a work article so review becomes an explicit gate instead of an implied future step.",
+      description: "Assign a real reviewer to a work article so review becomes an explicit gate instead of an implied future step. When to use: when work heads into review and needs a named owner; pair with submit_review — review cannot reach done until every assigned reviewer approves.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -179,7 +179,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "submit_review",
-      description: "Submit a review outcome for a work article to close or reopen the review gate explicitly.",
+      description: "Submit a review outcome for a work article to close or reopen the review gate explicitly. When to use: after the assigned reviewer has actually examined the work — approve to unblock the review-to-done transition, or request changes to send it back.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -192,7 +192,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "search_work_by_metadata",
-      description: "Find work articles whose `phaseHistory` contains at least one entry with `metadata[field] === value`. Useful for queries like 'which articles have `success_test: N`?' or 'which articles have a verdict of `adopt-v1`?'. Array-valued metadata fields match if the array includes `value`. Returns summaries (not full articles); combine with `get_work` for drill-down.",
+      description: "Find work articles whose `phaseHistory` contains at least one entry with `metadata[field] === value`. Useful for queries like 'which articles have `success_test: N`?' or 'which articles have a verdict of `adopt-v1`?'. Array-valued metadata fields match if the array includes `value`. Returns summaries (not full articles); combine with `get_work` for drill-down. When to use: when the lookup key is a structured phase-history payload rather than free text; to combine a metadata match with phase or priority filters, use list_work's metadataField/metadataValue instead.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -208,7 +208,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "add_dependency",
-      description: "Add a blocking dependency to a work article so automation and humans can see why progress should wait.",
+      description: "Add a blocking dependency to a work article so automation and humans can see why progress should wait. When to use: as soon as you discover one work item cannot proceed until another lands, so blocked-state triage in list_work stays truthful.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -220,7 +220,7 @@ export function workToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "remove_dependency",
-      description: "Remove a blocking dependency from a work article.",
+      description: "Remove a blocking dependency from a work article. When to use: once the blocking work lands or the ordering proves unnecessary, so the item reappears in unblocked pickup queries.",
       inputSchema: {
         type: "object" as const,
         properties: {

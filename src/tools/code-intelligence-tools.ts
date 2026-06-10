@@ -15,7 +15,7 @@ export function codeIntelligenceToolDefinitions(): ToolDefinition[] {
     {
       name: "code_get_ref",
       description:
-        `Inspect a code reference path and show whether it exists plus linked knowledge, work, active work, and policy owners. ${REF_EXAMPLE}. This is code-ref intelligence, not AST/call-graph analysis.`,
+        `Inspect a code reference path and show whether it exists plus linked knowledge, work, active work, and policy owners. ${REF_EXAMPLE}. This is code-ref intelligence, not AST/call-graph analysis. When to use: Middle rung of the code-ref ladder — pick it when one path needs an existence check plus its linked articles; drop to code_find_owners for ownership alone, or step up to code_analyze_impact for risk and next actions.`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -27,7 +27,7 @@ export function codeIntelligenceToolDefinitions(): ToolDefinition[] {
     {
       name: "code_find_owners",
       description:
-        `List the knowledge and work articles that link to a code reference, without filesystem stat or risk scoring. ${REF_EXAMPLE}. Lighter-weight alternative to code_analyze_impact when you only need ownership data.`,
+        `List the knowledge and work articles that link to a code reference, without filesystem stat or risk scoring. ${REF_EXAMPLE}. Lighter-weight alternative to code_analyze_impact when you only need ownership data. When to use: Pick it when the only question is which articles claim a path, e.g. choosing a reviewer or finding the doc to update; switch to code_get_ref if you also need filesystem existence.`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -39,7 +39,7 @@ export function codeIntelligenceToolDefinitions(): ToolDefinition[] {
     {
       name: "code_analyze_impact",
       description:
-        `Analyze Monsthera operational impact for a code path: linked knowledge/work/policies, active work, missing refs, risk, and next actions. ${REF_EXAMPLE}. Use before editing or reviewing a referenced file.`,
+        `Analyze Monsthera operational impact for a code path: linked knowledge/work/policies, active work, missing refs, risk, and next actions. ${REF_EXAMPLE}. Use before editing or reviewing a referenced file. When to use: Heaviest rung of the code-ref ladder — run it when a change looks risky or touches policy-owned or active-work paths; for quick lookups prefer code_get_ref or code_find_owners.`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -51,7 +51,7 @@ export function codeIntelligenceToolDefinitions(): ToolDefinition[] {
     {
       name: "code_detect_changes",
       description:
-        "Analyze a set of changed paths supplied by the client/harness and report which Monsthera code refs, work articles, knowledge articles, and policies are affected. This avoids shelling out from the MCP server.",
+        "Analyze a set of changed paths supplied by the client/harness and report which Monsthera code refs, work articles, knowledge articles, and policies are affected. This avoids shelling out from the MCP server. When to use: After producing a diff (pre-commit, PR review, post-merge) to map every touched path to affected articles in one batch instead of calling code_get_ref per path.",
       inputSchema: {
         type: "object" as const,
         properties: {

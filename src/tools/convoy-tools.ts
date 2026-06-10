@@ -146,7 +146,7 @@ export function convoyToolDefinitions(): ToolDefinition[] {
     {
       name: "convoy_create",
       description:
-        "Create a convoy: a named group of work articles where the lead's progress past `targetPhase` unblocks members. Default targetPhase is `implementation`. Emits a `convoy_created` provenance event (envelope `workId` = lead).",
+        "Create a convoy: a named group of work articles where the lead's progress past `targetPhase` unblocks members. Default targetPhase is `implementation`. Emits a `convoy_created` provenance event (envelope `workId` = lead). When to use: Reach for it when several work articles must wait on one lead change reaching a phase and you want that gate tracked as a unit instead of pairwise `add_dependency` edges.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -172,7 +172,7 @@ export function convoyToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "convoy_list",
-      description: "List active convoys. Terminal (completed/cancelled) convoys are not returned.",
+      description: "List active convoys. Terminal (completed/cancelled) convoys are not returned. When to use: At triage time, to see which gates are still in play; for one convoy's full record — including terminal ones — use `convoy_get`.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -180,7 +180,7 @@ export function convoyToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "convoy_get",
-      description: "Get a single convoy by id (active OR terminal). Returns NOT_FOUND if no convoy with that id exists.",
+      description: "Get a single convoy by id (active OR terminal). Returns NOT_FOUND if no convoy with that id exists. When to use: When you already hold a convoy id — from `convoy_list`, a work article, or a `convoy_created` event — and need its members, target phase, or termination details.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -191,7 +191,7 @@ export function convoyToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "convoy_complete",
-      description: "Mark an active convoy as completed. Re-completion of a terminal convoy is rejected. Emits a `convoy_completed` provenance event.",
+      description: "Mark an active convoy as completed. Re-completion of a terminal convoy is rejected. Emits a `convoy_completed` provenance event. When to use: When the lead has reached the target phase and the grouping served its purpose; if the effort was abandoned instead, use `convoy_cancel`.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -204,7 +204,7 @@ export function convoyToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "convoy_cancel",
-      description: "Mark an active convoy as cancelled. Re-cancellation of a terminal convoy is rejected. Emits a `convoy_cancelled` provenance event.",
+      description: "Mark an active convoy as cancelled. Re-cancellation of a terminal convoy is rejected. Emits a `convoy_cancelled` provenance event. When to use: When the grouping should end before the goal is met — lead rescoped or members re-planned; if the goal was actually reached, use `convoy_complete`.",
       inputSchema: {
         type: "object" as const,
         properties: {

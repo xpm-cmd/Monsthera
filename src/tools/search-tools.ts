@@ -20,7 +20,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     {
       name: "search",
       description:
-        "Quick discovery across knowledge and work articles with BM25 keyword ranking. Queries work best with specific keywords (1-3 terms, AND semantics); longer queries use OR semantics ranked by BM25. For deep coding or investigation, prefer build_context_pack. Normal CRUD flows sync search automatically; use reindex_all only for bulk backfills or repair.",
+        "Quick discovery across knowledge and work articles with BM25 keyword ranking. Queries work best with specific keywords (1-3 terms, AND semantics); longer queries use OR semantics ranked by BM25. For deep coding or investigation, prefer build_context_pack. Normal CRUD flows sync search automatically; use reindex_all only for bulk backfills or repair. When to use: quick existence checks and id lookups — is this topic covered, which article mentions X — when ranked summaries are enough; reach for think when you want a synthesized answer rather than a result list.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -39,7 +39,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     {
       name: "think",
       description:
-        "Synthesize a single cited answer to a query across knowledge AND work articles, plus an explicit gap analysis (stale sources, uncited context, missing/contradictory coverage). Runs build_context_pack, then composes prose grounded ONLY in the retrieved sources — every citation resolves to a real article id; invented markers are pruned. Degrades to the ranked sources (no prose) when no LLM is configured. Use when you want the answer, not just the pages.",
+        "Synthesize a single cited answer to a query across knowledge AND work articles, plus an explicit gap analysis (stale sources, uncited context, missing/contradictory coverage). Runs build_context_pack, then composes prose grounded ONLY in the retrieved sources — every citation resolves to a real article id; invented markers are pruned. Degrades to the ranked sources (no prose) when no LLM is configured. Use when you want the answer, not just the pages. When to use: direct questions that deserve one grounded, citation-backed answer — status summaries, prior decisions, cross-article synthesis; when you plan to read the sources yourself, build_context_pack is cheaper.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -63,7 +63,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     {
       name: "build_context_pack",
       description:
-        "Recommended first step before coding or investigation. Builds a ranked context pack using search plus freshness, quality, and code-link signals so agents can read less, plan faster, and then open only the top knowledge/work items. Pass `include_content: true` to inline the full body of each ranked item (skips the per-result get_article / get_work round-trip).",
+        "Recommended first step before coding or investigation. Builds a ranked context pack using search plus freshness, quality, and code-link signals so agents can read less, plan faster, and then open only the top knowledge/work items. Pass `include_content: true` to inline the full body of each ranked item (skips the per-result get_article / get_work round-trip). When to use: as the opening move of any nontrivial coding or investigation task, before reading files or planning; for a quick existence check, plain search is lighter.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -103,7 +103,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "index_article",
-      description: "Index or re-index a specific article for search. This is mainly for repair or backfill flows; normal create/update flows already sync automatically.",
+      description: "Index or re-index a specific article for search. This is mainly for repair or backfill flows; normal create/update flows already sync automatically. When to use: only when a specific article is missing or stale in search results despite existing — typically after files changed outside the MCP flow; for corpus-wide drift, use reindex_all.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -119,7 +119,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "remove_from_index",
-      description: "Remove an article from the search index. This is mainly for repair flows; normal delete flows already sync automatically.",
+      description: "Remove an article from the search index. This is mainly for repair flows; normal delete flows already sync automatically. When to use: only when search keeps surfacing an article that no longer exists, such as after a file was removed outside the MCP flow.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -131,7 +131,7 @@ export function searchToolDefinitions(): ToolDefinition[] {
     {
       name: "reindex_all",
       description:
-        "Rebuild the entire search index from all knowledge and work articles. Use this only after migrations, bulk imports, or recovery work.",
+        "Rebuild the entire search index from all knowledge and work articles. Use this only after migrations, bulk imports, or recovery work. When to use: after batch creates, ingest runs, or out-of-band file edits leave the index out of sync; for a single stray article, index_article is cheaper.",
       inputSchema: {
         type: "object" as const,
         properties: {},

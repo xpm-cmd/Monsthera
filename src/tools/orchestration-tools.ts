@@ -13,7 +13,7 @@ export function orchestrationToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "log_event",
-      description: "Log an orchestration event (phase change, agent lifecycle, dependency, guard, or error).",
+      description: "Log an orchestration event (phase change, agent lifecycle, dependency, guard, or error). When to use: When recording provenance the system does not emit automatically — guard outcomes, dependency blocks, errors; for the agent started/completed/failed lifecycle, prefer events_emit, which validates those transitions strictly.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -31,7 +31,7 @@ export function orchestrationToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "get_events",
-      description: "Get orchestration events, optionally filtered by work ID or event type.",
+      description: "Get orchestration events, optionally filtered by work ID or event type. When to use: For a one-shot audit of what happened on a work article or event type, e.g. tracing why a phase advanced; to tail continuously with a cursor, use events_subscribe.",
       inputSchema: {
         type: "object" as const,
         properties: {

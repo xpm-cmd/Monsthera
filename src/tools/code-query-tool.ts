@@ -45,7 +45,7 @@ export function codeQueryToolDefinitions(): ToolDefinition[] {
     {
       name: "code_query",
       description:
-        "Search the lightweight code inventory (ADR-017 M3) for symbols and files matching a name or path token. Returns ranked hits with kind/language/line metadata. The inventory is read-only here — when empty, the response includes a hint to run `monsthera code reindex` from the CLI.",
+        "Search the lightweight code inventory (ADR-017 M3) for symbols and files matching a name or path token. Returns ranked hits with kind/language/line metadata. The inventory is read-only here — when empty, the response includes a hint to run `monsthera code reindex` from the CLI. When to use: Reach for it when you need to find where a symbol or file lives before reading code; use `search` for knowledge and work articles, and `code_get_ref` for what links to a path you already know.",
       inputSchema: {
         type: "object" as const,
         properties: {

@@ -17,7 +17,7 @@ export function snapshotToolDefinitions(): ToolDefinition[] {
     {
       name: "record_environment_snapshot",
       description:
-        "Record a sandbox environment snapshot (cwd, file listing, runtimes, package managers, lockfile hashes, memory, git ref). Monsthera never runs shell commands itself — the caller gathers this data from its own harness (or the `scripts/capture-env-snapshot.ts` helper) and passes the parsed JSON here. Pair with `build_context_pack` so semantic context (what the project means) arrives alongside physical context (what this sandbox actually is).",
+        "Record a sandbox environment snapshot (cwd, file listing, runtimes, package managers, lockfile hashes, memory, git ref). Monsthera never runs shell commands itself — the caller gathers this data from its own harness (or the `scripts/capture-env-snapshot.ts` helper) and passes the parsed JSON here. Pair with `build_context_pack` so semantic context (what the project means) arrives alongside physical context (what this sandbox actually is). When to use: At session start or before a handoff in sandboxed or ephemeral environments, so the resuming agent can diff against it with `compare_environment_snapshots`.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -75,7 +75,7 @@ export function snapshotToolDefinitions(): ToolDefinition[] {
     {
       name: "get_latest_environment_snapshot",
       description:
-        "Return the most recent environment snapshot for a given agent, work article, or both (workId is preferred when both are provided; falls back to the agent's latest if none was recorded against the work). Response includes `ageSeconds` and a `stale` flag based on the configured max age (MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES, default 30).",
+        "Return the most recent environment snapshot for a given agent, work article, or both (workId is preferred when both are provided; falls back to the agent's latest if none was recorded against the work). Response includes `ageSeconds` and a `stale` flag based on the configured max age (MONSTHERA_SNAPSHOT_MAX_AGE_MINUTES, default 30). When to use: When resuming an agent's or work article's thread, to see what the previous sandbox looked like — check the `stale` flag before trusting it.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -87,7 +87,7 @@ export function snapshotToolDefinitions(): ToolDefinition[] {
     {
       name: "compare_environment_snapshots",
       description:
-        "Diff two snapshots by id. Reports which runtimes, lockfile hashes, git fields, package managers, or cwd changed, plus the wall-clock age delta. Use this when resuming a work article in a new sandbox to detect drift before trusting prior state.",
+        "Diff two snapshots by id. Reports which runtimes, lockfile hashes, git fields, package managers, or cwd changed, plus the wall-clock age delta. Use this when resuming a work article in a new sandbox to detect drift before trusting prior state. When to use: After `get_latest_environment_snapshot` returns an older snapshot and you have recorded a fresh one — reported drift means re-verifying installs and state instead of reusing prior results.",
       inputSchema: {
         type: "object" as const,
         properties: {

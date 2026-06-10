@@ -14,7 +14,7 @@ export function structureToolDefinitions(): ToolDefinition[] {
     {
       name: "get_neighbors",
       description:
-        "Navigate the knowledge graph from any article. Returns direct connections (references, dependencies, shared tags, code links) so agents can explore related articles without searching. Use after search or get_article to discover connected context.",
+        "Navigate the knowledge graph from any article. Returns direct connections (references, dependencies, shared tags, code links) so agents can explore related articles without searching. Use after search or get_article to discover connected context. When to use: When one relevant article is in hand and you want its surroundings instead of another search; for the full, untruncated citation edge set, use refs_incoming or refs_outgoing.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -38,7 +38,7 @@ export function structureToolDefinitions(): ToolDefinition[] {
     {
       name: "get_graph_summary",
       description:
-        "Get a high-level overview of the knowledge graph: node/edge counts by type, and structural gaps (missing references, broken code refs). Use for orientation before navigating.",
+        "Get a high-level overview of the knowledge graph: node/edge counts by type, and structural gaps (missing references, broken code refs). Use for orientation before navigating. When to use: On first contact with an unfamiliar corpus, or after bulk imports or deletions to spot-check graph health; drill into specific gaps with get_neighbors or the refs_* tools.",
       inputSchema: {
         type: "object" as const,
         properties: {},
