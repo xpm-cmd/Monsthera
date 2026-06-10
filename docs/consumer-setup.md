@@ -184,6 +184,47 @@ You can now add `knowledge/` to your git tracking (it's all plain markdown) whil
 
 ---
 
+## Work tracking quickstart (wave registration)
+
+When several agents (or several "waves" of work) run against the same repo, register each wave as a work article *before* starting it — `work list` is how the second wave discovers the first one. The work-article model and guards are [ADR-002](./adrs/002-work-article-model.md); the CLI ergonomics are [ADR-011](./adrs/011-orchestrator-cli-ergonomics.md). Every command below was run against `dist/bin.js` as written; execute from the consumer repo (`--repo` defaults to cwd).
+
+```bash
+MONSTHERA="node /absolute/path/to/Monsthera/dist/bin.js"
+
+# 0. BEFORE starting a wave — see what is already in flight (the collision-prevention habit)
+$MONSTHERA work list            # filters: --phase <p>, --wave <name> (matches tag wave-<name>), --format json
+
+# 1. register the wave — one article per in-flight wave; prints its id (w-xxxxxxxx)
+$MONSTHERA work create --title "Wave: line-D HB-037..041" --template feature \
+  --author line-d-agent --tags wave-line-d
+
+# 2. advance as the wave progresses
+$MONSTHERA work advance w-xxxxxxxx --phase enrichment --reason "spec agreed; starting"
+
+# 3. when the PR merges
+$MONSTHERA work close w-xxxxxxxx --pr 51        # records canonical "merged via PR #51"
+```
+
+Guards and ladders (observed behaviour, not theory):
+
+- Templates are `feature | bugfix | refactor | spike`, and **each template has its own phase ladder**. `feature` walks all of `planning → enrichment → implementation → review → done`; `spike` is just `planning → enrichment → done` (`implementation`/`review` are `STATE_TRANSITION_INVALID`). For lightweight research waves, `spike` is the cheapest honest registration.
+- `feature` blocks `enrichment → implementation` with `GUARD_FAILED: min_enrichment_met` until its enrichment roles (`architecture`, `testing` — visible in `work get <id>`) record contributions via `work enrich <id> --role <r> --status contributed|skipped`. The audited escape is `--skip-guard-reason "<why>"` on `work advance` — the bypass and reason are recorded in phase history. Guards gate readiness, **not** ladder shape: skipping guards cannot jump phases (`work close` from `planning` fails; a `spike` closes from `enrichment` because `done` is its next rung).
+- CLI errors print on **stderr** with empty stdout — with the `2>/dev/null` habit from Troubleshooting, a blocked advance is silent except for exit code 1. Check `$?`.
+- `done`/`cancelled` articles are immutable — `work delete` refuses with "Cannot modify article in terminal phase". Closed waves are permanent audit records.
+
+The MCP tools (what agents see) are named differently than the CLI verbs:
+
+| CLI                                | MCP tool                                      |
+| ---------------------------------- | --------------------------------------------- |
+| `work list`                        | `list_work`                                   |
+| `work create`                      | `create_work`                                 |
+| `work advance --phase <p>`         | `advance_phase` (`targetPhase: <p>`)          |
+| `work advance --skip-guard-reason` | `advance_phase` with `skip_guard: { reason }` |
+| `work enrich`                      | `contribute_enrichment`                       |
+| `work close --pr <n>`              | `advance_phase` to `done` (no close shortcut) |
+
+---
+
 ## Step 6 — upgrading Monsthera
 
 When a new alpha ships:
