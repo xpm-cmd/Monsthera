@@ -54,7 +54,9 @@ function url(p: string): string {
 describe("Overview empty-state contract", () => {
   it("/api/agents returns totalAgents=0 on a fresh corpus", async () => {
     if (dashboardError) return;
-    const res = await fetch(url("/api/agents"));
+    const res = await fetch(url("/api/agents"), {
+      headers: { Authorization: `Bearer ${dashboard?.authToken ?? ""}` },
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       summary: { totalAgents: number; activeAgents: number };
@@ -82,7 +84,9 @@ describe("Overview empty-state contract", () => {
     });
     expect(created.ok).toBe(true);
 
-    const res = await fetch(url("/api/agents"));
+    const res = await fetch(url("/api/agents"), {
+      headers: { Authorization: `Bearer ${dashboard?.authToken ?? ""}` },
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       summary: { totalAgents: number };

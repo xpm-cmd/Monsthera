@@ -38,7 +38,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@shikijs/langs": "4.0.2",
     "mysql2": "^3.11.3",
     "proper-lockfile": "^4.1.2",
@@ -66,5 +66,11 @@
       "eslint --fix",
       "prettier --write"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "path-to-regexp": ">=8.4.0",
+      "fast-uri": ">=3.1.2"
+    }
   }
 }

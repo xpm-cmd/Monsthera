@@ -119,7 +119,7 @@ describe("Dashboard JSON API", () => {
 
       await container.workService.advancePhase(created.value.id, "enrichment");
 
-      const res = await fetch(url("/api/system/runtime"));
+      const res = await fetch(url("/api/system/runtime"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         capabilities: {
@@ -196,7 +196,7 @@ describe("Dashboard JSON API", () => {
       const linked = await container.workService.addDependency(blocked.value.id, blocker.value.id);
       expect(linked.ok).toBe(true);
 
-      const res = await fetch(url("/api/orchestration/wave"));
+      const res = await fetch(url("/api/orchestration/wave"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         summary: { readyCount: number; blockedCount: number };
@@ -269,7 +269,7 @@ describe("Dashboard JSON API", () => {
       });
       expect(updated.ok).toBe(true);
 
-      const res = await fetch(url("/api/structure/graph"));
+      const res = await fetch(url("/api/structure/graph"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         nodes: Array<{ kind: string; label: string }>;
@@ -291,7 +291,7 @@ describe("Dashboard JSON API", () => {
   describe("GET /api/code/ref", () => {
     it("returns 400 VALIDATION_FAILED when ?path is missing", async () => {
       if (dashboardError) return;
-      const res = await fetch(url("/api/code/ref"));
+      const res = await fetch(url("/api/code/ref"), { headers: authHeaders() });
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error: string; message: string };
       expect(body.error).toBe("VALIDATION_FAILED");
@@ -310,7 +310,7 @@ describe("Dashboard JSON API", () => {
       });
       expect(knowledge.ok).toBe(true);
 
-      const res = await fetch(url("/api/code/ref?path=src%2Fdashboard-code-test%2Fref.ts"));
+      const res = await fetch(url("/api/code/ref?path=src%2Fdashboard-code-test%2Fref.ts"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         normalizedPath: string;
@@ -342,7 +342,7 @@ describe("Dashboard JSON API", () => {
       });
       expect(knowledge.ok).toBe(true);
 
-      const res = await fetch(url("/api/code/owners?path=src%2Fdashboard-code-test%2Fowners.ts"));
+      const res = await fetch(url("/api/code/owners?path=src%2Fdashboard-code-test%2Fowners.ts"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { summary: { ownerCount: number } };
       expect(body.summary.ownerCount).toBeGreaterThanOrEqual(1);
@@ -352,7 +352,7 @@ describe("Dashboard JSON API", () => {
   describe("GET /api/code/impact", () => {
     it("returns 200 with risk + reasons for a queried path", async () => {
       if (dashboardError) return;
-      const res = await fetch(url("/api/code/impact?path=src%2Fdashboard-code-test%2Fimpact-only.ts"));
+      const res = await fetch(url("/api/code/impact?path=src%2Fdashboard-code-test%2Fimpact-only.ts"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         risk: "none" | "low" | "medium" | "high";
@@ -448,7 +448,7 @@ describe("Dashboard JSON API", () => {
       });
       expect(event.ok).toBe(true);
 
-      const res = await fetch(url("/api/agents"));
+      const res = await fetch(url("/api/agents"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         summary: { totalAgents: number; reviewAgents: number };
@@ -476,7 +476,7 @@ describe("Dashboard JSON API", () => {
       });
       expect(created.ok).toBe(true);
 
-      const res = await fetch(url("/api/agents/agent-specific-assignee"));
+      const res = await fetch(url("/api/agents/agent-specific-assignee"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { id: string; assignedCount: number };
       expect(body.id).toBe("agent-specific-assignee");
@@ -486,7 +486,7 @@ describe("Dashboard JSON API", () => {
     it("returns 404 for an unknown agent", async () => {
       if (dashboardError) return;
 
-      const res = await fetch(url("/api/agents/does-not-exist"));
+      const res = await fetch(url("/api/agents/does-not-exist"), { headers: authHeaders() });
       expect(res.status).toBe(404);
     });
   });
@@ -522,7 +522,7 @@ describe("Dashboard JSON API", () => {
       expect(body.createdCount).toBe(1);
       expect(body.items[0]?.sourcePath).toBe("docs/dashboard-ingest.md");
 
-      const knowledgeRes = await fetch(url("/api/knowledge"));
+      const knowledgeRes = await fetch(url("/api/knowledge"), { headers: authHeaders() });
       const knowledge = (await knowledgeRes.json()) as Array<{ id: string; sourcePath?: string; title: string; content: string }>;
       const imported = knowledge.find((article) => article.id === body.items[0]?.articleId);
       expect(imported?.sourcePath).toBe("docs/dashboard-ingest.md");
@@ -535,7 +535,7 @@ describe("Dashboard JSON API", () => {
   describe("GET /api/knowledge", () => {
     it("returns 200 with an array response", async () => {
       if (dashboardError) return;
-      const res = await fetch(url("/api/knowledge"));
+      const res = await fetch(url("/api/knowledge"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(Array.isArray(body)).toBe(true);
@@ -551,7 +551,7 @@ describe("Dashboard JSON API", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
 
-      const res = await fetch(url("/api/knowledge"));
+      const res = await fetch(url("/api/knowledge"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as Array<{ title: string; category: string; diagnostics?: { quality?: { score: number } } }>;
       expect(Array.isArray(body)).toBe(true);
@@ -583,7 +583,7 @@ describe("Dashboard JSON API", () => {
       const created = (await createRes.json()) as { id: string; title: string };
       expect(created.title).toBe("Dashboard Created Article");
 
-      const searchRes = await fetch(url("/api/search?q=Dashboard%20Created%20Article"));
+      const searchRes = await fetch(url("/api/search?q=Dashboard%20Created%20Article"), { headers: authHeaders() });
       expect(searchRes.status).toBe(200);
       const results = (await searchRes.json()) as Array<{ id: string }>;
       expect(results.some((item) => item.id === created.id)).toBe(true);
@@ -595,7 +595,7 @@ describe("Dashboard JSON API", () => {
   describe("GET /api/knowledge/:id", () => {
     it("returns 404 for non-existent ID", async () => {
       if (dashboardError) return;
-      const res = await fetch(url("/api/knowledge/does-not-exist"));
+      const res = await fetch(url("/api/knowledge/does-not-exist"), { headers: authHeaders() });
       expect(res.status).toBe(404);
       const body = await res.json();
       expect(body).toHaveProperty("error");
@@ -611,7 +611,7 @@ describe("Dashboard JSON API", () => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
 
-      const res = await fetch(url(`/api/knowledge/${result.value.id}`));
+      const res = await fetch(url(`/api/knowledge/${result.value.id}`), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { id: string; title: string; diagnostics?: { freshness?: { state: string } } };
       expect(body.id).toBe(result.value.id);
@@ -852,7 +852,7 @@ describe("Dashboard JSON API", () => {
       });
       expect(deleteRes.status).toBe(200);
 
-      const getRes = await fetch(url(`/api/knowledge/${created.value.id}`));
+      const getRes = await fetch(url(`/api/knowledge/${created.value.id}`), { headers: authHeaders() });
       expect(getRes.status).toBe(404);
     });
   });
@@ -862,7 +862,7 @@ describe("Dashboard JSON API", () => {
   describe("GET /api/work", () => {
     it("returns 200 with array (may be empty)", async () => {
       if (dashboardError) return;
-      const res = await fetch(url("/api/work"));
+      const res = await fetch(url("/api/work"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(Array.isArray(body)).toBe(true);
@@ -915,7 +915,7 @@ describe("Dashboard JSON API", () => {
   describe("GET /api/work/:id", () => {
     it("returns 404 for non-existent ID", async () => {
       if (dashboardError) return;
-      const res = await fetch(url("/api/work/does-not-exist"));
+      const res = await fetch(url("/api/work/does-not-exist"), { headers: authHeaders() });
       expect(res.status).toBe(404);
       const body = await res.json();
       expect(body).toHaveProperty("error");
@@ -1127,7 +1127,7 @@ describe("Dashboard JSON API", () => {
       });
       expect(created.ok).toBe(true);
       if (!created.ok) return;
-      const res = await fetch(url("/api/search?q=test"));
+      const res = await fetch(url("/api/search?q=test"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(Array.isArray(body)).toBe(true);
@@ -1144,7 +1144,7 @@ describe("Dashboard JSON API", () => {
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      const res = await fetch(url("/api/search?q=enrichment"));
+      const res = await fetch(url("/api/search?q=enrichment"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as Array<{
         id: string;
@@ -1169,7 +1169,7 @@ describe("Dashboard JSON API", () => {
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      const res = await fetch(url("/api/search/context-pack?q=auth&mode=code"));
+      const res = await fetch(url("/api/search/context-pack?q=auth&mode=code"), { headers: authHeaders() });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         mode: string;
@@ -1203,7 +1203,7 @@ describe("Dashboard JSON API", () => {
   describe("unknown route", () => {
     it("GET /api/unknown returns 404", async () => {
       if (dashboardError) return;
-      const res = await fetch(url("/api/unknown"));
+      const res = await fetch(url("/api/unknown"), { headers: authHeaders() });
       expect(res.status).toBe(404);
       const body = await res.json();
       expect(body).toHaveProperty("error", "NOT_FOUND");

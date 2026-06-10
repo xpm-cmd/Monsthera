@@ -91,12 +91,15 @@ describe("validateConfig()", () => {
         ollamaUrl: "http://remote:11434",
       },
       orchestration: { autoAdvance: true, pollIntervalMs: 5000, maxConcurrentAgents: 10 },
-      server: { port: 8080, host: "0.0.0.0" },
+      // host stays loopback: a non-loopback bind now requires the explicit
+      // MONSTHERA_ALLOW_NONLOCAL_HOST opt-in (see "host bind hardening" below).
+      server: { port: 8080, host: "127.0.0.1" },
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.verbosity).toBe("debug");
       expect(result.value.server.port).toBe(8080);
+      expect(result.value.server.host).toBe("127.0.0.1");
     }
   });
 
@@ -287,5 +290,94 @@ describe("MonstheraConfigSchema", () => {
       orchestration: { pollIntervalMs: 500 },
     });
     expect(result.success).toBe(false);
+  });
+});
+
+// ─── Server host bind hardening ──────────────────────────────────────────────
+// A non-loopback bind (e.g. 0.0.0.0) exposes the dashboard on every network
+// interface. It must be rejected unless the operator opts in explicitly with
+// MONSTHERA_ALLOW_NONLOCAL_HOST=true. Loopback stays the silent default.
+
+describe("server.host bind hardening", () => {
+  beforeEach(() => {
+    delete process.env["MONSTHERA_HOST"];
+    delete process.env["MONSTHERA_ALLOW_NONLOCAL_HOST"];
+  });
+
+  afterEach(() => {
+    delete process.env["MONSTHERA_HOST"];
+    delete process.env["MONSTHERA_ALLOW_NONLOCAL_HOST"];
+  });
+
+  it("allows the default loopback host", () => {
+    const result = validateConfig({ repoPath: "/repo" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.server.host).toBe("localhost");
+  });
+
+  it("allows 127.0.0.1", () => {
+    const result = validateConfig({ repoPath: "/repo", server: { host: "127.0.0.1" } });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.server.host).toBe("127.0.0.1");
+  });
+
+  it("allows ::1 and [::1] loopback forms", () => {
+    for (const host of ["::1", "[::1]"]) {
+      const result = validateConfig({ repoPath: "/repo", server: { host } });
+      expect(result.ok).toBe(true);
+    }
+  });
+
+  it("rejects a non-loopback host (0.0.0.0) without the opt-in", () => {
+    const result = validateConfig({ repoPath: "/repo", server: { host: "0.0.0.0" } });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.name).toBe("ConfigurationError");
+      expect(result.error.message).toMatch(/invalid configuration/i);
+    }
+  });
+
+  it("allows a non-loopback host when MONSTHERA_ALLOW_NONLOCAL_HOST=true", () => {
+    process.env["MONSTHERA_ALLOW_NONLOCAL_HOST"] = "true";
+    const result = validateConfig({ repoPath: "/repo", server: { host: "0.0.0.0" } });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.server.host).toBe("0.0.0.0");
+  });
+
+  // End-to-end through loadConfig + applyEnvOverrides (the MONSTHERA_HOST path).
+  describe("via MONSTHERA_HOST env override", () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "monsthera-host-"));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it("accepts MONSTHERA_HOST=127.0.0.1", () => {
+      process.env["MONSTHERA_HOST"] = "127.0.0.1";
+      const result = loadConfig(tmpDir);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.server.host).toBe("127.0.0.1");
+    });
+
+    it("rejects MONSTHERA_HOST=0.0.0.0 without the opt-in", () => {
+      process.env["MONSTHERA_HOST"] = "0.0.0.0";
+      const result = loadConfig(tmpDir);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.name).toBe("ConfigurationError");
+      }
+    });
+
+    it("accepts MONSTHERA_HOST=0.0.0.0 with MONSTHERA_ALLOW_NONLOCAL_HOST=true", () => {
+      process.env["MONSTHERA_HOST"] = "0.0.0.0";
+      process.env["MONSTHERA_ALLOW_NONLOCAL_HOST"] = "true";
+      const result = loadConfig(tmpDir);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.server.host).toBe("0.0.0.0");
+    });
   });
 });

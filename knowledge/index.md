@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 94 knowledge articles and 20 work articles.
-> Last updated: 2026-05-31 11:15:29
+> Auto-generated catalog of 96 knowledge articles and 22 work articles.
+> Last updated: 2026-06-10 08:36:42
 
 ## Knowledge
 
@@ -19,6 +19,7 @@
 
 - [Agent and wave MCP tools](notes/agent-and-wave-mcp-tools.md) — ## Overview  Monsthera has a small but important slice of MCP tools dedicated to
 - [AgentService: Agent registry and session tracking](notes/agentservice-agent-registry-and-session-tracking.md) — ## Overview  `AgentService` is a derived-data service — it has no persistent age
+- [Auditoría integral 2026-06-10 — backlog priorizado post-M3](notes/auditora-integral-2026-06-10-backlog-priorizado-post-m3.md) — Auditoría completa sobre main @ caa6166 (post-M3, v3.0.0). Método: verificacione
 - [CLI entrypoint and command routing](notes/cli-entrypoint-and-command-routing.md) — ## Overview  The CLI surface is the thinnest operational wrapper around the Mons
 - [Cognitive handoff sessions — system design and state](notes/cognitive-handoff-sessions.md) — # Cognitive handoff sessions  **Status:** shipped in PRs [#104](https://github.c
 - [Context Pack Builder: Scoring, Diagnostics, and Mode-Specific Ranking](notes/context-pack-builder-scoring-diagnostics-and-mode-specific-ranking.md) — ## How build_context_pack Works  `buildContextPack()` in `SearchService` (`src/s
@@ -126,6 +127,7 @@
 ### solution
 
 - [Dogfood review (2026-05-29): CLI --help, version drift, codeRefs extractor, lint exemption, dashboard split](notes/dogfood-review-2026-05-29-cli-help-version-drift-coderefs-extractor-lint-exemption-dashboard-split.md) — A dogfood review of Monsthera using its own CLI (`monsthera doctor|lint|code|sta
+- [PR P0 shipped — audit hardening (auth GET, host bind, SDK bump, CI gates)](notes/pr-p0-shipped-audit-hardening-auth-get-host-bind-sdk-bump-ci-gates.md) — Wave 1 de la auditoría 2026-06-10 (ver [[auditora-integral-2026-06-10-backlog-pr
 - [PR-10: Config-driven ranking knobs](notes/pr10-config-ranking-knobs.md) — Fourth PR of M2; prerequisite for PR-11's reranker.  ## What shipped (main @ 2fc
 - [PR-11: Relevance reranker stage](notes/pr11-reranker-stage.md) — Fifth PR of M2. Optional relevance-reranking stage for hybrid search; consumes t
 - [PR-12: Embedding onboarding ergonomics (M2 close)](notes/pr12-embedding-onboarding.md) — Sixth and final PR of M2. Makes enabling semantic search a one-liner.  ## What s
@@ -141,6 +143,11 @@
 - [T5: Minimal-diff frontmatter write on knowledge update](notes/t5-minimal-diff-frontmatter-write-on-knowledge-update.md) — ## Summary  Final task (T5) of the real-corpus dogfood follow-up. Shipped on bra
 
 ## Work
+
+### planning (2)
+
+- [PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet](work-articles/w-kw9xy2i5.md) [high] — Wave 1 de la auditoría 2026-06-10 (ver k-3zo9w9dg). Rama `fi
+- [PR P1 — eval keystone: expansión del golden set + honestidad semántica](work-articles/w-zluxybat.md) [high] — Wave 2 de la auditoría 2026-06-10 (ver k-3zo9w9dg). Rama `fe
 
 ### done (19)
 

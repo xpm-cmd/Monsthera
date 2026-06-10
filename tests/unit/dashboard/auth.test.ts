@@ -18,12 +18,27 @@ function fakeReq(method: string, authorization?: string): IncomingMessage {
 describe("requireAuth", () => {
   const token = "abc123def456";
 
-  it("allows GET requests without a token", () => {
-    expect(requireAuth(fakeReq("GET"), token, "/api/knowledge")).toBe(true);
+  it("rejects GET requests without a token", () => {
+    // GET endpoints expose the full corpus (knowledge, work, events, search,
+    // agents, code-intel). They must carry a Bearer token like any other read.
+    expect(requireAuth(fakeReq("GET"), token, "/api/knowledge")).toBe(false);
   });
 
-  it("allows OPTIONS requests without a token", () => {
+  it("accepts GET requests with a valid Bearer token", () => {
+    expect(requireAuth(fakeReq("GET", `Bearer ${token}`), token, "/api/knowledge")).toBe(true);
+  });
+
+  it("rejects GET requests with a wrong token", () => {
+    expect(requireAuth(fakeReq("GET", "Bearer wrong-token"), token, "/api/knowledge")).toBe(false);
+  });
+
+  it("allows OPTIONS requests without a token (CORS preflight carries no auth header)", () => {
     expect(requireAuth(fakeReq("OPTIONS"), token, "/api/knowledge")).toBe(true);
+  });
+
+  it("allows GET to exempt paths without a token", () => {
+    expect(requireAuth(fakeReq("GET"), token, "/api/health")).toBe(true);
+    expect(requireAuth(fakeReq("GET"), token, "/api/status")).toBe(true);
   });
 
   it("allows POST to exempt paths without a token", () => {
@@ -151,9 +166,19 @@ describe("Dashboard auth integration", () => {
     expect(res.status).toBe(200);
   });
 
-  it("GET /api/knowledge without token returns 200 (GET is exempt)", async () => {
+  it("GET /api/knowledge without token returns 401 (GET now requires auth)", async () => {
     if (dashboardError) return;
     const res = await fetch(url("/api/knowledge"));
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("UNAUTHORIZED");
+  });
+
+  it("GET /api/knowledge with valid token returns 200", async () => {
+    if (dashboardError || !dashboard) return;
+    const res = await fetch(url("/api/knowledge"), {
+      headers: { Authorization: `Bearer ${dashboard.authToken}` },
+    });
     expect(res.status).toBe(200);
   });
 
