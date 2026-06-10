@@ -283,7 +283,12 @@ export class SearchService {
   getHealthStatus(): { healthy: boolean; detail: string } {
     const size = this.searchRepo.size;
     const embeds = this.searchRepo.embeddingCount;
-    const semanticTag = embeds > 0 ? `, ${embeds} embeddings` : this.config.semanticEnabled ? ", semantic unavailable" : "";
+    const semanticTag =
+      embeds > 0
+        ? `, ${embeds} embeddings`
+        : this.config.semanticEnabled
+          ? ", semantic unavailable — run: monsthera self enable-semantic (requires Ollama)"
+          : "";
     if (size === 0) {
       return { healthy: true, detail: `Search service (empty index${semanticTag})` };
     }

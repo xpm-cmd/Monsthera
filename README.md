@@ -178,6 +178,7 @@ Ranking is tunable without code changes via `MONSTHERA_SEARCH_*` env vars
 - [Dashboard UX Plan](docs/dashboard-ux-plan.md) — Dashboard operating model and usability roadmap
 - [ADRs](docs/adrs/) — Architecture Decision Records
 - [Coding Standards](docs/CODING-STANDARDS.md) — Code conventions
+- [Consumer Setup](docs/consumer-setup.md) — Wiring Monsthera into a downstream repo, including `self enable-semantic` for semantic search
 
 ## License
 

@@ -90,7 +90,9 @@ async function seedRefsCorpus(repoPath: string): Promise<void> {
       id: "k-orphan-source",
       slug: "orphan-source",
       title: "Orphan Source",
-      body: "I cite k-does-not-exist in prose.",
+      // Id-shaped on purpose (digit in the first segment) so the P0-C
+      // orphan-citation precision rule still treats it as a citation.
+      body: "I cite k-404-does-not-exist in prose.",
     }),
     "utf-8",
   );
@@ -155,7 +157,7 @@ describe("Integration: monsthera knowledge refs", () => {
     expect(
       parsed.some(
         (o: { sourceArticleId: string; missingRefId: string }) =>
-          o.sourceArticleId === "k-orphan-source" && o.missingRefId === "k-does-not-exist",
+          o.sourceArticleId === "k-orphan-source" && o.missingRefId === "k-404-does-not-exist",
       ),
     ).toBe(true);
 

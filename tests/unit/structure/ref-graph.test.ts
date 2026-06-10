@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
 import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
 import { createLogger } from "../../../src/core/logger.js";
-import { agentId, slug } from "../../../src/core/types.js";
+import { agentId, articleId, slug } from "../../../src/core/types.js";
 import { StructureService } from "../../../src/structure/service.js";
 
 async function makeService() {
@@ -33,7 +33,12 @@ describe("StructureService.getRefGraph", () => {
   it("returns the full incoming and outgoing reference set for a knowledge article", async () => {
     const { service, knowledgeRepo, repoPath } = await makeService();
 
+    // Pin the id: inline-citation detection only fires for id-shaped tokens
+    // (first segment after the prefix must contain a digit — see
+    // isIdShapedCitation in src/structure/wikilink.ts). A random generated id
+    // is digit-less ~7% of the time, which made this test flaky.
     const target = await knowledgeRepo.create({
+      id: articleId("k-9reftarget"),
       title: "Target",
       slug: slug("target"),
       category: "context",
@@ -208,12 +213,15 @@ describe("StructureService.getOrphanCitations", () => {
   });
 
   it("surfaces unresolved inline IDs in prose as orphans", async () => {
+    // Digit-bearing id (`k-77-…`) on purpose: the P0-C ID-shape rule no
+    // longer treats digit-less prose tokens like the old `k-nowhere` as
+    // citation candidates.
     const { service, knowledgeRepo, repoPath } = await makeService();
     const a = await knowledgeRepo.create({
       title: "A",
       slug: slug("a"),
       category: "context",
-      content: "This prose cites k-nowhere directly.",
+      content: "This prose cites k-77-nowhere directly.",
     });
     expect(a.ok).toBe(true);
     if (!a.ok) return;
@@ -222,7 +230,7 @@ describe("StructureService.getOrphanCitations", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.value.map((o) => o.missingRefId)).toEqual(["k-nowhere"]);
+    expect(result.value.map((o) => o.missingRefId)).toEqual(["k-77-nowhere"]);
 
     await fs.rm(repoPath, { recursive: true, force: true });
   });
