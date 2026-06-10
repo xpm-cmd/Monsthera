@@ -221,3 +221,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 11:28:59]** create work | Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo (w-ymavjqkd)
 - **[2026-06-10 11:36:09]** create work | findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named (w-c09d7wa9)
 - **[2026-06-10 11:40:02]** create knowledge | Wave A1: write path honra filePath — update/delete sobre archivos ID-named (k-lyfpgowg)
+- **[2026-06-10 11:49:17]** create knowledge | Wave A2: GUARD_FAILED min_enrichment_met ahora nombra roles pendientes y remedios (k-l6o5ujfw)
