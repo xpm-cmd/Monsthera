@@ -1,0 +1,57 @@
+[
+  {
+    "query": "work article model phases guards reviewers templates",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": [
+      "k-n3gtykv5",
+      "k-qlgfto92",
+      "k-ofsgt3dd",
+      "k-g0buqcg5"
+    ],
+    "forbiddenArticleIds": ["k-2jb9bh3p", "k-5nuw1j8i", "k-imz9hai0"],
+    "note": "The work-article-model cluster: ADR-002 + guard system + template system + work design. Dashboard SPA/work-page-UX/UI-library notes describe the UI that renders work, not the model — forbidden (per task spec: work-phases query must not surface dashboard-UI notes)."
+  },
+  {
+    "query": "work phase history skipped guard audit trail",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-qti3v876", "k-qlgfto92"],
+    "note": "Phase-history/skipped-guard audit note + guard system; the phase-transition-audit pair."
+  },
+  {
+    "query": "code intelligence strategy inventory milestones",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": [
+      "k-quo5tdc1",
+      "k-code-intel-m3-impl",
+      "k-code-intel-m2-impl",
+      "k-6qapdb1a"
+    ],
+    "note": "ADR-015 strategy + M3/M2/MVP implementation notes; the code-intelligence cluster (multi-relevant, NDCG-meaningful)."
+  },
+  {
+    "query": "dolt persistence connection schema health repositories",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-2njgnd6v", "k-klbt2h37"],
+    "forbiddenArticleIds": ["k-acodv9lb"],
+    "note": "Dolt persistence-layer + Dolt repositories notes (the implementation). ADR-001 is the storage-model decision, not the Dolt connection/schema mechanics — forbidden here (mirror of the knowledge.json storage case)."
+  },
+  {
+    "query": "environment snapshot cold start context pack work",
+    "mode": "code",
+    "type": "work",
+    "expectedArticleIds": ["w-0ieze72s", "w-guptmc33"],
+    "note": "Work items: add environment_snapshot MCP tool + Dolt persistence for snapshots; the snapshot-feature work pair (type=work exercises the work surface)."
+  },
+  {
+    "query": "file repository lost update lock read modify write",
+    "mode": "code",
+    "type": "work",
+    "expectedArticleIds": ["w-mc21yp9s", "w-5zsmz0f7"],
+    "forbiddenArticleIds": ["w-pd3211af", "w-49aol9fa"],
+    "note": "The file-repository concurrency fixes (lock RMW + slug TOCTOU). The CORS/CSRF and EDITOR-injection security fixes are unrelated concurrency-wise — forbidden."
+  }
+]

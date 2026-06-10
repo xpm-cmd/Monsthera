@@ -1,0 +1,37 @@
+[
+  {
+    "query": "convoy orchestration design dispatch waves resync",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": [
+      "k-40emzavw",
+      "k-agent-dispatch-design-decisions",
+      "k-convoy-requires-resync-design-decisions",
+      "k-convoy-hardening-design-decisions"
+    ],
+    "forbiddenArticleIds": ["k-convoy-dashboard-design-decisions"],
+    "note": "The convoy/dispatch ORCHESTRATION cluster: ADR-004 model + dispatch + requires-resync + hardening decisions. The convoy *dashboard* decision is UI, not orchestration — forbidden."
+  },
+  {
+    "query": "agent dispatch contract events not spawning",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-agent-dispatch-design-decisions", "k-40emzavw"],
+    "note": "ADR-008 dispatch decision + ADR-004 orchestration model; the event-driven dispatch pair."
+  },
+  {
+    "query": "wave planning execution batching dispatch",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-4e666q5w", "k-40emzavw"],
+    "forbiddenArticleIds": ["k-2jb9bh3p", "k-l7oy85r0"],
+    "note": "Wave planning system + orchestration model. Dashboard SPA/data-flow notes are unrelated to wave batching — forbidden."
+  },
+  {
+    "query": "convoy single-convoy invariant hardening provenance events",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-convoy-hardening-design-decisions", "k-convoy-requires-resync-design-decisions"],
+    "note": "ADR-013 hardening (single-convoy invariant, provenance events) + ADR-009 requires-resync; the convoy-internals pair."
+  }
+]

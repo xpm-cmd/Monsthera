@@ -72,6 +72,13 @@ export interface MonstheraContainer extends Disposable {
   readonly workService: WorkService;
   readonly searchRepo: SearchIndexRepository;
   readonly searchService: SearchService;
+  /**
+   * The wired embedding provider (Ollama or the stub). Exposed so diagnostics
+   * — `monsthera eval` engine detection and `monsthera doctor` — can probe the
+   * REAL provider's `healthCheck()` instead of reconstructing one from config.
+   * `SearchService` holds the same instance internally for the hot path.
+   */
+  readonly embeddingProvider: EmbeddingProvider;
   readonly orchestrationRepo: OrchestrationEventRepository;
   readonly convoyRepo: ConvoyRepository;
   readonly orchestrationService: OrchestrationService;
@@ -543,6 +550,14 @@ export async function createContainer(
   const canaryHealthy = await searchService.runCanary();
   const shouldBootstrapSearchIndex = sourceArticleCount > 0 && (searchRepo!.size === 0 || !canaryHealthy);
 
+  // `semanticSearchEnabled` below is deliberately config+index only
+  // (`semanticEnabled && embeddingCount > 0`) — "configured and has vectors",
+  // NOT "the embedding provider is live right now". A liveness probe would mean
+  // an HTTP `healthCheck()` to Ollama on every `createContainer`, i.e. on every
+  // read-only `monsthera status` call, adding network latency and an offline
+  // failure mode to a hot path that must stay fast. Operational liveness is
+  // surfaced by `monsthera doctor` and `monsthera eval` (engine=…) instead,
+  // where a live call's latency is acceptable. See P1 eval-honesty work.
   if (shouldBootstrapSearchIndex) {
     logger.info("Bootstrapping search index from Markdown source articles", {
       sourceArticleCount,
@@ -639,6 +654,7 @@ export async function createContainer(
     workService,
     searchRepo: searchRepo!,
     searchService,
+    embeddingProvider,
     orchestrationRepo: orchestrationRepo!,
     convoyRepo: convoyRepo!,
     orchestrationService,

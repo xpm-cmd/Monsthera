@@ -3,42 +3,51 @@
     "query": "hybrid knowledge architecture overview",
     "mode": "general",
     "expectedArticleIds": ["k-ypsx5ask"],
-    "note": "Monsthera: Hybrid Knowledge Architecture v6"
-  },
-  {
-    "query": "work article model phases guards reviewers",
-    "mode": "code",
-    "expectedArticleIds": ["k-n3gtykv5"],
-    "note": "ADR-002: Work Article Model"
+    "note": "Monsthera: Hybrid Knowledge Architecture v6 — single canonical overview."
   },
   {
     "query": "dual storage markdown dolt source of truth",
     "mode": "code",
     "expectedArticleIds": ["k-acodv9lb"],
-    "note": "ADR-001: Storage Model"
+    "forbiddenArticleIds": ["k-2njgnd6v", "k-klbt2h37"],
+    "note": "ADR-001 is the source-of-truth decision. The Dolt connection/repository implementation notes are about HOW, not the storage-model decision — must not outrank the ADR."
   },
   {
     "query": "surface boundaries mcp cli dashboard container",
     "mode": "code",
     "expectedArticleIds": ["k-8dsb3up8"],
-    "note": "ADR-005: Surface Boundaries"
+    "note": "ADR-005: Surface Boundaries — the canonical boundary decision."
   },
   {
     "query": "mcp tool catalog complete reference",
     "mode": "general",
     "expectedArticleIds": ["k-qhu1sw8h"],
-    "note": "MCP Tool Catalog — Complete Reference"
+    "forbiddenArticleIds": ["k-u16rujhn"],
+    "note": "MCP Tool Catalog is the complete reference. The 'agent and wave MCP tools' note is a narrow slice — should not displace the full catalog."
   },
   {
-    "query": "search service context pack indexing hybrid",
+    "query": "search service unified indexing context pack",
     "mode": "code",
     "expectedArticleIds": ["k-qszeow1i"],
-    "note": "SearchService: Unified search, indexing, and context packs"
+    "note": "SearchService note is the single canonical description of the search coordinator."
   },
   {
-    "query": "orchestration convoys waves dispatch model",
+    "query": "migration boundary v2 v3 cutover decision",
+    "mode": "research",
+    "expectedArticleIds": ["k-rksv8m51"],
+    "note": "ADR-003: Migration Boundary — single-answer precision anchor."
+  },
+  {
+    "query": "knowledge service crud search sync wiki integration",
     "mode": "code",
-    "expectedArticleIds": ["k-40emzavw"],
-    "note": "ADR-004: Orchestration Model"
+    "expectedArticleIds": ["k-g7zu4ki4"],
+    "note": "KnowledgeService note — single canonical service description."
+  },
+  {
+    "query": "custom frontmatter fields query and lint",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-v27p0qw2", "k-eiv217in"],
+    "note": "ADR-020 P2/P3 shipped as two notes (query filter + lint family). Both are relevant; multi-relevant pair."
   }
 ]

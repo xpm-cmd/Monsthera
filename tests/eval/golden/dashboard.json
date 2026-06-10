@@ -1,0 +1,47 @@
+[
+  {
+    "query": "dashboard architecture spa routing data flow state",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": [
+      "k-2jb9bh3p",
+      "k-l7oy85r0",
+      "k-jgazhhz6"
+    ],
+    "forbiddenArticleIds": ["k-n3gtykv5", "k-qlgfto92"],
+    "note": "Dashboard architecture/SPA + data-flow + pages-and-features cluster. Work-article model and guard-system notes are backend, not the dashboard UI — forbidden."
+  },
+  {
+    "query": "dashboard page ux flow knowledge work",
+    "mode": "general",
+    "type": "knowledge",
+    "expectedArticleIds": [
+      "k-w8xru25o",
+      "k-5nuw1j8i",
+      "k-jgazhhz6"
+    ],
+    "note": "Knowledge-page UX + work-page UX + pages-and-features; the per-page UX cluster."
+  },
+  {
+    "query": "dashboard ui component library primitives",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-imz9hai0"],
+    "note": "Dashboard UI Component Library — single-answer precision anchor."
+  },
+  {
+    "query": "dashboard rest api endpoints routes",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-kmnflb56"],
+    "forbiddenArticleIds": ["k-imz9hai0", "k-2jb9bh3p"],
+    "note": "REST API endpoints note is the answer. The UI component library and SPA-routing notes are frontend, not the HTTP API surface — forbidden."
+  },
+  {
+    "query": "convoy dashboard panel sidebar badge ribbon",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-convoy-dashboard-design-decisions", "k-91f42ekj"],
+    "note": "ADR-014 convoy dashboard decision + S5 convoy-dashboard plan; the convoy-UI pair (distinct from the orchestration cluster)."
+  }
+]

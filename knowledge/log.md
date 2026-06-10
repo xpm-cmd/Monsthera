@@ -200,3 +200,5 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 08:15:27]** create work | PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet (w-kw9xy2i5)
 - **[2026-06-10 08:15:34]** create work | PR P1 — eval keystone: expansión del golden set + honestidad semántica (w-zluxybat)
 - **[2026-06-10 08:36:42]** create knowledge | PR P0 shipped — audit hardening (auth GET, host bind, SDK bump, CI gates) (k-k2ylcsm9)
+- **[2026-06-10 08:47:12]** create knowledge | P1 eval honesty — golden-set expansion + contamination guardrail (k-n8wdamc0)
+- **[2026-06-10 08:55:22]** create knowledge | P1 eval honesty — run-level engine detection + doctor liveness (k-ormciy7d)
