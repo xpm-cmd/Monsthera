@@ -340,6 +340,7 @@ export async function render(container) {
 
     const temp = document.createElement("template");
     const knowledgePrimer = renderHeroCallout({
+      collapseKey: "knowledge",
       eyebrow: "Shared memory",
       title: "Save what should survive the current task",
       body: "Knowledge is where guides, architecture notes, imported sources, and reusable implementation lessons become retrievable for later humans and agents.",

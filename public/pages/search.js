@@ -49,6 +49,7 @@ function buildModeGuide(mode, filterType) {
         };
 
   return renderHeroCallout({
+    collapseKey: "search",
     eyebrow: config.eyebrow,
     title: config.title,
     body: config.benefit,

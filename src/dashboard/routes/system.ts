@@ -1,5 +1,7 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import type { RouteContext } from "./context.js";
-import { jsonResponse } from "../http.js";
+import { jsonResponse, errorResponse } from "../http.js";
 import { deriveAgentExperience } from "../agent-experience.js";
 
 // System routes: health, status, and the runtime overview.
@@ -167,6 +169,33 @@ export async function handleSystemRoutes(ctx: RouteContext): Promise<boolean> {
       stats: status.stats ?? {},
       agentExperience,
       recentEvents,
+    });
+    return true;
+  }
+
+  // ── GET /api/system/eval ─────────────────────────────────────────────────
+  // Serves the committed eval baseline (engine + golden-set aggregate) plus
+  // the live semantic configuration. Consumer repos without
+  // tests/eval/baseline.json get a clean 404 — the dashboard card hides.
+  if (pathname === "/api/system/eval") {
+    if (req.method !== "GET") {
+      errorResponse(res, 405, "METHOD_NOT_ALLOWED", `Method ${req.method} not allowed`);
+      return true;
+    }
+    const baselinePath = path.join(container.config.repoPath, "tests", "eval", "baseline.json");
+    let baseline: unknown;
+    try {
+      baseline = JSON.parse(await fs.readFile(baselinePath, "utf-8"));
+    } catch {
+      errorResponse(res, 404, "NOT_FOUND", "No eval baseline committed in this repo (tests/eval/baseline.json)");
+      return true;
+    }
+    jsonResponse(res, 200, {
+      baseline,
+      live: {
+        semanticEnabled: container.config.search.semanticEnabled,
+        embeddingModel: container.config.search.embeddingModel,
+      },
     });
     return true;
   }

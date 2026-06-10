@@ -1429,6 +1429,34 @@ button.board-card {
 
 /* ─── Sidebar warning badge ──────────────────────────────────────────────── */
 
+.hero-callout__topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.hero-callout__toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.hero-callout__toggle:hover { color: var(--foreground); }
+
+.hero-callout--collapsed { padding: 10px 16px; }
+
+.hero-callout--collapsed .hero-callout__title,
+.hero-callout--collapsed .hero-callout__body,
+.hero-callout--collapsed .hero-callout__meta,
+.hero-callout--collapsed .hero-callout__steps {
+  display: none;
+}
+
 .nav-badge[hidden] { display: none; }
 
 .nav-badge {

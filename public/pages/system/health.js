@@ -1,11 +1,12 @@
 // System Health — API data escaped via esc(). Template element for safe DOM.
-import { getHealth, getStatus } from "../../lib/api.js";
+import { getHealth, getStatus, getSystemEval } from "../../lib/api.js";
 import { renderBadge, renderCard, esc } from "../../lib/components.js";
 
 export async function render(container) {
-  const [health, status] = await Promise.all([
+  const [health, status, evalInfo] = await Promise.all([
     getHealth().catch(() => null),
     getStatus().catch(() => null),
+    getSystemEval().catch(() => null), // 404 in consumer repos — card hides
   ]);
 
   const subsystems = health?.subsystems || [];
@@ -37,7 +38,35 @@ export async function render(container) {
       : renderBadge("Unable to fetch health", "error")) + "</div>",
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">' + subsystemCards + "</div>",
     renderCard("Statistics", '<div style="max-width:400px">' + statsRows + "</div>"),
+    buildEvalCard(evalInfo, stats),
   ].join("\n");
   container.appendChild(temp.content);
   if (typeof lucide !== "undefined") lucide.createIcons({ nodes: [container] });
+}
+
+// Retrieval quality — committed eval baseline + live semantic state. The
+// endpoint 404s in repos without tests/eval/baseline.json; render nothing.
+function buildEvalCard(evalInfo, stats) {
+  if (!evalInfo?.baseline?.aggregate) return "";
+  const agg = evalInfo.baseline.aggregate;
+  const engine = evalInfo.baseline.engine || "unknown";
+  const liveSemantic = Boolean(stats.semanticSearchEnabled ?? evalInfo.live?.semanticEnabled);
+  const metrics = [
+    { label: "NDCG@" + (evalInfo.baseline.k ?? 10), value: agg.ndcgAtK },
+    { label: "MRR", value: agg.mrr },
+    { label: "Recall", value: agg.recallAtK },
+    { label: "Contamination", value: agg.contaminationRate },
+  ].map((m) =>
+    '<div class="stat-card"><div class="stat-label">' + esc(m.label) + '</div><div class="stat-value">' + esc(m.value != null ? Number(m.value).toFixed(3) : "—") + "</div></div>"
+  ).join("");
+  return renderCard(
+    "Retrieval quality (eval baseline)",
+    '<div class="flex items-center gap-8" style="flex-wrap:wrap">'
+      + renderBadge("baseline engine: " + engine, engine === "semantic" ? "primary" : "warning")
+      + renderBadge(liveSemantic ? "semantic live" : "bm25 fallback live", liveSemantic ? "success" : "warning")
+      + renderBadge((evalInfo.baseline.caseCount ?? "?") + " golden cases", "outline")
+      + "</div>"
+      + '<div class="mt-8" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">' + metrics + "</div>"
+      + '<p class="text-xs text-muted mt-8">From the committed <span class="mono">tests/eval/baseline.json</span> — regenerate with <span class="mono">monsthera eval --json --k 10</span>.</p>',
+  );
 }

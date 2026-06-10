@@ -161,6 +161,7 @@ export async function render(container) {
       ? `<p class="text-sm" style="font-weight:600">${esc(activePlaybook.intent)}</p><ul class="guide-list">${activePlaybook.actions.map((action) => `<li>${esc(action)}</li>`).join("")}</ul>`
       : '<p class="text-sm text-muted">Select a phase to see a recommended playbook for that handoff.</p>';
     const flowPrimer = renderHeroCallout({
+      collapseKey: "flow",
       eyebrow: "Control surface",
       title: activePhase === "all" ? "Use Flow to supervise automation and handoffs" : `Use Flow to supervise ${activePhase} handoffs`,
       body: activePhase === "all"

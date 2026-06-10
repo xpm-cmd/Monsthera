@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { icon: "code-2", label: "Code", path: "/code" },
   { icon: "book-open", label: "Knowledge", path: "/knowledge" },
   { icon: "search", label: "Search", path: "/search" },
+  { icon: "history", label: "Sessions", path: "/sessions" },
   { icon: "settings", label: "System", path: "/system" },
 ];
 

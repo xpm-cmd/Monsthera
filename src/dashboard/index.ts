@@ -21,6 +21,7 @@ import { handleKnowledgeRoutes } from "./routes/knowledge.js";
 import { handleWorkRoutes } from "./routes/work.js";
 import { handleSearchRoutes } from "./routes/search.js";
 import { handleConvoysRoutes } from "./routes/convoys.js";
+import { handleSessionsRoutes } from "./routes/sessions.js";
 
 // ─── Public interface ────────────────────────────────────────────────────────
 
@@ -51,6 +52,7 @@ const routeChain: ReadonlyArray<(ctx: RouteContext) => Promise<boolean>> = [
   handleKnowledgeRoutes,
   handleWorkRoutes,
   handleSearchRoutes,
+  handleSessionsRoutes,
   handleConvoysRoutes,
 ];
 
