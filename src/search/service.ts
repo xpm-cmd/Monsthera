@@ -554,7 +554,7 @@ export class SearchService {
     if (!articleResult.ok) return articleResult;
 
     const article = articleResult.value;
-    const indexContent = this.buildIndexContent(article.content, article.codeRefs);
+    const indexContent = this.buildIndexContent(article.content, article.codeRefs, article.extraFrontmatter);
 
     this.logger.info("Indexing knowledge article", { operation: "indexKnowledgeArticle", id });
     const indexResult = await this.searchRepo.indexArticle(article.id, article.title, indexContent, "knowledge");
@@ -624,7 +624,7 @@ export class SearchService {
     // here — use removeArticle() explicitly. This avoids race conditions
     // with concurrent writes in a non-transactional environment.
     for (const article of knowledgeArticles) {
-      const indexContent = this.buildIndexContent(article.content, article.codeRefs);
+      const indexContent = this.buildIndexContent(article.content, article.codeRefs, article.extraFrontmatter);
       const r = await this.searchRepo.indexArticle(article.id, article.title, indexContent, "knowledge");
       if (!r.ok) return r;
     }
@@ -650,7 +650,7 @@ export class SearchService {
           model: this.embeddingProvider.modelName,
         });
         for (const article of knowledgeArticles) {
-          const indexContent = this.buildIndexContent(article.content, article.codeRefs);
+          const indexContent = this.buildIndexContent(article.content, article.codeRefs, article.extraFrontmatter);
           await this.generateAndStoreEmbedding(article.id, article.title, indexContent);
         }
         for (const article of workArticles) {
@@ -879,8 +879,23 @@ export class SearchService {
     return { valid, stale };
   }
 
-  private buildIndexContent(content: string, codeRefs: readonly string[]): string {
-    return codeRefs.length > 0 ? `${content}\n${codeRefs.join(" ")}` : content;
+  private buildIndexContent(
+    content: string,
+    codeRefs: readonly string[],
+    extraFrontmatter?: Readonly<Record<string, unknown>>,
+  ): string {
+    let indexContent = codeRefs.length > 0 ? `${content}\n${codeRefs.join(" ")}` : content;
+    // ADR-020 follow-up (C3): scalar custom-frontmatter entries become
+    // search terms — `search("replicability")` should find an article
+    // carrying `replicability_score: 0.85` (the tokenizer splits
+    // snake_case keys into terms). Arrays/objects are skipped: their
+    // flattened tokens would be field-less noise.
+    const cfTerms = Object.entries(extraFrontmatter ?? {})
+      .filter(([, value]) =>
+        typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+      .map(([key, value]) => `${key} ${String(value)}`);
+    if (cfTerms.length > 0) indexContent += `\n${cfTerms.join(" ")}`;
+    return indexContent;
   }
 
   private buildKnowledgeContextItem(
