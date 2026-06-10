@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
 import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
 import { createLogger } from "../../../src/core/logger.js";
-import { agentId, slug } from "../../../src/core/types.js";
+import { agentId, articleId, slug } from "../../../src/core/types.js";
 import { StructureService } from "../../../src/structure/service.js";
 
 async function makeService() {
@@ -33,7 +33,12 @@ describe("StructureService.getRefGraph", () => {
   it("returns the full incoming and outgoing reference set for a knowledge article", async () => {
     const { service, knowledgeRepo, repoPath } = await makeService();
 
+    // Pin the id: inline-citation detection only fires for id-shaped tokens
+    // (first segment after the prefix must contain a digit — see
+    // isIdShapedCitation in src/structure/wikilink.ts). A random generated id
+    // is digit-less ~7% of the time, which made this test flaky.
     const target = await knowledgeRepo.create({
+      id: articleId("k-9reftarget"),
       title: "Target",
       slug: slug("target"),
       category: "context",

@@ -471,4 +471,55 @@ describe("SearchService", () => {
       expect(final.value.some((r) => r.id === article.id)).toBe(false);
     });
   });
+
+  describe("getHealthStatus", () => {
+    function buildService(semanticEnabled: boolean) {
+      const searchRepo = new InMemorySearchIndexRepository();
+      const svc = new SearchService({
+        searchRepo,
+        knowledgeRepo: new InMemoryKnowledgeArticleRepository(),
+        workRepo: new InMemoryWorkArticleRepository(),
+        embeddingProvider: new StubEmbeddingProvider(),
+        config: {
+          semanticEnabled,
+          embeddingModel: "stub",
+          embeddingProvider: "ollama" as const,
+          alpha: 0.5,
+          ollamaUrl: "http://localhost:11434",
+        },
+        logger: createLogger({ level: "warn", domain: "test" }),
+      });
+      return { svc, searchRepo };
+    }
+
+    it("names the enable-semantic remedy when semantic is enabled but no embeddings exist", async () => {
+      const { svc, searchRepo } = buildService(true);
+      await searchRepo.indexArticle("k-1", "Title", "content", "knowledge");
+
+      const health = svc.getHealthStatus();
+      expect(health.healthy).toBe(true);
+      expect(health.detail).toContain(
+        "semantic unavailable — run: monsthera self enable-semantic (requires Ollama)",
+      );
+    });
+
+    it("reports the embedding count instead of the remedy once embeddings exist", async () => {
+      const { svc, searchRepo } = buildService(true);
+      await searchRepo.indexArticle("k-1", "Title", "content", "knowledge");
+      await searchRepo.storeEmbedding("k-1", [0.1, 0.2]);
+
+      const health = svc.getHealthStatus();
+      expect(health.detail).toContain("1 embeddings");
+      expect(health.detail).not.toContain("semantic unavailable");
+    });
+
+    it("omits the semantic tag entirely when semantic search is disabled", async () => {
+      const { svc, searchRepo } = buildService(false);
+      await searchRepo.indexArticle("k-1", "Title", "content", "knowledge");
+
+      const health = svc.getHealthStatus();
+      expect(health.detail).not.toContain("semantic unavailable");
+      expect(health.detail).toContain("canary pending");
+    });
+  });
 });

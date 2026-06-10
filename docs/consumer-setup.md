@@ -95,23 +95,49 @@ If the JSON has `healthy: false` entries, check the stderr output (redirect `2>&
 
 ---
 
-## Step 4 — enable Ollama (recommended)
+## Step 4 — Semantic search (optional, local-first)
 
-Monsthera's `build_context_pack` and `search` tools use semantic embeddings via Ollama's `nomic-embed-text` model. Without it, search degrades to BM25 only.
+Search works out of the box with BM25 keyword matching — no external services. Adding semantic embeddings makes paraphrased queries work: a question that shares *no* keywords with the target article can still rank it. Everything runs locally via Ollama's `nomic-embed-text` model; no data leaves your machine.
+
+**Requirements** — Ollama running, model pulled:
 
 ```bash
 # install Ollama via your platform's installer (https://ollama.com)
-ollama serve &                           # start the local daemon
-ollama pull nomic-embed-text             # pull the 274 MB model
-curl http://localhost:11434/api/tags \
-  | grep -o '"name":"nomic-embed-text[^"]*"'
-# "name":"nomic-embed-text:latest"
+ollama serve &                           # the daemon must be running
+ollama pull nomic-embed-text             # one-time: pull the 274 MB model
 ```
 
-If `curl` prints the model name, Monsthera will pick it up on next container boot. No config change required — the default `MonstheraConfig` points at `http://localhost:11434` with model `nomic-embed-text`. Override via env:
+**Enable with one command.** `self enable-semantic` honors `--repo` like every other CLI verb (defaults to cwd):
 
-- `MONSTHERA_EMBEDDING_URL` — default `http://localhost:11434`
+```bash
+node /absolute/path/to/Monsthera/dist/bin.js self enable-semantic --repo /path/to/consumer-repo
+# or, from the consumer repo itself:
+cd /path/to/consumer-repo && node /absolute/path/to/Monsthera/dist/bin.js self enable-semantic
+```
+
+The command health-checks Ollama *before* changing anything (it refuses to half-enable a broken setup and prints the exact `ollama pull …` to run), persists `search.semanticEnabled=true` to `<consumer-repo>/.monsthera/config.json`, then runs a full reindex to generate embeddings for every existing article. `--json` emits a machine-readable result. Expect the reindex to take a moment on first run (one embedding call per article).
+
+**Verify:**
+
+```bash
+node /absolute/path/to/Monsthera/dist/bin.js status --repo /path/to/consumer-repo 2>/dev/null
+# search subsystem detail → "Search service (N docs, canary ok, N embeddings)"
+# stats → "semanticSearchEnabled": true, "embeddingCount": N
+```
+
+When it's broken, the surfaces say so instead of pretending:
+
+- `status` shows `semantic unavailable — run: monsthera self enable-semantic (requires Ollama)` in the search subsystem detail (semantic enabled but zero embeddings — the state you get when articles were indexed while Ollama was down).
+- `monsthera doctor --repo <consumer>` has an "Embeddings" section that names the silent BM25 fallback and the exact remediation when the provider is unreachable.
+- `monsthera eval` reports the engine that actually answered (`engine=bm25-fallback` when semantic is enabled but Ollama is unreachable) instead of claiming semantic was on.
+
+**Degradation story:** without Ollama, search still works — BM25 answers every query and results are real, just ranked with keywords only. Paraphrased queries with no keyword overlap rank noticeably worse. Articles created while Ollama is up get embeddings automatically; articles indexed while it was down need a reindex (`self enable-semantic` does this, or `monsthera reindex --repo <consumer>` later) to backfill. Keeping Ollama running across reboots (launchd, login item, systemd) is your call — Monsthera only needs it reachable at index/query time.
+
+Override the provider via env:
+
+- `MONSTHERA_OLLAMA_URL` — default `http://localhost:11434`
 - `MONSTHERA_EMBEDDING_MODEL` — default `nomic-embed-text`
+- `MONSTHERA_SEMANTIC_ENABLED` — `true`/`false`, overrides the config file
 
 ---
 
@@ -187,7 +213,7 @@ If Monsthera's frontmatter schema changed and your old articles need a migration
 
 - **MCP client doesn't see `monsthera__` tools.** Restart the client. Check the client's MCP log for a spawn error; the most common issue is a wrong absolute path in `.mcp.json`.
 - **CLI works but MCP tools error with `PERMISSION_DENIED` / `STORAGE_FAILED`.** The MCP server runs in the client's working directory; if `--repo` is omitted, it defaults to the MCP client's cwd, not yours. Pass `--repo` explicitly.
-- **Semantic search returns worse-than-BM25 results.** Almost always Ollama isn't reachable. Run the `curl` check from step 4.
+- **Search results ignore paraphrases / `status` says `semantic unavailable`.** Embeddings were never generated (typically: Ollama wasn't running when articles were indexed). Start Ollama, then run `monsthera self enable-semantic --repo <consumer>` (step 4) — it verifies the provider and reindexes.
 - **`JSON.parse` fails on the CLI output.** You're probably capturing both stdout and stderr. Monsthera routes structured logs to stderr (see `docs/concurrency-model.md` — er, the `tests/integration/cli-stream-separation.test.ts` regression test — for the contract). Use `2>/dev/null` when piping.
 
 ---

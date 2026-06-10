@@ -288,7 +288,9 @@ describe("Integration: monsthera lint", () => {
       "updatedAt: 2026-04-24T00:00:00.000Z",
       "---",
       "",
-      "I mention k-does-not-exist in prose; lint should flag it as a warning.",
+      // The token must be id-shaped (first segment after the prefix contains
+      // a digit) or the P0-C precision rule skips it as plain prose.
+      "I mention k-404-does-not-exist in prose; lint should flag it as a warning.",
       "",
     ].join("\n");
 
@@ -310,7 +312,7 @@ describe("Integration: monsthera lint", () => {
     const lines = res.stdout.trim().split("\n").filter((l) => l.length > 0);
     const parsed = lines.map((l) => JSON.parse(l));
     const orphan = parsed.find(
-      (f) => f.rule === "orphan_citation" && f.missingRefId === "k-does-not-exist",
+      (f) => f.rule === "orphan_citation" && f.missingRefId === "k-404-does-not-exist",
     );
     expect(orphan).toBeDefined();
     expect(orphan.severity).toBe("warning");
