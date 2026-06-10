@@ -2,9 +2,11 @@
  * `CodeInventoryService` — the service-layer composition for ADR-017 M3.
  *
  * Responsibilities:
- *   - Drive a `SymbolExtractor` (default: `TextMateSymbolExtractor`) over a
- *     concrete list of paths supplied by the caller. Glob expansion lives
- *     in the CLI (Phase 3); the service receives final paths.
+ *   - Drive a `SymbolExtractor` (default: `createDefaultSymbolExtractor`,
+ *     which routes `.lean` to the regex Lean extractor and everything else
+ *     to TextMate) over a concrete list of paths supplied by the caller.
+ *     Glob expansion lives in the CLI (Phase 3); the service receives
+ *     final paths.
  *   - Persist the snapshot via `JsonInventoryPersistence` (JSON + optional
  *     Dolt mirror).
  *   - Maintain an in-memory map keyed by path, with **lazy mtime-per-file
@@ -30,10 +32,8 @@ import type { Logger } from "../../core/logger.js";
 import type { Result } from "../../core/result.js";
 import { ok } from "../../core/result.js";
 
-import {
-  TextMateSymbolExtractor,
-  type SymbolExtractor,
-} from "./extractor.js";
+import { createDefaultSymbolExtractor } from "./default-extractor.js";
+import type { SymbolExtractor } from "./extractor.js";
 import { languageForExtension } from "./language-map.js";
 import {
   JsonInventoryPersistence,
@@ -64,7 +64,7 @@ export interface CodeInventoryServiceOptions {
   readonly logger: Logger;
   /** `null` when Dolt is disabled or unavailable — the mirror is skipped. */
   readonly doltClient: DoltMirrorClient | null;
-  /** Override for unit tests. Defaults to `TextMateSymbolExtractor`. */
+  /** Override for unit tests. Defaults to `createDefaultSymbolExtractor` (Lean regex + TextMate). */
   readonly extractor?: SymbolExtractor;
   /** Override for unit tests. Defaults to a `JsonInventoryPersistence` under `<repoPath>/.monsthera/cache/`. */
   readonly persistence?: JsonInventoryPersistence;
@@ -141,7 +141,7 @@ export class CodeInventoryService {
   constructor(options: CodeInventoryServiceOptions) {
     this.logger = options.logger;
     this.repoPath = path.resolve(options.repoPath);
-    this.extractor = options.extractor ?? new TextMateSymbolExtractor(options.logger);
+    this.extractor = options.extractor ?? createDefaultSymbolExtractor(options.logger);
     this.debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
 
     const persistenceOptions: JsonInventoryPersistenceOptions = {
