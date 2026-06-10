@@ -11,7 +11,7 @@ codeRefs: [src/search/service.ts, tests/eval/baseline.json, tests/eval/golden/kn
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-10T12:22:58.065Z
-updatedAt: 2026-06-10T12:22:58.065Z
+updatedAt: 2026-06-10T12:41:32.518Z
 enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"claude-code","status":"pending"},{"role":"testing","agentId":"claude-code","status":"pending"}]}
 reviewersJson: {"items":[]}
 phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T12:22:58.065Z"}]}
@@ -19,21 +19,24 @@ phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T12:22:58
 
 ## Objective
 
-El plan original de C1 ("recapturar baseline con semantic real") quedó invalidado por el descubrimiento del cierre de Wave A: **el engine semantic colapsa el golden set** (NDCG@10 0.098 vs 0.877 bm25, pre-existente en main). Diagnóstico (2 experimentos + lectura de código):
+(Ver historial: C1 reformulado por el descubrimiento del colapso semántico en el cierre de Wave A.)
 
-1. Input de embedding pobre: `title + content.slice(0,500)` → los 21 ADRs comparten boilerplate → ~21 vectores casi idénticos en 60-82% de los top-10 (ranking query-independiente).
-2. **Mismatch de escala (causa dominante)**: `mergeResults` produce baseScore ∈ [0,1] (alpha-mix normalizado) mientras `scoreContextPackItem` suma boosts estáticos de hasta ~+4 calibrados para la escala bm25 cruda (5-15) → en híbrido los boosts aplastan la señal de búsqueda 4:1.
-3. Coseno con rango dinámico comprimido (~0.45-0.65 entre candidatos) — poco discriminativo sin normalización per-query.
+- **C1** — fix-or-quarantine eval-gated del ranking semántico + baseline honesto.
+- **C2** — salience implementar-o-descartar.
+- **C3** — escalares de extraFrontmatter como términos de búsqueda.
 
-- **C1 (reformulado)** — fix-or-quarantine eval-gated: re-escalado del score híbrido a magnitud bm25 + min-max per-query del coseno en `mergeResults`. SHIP si semantic-pack NDCG ≥ nivel bm25 (0.8767); si no, quarantine documentado. Baseline recapturado honesto (corpus actual) + nota con la primera medición real del valor de los embeddings.
-- **C2** — salience implementar-o-descartar (contrato original; requiere C1 resuelto para que el eval sea juez válido).
-- **C3** — emitir escalares de `extraFrontmatter` como términos de búsqueda (no debe degradar eval; tests de roundtrip).
+## Acceptance Criteria — TODOS CUMPLIDOS
 
-## Acceptance Criteria
+- bm25-only byte-idéntico ✅ (0.8767 exacto, verificado).
+- Caracterización de scoreContextPackItem intacta ✅.
+- Decisión C1 por números ✅ (SHIP: semantic 0.098→0.8989 NDCG, supera bm25 +0.022/+0.045 recall).
+- C2 ✅ decisión DESCARTAR (k-r51xph09): inmedible por construcción (eval stateless), contraindicado por evidencia C1 (familia de boosts query-independientes), amplificaría contaminación.
+- C3 ✅ roundtrip tests + eval sin degradación (NDCG −0.0002 ruido).
 
-- bm25-only byte-idéntico (path no tocado; eval bm25 = 0.8767 exacto).
-- Tests de caracterización de `scoreContextPackItem` verdes sin cambios.
-- Decisión C1 (ship o quarantine) tomada por números del golden set, documentada en nota solution.
-- C2: mejora medible o código descartado + decision note (descartar cierra el deferred para siempre).
-- C3: roundtrip tests + eval sin degradación.
-- Gate completo por PR; stack continúa.
+## Status 2026-06-10 — wave completa, PRs abiertos
+
+- C1 → PR #157 (`fix/c1-hybrid-scale-mismatch`), nota k-73ofos2z. Causa raíz: mismatch de escala en mergeResults ([0,1] vs boosts calibrados a escala cruda) + cosenos clusterizados. Fix: stretch per-query + re-escalado ×maxBm25. Baseline recapturado (engine: semantic, corpus actual). **Regresión divulgada: contamination 0.7273 vs 0.5455 bm25** — palanca: currency demotion en trust reranker (frente abierto).
+- C2 → PR #158 (`docs/c2-salience-discard`), nota k-r51xph09 (decision). Deferred PR-13b cerrado para siempre.
+- C3 → PR #159 (`feat/c3-cf-search-terms`), nota k-v9l1e8qa. ADR-020 sin deferreds.
+
+Pendiente para `done`: merge del stack #157/#158/#159.
