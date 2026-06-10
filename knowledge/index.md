@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 127 knowledge articles and 26 work articles.
-> Last updated: 2026-06-10 12:22:58
+> Auto-generated catalog of 128 knowledge articles and 26 work articles.
+> Last updated: 2026-06-10 12:32:49
 
 ## Knowledge
 
@@ -172,6 +172,7 @@
 - [Wave B1: ingest git visible en help top-level + relojes deterministas en tests time-sensitive](notes/wave-b1-ingest-git-visible-en-help-top-level-relojes-deterministas-en-tests-time-sensitive.md) — Wave B1 (auditoría P3). Rama `fix/b1-ingest-help-flaky-clocks`, apilada sobre #1
 - [Wave B2: "When to use" en las 69 tool descriptions MCP — schemas byte-idénticos](notes/wave-b2-when-to-use-en-las-69-tool-descriptions-mcp-schemas-byte-idnticos.md) — Wave B2 (auditoría P3). Rama `chore/b2-tool-descriptions-when-to-use`, apilada s
 - [Wave B3: ollama-client compartido — la triplicación fetch+parse+timeout consolidada sin cambio de comportamiento](notes/wave-b3-ollama-client-compartido-la-triplicacin-fetchparsetimeout-consolidada-sin-cambio-de-comportamiento.md) — Wave B3 (auditoría P3). Rama `refactor/b3-ollama-client`, apilada sobre #155.  #
+- [Wave C1: el colapso semántico era un mismatch de escala — NDCG 0.098 → 0.899, semantic ahora supera a bm25](notes/wave-c1-el-colapso-semntico-era-un-mismatch-de-escala-ndcg-0098-0899-semantic-ahora-supera-a-bm25.md) — Rama `fix/c1-hybrid-scale-mismatch`, apilada sobre #156. **La primera medición r
 
 ## Work
 
