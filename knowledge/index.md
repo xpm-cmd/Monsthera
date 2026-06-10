@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 126 knowledge articles and 25 work articles.
-> Last updated: 2026-06-10 12:12:54
+> Auto-generated catalog of 127 knowledge articles and 25 work articles.
+> Last updated: 2026-06-10 12:18:38
 
 ## Knowledge
 
@@ -171,6 +171,7 @@
 - [Wave A2: GUARD_FAILED min_enrichment_met ahora nombra roles pendientes y remedios](notes/wave-a2-guard-failed-min-enrichment-met-ahora-nombra-roles-pendientes-y-remedios.md) — Cierra la fricción #1 del quickstart de work tracking (k-e9atys0k): `GUARD_FAILE
 - [Wave B1: ingest git visible en help top-level + relojes deterministas en tests time-sensitive](notes/wave-b1-ingest-git-visible-en-help-top-level-relojes-deterministas-en-tests-time-sensitive.md) — Wave B1 (auditoría P3). Rama `fix/b1-ingest-help-flaky-clocks`, apilada sobre #1
 - [Wave B2: "When to use" en las 69 tool descriptions MCP — schemas byte-idénticos](notes/wave-b2-when-to-use-en-las-69-tool-descriptions-mcp-schemas-byte-idnticos.md) — Wave B2 (auditoría P3). Rama `chore/b2-tool-descriptions-when-to-use`, apilada s
+- [Wave B3: ollama-client compartido — la triplicación fetch+parse+timeout consolidada sin cambio de comportamiento](notes/wave-b3-ollama-client-compartido-la-triplicacin-fetchparsetimeout-consolidada-sin-cambio-de-comportamiento.md) — Wave B3 (auditoría P3). Rama `refactor/b3-ollama-client`, apilada sobre #155.  #
 
 ## Work
 
