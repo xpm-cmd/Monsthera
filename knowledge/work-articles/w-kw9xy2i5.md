@@ -2,7 +2,7 @@
 id: w-kw9xy2i5
 title: PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet
 template: bugfix
-phase: planning
+phase: done
 priority: high
 author: claude-code
 tags: []
@@ -11,10 +11,11 @@ codeRefs: []
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-10T08:15:27.894Z
-updatedAt: 2026-06-10T08:15:27.894Z
+updatedAt: 2026-06-10T11:11:36.219Z
 enrichmentRolesJson: {"items":[{"role":"testing","agentId":"claude-code","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T08:15:27.894Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T08:15:27.894Z","exitedAt":"2026-06-10T11:10:59.868Z"},{"phase":"enrichment","enteredAt":"2026-06-10T11:10:59.868Z","exitedAt":"2026-06-10T11:11:11.722Z","reason":"single-session audit wave; PR #143 merged to main 2026-06-10","skippedGuards":["has_objective","has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-06-10T11:11:11.722Z","exitedAt":"2026-06-10T11:11:21.888Z","reason":"solo-agent session; testing enrichment unstaffed — TDD evidence in PR #143 (merged)","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-06-10T11:11:21.888Z","reason":"review ocurrió en GitHub PR #143 (CI verde + owner merge)","skippedGuards":["implementation_linked"],"exitedAt":"2026-06-10T11:11:36.219Z"},{"phase":"done","enteredAt":"2026-06-10T11:11:36.219Z","reason":"merged a main como PR #143 el 2026-06-10; gate completo verde (2222 tests, 0 high vulns) — cierre dogfood","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-06-10T11:11:36.219Z
 ---
 
 Wave 1 de la auditoría 2026-06-10 (ver k-3zo9w9dg). Rama `fix/p0-audit-hardening`. Cuatro fixes:
