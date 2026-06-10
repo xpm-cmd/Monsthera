@@ -112,6 +112,27 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     await fs.mkdir(this.notesDir, { recursive: true });
   }
 
+  /**
+   * Express an absolute article path relative to its owning markdown root
+   * (primary first, then the worktree fallback), using forward slashes so
+   * the value is directly usable as a markdown link target (e.g.
+   * `notes/k-91-some-note.md`). Runtime metadata only — see
+   * `KnowledgeArticle.filePath`; `buildArticleFrontmatter` deliberately
+   * never serializes it.
+   */
+  private relativeArticlePath(absolutePath: string): string {
+    const roots = this.fallbackMarkdownRoot === null
+      ? [this.markdownRoot]
+      : [this.markdownRoot, this.fallbackMarkdownRoot];
+    for (const root of roots) {
+      const rel = path.relative(root, absolutePath);
+      if (!rel.startsWith("..") && !path.isAbsolute(rel)) {
+        return rel.split(path.sep).join("/");
+      }
+    }
+    return path.relative(this.markdownRoot, absolutePath).split(path.sep).join("/");
+  }
+
   private async readFromPath(filePath: string): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>> {
     let raw: string;
     try {
@@ -148,6 +169,7 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       updatedAt: timestamp(frontmatter.value.updatedAt),
       content: parsed.value.body,
       ...(extras ? { extraFrontmatter: extras } : {}),
+      filePath: this.relativeArticlePath(filePath),
     });
   }
 
@@ -236,7 +258,9 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       if (previousSlug && previousSlug !== article.slug) {
         await fs.rm(this.articlePath(previousSlug), { force: true });
       }
-      return ok(article);
+      // Refresh the runtime filePath: writes always land at the slug-named
+      // primary path, so a rename must not leak the OLD file's location.
+      return ok({ ...article, filePath: `notes/${article.slug}.md` });
     } catch (error) {
       if (isNodeError(error) && error.code === "EEXIST") {
         return err(

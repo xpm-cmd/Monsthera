@@ -792,7 +792,9 @@ export class StructureService {
 
     const sourcePaths = new Map<string, string>();
     for (const a of knowledge.value) {
-      sourcePaths.set(a.id, path.join("notes", `${a.slug}.md`));
+      // Prefer the repository-provided real path: externally authored files
+      // are often ID-named, so the slug-derived path would not exist on disk.
+      sourcePaths.set(a.id, a.filePath ?? path.join("notes", `${a.slug}.md`));
     }
     for (const a of work.value) {
       sourcePaths.set(a.id, path.join("work-articles", `${a.id}.md`));

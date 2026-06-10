@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { describe, it, expect } from "vitest";
+import { ok } from "../../../src/core/result.js";
 import { InMemoryKnowledgeArticleRepository } from "../../../src/knowledge/in-memory-repository.js";
 import { InMemoryWorkArticleRepository } from "../../../src/work/in-memory-repository.js";
 import { createLogger } from "../../../src/core/logger.js";
@@ -118,5 +119,34 @@ describe("getOrphanCitations — false-positive hardening", () => {
     if (!orphans.ok) return;
     expect(orphans.value).toHaveLength(1);
     expect(orphans.value[0]?.missingRefId).toBe("w-also-absent");
+  });
+
+  it("uses the article's real filePath for sourcePath when the repository provides it (P0-B)", async () => {
+    const { knowledgeRepo, service } = makeService();
+    const created = await knowledgeRepo.create({
+      title: "Dangling from id-named file",
+      slug: slug("dangling-id-named"),
+      category: "context",
+      content: "See the handoff k-real-but-absent for the rest of the story.",
+      tags: [],
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    // Simulate a file-backed view of an externally authored corpus: the
+    // backing file is ID-named, so the repository decorates each article
+    // with its real relative path at read time.
+    const baseFindMany = knowledgeRepo.findMany.bind(knowledgeRepo);
+    knowledgeRepo.findMany = async () => {
+      const result = await baseFindMany();
+      if (!result.ok) return result;
+      return ok(result.value.map((a) => ({ ...a, filePath: `notes/k-99-${a.slug}.md` })));
+    };
+
+    const orphans = await service.getOrphanCitations();
+    expect(orphans.ok).toBe(true);
+    if (!orphans.ok) return;
+    expect(orphans.value).toHaveLength(1);
+    expect(orphans.value[0]?.sourcePath).toBe("notes/k-99-dangling-id-named.md");
   });
 });

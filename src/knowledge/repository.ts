@@ -23,6 +23,17 @@ export interface KnowledgeArticle {
    * repositories preserve these fields on read and re-serialize them on write.
    */
   readonly extraFrontmatter?: Readonly<Record<string, unknown>>;
+  /**
+   * RUNTIME metadata only — never serialized to frontmatter. Path of the
+   * backing markdown file relative to the markdown root, with forward
+   * slashes (e.g. `notes/k-91-HB-037-unified-dbs-model.md`). Populated by
+   * file-backed repositories at read time so display surfaces (wiki
+   * index.md links, lint output) can point at the REAL file even when the
+   * filename does not match the slug — externally authored corpora (Option
+   * A drop-ins) are often ID-named. Undefined for in-memory repositories;
+   * consumers fall back to the slug-derived `notes/<slug>.md`.
+   */
+  readonly filePath?: string;
 }
 
 /** Input for creating a knowledge article */
