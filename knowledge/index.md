@@ -1,7 +1,7 @@
 # Monsthera Index
 
 > Auto-generated catalog of 127 knowledge articles and 25 work articles.
-> Last updated: 2026-06-10 12:18:38
+> Last updated: 2026-06-10 12:20:37
 
 ## Knowledge
 

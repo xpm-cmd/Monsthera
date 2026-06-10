@@ -227,3 +227,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 11:59:37]** create knowledge | Wave B1: ingest git visible en help top-level + relojes deterministas en tests time-sensitive (k-zydgbqeg)
 - **[2026-06-10 12:12:54]** create knowledge | Wave B2: "When to use" en las 69 tool descriptions MCP — schemas byte-idénticos (k-w9r21jkj)
 - **[2026-06-10 12:18:38]** create knowledge | Wave B3: ollama-client compartido — la triplicación fetch+parse+timeout consolidada sin cambio de comportamiento (k-e86w9l9u)
+- **[2026-06-10 12:20:37]** update work | Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido (w-4vc60xph)
