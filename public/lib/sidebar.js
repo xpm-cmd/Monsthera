@@ -61,7 +61,7 @@ export function renderSidebar(currentPath) {
       ${navHtml}
     </ul>
     <div class="sidebar-footer">
-      <div class="sidebar-footer-text">code · research · memory<br>workspace active</div>
+      <div class="sidebar-footer-text">Monsthera — local-first agent workspace<br>knowledge · work · sessions</div>
       <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
         <i data-lucide="${themeIcon}"></i>
       </button>

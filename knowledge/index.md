@@ -1,7 +1,7 @@
 # Monsthera Index
 
 > Auto-generated catalog of 133 knowledge articles and 27 work articles.
-> Last updated: 2026-06-10 23:09:42
+> Last updated: 2026-06-10 23:23:55
 
 ## Knowledge
 
@@ -130,7 +130,7 @@
 
 ### reference
 
-- [Dashboard REST API endpoints](notes/dashboard-rest-api-endpoints.md) — # Dashboard REST API Endpoints  ## Overview  All API routes are handled by `src/
+- [Dashboard REST API endpoints](notes/dashboard-rest-api-endpoints.md) — # Dashboard REST API Endpoints  ## Overview  Routing was split out of the old mo
 - [Monsthera CLI Command Cheatsheet](notes/monsthera-cli-command-cheatsheet.md) — # Monsthera CLI Command Cheatsheet  Complete reference for the `monsthera` CLI s
 - [Package entrypoints and barrel exports](notes/package-entrypoints-and-barrel-exports.md) — ## Overview  Monsthera uses barrel files as public-module boundaries. They are n
 

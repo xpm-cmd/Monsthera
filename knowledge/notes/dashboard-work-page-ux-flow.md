@@ -7,12 +7,12 @@ tags: [dashboard, work, ux, lifecycle, orchestration]
 codeRefs: [public/pages/work.js, src/dashboard/index.ts]
 references: []
 createdAt: 2026-04-11T02:19:06.860Z
-updatedAt: 2026-04-20T00:00:00.000Z
+updatedAt: 2026-06-10T23:23:55.077Z
 ---
 
 # Dashboard work page UX flow
 
-The work page (`public/pages/work.js`) manages work articles through their full lifecycle. It supports three view modes, multi-dimensional filtering, inline editing, and orchestration controls for enrichment, review, dependencies, and phase advancement.
+The work page (`public/pages/work.js`) manages work articles through their full lifecycle. It supports three view modes, multi-dimensional filtering, inline editing, and orchestration controls for enrichment, review, dependencies, and phase advancement (including guard overrides and cancellation).
 
 ## Layout structure
 
@@ -22,8 +22,8 @@ The work page (`public/pages/work.js`) manages work articles through their full 
 ├──────────────────────────────────────────────────────────────┤
 │ Flash notification (success/error)                           │
 ├──────────────────────────────────────────────────────────────┤
-│ Hero callout: execution contract guidance                    │
-│   Steps: Shape → Ground → Gate                               │
+│ Hero callout (collapsible, collapseKey "work"):              │
+│   execution contract guidance · Steps: Shape → Ground → Gate │
 ├──────────────────────────────────────────────────────────────┤
 │ Stat cards: Ready wave | Blocked | Pending reviews | Unassigned │
 ├──────────────────────────────────────────────────────────────┤
@@ -41,19 +41,21 @@ The work page (`public/pages/work.js`) manages work articles through their full 
 
 ## Initial data loading
 
-Three parallel API calls on render:
+Four parallel API calls on render:
 
 ```js
-let [workArticles, directory, wave] = await Promise.all([
+let [workArticles, directory, wave, convoys] = await Promise.all([
   getWork(),
   getAgents(),
   getOrchestrationWave(),
+  getConvoys(),
 ]);
 ```
 
 - `workArticles`: all work items
 - `directory`: agent registry with summary stats
 - `wave`: orchestration wave with ready/blocked items
+- `convoys`: convoy summary, folded into `convoyLeadMap` (leadWorkId → convoys) for the convoy ribbon
 
 ## State variables
 
@@ -62,6 +64,7 @@ let [workArticles, directory, wave] = await Promise.all([
 - `showCreate`: boolean, starts `true` (create form visible by default)
 - `flash`: success/error notification
 - `filters`: `{ query, phase, priority, state }` all defaulting to "all"
+- `snapshotDiffCache`: per-page-instance `Map` for snapshot-drift responses
 
 ## Filtering system
 
@@ -86,17 +89,17 @@ Dropdown changes fire on `change` event via `data-filter-select`, updating `filt
 
 ### Queue view (default)
 Work cards rendered as collapsible cards. Each card shows:
-- Title with status badges (phase, priority, ready indicator, blocked indicator)
+- A dedicated **expand toggle button** (`data-toggle-work`, with `aria-expanded` and `aria-controls`) wrapping the title row with status badges (phase, priority, ready indicator, blocked indicator) and the updated-ago timestamp
 - Template, author, assignee info
 - Content preview (first 220 chars)
 
-**Expand/collapse**: Clicking anywhere on the card (except buttons, inputs, forms, links) toggles `expandedId`. If clicking the already-expanded card, it collapses.
+**Expand/collapse**: Clicking the toggle button — or anywhere on the card except buttons, inputs, selects, options, labels, forms, and links — toggles `expandedId`. Clicking the already-expanded card collapses it.
 
 ### Board view
-Kanban-style columns for each phase (planning → enrichment → implementation → review → done). Each column shows its article count in the header. Cards are simplified: title, assignee, priority badge, ready badge.
+Kanban-style columns for each phase (planning → enrichment → implementation → review → done). Each column shows its article count in the header. Cards are simplified buttons (`data-open-work`): title, assignee, priority badge, ready badge. Clicking one jumps back to the queue view with that article expanded (`openArticleInQueue`).
 
 ### List view
-Table rendered via `renderTable()` with columns: ID, Title, Phase (badge), Priority (badge), Assignee, Updated (timeAgo).
+Table rendered via `renderTable()` with columns: ID, Title (a `data-open-work` link that opens the article in queue view), Phase (badge), Priority (badge), Assignee, Updated (timeAgo).
 
 View switching uses `data-tab` click handler, which also resets `expandedId` to null.
 
@@ -131,14 +134,18 @@ On submit, calls `createWork()` via `runMutation()`, then resets the form.
 
 When a card is expanded in queue view, it reveals:
 
+### Convoy ribbon
+If the article is the **lead** of any convoy, a ribbon of pills appears first ("lead of" + one pill per convoy: id, status, member count for active ones). Pills link to `/convoys/:id`; completed/cancelled convoys get distinct styling.
+
+### Action row (`buildExpandedActions`)
+- **"Move to [next phase]"** button (`data-advance-work="id" data-phase="next"`). Phase progression: planning → enrichment → implementation → review → done (`NEXT_PHASE` map). If the advance fails with `GUARD_FAILED`, the handler shows a `window.prompt` describing the failing guards and, given a justification, retries with `skipGuard: { reason }` — the bypass is recorded in phase history.
+- **"Override guards"** button (`data-override-guard`): proactively prompts for a justification and advances with `skipGuard` directly.
+- **"ready to advance" badge** when the article is in the orchestration wave's ready set.
+- **"Cancel"** button (`data-cancel-work`, hidden for terminal phases): prompts for a reason and calls `advanceWork(id, "cancelled", { reason })`.
+- **"Delete"** button (see below).
+
 ### Edit form (`data-work-edit="id"`)
 Pre-populated fields for title, lead, assignee, priority, tags, references, codeRefs, content. On submit, calls `updateWork(id, {...})` preserving the expanded ID.
-
-### Lifecycle advancement
-- Shows a "Move to [next phase]" button (`data-advance-work="id" data-phase="next"`).
-- Phase progression: planning → enrichment → implementation → review → done (defined in `NEXT_PHASE` map).
-- If the article is in the orchestration wave's ready set, shows a "ready to advance" success badge.
-- Calls `advanceWork(id, phase)` via `runMutation()`.
 
 ### Enrichment panel
 Lists enrichment roles with their status (pending/contributed/skipped) and agent ID. For articles in `enrichment` phase with `pending` roles, shows action buttons:
@@ -198,11 +205,11 @@ Four stat cards provide at-a-glance metrics:
 
 ## Hero callout
 
-Contextual guidance that changes based on `showCreate`:
+Collapsible (`collapseKey: "work"`, persisted in `localStorage` as `monsthera-hero-work`). Contextual title changes based on `showCreate`:
 - When creating: "Capture the work clearly before it spreads across agents"
 - When operating: "Use Work to tighten contracts and move execution safely"
 
-Shows article count, ready count, and pending review count as meta badges.
+Shows article count, ready count, and pending review count as meta badges, plus Shape → Ground → Gate steps.
 
 ## Key interaction flows
 
@@ -215,6 +222,11 @@ Shows article count, ready count, and pending review count as meta badges.
 1. Filter to ready items or find article in queue
 2. Expand card → click "Move to [next phase]"
 3. Mutation advances phase, card updates with new phase badge
+4. If guards fail, a prompt offers an audited `skipGuard` bypass; "Override guards" does the same proactively
+
+### Cancelling work
+1. Expand card → click "Cancel" (not shown for done/cancelled articles)
+2. Provide a reason in the prompt → article advances to `cancelled` with the reason in phase history
 
 ### Managing reviews
 1. Expand article card
@@ -232,4 +244,4 @@ Shows article count, ready count, and pending review count as meta badges.
 1. Use toolbar dropdowns to narrow by phase/priority/state
 2. Combine with text search for precise filtering
 3. "Showing X of Y" counter updates
-4. Switch between queue/board/list views to see filtered results differently
+4. Switch between queue/board/list views to see filtered results differently; board/list entries jump back into the queue view for editing
