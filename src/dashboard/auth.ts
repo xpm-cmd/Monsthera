@@ -4,13 +4,20 @@ import type { IncomingMessage } from "node:http";
 /** Paths that skip authentication (safe for monitoring). */
 const AUTH_EXEMPT_PATHS = new Set(["/api/health", "/api/status"]);
 
-/** Methods that never require auth. */
-const AUTH_EXEMPT_METHODS = new Set(["GET", "OPTIONS"]);
+/**
+ * Methods that never require auth. Only OPTIONS — CORS preflight requests carry
+ * no Authorization header by design. GET is deliberately NOT exempt: every
+ * GET /api/* endpoint (knowledge, work, events, search, agents, code-intel)
+ * exposes the corpus and must carry a valid Bearer token. The dashboard SPA
+ * already attaches the token to every request, including GETs (see
+ * public/lib/api.js).
+ */
+const AUTH_EXEMPT_METHODS = new Set(["OPTIONS"]);
 
 /**
  * Check whether a request carries a valid Bearer token.
  * Returns true when:
- *  - the request method or path is exempt, OR
+ *  - the request method (OPTIONS) or path (health/status) is exempt, OR
  *  - the Authorization header contains a valid Bearer token.
  */
 export function requireAuth(

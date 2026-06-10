@@ -50,7 +50,7 @@ describe("GET /api/work/:id/snapshot-diff", () => {
 
   it("404s when no snapshot has been recorded for the work id", async () => {
     if (boot) return;
-    const res = await fetch(url("/api/work/w-missing/snapshot-diff"));
+    const res = await fetch(url("/api/work/w-missing/snapshot-diff"), { headers: { Authorization: `Bearer ${dashboard?.authToken}` } });
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("NOT_FOUND");
@@ -59,7 +59,7 @@ describe("GET /api/work/:id/snapshot-diff", () => {
   it("returns current + null baseline + null diff when only one snapshot exists", async () => {
     if (boot) return;
     await record("w-single");
-    const res = await fetch(url("/api/work/w-single/snapshot-diff"));
+    const res = await fetch(url("/api/work/w-single/snapshot-diff"), { headers: { Authorization: `Bearer ${dashboard?.authToken}` } });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       current: EnvironmentSnapshot;
@@ -82,7 +82,7 @@ describe("GET /api/work/:id/snapshot-diff", () => {
       runtimes: { node: "22.0.0" },
       lockfiles: [{ path: "pnpm-lock.yaml", sha256: "b" }],
     });
-    const res = await fetch(url("/api/work/w-diff/snapshot-diff"));
+    const res = await fetch(url("/api/work/w-diff/snapshot-diff"), { headers: { Authorization: `Bearer ${dashboard?.authToken}` } });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       current: EnvironmentSnapshot;
@@ -101,7 +101,7 @@ describe("GET /api/work/:id/snapshot-diff", () => {
     const second = await record("w-against");
     await new Promise((r) => setTimeout(r, 5));
     await record("w-against");
-    const res = await fetch(url(`/api/work/w-against/snapshot-diff?against=${encodeURIComponent(second.id)}`));
+    const res = await fetch(url(`/api/work/w-against/snapshot-diff?against=${encodeURIComponent(second.id)}`), { headers: { Authorization: `Bearer ${dashboard?.authToken}` } });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { baseline: EnvironmentSnapshot | null };
     expect(body.baseline?.id).toBe(second.id);
@@ -111,7 +111,7 @@ describe("GET /api/work/:id/snapshot-diff", () => {
   it("404s when `against` is a missing id", async () => {
     if (boot) return;
     await record("w-badagainst");
-    const res = await fetch(url("/api/work/w-badagainst/snapshot-diff?against=s-does-not-exist"));
+    const res = await fetch(url("/api/work/w-badagainst/snapshot-diff?against=s-does-not-exist"), { headers: { Authorization: `Bearer ${dashboard?.authToken}` } });
     expect(res.status).toBe(404);
   });
 

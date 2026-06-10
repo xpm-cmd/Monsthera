@@ -79,10 +79,40 @@ const LlmConfigSchema = z.object({
   baseUrl: z.string().default("https://api.openai.com/v1"),
 });
 
-const ServerConfigSchema = z.object({
-  port: z.number().default(3000),
-  host: z.string().default("localhost"),
-});
+/**
+ * Hosts that bind only to the local machine. Anything else (notably 0.0.0.0)
+ * exposes the dashboard on every network interface.
+ */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+/**
+ * Whether the operator has explicitly opted in to a non-loopback bind. Read
+ * from the environment so the guard covers every config source — env override
+ * (MONSTHERA_HOST) and config.json alike — at the single schema chokepoint.
+ */
+function nonLocalHostAllowed(): boolean {
+  return process.env["MONSTHERA_ALLOW_NONLOCAL_HOST"] === "true";
+}
+
+const ServerConfigSchema = z
+  .object({
+    port: z.number().default(3000),
+    host: z.string().default("localhost"),
+  })
+  .superRefine((cfg, ctx) => {
+    // A non-loopback host opens the dashboard to the network. Reject it unless
+    // the operator opted in with MONSTHERA_ALLOW_NONLOCAL_HOST=true.
+    if (!LOOPBACK_HOSTS.has(cfg.host) && !nonLocalHostAllowed()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["host"],
+        message:
+          `Refusing to bind dashboard to non-loopback host "${cfg.host}": this exposes it on ` +
+          `all network interfaces. Set MONSTHERA_ALLOW_NONLOCAL_HOST=true to opt in, or use a ` +
+          `loopback host (localhost / 127.0.0.1 / ::1).`,
+      });
+    }
+  });
 
 export const MonstheraConfigSchema = z.object({
   repoPath: z.string(),

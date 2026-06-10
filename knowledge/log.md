@@ -196,3 +196,7 @@ Append-only record of knowledge and work mutations.
 - **[2026-05-31 10:51:51]** create knowledge | PR-14a: Custom-frontmatter query filter (ADR-020 P2) (k-v27p0qw2)
 - **[2026-05-31 11:11:24]** create knowledge | PR-14b: Custom-frontmatter lint family (ADR-020 P3) (k-eiv217in)
 - **[2026-05-31 11:15:29]** create knowledge | PR-15: Git/PR history ingestion (M3 close) (k-gu0h02zt)
+- **[2026-06-10 08:04:21]** create knowledge | Auditoría integral 2026-06-10 — backlog priorizado post-M3 (k-3zo9w9dg)
+- **[2026-06-10 08:15:27]** create work | PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet (w-kw9xy2i5)
+- **[2026-06-10 08:15:34]** create work | PR P1 — eval keystone: expansión del golden set + honestidad semántica (w-zluxybat)
+- **[2026-06-10 08:36:42]** create knowledge | PR P0 shipped — audit hardening (auth GET, host bind, SDK bump, CI gates) (k-k2ylcsm9)

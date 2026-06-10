@@ -17,9 +17,9 @@ Agents should prefer `build_context_pack` before deep work and should not call m
 
 ## Status
 
-**v3.0.0-alpha.4** — Clean rewrite in progress.
+**v3.0.0** — Stable. The v3 clean rewrite has shipped (see [CHANGELOG](CHANGELOG.md)).
 
-v2 is maintained on the `release/2.x` branch.
+v2 was maintained on the `release/2.x` branch, which has since been retired.
 
 ## Architecture
 
@@ -28,7 +28,7 @@ Monsthera v3 is built around these core concepts:
 - **Knowledge articles** — Markdown-native documents that form the shared knowledge base
 - **Work articles** — The canonical work unit, replacing tickets with enriched documentation
 - **Phase state machine** — 5-phase lifecycle (planning → enrichment → implementation → review → done)
-- **Guard-driven orchestration** — Deterministic boolean guards enable automated phase transitions. Currently ships wave planning and autoadvance; dispatch and convoy features described in the architecture ADR are not yet implemented.
+- **Guard-driven orchestration** — Deterministic boolean guards enable automated phase transitions. Ships wave planning, autoadvance, agent dispatch (ADR-008), and convoy coordination — named groups where the lead's progress unblocks members (ADR-009, hardened in ADR-013, via `monsthera convoy create|list|get|complete|cancel`).
 - **Dual storage** — Markdown files are the source of truth for knowledge and work articles. Dolt (optional) stores derived data: the search index and orchestration events.
 
 See [Architecture Docs](MonstheraV3/monsthera-architecture-v6-final.md) for the full design vision. The ADR describes the target architecture; not all features are shipped yet.
