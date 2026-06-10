@@ -216,11 +216,24 @@ export async function render(container) {
         + '<button class="tab' + (filterType === "knowledge" ? " active" : "") + '" data-filter="knowledge">Knowledge</button>'
         + '<button class="tab' + (filterType === "work" ? " active" : "") + '" data-filter="work">Work</button>'
         + "</div>",
-      buildModeGuide(mode, filterType),
-      buildSummary(),
-      '<div class="layout-split" style="margin-top:16px">'
-        + '<div class="col-main" style="gap:8px">' + resultListHtml + "</div>"
-        + '<div class="col-side">' + previewHtml + "</div></div>",
+      // Results-first when a query is active: the didactic mode guide is
+      // onboarding for the empty state — with results present it pushed
+      // them ~600px below the fold. The pack summary stays available, but
+      // after the results.
+      ...(hasQuery
+        ? [
+          '<div class="layout-split" style="margin-top:16px">'
+            + '<div class="col-main" style="gap:8px">' + resultListHtml + "</div>"
+            + '<div class="col-side">' + previewHtml + "</div></div>",
+          buildSummary(),
+        ]
+        : [
+          buildModeGuide(mode, filterType),
+          buildSummary(),
+          '<div class="layout-split" style="margin-top:16px">'
+            + '<div class="col-main" style="gap:8px">' + resultListHtml + "</div>"
+            + '<div class="col-side">' + previewHtml + "</div></div>",
+        ]),
     ].join("\n");
     return temp.content;
   }

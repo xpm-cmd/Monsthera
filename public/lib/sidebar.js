@@ -122,12 +122,16 @@ export async function refreshConvoyWarningBadge() {
       const badge = document.getElementById("convoy-warning-badge");
       if (!badge) return;
       if (count > 0) {
+        const label = `${count} unresolved convoy warning${count === 1 ? "" : "s"}`;
         badge.textContent = String(count);
         badge.hidden = false;
-        badge.setAttribute("aria-label", `${count} unresolved convoy warning${count === 1 ? "" : "s"}`);
+        badge.setAttribute("role", "status");
+        badge.setAttribute("aria-label", label);
+        badge.title = label;
       } else {
         badge.hidden = true;
         badge.removeAttribute("aria-label");
+        badge.removeAttribute("title");
       }
     } catch {
       // Silent — previous count preserved.

@@ -1359,16 +1359,24 @@ button.board-card {
   .sidebar-nav {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
   }
 
   .sidebar-nav li {
     flex: 1 1 150px;
   }
 
-  .sidebar-subnav {
-    max-height: none;
-    margin-top: 4px;
+  .sidebar-nav a {
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+
+  /* The item that owns the subnav (System) takes a full row, so an open
+     subnav grows downward instead of stretching its row partner. The
+     subnav keeps its base collapsed/.open behavior — forcing it open
+     here used to fill the entire first viewport with navigation. */
+  .sidebar-nav li:has(.sidebar-subnav) {
+    flex-basis: 100%;
   }
 
   .layout-split {
@@ -1420,6 +1428,8 @@ button.board-card {
 .convoy-card__distrib { margin-top:8px; display:flex; gap:4px; flex-wrap:wrap; }
 
 /* ─── Sidebar warning badge ──────────────────────────────────────────────── */
+
+.nav-badge[hidden] { display: none; }
 
 .nav-badge {
   display: inline-flex;
