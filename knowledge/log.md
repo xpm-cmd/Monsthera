@@ -217,3 +217,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 10:23:59]** create knowledge | PR-18: semantic onboarding honesto — enable-semantic verificado cross-repo (Banyan P1) (k-7j6lirme)
 - **[2026-06-10 10:43:04]** create knowledge | PR-19: Lean symbol extraction en el code inventory (Banyan P2) (k-hjc2eo08)
 - **[2026-06-10 10:57:31]** create knowledge | PR-20: work tracking quickstart para consumidores (Banyan P3, docs-only) (k-e9atys0k)
+- **[2026-06-10 11:14:56]** reindex knowledge | Reindex: 122 knowledge, 22 work

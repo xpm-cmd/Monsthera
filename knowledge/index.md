@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 120 knowledge articles and 22 work articles.
-> Last updated: 2026-06-10 10:57:31
+> Auto-generated catalog of 122 knowledge articles and 22 work articles.
+> Last updated: 2026-06-10 11:14:56
 
 ## Knowledge
 
@@ -164,16 +164,13 @@
 - [PR-9: Deterministic cross-article contradiction detection](notes/pr9-contradiction-detection.md) — Third PR of M2. Surfaces when two corpus articles disagree on the same canonical
 - [PR1: corpus tag-hygiene (write-path normalize + lint rule)](notes/pr1-corpus-tag-hygiene-write-path-normalize-lint-rule.md) — ## Problem  Creating an article with `--tags "'family:kriging', family:kriging,
 - [PR2: knowledge CLI safety + ergonomics (dry-run, incremental tags, json, quiet)](notes/pr2-knowledge-cli-safety-ergonomics-dry-run-incremental-tags-json-quiet.md) — ## Summary  PR2 of the real-corpus dogfood follow-up — P1 CLI safety + ergonomic
+- [Solution: PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet](notes/distilled-w-kw9xy2i5.md) — > Distilled from work [w-kw9xy2i5] on completion. Origin: `distilled`.  Wave 1 d
+- [Solution: PR P1 — eval keystone: expansión del golden set + honestidad semántica](notes/distilled-w-zluxybat.md) — > Distilled from work [w-zluxybat] on completion. Origin: `distilled`.  Wave 2 d
 - [T5: Minimal-diff frontmatter write on knowledge update](notes/t5-minimal-diff-frontmatter-write-on-knowledge-update.md) — ## Summary  Final task (T5) of the real-corpus dogfood follow-up. Shipped on bra
 
 ## Work
 
-### planning (2)
-
-- [PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet](work-articles/w-kw9xy2i5.md) [high] — Wave 1 de la auditoría 2026-06-10 (ver k-3zo9w9dg). Rama `fi
-- [PR P1 — eval keystone: expansión del golden set + honestidad semántica](work-articles/w-zluxybat.md) [high] — Wave 2 de la auditoría 2026-06-10 (ver k-3zo9w9dg). Rama `fe
-
-### done (19)
+### done (21)
 
 - [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
 - [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
@@ -191,6 +188,8 @@
 - [Implement Code Intelligence M3 — Lightweight Code Inventory](work-articles/w-w7yhmqse.md) [high] — ## Objective  Implement Milestone 3 of ADR-015 (Code Intelli
 - [Observational benchmark: Monsthera retrieval paths vs. grep](work-articles/w-dzur84o8.md) [medium] — ## Objective  Capture an observational data point comparing
 - [Opt-in ready_to_implement guard consuming environment snapshots](work-articles/w-y988ky96.md) [medium] — ## Objective  Add a template-opt-in guard that blocks the `e
+- [PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet](work-articles/w-kw9xy2i5.md) [high] — Wave 1 de la auditoría 2026-06-10 (ver k-3zo9w9dg). Rama `fi
+- [PR P1 — eval keystone: expansión del golden set + honestidad semántica](work-articles/w-zluxybat.md) [high] — Wave 2 de la auditoría 2026-06-10 (ver k-3zo9w9dg). Rama `fe
 - [refactor: lock file-repository read-modify-write to prevent lost updates](work-articles/w-mc21yp9s.md) [critical] — ## Issue  `FileSystemKnowledgeArticleRepository.update` and
 - [refactor: replace throw new Error in CLI doctor commands with Result propagation](work-articles/w-zuxnfk7f.md) [high] — ## Issue  Several CLI command modules throw raw `Error` inst
 - [Simplificar instalación, actualización y portabilidad del workspace](work-articles/w-zxi617cw.md) [high] — ## Objetivo Crear una superficie operacional oficial para Mo
