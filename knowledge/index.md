@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 124 knowledge articles and 24 work articles.
-> Last updated: 2026-06-10 11:52:58
+> Auto-generated catalog of 125 knowledge articles and 25 work articles.
+> Last updated: 2026-06-10 11:59:37
 
 ## Knowledge
 
@@ -169,13 +169,15 @@
 - [T5: Minimal-diff frontmatter write on knowledge update](notes/t5-minimal-diff-frontmatter-write-on-knowledge-update.md) — ## Summary  Final task (T5) of the real-corpus dogfood follow-up. Shipped on bra
 - [Wave A1: write path honra filePath — update/delete sobre archivos ID-named](notes/wave-a1-write-path-honra-filepath-updatedelete-sobre-archivos-id-named.md) — Cierra el gotcha registrado en PR-16 (k-zv7qfvll): todo el write path resolvía s
 - [Wave A2: GUARD_FAILED min_enrichment_met ahora nombra roles pendientes y remedios](notes/wave-a2-guard-failed-min-enrichment-met-ahora-nombra-roles-pendientes-y-remedios.md) — Cierra la fricción #1 del quickstart de work tracking (k-e9atys0k): `GUARD_FAILE
+- [Wave B1: ingest git visible en help top-level + relojes deterministas en tests time-sensitive](notes/wave-b1-ingest-git-visible-en-help-top-level-relojes-deterministas-en-tests-time-sensitive.md) — Wave B1 (auditoría P3). Rama `fix/b1-ingest-help-flaky-clocks`, apilada sobre #1
 
 ## Work
 
-### planning (2)
+### planning (3)
 
 - [findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](work-articles/w-c09d7wa9.md) [medium] — ## Objective  Descubierto durante Wave A1 (write path). `Fil
 - [Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](work-articles/w-ymavjqkd.md) [high] — ## Objective  Dos quick fixes consumer-driven descubiertos e
+- [Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](work-articles/w-4vc60xph.md) [medium] — ## Objective  Tres quick wins DX de la auditoría (k-3zo9w9dg
 
 ### done (21)
 

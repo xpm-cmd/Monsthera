@@ -223,3 +223,5 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 11:40:02]** create knowledge | Wave A1: write path honra filePath — update/delete sobre archivos ID-named (k-lyfpgowg)
 - **[2026-06-10 11:49:17]** create knowledge | Wave A2: GUARD_FAILED min_enrichment_met ahora nombra roles pendientes y remedios (k-l6o5ujfw)
 - **[2026-06-10 11:52:58]** update work | Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo (w-ymavjqkd)
+- **[2026-06-10 11:54:54]** create work | Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido (w-4vc60xph)
+- **[2026-06-10 11:59:37]** create knowledge | Wave B1: ingest git visible en help top-level + relojes deterministas en tests time-sensitive (k-zydgbqeg)
