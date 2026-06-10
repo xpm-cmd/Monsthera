@@ -81,24 +81,49 @@ export function extractWikilinks(content: string): ExtractedWikilink[] {
 }
 
 /**
+ * ID-shape candidate rule: a bare `k-…`/`w-…` token in prose only counts as
+ * a citation CANDIDATE when the FIRST hyphen-segment after the prefix
+ * contains a digit. Candidates: `k-10-01`, `k-91-HB-013`, `k-3zo9w9dg`,
+ * `k-abc123`, `w-0ieze72s`. NOT candidates (plain prose / math terms):
+ * `k-successor-star`, `k-means`, `w-shaped` — these were flagged as orphan
+ * citations in externally authored corpora (Banyan P0-C false positives).
+ *
+ * Deliberate tradeoff: digit-less internal ids (Monsthera has a few, like
+ * `k-canonical-values`) are no longer detected from BARE PROSE mentions.
+ * They remain fully covered via frontmatter `references:` entries and
+ * `[[wikilinks]]`, which are explicit and therefore never shape-filtered.
+ * Eliminating the `k-successor-star` false-positive class is worth that
+ * narrow loss of implicit prose detection.
+ */
+function isIdShapedCitation(token: string): boolean {
+  const body = token.slice(2); // strip the "k-" / "w-" prefix
+  const hyphenIdx = body.indexOf("-");
+  const firstSegment = hyphenIdx === -1 ? body : body.slice(0, hyphenIdx);
+  return /[0-9]/.test(firstSegment);
+}
+
+/**
  * Extract inline article-ID citations (`k-xxx`, `w-xxx`) from markdown content
  * in document order with duplicates removed. Code regions (fenced blocks,
  * inline code, HTML comments) are stripped first so example IDs inside
  * snippets don't leak into the ref graph.
  *
  * The pattern matches `[kw]-` followed by one or more hyphen-separated
- * segments of `[a-z0-9]+`. This accepts both auto-generated IDs like
- * `k-a1b2c3d4` and hand-authored ones like `k-policy-example-security`.
- * Word boundaries on both ends prevent mid-word false positives (e.g. `block`
- * does not match `k-...`).
+ * segments of `[A-Za-z0-9]+` (uppercase allowed so handbook-style ids like
+ * `k-91-HB-013` are captured whole instead of truncating at `k-91`), then
+ * filters through the ID-shape candidate rule (see isIdShapedCitation) so
+ * prose terms like `k-means` never enter the ref graph. Word boundaries on
+ * both ends prevent mid-word false positives (e.g. `block` does not match
+ * `k-...`).
  */
 export function extractInlineArticleIds(content: string): readonly string[] {
   const stripped = stripCodeRegions(content);
-  const matches = stripped.matchAll(/\b[kw]-[a-z0-9]+(?:-[a-z0-9]+)*\b/g);
+  const matches = stripped.matchAll(/\b[kw]-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*\b/g);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const m of matches) {
     const id = m[0];
+    if (!isIdShapedCitation(id)) continue;
     if (!seen.has(id)) {
       seen.add(id);
       out.push(id);

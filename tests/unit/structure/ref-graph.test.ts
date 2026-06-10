@@ -208,12 +208,15 @@ describe("StructureService.getOrphanCitations", () => {
   });
 
   it("surfaces unresolved inline IDs in prose as orphans", async () => {
+    // Digit-bearing id (`k-77-…`) on purpose: the P0-C ID-shape rule no
+    // longer treats digit-less prose tokens like the old `k-nowhere` as
+    // citation candidates.
     const { service, knowledgeRepo, repoPath } = await makeService();
     const a = await knowledgeRepo.create({
       title: "A",
       slug: slug("a"),
       category: "context",
-      content: "This prose cites k-nowhere directly.",
+      content: "This prose cites k-77-nowhere directly.",
     });
     expect(a.ok).toBe(true);
     if (!a.ok) return;
@@ -222,7 +225,7 @@ describe("StructureService.getOrphanCitations", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.value.map((o) => o.missingRefId)).toEqual(["k-nowhere"]);
+    expect(result.value.map((o) => o.missingRefId)).toEqual(["k-77-nowhere"]);
 
     await fs.rm(repoPath, { recursive: true, force: true });
   });

@@ -213,3 +213,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 09:21:05]** create knowledge | PR P2 shipped — corpus & lint hygiene (ADR import, orphan FP fix, staleness por categoría) (k-dpdrql19)
 - **[2026-06-10 09:38:54]** reindex knowledge | Reindex: 115 knowledge, 22 work
 - **[2026-06-10 09:42:22]** create knowledge | PR-16: index navegable — filePath runtime + exclusión gitignore-aware (Banyan P0-AB) (k-zv7qfvll)
+- **[2026-06-10 10:02:17]** create knowledge | PR-17: precisión de orphan_citation — forma de ID + resolución por stem (Banyan P0-C) (k-x4xfniba)

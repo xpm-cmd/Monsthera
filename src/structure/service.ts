@@ -293,6 +293,40 @@ export class StructureService {
     const missingDependencies = new Set<string>();
     const omittedSharedTags = new Set<string>();
 
+    // Sorted union of every article id, used by the shorthand-stem fallback
+    // below. Sorting makes the first prefix hit deterministic when several
+    // ids share a stem.
+    const sortedArticleIds = [...knowledgeById.keys(), ...workById.keys()].sort();
+
+    /**
+     * Shorthand-stem prefix fallback (Banyan P0-C): externally authored
+     * corpora carry FULL-length ids like `k-10-01-picard-1976-maximal-…`
+     * while their prose cites the shorthand stem `k-10-01`. A reference
+     * that matches no article id or slug exactly still resolves when at
+     * least one article id starts with `ref + "-"`. The trailing hyphen is
+     * the boundary guard: `k-10-0` must NOT resolve to `k-10-01-…`.
+     *
+     * Only invoked on exact-miss (rare), and the corpus is hundreds of ids,
+     * so a linear scan over the precomputed sorted array is plenty.
+     *
+     * Returns the first non-self matching id; falls back to `selfId` when
+     * the article's own id is the only stem match (resolved, but no
+     * self-loop edge is worth drawing); null when nothing matches.
+     */
+    const resolveByStemPrefix = (ref: string, selfId: string): string | null => {
+      const needle = `${ref}-`;
+      let matchedSelf = false;
+      for (const id of sortedArticleIds) {
+        if (!id.startsWith(needle)) continue;
+        if (id === selfId) {
+          matchedSelf = true;
+          continue;
+        }
+        return id;
+      }
+      return matchedSelf ? selfId : null;
+    };
+
     const addNode = (node: StructureGraphNode): void => {
       nodes.set(node.id, node);
     };
@@ -367,7 +401,19 @@ export class StructureService {
             label: "references",
           });
         } else if (!isExternalReference(ref)) {
-          missingReferences.add(`${article.id}:${ref}`);
+          const stemTargetId = resolveByStemPrefix(ref, article.id);
+          if (stemTargetId === null) {
+            missingReferences.add(`${article.id}:${ref}`);
+          } else if (stemTargetId !== article.id) {
+            const targetPrefix = knowledgeById.has(stemTargetId) ? "k" : "w";
+            addEdge({
+              id: `reference:${nodeId}->${targetPrefix}:${stemTargetId}`,
+              source: nodeId,
+              target: `${targetPrefix}:${stemTargetId}`,
+              kind: "reference",
+              label: "references",
+            });
+          }
         }
       }
     }
@@ -453,7 +499,21 @@ export class StructureService {
         }
 
         if (isExternalReference(ref)) continue;
-        missingReferences.add(`${article.id}:${ref}`);
+        const stemTargetId = resolveByStemPrefix(ref, article.id);
+        if (stemTargetId === null) {
+          missingReferences.add(`${article.id}:${ref}`);
+          continue;
+        }
+        if (stemTargetId !== article.id) {
+          const targetPrefix = knowledgeById.has(stemTargetId) ? "k" : "w";
+          addEdge({
+            id: `reference:${sourceId}->${targetPrefix}:${stemTargetId}`,
+            source: sourceId,
+            target: `${targetPrefix}:${stemTargetId}`,
+            kind: "reference",
+            label: "references",
+          });
+        }
       }
 
       const blockers = new Set([...article.dependencies, ...article.blockedBy]);
