@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 130 knowledge articles and 27 work articles.
-> Last updated: 2026-06-10 12:42:29
+> Auto-generated catalog of 131 knowledge articles and 27 work articles.
+> Last updated: 2026-06-10 12:55:51
 
 ## Knowledge
 
@@ -175,6 +175,7 @@
 - [Wave B3: ollama-client compartido — la triplicación fetch+parse+timeout consolidada sin cambio de comportamiento](notes/wave-b3-ollama-client-compartido-la-triplicacin-fetchparsetimeout-consolidada-sin-cambio-de-comportamiento.md) — Wave B3 (auditoría P3). Rama `refactor/b3-ollama-client`, apilada sobre #155.  #
 - [Wave C1: el colapso semántico era un mismatch de escala — NDCG 0.098 → 0.899, semantic ahora supera a bm25](notes/wave-c1-el-colapso-semntico-era-un-mismatch-de-escala-ndcg-0098-0899-semantic-ahora-supera-a-bm25.md) — Rama `fix/c1-hybrid-scale-mismatch`, apilada sobre #156. **La primera medición r
 - [Wave C3: escalares de extraFrontmatter como términos de búsqueda — cierra el último deferred de ADR-020](notes/wave-c3-escalares-de-extrafrontmatter-como-trminos-de-bsqueda-cierra-el-ltimo-deferred-de-adr-020.md) — Rama `feat/c3-cf-search-terms`, apilada sobre #158. Cierra el deferred "cf searc
+- [Wave D0: router del dashboard partido en routes/ por dominio — 1433 → 189 líneas, cero cambio de comportamiento](notes/wave-d0-router-del-dashboard-partido-en-routes-por-dominio-1433-189-lneas-cero-cambio-de-comportamiento.md) — Rama `refactor/d0-dashboard-routes`, apilada sobre #159. El archivo más grande d
 
 ## Work
 
