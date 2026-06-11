@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 134 knowledge articles and 28 work articles.
-> Last updated: 2026-06-10 23:29:51
+> Auto-generated catalog of 135 knowledge articles and 29 work articles.
+> Last updated: 2026-06-10 23:43:26
 
 ## Knowledge
 
@@ -179,10 +179,11 @@
 - [Wave D1: responsive del sidebar, search results-first, y el badge fantasma de Convoys](notes/wave-d1-responsive-del-sidebar-search-results-first-y-el-badge-fantasma-de-convoys.md) — Rama `feat/d1-dashboard-ux-prio1`, apilada sobre #160. Los tres hallazgos PRIO-1
 - [Wave D2: página Sessions, card de retrieval-quality, y heroes colapsables persistentes](notes/wave-d2-pgina-sessions-card-de-retrieval-quality-y-heroes-colapsables-persistentes.md) — Rama `feat/d2-dashboard-features`, apilada sobre #161. Hallazgos (c)/(e)/(f) del
 - [Wave D3: assets self-hosted (cero CDN), footer informativo, y las 7 notas dashboard-* refrescadas](notes/wave-d3-assets-self-hosted-cero-cdn-footer-informativo-y-las-7-notas-dashboard-refrescadas.md) — Rama `chore/d3-dashboard-polish`, apilada sobre #162. Cierra Wave D.  ## (g) Pol
+- [Wave E1: work/lint.ts partido en rules/ por familia — 871 → 408, findings del corpus byte-idénticos](notes/wave-e1-worklintts-partido-en-rules-por-familia-871-408-findings-del-corpus-byte-idnticos.md) — Rama `refactor/e1-lint-rules`, apilada sobre #163. Segundo archivo del backlog d
 
 ## Work
 
-### planning (6)
+### planning (7)
 
 - [findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](work-articles/w-c09d7wa9.md) [medium] — ## Objective  Descubierto durante Wave A1 (write path). `Fil
 - [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
@@ -190,6 +191,7 @@
 - [Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](work-articles/w-4vc60xph.md) [medium] — ## Objective  Tres quick wins DX de la auditoría (k-3zo9w9dg
 - [Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](work-articles/w-bjggjpsg.md) [high] — ## Objective  (Ver historial: C1 reformulado por el descubri
 - [Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](work-articles/w-y0wuvaix.md) [medium] — ## Objective  (Original en historial.) Hallazgos (a)-(h) del
+- [Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](work-articles/w-s16wia61.md) [medium] — ## Objective  (Original en historial.) Split de `src/work/li
 
 ### done (21)
 
