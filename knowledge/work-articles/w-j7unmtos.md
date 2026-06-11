@@ -2,7 +2,7 @@
 id: w-j7unmtos
 title: Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar
 template: spike
-phase: enrichment
+phase: done
 priority: low
 author: claude-code
 tags: [wave-g, eval, retrieval-quality, hybrid-ranking]
@@ -11,10 +11,11 @@ codeRefs: [src/search/hybrid-ranker.ts, tests/eval/baseline.json]
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-11T11:29:03.819Z
-updatedAt: 2026-06-11T11:29:13.227Z
+updatedAt: 2026-06-11T11:33:02.522Z
 enrichmentRolesJson: {"items":[]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-11T11:29:03.819Z","exitedAt":"2026-06-11T11:29:13.227Z"},{"phase":"enrichment","enteredAt":"2026-06-11T11:29:13.227Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-11T11:29:03.819Z","exitedAt":"2026-06-11T11:29:13.227Z"},{"phase":"enrichment","enteredAt":"2026-06-11T11:29:13.227Z","exitedAt":"2026-06-11T11:33:02.522Z"},{"phase":"done","enteredAt":"2026-06-11T11:33:02.522Z","reason":"Spike solo-agent: cierre = PR #176 mergeado (c39250c) con CI verde 1m26s; veredicto no-trigger documentado en decision note k-a5gjeblo con números reales y condición de reapertura.","metadata":{"pr":176,"merged_sha":"c39250c","decision_note":"k-a5gjeblo","verdict":"no-trigger: gap 1 unidad de conteo (0.6364 vs 0.5455), semantic domina relevancia"}}]}
+completedAt: 2026-06-11T11:33:02.522Z
 ---
 
 ## Objective
