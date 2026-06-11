@@ -282,3 +282,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 05:53:50]** create knowledge | Wave F2+F3: coverage de lint/hook commands (0.97%→57%, 2.3%→74%) y ratchet de floors a 74/82/62 (k-jvccuix2)
 - **[2026-06-11 05:56:39]** rename knowledge | adr-014-portable-workspace-operations -> adr-021-portable-workspace-operations (0 referrers updated) (k-dsn4wl6r)
 - **[2026-06-11 06:03:55]** create knowledge | Wave F1+F4: el smoke contra Dolt real encontró un bug de id en su primer contacto; ADR-014 duplicado renumerado a 021 (k-aua5adqn)
+- **[2026-06-11 06:09:03]** create knowledge | Wave F5: per-commit codeRefs en la ingesta git — cierra el último deferred de M3 (k-p4f05mkz)
