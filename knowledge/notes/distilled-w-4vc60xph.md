@@ -1,22 +1,18 @@
 ---
-id: w-4vc60xph
-title: Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido
-template: refactor
-phase: done
-priority: medium
-author: claude-code
-tags: [wave-b, dx]
-references: [k-3zo9w9dg]
+id: k-qqyuj7ze
+title: Solution: Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido
+slug: distilled-w-4vc60xph
+category: solution
+tags: [wave-b, dx, distilled]
 codeRefs: [src/cli/main.ts, tests/unit/hardening.test.ts, tests/unit/tools/refs-stale-tool.test.ts, tests/unit/context/insights-thresholds.test.ts, src/tools, src/search/embedding.ts, src/sessions/llm-summarizer.ts, src/core/text-generator.ts]
-dependencies: []
-blockedBy: []
-createdAt: 2026-06-10T11:54:54.619Z
-updatedAt: 2026-06-11T00:14:35.582Z
-enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"claude-code","status":"pending"}]}
-reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T11:54:54.619Z","exitedAt":"2026-06-11T00:13:27.455Z"},{"phase":"enrichment","enteredAt":"2026-06-11T00:13:27.455Z","exitedAt":"2026-06-11T00:14:33.043Z"},{"phase":"implementation","enteredAt":"2026-06-11T00:14:33.043Z","exitedAt":"2026-06-11T00:14:34.321Z","reason":"solo-agente: rol architecture cubierto por notas k-zydgbqeg/k-w9r21jkj/k-e86w9l9u con gates verdes","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-06-11T00:14:34.321Z","reason":"implementación en PRs #154-#156 mergeados vía #165","skippedGuards":["implementation_linked"],"exitedAt":"2026-06-11T00:14:35.582Z"},{"phase":"done","enteredAt":"2026-06-11T00:14:35.582Z","reason":"review en GitHub: CI verde + merge autorizado","skippedGuards":["all_reviewers_approved"]}]}
-completedAt: 2026-06-11T00:14:35.582Z
+references: [w-4vc60xph]
+createdAt: 2026-06-11T00:14:35.779Z
+updatedAt: 2026-06-11T00:14:35.779Z
+origin: distilled
+distilled_from: w-4vc60xph
 ---
+
+> Distilled from work [w-4vc60xph] on completion. Origin: `distilled`.
 
 ## Objective
 
@@ -41,3 +37,13 @@ Tres quick wins DX de la auditoría (k-3zo9w9dg, sección P3):
 - **Eval gate de cierre: bm25 NDCG 0.8767 — IDÉNTICO al cierre de Wave A, regresión cero.** Semantic 0.098 (colapso pre-existente, diagnóstico en memoria de sesión para C1).
 
 Pendiente para `done`: merge de #154/#155/#156 (stack tras #152/#153).
+
+## Code
+- `src/cli/main.ts`
+- `tests/unit/hardening.test.ts`
+- `tests/unit/tools/refs-stale-tool.test.ts`
+- `tests/unit/context/insights-thresholds.test.ts`
+- `src/tools`
+- `src/search/embedding.ts`
+- `src/sessions/llm-summarizer.ts`
+- `src/core/text-generator.ts`

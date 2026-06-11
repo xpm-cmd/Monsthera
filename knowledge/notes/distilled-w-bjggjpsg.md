@@ -1,22 +1,18 @@
 ---
-id: w-bjggjpsg
-title: Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission
-template: feature
-phase: done
-priority: high
-author: claude-code
-tags: [wave-c, eval, retrieval-quality, semantic]
-references: [k-3zo9w9dg]
+id: k-24mp31p1
+title: Solution: Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission
+slug: distilled-w-bjggjpsg
+category: solution
+tags: [wave-c, eval, retrieval-quality, semantic, distilled]
 codeRefs: [src/search/service.ts, tests/eval/baseline.json, tests/eval/golden/knowledge.json, src/core/runtime-state.ts]
-dependencies: []
-blockedBy: []
-createdAt: 2026-06-10T12:22:58.065Z
-updatedAt: 2026-06-11T00:14:39.634Z
-enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"claude-code","status":"pending"},{"role":"testing","agentId":"claude-code","status":"pending"}]}
-reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T12:22:58.065Z","exitedAt":"2026-06-11T00:13:31.634Z"},{"phase":"enrichment","enteredAt":"2026-06-11T00:13:31.634Z","exitedAt":"2026-06-11T00:14:37.091Z"},{"phase":"implementation","enteredAt":"2026-06-11T00:14:37.091Z","exitedAt":"2026-06-11T00:14:38.371Z","reason":"solo-agente: testing/architecture cubiertos por TDD eval-gated (k-73ofos2z/k-r51xph09/k-v9l1e8qa)","skippedGuards":["min_enrichment_met","snapshot_ready"]},{"phase":"review","enteredAt":"2026-06-11T00:14:38.371Z","reason":"implementación en PRs #157-#159 mergeados vía #165","skippedGuards":["implementation_linked"],"exitedAt":"2026-06-11T00:14:39.634Z"},{"phase":"done","enteredAt":"2026-06-11T00:14:39.634Z","reason":"review en GitHub: CI verde + merge autorizado; semantic NDCG 0.098→0.899","skippedGuards":["all_reviewers_approved"]}]}
-completedAt: 2026-06-11T00:14:39.634Z
+references: [w-bjggjpsg]
+createdAt: 2026-06-11T00:14:39.828Z
+updatedAt: 2026-06-11T00:14:39.828Z
+origin: distilled
+distilled_from: w-bjggjpsg
 ---
+
+> Distilled from work [w-bjggjpsg] on completion. Origin: `distilled`.
 
 ## Objective
 
@@ -41,3 +37,9 @@ completedAt: 2026-06-11T00:14:39.634Z
 - C3 → PR #159 (`feat/c3-cf-search-terms`), nota k-v9l1e8qa. ADR-020 sin deferreds.
 
 Pendiente para `done`: merge del stack #157/#158/#159.
+
+## Code
+- `src/search/service.ts`
+- `tests/eval/baseline.json`
+- `tests/eval/golden/knowledge.json`
+- `src/core/runtime-state.ts`

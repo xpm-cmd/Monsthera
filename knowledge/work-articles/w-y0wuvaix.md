@@ -2,7 +2,7 @@
 id: w-y0wuvaix
 title: Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host
 template: feature
-phase: planning
+phase: done
 priority: medium
 author: claude-code
 tags: [wave-d, dashboard, ux]
@@ -11,10 +11,11 @@ codeRefs: [src/dashboard/index.ts, public/styles.css, public/pages/search.js, pu
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-10T12:42:29.465Z
-updatedAt: 2026-06-10T23:29:51.097Z
+updatedAt: 2026-06-11T00:14:45.041Z
 enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"claude-code","status":"pending"},{"role":"testing","agentId":"claude-code","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T12:42:29.465Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T12:42:29.465Z","exitedAt":"2026-06-11T00:14:41.188Z"},{"phase":"enrichment","enteredAt":"2026-06-11T00:14:41.188Z","exitedAt":"2026-06-11T00:14:42.477Z","reason":"AC original movido a historial en el rewrite de status; criterios cumplidos en PRs #160-#163","skippedGuards":["has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-06-11T00:14:42.477Z","exitedAt":"2026-06-11T00:14:43.754Z","reason":"solo-agente: cubierto por TDD + verificación visual/DOM (k-gqkb0d2i/k-vvamtwke/k-dqg0dmc3/k-zuks8lor)","skippedGuards":["min_enrichment_met","snapshot_ready"]},{"phase":"review","enteredAt":"2026-06-11T00:14:43.754Z","reason":"implementación en PRs #160-#163 mergeados vía #165","skippedGuards":["implementation_linked"],"exitedAt":"2026-06-11T00:14:45.041Z"},{"phase":"done","enteredAt":"2026-06-11T00:14:45.041Z","reason":"review en GitHub: CI verde + merge autorizado","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-06-11T00:14:45.041Z
 ---
 
 ## Objective

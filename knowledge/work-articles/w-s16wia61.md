@@ -2,7 +2,7 @@
 id: w-s16wia61
 title: Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review
 template: refactor
-phase: planning
+phase: done
 priority: medium
 author: claude-code
 tags: [wave-e, file-split, lint]
@@ -11,10 +11,11 @@ codeRefs: [src/work/lint.ts]
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-10T23:30:40.945Z
-updatedAt: 2026-06-10T23:43:25.856Z
+updatedAt: 2026-06-11T00:14:50.309Z
 enrichmentRolesJson: {"items":[{"role":"architecture","agentId":"claude-code","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T23:30:40.945Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T23:30:40.945Z","exitedAt":"2026-06-11T00:14:46.556Z"},{"phase":"enrichment","enteredAt":"2026-06-11T00:14:46.556Z","exitedAt":"2026-06-11T00:14:47.803Z","reason":"AC original en historial; cumplido en PR #164","skippedGuards":["has_acceptance_criteria"]},{"phase":"implementation","enteredAt":"2026-06-11T00:14:47.803Z","exitedAt":"2026-06-11T00:14:49.053Z","reason":"solo-agente: doble arnés (876 tests + lint real byte-idéntico, k-talge4d2)","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-06-11T00:14:49.053Z","reason":"implementación en PR #164 mergeado vía #165","skippedGuards":["implementation_linked"],"exitedAt":"2026-06-11T00:14:50.309Z"},{"phase":"done","enteredAt":"2026-06-11T00:14:50.309Z","reason":"review en GitHub: CI verde + merge autorizado; pausa contractual cumplida y levantada","skippedGuards":["all_reviewers_approved"]}]}
+completedAt: 2026-06-11T00:14:50.309Z
 ---
 
 ## Objective

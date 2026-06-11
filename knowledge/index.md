@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 135 knowledge articles and 29 work articles.
-> Last updated: 2026-06-10 23:43:26
+> Auto-generated catalog of 140 knowledge articles and 29 work articles.
+> Last updated: 2026-06-11 00:14:50
 
 ## Knowledge
 
@@ -167,6 +167,11 @@
 - [PR2: knowledge CLI safety + ergonomics (dry-run, incremental tags, json, quiet)](notes/pr2-knowledge-cli-safety-ergonomics-dry-run-incremental-tags-json-quiet.md) — ## Summary  PR2 of the real-corpus dogfood follow-up — P1 CLI safety + ergonomic
 - [Solution: PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet](notes/distilled-w-kw9xy2i5.md) — > Distilled from work [w-kw9xy2i5] on completion. Origin: `distilled`.  Wave 1 d
 - [Solution: PR P1 — eval keystone: expansión del golden set + honestidad semántica](notes/distilled-w-zluxybat.md) — > Distilled from work [w-zluxybat] on completion. Origin: `distilled`.  Wave 2 d
+- [Solution: Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](notes/distilled-w-ymavjqkd.md) — > Distilled from work [w-ymavjqkd] on completion. Origin: `distilled`.  ## Objec
+- [Solution: Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](notes/distilled-w-4vc60xph.md) — > Distilled from work [w-4vc60xph] on completion. Origin: `distilled`.  ## Objec
+- [Solution: Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](notes/distilled-w-bjggjpsg.md) — > Distilled from work [w-bjggjpsg] on completion. Origin: `distilled`.  ## Objec
+- [Solution: Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](notes/distilled-w-y0wuvaix.md) — > Distilled from work [w-y0wuvaix] on completion. Origin: `distilled`.  ## Objec
+- [Solution: Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](notes/distilled-w-s16wia61.md) — > Distilled from work [w-s16wia61] on completion. Origin: `distilled`.  ## Objec
 - [T5: Minimal-diff frontmatter write on knowledge update](notes/t5-minimal-diff-frontmatter-write-on-knowledge-update.md) — ## Summary  Final task (T5) of the real-corpus dogfood follow-up. Shipped on bra
 - [Wave A1: write path honra filePath — update/delete sobre archivos ID-named](notes/wave-a1-write-path-honra-filepath-updatedelete-sobre-archivos-id-named.md) — Cierra el gotcha registrado en PR-16 (k-zv7qfvll): todo el write path resolvía s
 - [Wave A2: GUARD_FAILED min_enrichment_met ahora nombra roles pendientes y remedios](notes/wave-a2-guard-failed-min-enrichment-met-ahora-nombra-roles-pendientes-y-remedios.md) — Cierra la fricción #1 del quickstart de work tracking (k-e9atys0k): `GUARD_FAILE
@@ -183,17 +188,12 @@
 
 ## Work
 
-### planning (7)
+### planning (2)
 
 - [findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](work-articles/w-c09d7wa9.md) [medium] — ## Objective  Descubierto durante Wave A1 (write path). `Fil
 - [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
-- [Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](work-articles/w-ymavjqkd.md) [high] — ## Objective  Dos quick fixes consumer-driven descubiertos e
-- [Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](work-articles/w-4vc60xph.md) [medium] — ## Objective  Tres quick wins DX de la auditoría (k-3zo9w9dg
-- [Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](work-articles/w-bjggjpsg.md) [high] — ## Objective  (Ver historial: C1 reformulado por el descubri
-- [Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](work-articles/w-y0wuvaix.md) [medium] — ## Objective  (Original en historial.) Hallazgos (a)-(h) del
-- [Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](work-articles/w-s16wia61.md) [medium] — ## Objective  (Original en historial.) Split de `src/work/li
 
-### done (21)
+### done (26)
 
 - [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
 - [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
@@ -216,6 +216,11 @@
 - [refactor: lock file-repository read-modify-write to prevent lost updates](work-articles/w-mc21yp9s.md) [critical] — ## Issue  `FileSystemKnowledgeArticleRepository.update` and
 - [refactor: replace throw new Error in CLI doctor commands with Result propagation](work-articles/w-zuxnfk7f.md) [high] — ## Issue  Several CLI command modules throw raw `Error` inst
 - [Simplificar instalación, actualización y portabilidad del workspace](work-articles/w-zxi617cw.md) [high] — ## Objetivo Crear una superficie operacional oficial para Mo
+- [Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](work-articles/w-ymavjqkd.md) [high] — ## Objective  Dos quick fixes consumer-driven descubiertos e
+- [Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](work-articles/w-4vc60xph.md) [medium] — ## Objective  Tres quick wins DX de la auditoría (k-3zo9w9dg
+- [Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](work-articles/w-bjggjpsg.md) [high] — ## Objective  (Ver historial: C1 reformulado por el descubri
+- [Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](work-articles/w-y0wuvaix.md) [medium] — ## Objective  (Original en historial.) Hallazgos (a)-(h) del
+- [Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](work-articles/w-s16wia61.md) [medium] — ## Objective  (Original en historial.) Split de `src/work/li
 
 ### cancelled (1)
 
