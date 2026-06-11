@@ -9,6 +9,7 @@ import type { ArticleId, Slug, Timestamp } from "../core/types.js";
 import { parseMarkdown, serializeMarkdown, serializeFrontmatterValue, patchFrontmatter } from "./markdown.js";
 import { uniqueSlug } from "./slug.js";
 import { validateFrontmatter } from "./schemas.js";
+import { StatCachedDirectoryReader } from "../core/stat-cache.js";
 import type {
   KnowledgeArticle,
   KnowledgeArticleRepository,
@@ -72,6 +73,22 @@ function buildArticleFrontmatter(article: KnowledgeArticle): Record<string, unkn
 }
 
 /**
+ * Defensive copy handed out by the cached read path. Cached articles are
+ * shared across calls; today's callers never mutate results in place, but
+ * the pre-cache contract was "fresh objects every read" and this keeps it:
+ * a caller poking a returned array can never poison the cache.
+ */
+function cloneArticle(article: KnowledgeArticle): KnowledgeArticle {
+  return {
+    ...article,
+    tags: [...article.tags],
+    codeRefs: [...article.codeRefs],
+    references: [...article.references],
+    ...(article.extraFrontmatter ? { extraFrontmatter: { ...article.extraFrontmatter } } : {}),
+  };
+}
+
+/**
  * Worktree fallback (added 2026-05-16):
  *
  * When constructed with `fallbackMarkdownRoot` (the main repo's
@@ -89,6 +106,18 @@ function buildArticleFrontmatter(article: KnowledgeArticle): Record<string, unkn
  * benefit, not the primary purpose.
  */
 export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRepository {
+  /**
+   * H1: in-process parse cache revalidated by a stat sweep per operation.
+   * Other PROCESSES (CLI beside the MCP server, Option-A corpora dropping
+   * files straight into notes/) are detected by the stat check; our own
+   * writes invalidate explicitly. Covers primary and fallback dirs alike
+   * (entries are keyed by absolute path).
+   */
+  private readonly dirCache = new StatCachedDirectoryReader<KnowledgeArticle>(
+    (filePath) => this.readFromPath(filePath),
+    { entityLabel: "knowledge articles" },
+  );
+
   constructor(
     private readonly markdownRoot: string,
     private readonly fallbackMarkdownRoot: string | null = null,
@@ -188,29 +217,12 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
   }
 
   private async loadAllFromDir(dir: string): Promise<Result<KnowledgeArticle[], StorageError>> {
-    let entries: string[];
-    try {
-      entries = await fs.readdir(dir);
-    } catch (error) {
-      // Missing directory is not a read failure — treat as empty so a
-      // fallback path that hasn't been written to yet doesn't get created
-      // by reads.
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return ok([]);
-      return err(new StorageError(`Failed to list knowledge articles in ${dir}`, { cause: String(error) }));
-    }
-
-    const articles: KnowledgeArticle[] = [];
-    for (const entry of entries) {
-      if (!entry.endsWith(".md")) continue;
-      const articleResult = await this.readFromPath(path.join(dir, entry));
-      if (!articleResult.ok) {
-        if (articleResult.error instanceof NotFoundError) continue;
-        return articleResult;
-      }
-      articles.push(articleResult.value);
-    }
-
-    return ok(articles);
+    // Missing-directory and per-file error semantics live in the reader and
+    // match the pre-cache behavior: ENOENT dir reads as empty, a vanished
+    // file is skipped, a corrupt file aborts the load and is never cached.
+    const articles = await this.dirCache.readDir(dir);
+    if (!articles.ok) return articles;
+    return ok(articles.value.map(cloneArticle));
   }
 
   private async loadAll(): Promise<Result<KnowledgeArticle[], StorageError>> {
@@ -281,7 +293,9 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
           ? path.join(this.markdownRoot, article.filePath)
           : this.articlePath(previousSlug);
         await fs.rm(previousPath, { force: true });
+        this.dirCache.invalidate(previousPath);
       }
+      this.dirCache.invalidate(targetPath);
       // Refresh the runtime filePath so a rename does not leak the OLD
       // file's location.
       return ok({ ...article, filePath: this.relativeArticlePath(targetPath) });
@@ -291,6 +305,8 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
           new AlreadyExistsError("KnowledgeArticle", article.slug),
         );
       }
+      // The write may have landed partially; never let the cache shadow it.
+      this.dirCache.invalidate(targetPath);
       return err(new StorageError(`Failed to write knowledge article: ${article.id}`, { cause: String(error) }));
     }
   }
@@ -347,8 +363,10 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
 
     try {
       await fs.writeFile(targetPath, patched, "utf-8");
+      this.dirCache.invalidate(targetPath);
       return ok(article);
     } catch (error) {
+      this.dirCache.invalidate(targetPath);
       return err(new StorageError(`Failed to write knowledge article: ${article.id}`, { cause: String(error) }));
     }
   }
@@ -366,9 +384,8 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
   }
 
   async findUpdatedSince(timestamp: Timestamp): Promise<Result<KnowledgeArticle[], StorageError>> {
-    // Future optimization: scan dir mtimes and short-circuit when sorted
-    // newest-first crosses the cutoff. Worth the complexity only above ~1K
-    // articles; the simple filter is identical in behavior for now.
+    // loadAll is stat-cached (H1), so this is a stat sweep + in-memory
+    // filter — the per-call full re-parse this used to flag is gone.
     const all = await this.loadAll();
     if (!all.ok) return all;
     return ok(all.value.filter((a) => a.updatedAt >= timestamp));
@@ -516,8 +533,10 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
     const existingResult = await this.findById(id);
     if (!existingResult.ok) return existingResult;
 
+    const deletedPath = this.resolveWritePath(existingResult.value);
     try {
-      await fs.rm(this.resolveWritePath(existingResult.value), { force: true });
+      await fs.rm(deletedPath, { force: true });
+      this.dirCache.invalidate(deletedPath);
       return ok(undefined);
     } catch (error) {
       return err(new StorageError(`Failed to delete knowledge article: ${id}`, { cause: String(error) }));
@@ -530,23 +549,13 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
   }
 
   async findBySlug(slugValue: Slug): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>> {
-    const primary = await this.readFromPath(this.articlePath(slugValue));
-    if (primary.ok) return primary;
-    if (!(primary.error instanceof NotFoundError)) return primary;
-
-    if (this.fallbackNotesDir !== null) {
-      const fallback = await this.readFromPath(
-        path.join(this.fallbackNotesDir, `${slugValue}.md`),
-      );
-      if (fallback.ok) return fallback;
-      // Fall through to the frontmatter scan below.
-    }
-
-    // The slug-named fast path missed: the article may live in an ID-named
-    // file (Option-A external corpora name files by id, with the real slug
-    // only in frontmatter). `loadAll` merges primary + worktree fallback
-    // with primary-wins semantics, so the scan keeps the same visibility
-    // rules as the direct reads above.
+    // Frontmatter `slug:` is the single read-path identity. The old
+    // path-derived fast path (read `notes/<slug>.md` directly) existed
+    // because the scan re-parsed the whole corpus; with the stat cache the
+    // scan is a stat sweep, and the fast path's only remaining effect was
+    // letting a file whose NAME diverges from its frontmatter slug resolve
+    // under two identities. `loadAll` merges primary + worktree fallback
+    // with primary-wins semantics, so visibility rules are unchanged.
     const all = await this.loadAll();
     if (!all.ok) return all;
     const match = all.value.find((article) => article.slug === slugValue);
