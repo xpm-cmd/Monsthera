@@ -20,11 +20,7 @@ import { FileSystemKnowledgeArticleRepository } from "../knowledge/file-reposito
 import { KnowledgeService } from "../knowledge/service.js";
 import { FileSystemWorkArticleRepository } from "../work/file-repository.js";
 import { WorkService } from "../work/service.js";
-import { InMemorySearchIndexRepository } from "../search/in-memory-repository.js";
-import { StubReranker, CrossEncoderReranker } from "../search/reranker.js";
-import { InMemoryOrchestrationEventRepository } from "../orchestration/in-memory-repository.js";
 import { InMemoryConvoyRepository } from "../orchestration/in-memory-convoy-repository.js";
-import { StubEmbeddingProvider, OllamaEmbeddingProvider } from "../search/embedding.js";
 import type { EmbeddingProvider } from "../search/embedding.js";
 import { SearchService } from "../search/service.js";
 import { OrchestrationService } from "../orchestration/service.js";
@@ -57,9 +53,17 @@ import {
 } from "../sessions/workspace-resolver.js";
 import { realCommandRunner } from "../ops/command-runner.js";
 import type { LLMSummarizer } from "../sessions/llm-summarizer.js";
-import { OllamaSummarizer } from "../sessions/llm-summarizer.js";
-import { OllamaTextGenerator, OpenAITextGenerator, StubTextGenerator } from "./text-generator.js";
 import type { TextGenerator } from "./text-generator.js";
+import { initializeStorageBackend } from "./factories/dolt-initializer.js";
+import {
+  createEmbeddingProvider,
+  createReranker,
+} from "./factories/search-provider-factory.js";
+import { createSessionSummarizer, createTextGenerator } from "./factories/llm-factory.js";
+
+// DoltUnavailableError lives with the storage-backend factory; re-exported here
+// so existing importers of `core/container.js` keep working unchanged.
+export { DoltUnavailableError } from "./factories/dolt-initializer.js";
 
 /** The wired-up dependency container for the Monsthera runtime */
 export interface MonstheraContainer extends Disposable {
@@ -99,46 +103,16 @@ export interface MonstheraContainer extends Disposable {
   readonly textGenerator: TextGenerator;
 }
 
-/**
- * Create the Monsthera runtime container.
- * Wires up all dependencies based on config.
- */
-/**
- * Container creation can fall back to in-memory storage when Dolt is
- * configured but unreachable. That fallback is **opt-in** because a user
- * who configured Dolt almost certainly wants their work to persist —
- * silently degrading to in-memory means a session's worth of mutations
- * disappear at the next restart.
- *
- * Opt-in mechanisms:
- *   - `options.allowDegraded: true` (programmatic; tests, embeddings)
- *   - `MONSTHERA_ALLOW_DEGRADED=1` env var (recommended for emergency
- *     read-only sessions when Dolt is down)
- */
-export class DoltUnavailableError extends Error {
-  readonly code = "DOLT_UNAVAILABLE";
-  readonly cause?: string;
-  constructor(cause?: string) {
-    super(
-      `Dolt is configured (storage.doltEnabled=true) but unreachable. ` +
-        `Refusing to start in degraded in-memory mode because mutations would ` +
-        `not persist across restart. ` +
-        `Resolve by starting Dolt (\`monsthera self restart dolt\`), running ` +
-        `\`monsthera self doctor --fix\`, or — for an emergency read-only ` +
-        `session — re-running with \`MONSTHERA_ALLOW_DEGRADED=1\`. ` +
-        (cause ? `Underlying cause: ${cause}` : ""),
-    );
-    this.name = "DoltUnavailableError";
-    this.cause = cause;
-  }
-}
-
 function shouldAllowDegraded(options?: { allowDegraded?: boolean }): boolean {
   if (options?.allowDegraded === true) return true;
   const env = process.env["MONSTHERA_ALLOW_DEGRADED"];
   return env === "1" || env === "true";
 }
 
+/**
+ * Create the Monsthera runtime container.
+ * Wires up all dependencies based on config.
+ */
 export async function createContainer(
   config: MonstheraConfig,
   options?: { v2Reader?: V2SourceReader; allowDegraded?: boolean },
@@ -159,13 +133,7 @@ export async function createContainer(
 
   let knowledgeRepo: KnowledgeArticleRepository | undefined;
   let workRepo: WorkArticleRepository | undefined;
-  let searchRepo: SearchIndexRepository | undefined;
-  let orchestrationRepo: OrchestrationEventRepository | undefined;
-  let convoyRepo: ConvoyRepository | undefined;
-  let snapshotRepo: SnapshotRepository | undefined;
   const markdownRoot = path.resolve(config.repoPath, config.storage.markdownRoot);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let doltPool: any;
 
   // Worktree fallback: when running inside a git worktree, also read from
   // the main repo's knowledge dir so sessions and handoff articles created
@@ -181,136 +149,24 @@ export async function createContainer(
   knowledgeRepo = new FileSystemKnowledgeArticleRepository(markdownRoot, fallbackMarkdownRoot);
   workRepo = new FileSystemWorkArticleRepository(markdownRoot);
 
-  if (config.storage.doltEnabled) {
-    try {
-      const {
-        createDoltPool,
-        closePool,
-        initializeSchema,
-        monitorDoltHealth,
-        DoltSearchIndexRepository,
-        DoltOrchestrationRepository,
-        DoltSnapshotRepository,
-        DoltConvoyRepository,
-      } = await import("../persistence/index.js");
+  // Storage backend: Dolt-backed repos (search index / orchestration events /
+  // snapshots / convoys) with health monitoring, or the in-memory fallback.
+  // See factories/dolt-initializer.ts for the full policy.
+  const storageBackend = await initializeStorageBackend({
+    config,
+    logger,
+    status,
+    stack,
+    markdownRoot,
+    allowDegraded: () => shouldAllowDegraded(options),
+  });
+  const searchRepo = storageBackend.searchRepo;
+  const orchestrationRepo = storageBackend.orchestrationRepo;
+  let convoyRepo = storageBackend.convoyRepo;
+  let snapshotRepo = storageBackend.snapshotRepo;
+  const doltPool = storageBackend.doltPool;
 
-      doltPool = createDoltPool({
-        host: config.storage.doltHost,
-        port: config.storage.doltPort,
-        database: config.storage.doltDatabase,
-        user: config.storage.doltUser,
-        password: config.storage.doltPassword,
-      });
-
-      const schemaResult = await initializeSchema(doltPool);
-      if (!schemaResult.ok) {
-        await closePool(doltPool);
-        doltPool = undefined;
-        if (!shouldAllowDegraded(options)) {
-          throw new DoltUnavailableError(schemaResult.error.message);
-        }
-        logger.warn("Dolt schema initialization failed, falling back to in-memory storage (allowDegraded=true)", {
-          error: schemaResult.error.message,
-          domain: "persistence",
-        });
-      } else {
-        // Knowledge and Work repos stay FileSystem — Markdown is the source of truth.
-        // Only search index, orchestration events, and snapshots (derived/ephemeral
-        // state) move to Dolt.
-        searchRepo = new DoltSearchIndexRepository(doltPool);
-        orchestrationRepo = new DoltOrchestrationRepository(doltPool);
-        snapshotRepo = new DoltSnapshotRepository(doltPool);
-        convoyRepo = new DoltConvoyRepository(doltPool, { eventRepo: orchestrationRepo, logger });
-
-        stack.defer(() => closePool(doltPool));
-
-        status.register("storage", () => ({
-          name: "storage",
-          healthy: true,
-          detail: `Markdown (${markdownRoot}) + Dolt index/events (${config.storage.doltHost}:${config.storage.doltPort}/${config.storage.doltDatabase})`,
-        }));
-
-        // Monitor Dolt health in the background, expose via status check
-        let lastHealthy = true;
-        let lastDetail = "Dolt connected";
-        const stopMonitor = monitorDoltHealth(doltPool, {
-          onHealthChange(health) {
-            lastHealthy = health.healthy;
-            lastDetail = health.healthy
-              ? `Dolt OK (${health.latencyMs}ms, ${health.version ?? "unknown"})`
-              : `Dolt unhealthy: ${health.error ?? "unknown error"}`;
-          },
-        });
-        stack.defer(() => { stopMonitor(); });
-
-        status.register("dolt-health", () => ({
-          name: "dolt-health",
-          healthy: lastHealthy,
-          detail: lastDetail,
-        }));
-
-        logger.info("Container created with Markdown storage and Dolt index", {
-          repoPath: config.repoPath,
-          markdownRoot,
-          doltHost: config.storage.doltHost,
-          doltPort: config.storage.doltPort,
-          doltDatabase: config.storage.doltDatabase,
-        });
-      }
-    } catch (e) {
-      if (e instanceof DoltUnavailableError) {
-        // Already wrapped — let it propagate so the CLI/MCP entry point
-        // can surface it cleanly without a stack trace.
-        throw e;
-      }
-      if (!shouldAllowDegraded(options)) {
-        throw new DoltUnavailableError(e instanceof Error ? e.message : String(e));
-      }
-      logger.warn("Failed to initialize Dolt, falling back to in-memory storage (allowDegraded=true)", {
-        error: e instanceof Error ? e.message : String(e),
-        domain: "persistence",
-      });
-    }
-  }
-
-  // Fall through to in-memory if Dolt didn't initialize
-  if (!searchRepo) {
-    searchRepo = new InMemorySearchIndexRepository({
-      bm25K1: config.search.bm25K1,
-      titleBoost: config.search.titleBoost,
-    });
-    orchestrationRepo = new InMemoryOrchestrationEventRepository();
-    convoyRepo = new InMemoryConvoyRepository({ eventRepo: orchestrationRepo, logger });
-
-    const degraded = config.storage.doltEnabled;
-    status.register("storage", () => ({
-      name: "storage",
-      healthy: !degraded,
-      detail: degraded
-        ? `Markdown (${markdownRoot}) + in-memory index (degraded — Dolt unavailable)`
-        : `Markdown (${markdownRoot})`,
-    }));
-
-    logger.info("Container created", {
-      repoPath: config.repoPath,
-      markdownRoot,
-      verbosity: config.verbosity,
-    });
-  }
-
-  let embeddingProvider: EmbeddingProvider;
-  if (config.search.semanticEnabled && config.search.embeddingProvider === "ollama") {
-    embeddingProvider = new OllamaEmbeddingProvider({
-      ollamaUrl: config.search.ollamaUrl,
-      embeddingModel: config.search.embeddingModel,
-    });
-    logger.info("Using Ollama embedding provider", {
-      model: config.search.embeddingModel,
-      url: config.search.ollamaUrl,
-    });
-  } else {
-    embeddingProvider = new StubEmbeddingProvider();
-  }
+  const embeddingProvider = createEmbeddingProvider({ config, logger });
 
   // Wire the M3 lightweight code inventory (ADR-017) before SearchService so
   // the M3 phase-4 breadcrumb in `build_context_pack(mode="code")` can reach
@@ -429,47 +285,13 @@ export async function createContainer(
     markdownRoot,
     fallbackMarkdownRoot,
   );
-  const sessionSummarizer: LLMSummarizer | null = config.sessions.llmEnabled
-    ? new OllamaSummarizer({
-        ollamaUrl: config.search.ollamaUrl,
-        model: config.sessions.llmModel,
-        temperature: config.sessions.llmTemperature,
-        timeoutMs: config.sessions.llmTimeoutMs,
-      })
-    : null;
+  const sessionSummarizer: LLMSummarizer | null = createSessionSummarizer({ config });
 
-  // General-purpose text generator (PR-3): provider-pluggable; consumed by
-  // think synthesis (PR-5) and work→knowledge distillation (PR-6). The API key
-  // is read from env only, never from the validated config object.
-  let textGenerator: TextGenerator;
-  if (!config.llm.enabled) {
-    textGenerator = new StubTextGenerator();
-  } else if (config.llm.provider === "openai") {
-    const apiKey = process.env["MONSTHERA_LLM_API_KEY"] ?? process.env["OPENAI_API_KEY"] ?? "";
-    textGenerator = new OpenAITextGenerator({
-      baseUrl: config.llm.baseUrl,
-      apiKey,
-      model: config.llm.model,
-      temperature: config.llm.temperature,
-      timeoutMs: config.llm.timeoutMs,
-    });
-  } else {
-    textGenerator = new OllamaTextGenerator({
-      ollamaUrl: config.search.ollamaUrl,
-      model: config.llm.model,
-      temperature: config.llm.temperature,
-      timeoutMs: config.llm.timeoutMs,
-    });
-  }
+  const textGenerator: TextGenerator = createTextGenerator({ config });
   // PR-5: wire the generator into search (built after SearchService; mirrors setKnowledgeRepo).
   searchService.setTextGenerator(textGenerator);
 
-  // PR-11 — reranker stage. Cross-encoder over the text generator when enabled,
-  // otherwise a no-op stub. The stage itself is gated again by `rerankEnabled`
-  // inside SearchService, so a stub here is harmless.
-  searchService.setReranker(
-    config.search.rerankEnabled ? new CrossEncoderReranker(textGenerator) : new StubReranker(),
-  );
+  searchService.setReranker(createReranker({ config, textGenerator }));
   const factsExtractor = new DefaultFactsExtractor({
     eventRepo: orchestrationRepo!,
     workRepo: workRepo!,
