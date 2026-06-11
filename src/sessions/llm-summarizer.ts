@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import { StorageError, ValidationError } from "../core/errors.js";
+import { ollamaRequest, normalizeOllamaBaseUrl } from "../core/ollama-client.js";
 import type { MonstheraError } from "../core/errors.js";
 import type { SessionFacts } from "./schemas.js";
 
@@ -255,7 +256,7 @@ export class OllamaSummarizer implements LLMSummarizer {
   private readonly timeoutMs: number;
 
   constructor(options: OllamaSummarizerOptions) {
-    this.baseUrl = options.ollamaUrl.replace(/\/+$/, "");
+    this.baseUrl = normalizeOllamaBaseUrl(options.ollamaUrl);
     this.modelName = options.model;
     this.temperature = options.temperature ?? 0.2;
     this.timeoutMs = options.timeoutMs ?? 60_000;
@@ -297,22 +298,16 @@ export class OllamaSummarizer implements LLMSummarizer {
   }
 
   async healthCheck(): Promise<Result<{ ready: true }, MonstheraError>> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/tags`, {
-        method: "GET",
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (!response.ok) {
-        return err(new StorageError(`Ollama healthCheck failed (${response.status})`));
-      }
-      return ok({ ready: true });
-    } catch (e) {
-      return err(
-        new StorageError("Ollama unreachable", {
-          cause: e instanceof Error ? e.message : String(e),
-        }),
-      );
-    }
+    const result = await ollamaRequest({
+      url: `${this.baseUrl}/api/tags`,
+      method: "GET",
+      timeoutMs: 5_000,
+      parse: "none",
+      statusErrorMessage: "Ollama healthCheck failed",
+      transportErrorMessage: "Ollama unreachable",
+    });
+    if (!result.ok) return result;
+    return ok({ ready: true });
   }
 
   /**
@@ -322,42 +317,28 @@ export class OllamaSummarizer implements LLMSummarizer {
    * which is why `parseSummary` is permissive about whitespace/wrapper text.
    */
   private async callOllama(prompt: string): Promise<Result<string, MonstheraError>> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: this.modelName,
-          prompt,
-          stream: false,
-          format: "json",
-          options: { temperature: this.temperature },
-        }),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
+    const result = await ollamaRequest({
+      url: `${this.baseUrl}/api/generate`,
+      method: "POST",
+      body: {
+        model: this.modelName,
+        prompt,
+        stream: false,
+        format: "json",
+        options: { temperature: this.temperature },
+      },
+      timeoutMs: this.timeoutMs,
+      includeBodyDetail: true,
+      statusErrorMessage: "Ollama generate failed",
+      transportErrorMessage: "Ollama generate request failed",
+    });
+    if (!result.ok) return result;
 
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        return err(
-          new StorageError(`Ollama generate failed (${response.status})`, {
-            status: response.status,
-            body,
-          }),
-        );
-      }
-
-      const data = (await response.json()) as { response?: string };
-      if (typeof data.response !== "string") {
-        return err(new StorageError("Ollama response missing 'response' field"));
-      }
-      return ok(data.response);
-    } catch (e) {
-      return err(
-        new StorageError("Ollama generate request failed", {
-          cause: e instanceof Error ? e.message : String(e),
-        }),
-      );
+    const data = result.value as { response?: string };
+    if (typeof data.response !== "string") {
+      return err(new StorageError("Ollama response missing 'response' field"));
     }
+    return ok(data.response);
   }
 
   private parseSummary(raw: string): Result<LLMSummary, MonstheraError> {

@@ -129,6 +129,13 @@ describe("CLI main()", () => {
     expect(output).toContain("workspace");
   });
 
+  it("--help lists BOTH ingest subcommands (local and git)", async () => {
+    const output = await captureStdout(() => main(["--help"]));
+    expect(output).toContain("ingest local");
+    expect(output).toContain("ingest git");
+    expect(output).toMatch(/ingest git\s+--range/);
+  });
+
   it("workspace status --json emits portable workspace status", async () => {
     const output = await captureStdout(() => main(withTempRepo(["workspace", "status", "--json"])));
     const parsed = JSON.parse(output);

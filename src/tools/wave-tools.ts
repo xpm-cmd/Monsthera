@@ -11,7 +11,7 @@ export function waveToolDefinitions(): ToolDefinition[] {
     {
       name: "plan_wave",
       description:
-        "List every active work article that is ready to advance to its next phase right now (all guards pass, no unresolved dependencies), plus the articles that are blocked and why. Read-only: does not mutate phase. Use before execute_wave, or as a triage scan for what to work on next. Enriched with title, template, priority, and assignee so agents can pick targets without additional get_work calls.",
+        "List every active work article that is ready to advance to its next phase right now (all guards pass, no unresolved dependencies), plus the articles that are blocked and why. Read-only: does not mutate phase. Use before execute_wave, or as a triage scan for what to work on next. Enriched with title, template, priority, and assignee so agents can pick targets without additional get_work calls. When to use: Run it fresh at the start of an orchestration pass to see what can move; for one article's per-guard detail, evaluate_readiness is the narrower probe.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -25,7 +25,7 @@ export function waveToolDefinitions(): ToolDefinition[] {
     {
       name: "execute_wave",
       description:
-        "Plan a wave and then execute it: every ready article is advanced to its next phase in one call. Returns per-item outcomes (advanced or failed with reason). Use this when you have reviewed plan_wave and want to apply the whole wave. For a single article that failed a guard and needs a justified bypass, prefer advance_phase with skip_guard instead.",
+        "Plan a wave and then execute it: every ready article is advanced to its next phase in one call. Returns per-item outcomes (advanced or failed with reason). Use this when you have reviewed plan_wave and want to apply the whole wave. For a single article that failed a guard and needs a justified bypass, prefer advance_phase with skip_guard instead. When to use: Batch advancement at the end of a triage pass when the whole ready set should move; if only one or two articles need to advance, call advance_phase on them directly.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -39,7 +39,7 @@ export function waveToolDefinitions(): ToolDefinition[] {
     {
       name: "evaluate_readiness",
       description:
-        "Dry-run a phase advancement for a single work article: return the current phase, the next phase (if any), whether every guard passes, and the list of guards with individual pass/fail results. Read-only. Use before advance_phase to understand exactly which guard is blocking and whether skip_guard would be legitimate.",
+        "Dry-run a phase advancement for a single work article: return the current phase, the next phase (if any), whether every guard passes, and the list of guards with individual pass/fail results. Read-only. Use before advance_phase to understand exactly which guard is blocking and whether skip_guard would be legitimate. When to use: When a single article will not advance and you must decide between fixing the gap and a justified bypass; plan_wave is the workspace-wide counterpart.",
       inputSchema: {
         type: "object" as const,
         properties: {

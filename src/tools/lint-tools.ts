@@ -16,7 +16,7 @@ export function lintToolDefinitions(): ToolDefinition[] {
     {
       name: "lint_corpus",
       description:
-        "Audit the knowledge + work corpus for canonical-value drift, anti-example drift (token + phrase), and orphan citations. Returns a `findings[]` array (one entry per violation) plus `errorCount` / `warningCount` tallies. `canonical_value_mismatch`, `token_drift`, and `phrase_anti_example` findings are errors (exit code 1 in the CLI); `orphan_citation` findings are warnings. Read `knowledge/notes/canonical-values.md` and `knowledge/notes/anti-example-registry.md` first to see the registries that define what drift means.",
+        "Audit the knowledge + work corpus for canonical-value drift, anti-example drift (token + phrase), and orphan citations. Returns a `findings[]` array (one entry per violation) plus `errorCount` / `warningCount` tallies. `canonical_value_mismatch`, `token_drift`, and `phrase_anti_example` findings are errors (exit code 1 in the CLI); `orphan_citation` findings are warnings. Read `knowledge/notes/canonical-values.md` and `knowledge/notes/anti-example-registry.md` first to see the registries that define what drift means. When to use: after bulk imports, batch edits, or registry changes, and as a pre-merge hygiene gate on corpus-heavy branches.",
       inputSchema: {
         type: "object" as const,
         properties: {

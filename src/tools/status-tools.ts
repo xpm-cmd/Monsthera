@@ -7,7 +7,7 @@ export function statusToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "status",
-      description: "Returns system status, health, and subsystem info.",
+      description: "Returns system status, health, and subsystem info. When to use: As a session-start health check, or whenever results look wrong (missing articles, stale search) — confirm which repo and index you are talking to before debugging elsewhere.",
       inputSchema: {
         type: "object" as const,
         properties: {},

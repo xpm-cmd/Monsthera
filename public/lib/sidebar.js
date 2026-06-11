@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { icon: "code-2", label: "Code", path: "/code" },
   { icon: "book-open", label: "Knowledge", path: "/knowledge" },
   { icon: "search", label: "Search", path: "/search" },
+  { icon: "history", label: "Sessions", path: "/sessions" },
   { icon: "settings", label: "System", path: "/system" },
 ];
 
@@ -60,7 +61,7 @@ export function renderSidebar(currentPath) {
       ${navHtml}
     </ul>
     <div class="sidebar-footer">
-      <div class="sidebar-footer-text">code · research · memory<br>workspace active</div>
+      <div class="sidebar-footer-text">Monsthera — local-first agent workspace<br>knowledge · work · sessions</div>
       <button class="theme-toggle" id="theme-toggle" title="Toggle theme">
         <i data-lucide="${themeIcon}"></i>
       </button>
@@ -122,12 +123,16 @@ export async function refreshConvoyWarningBadge() {
       const badge = document.getElementById("convoy-warning-badge");
       if (!badge) return;
       if (count > 0) {
+        const label = `${count} unresolved convoy warning${count === 1 ? "" : "s"}`;
         badge.textContent = String(count);
         badge.hidden = false;
-        badge.setAttribute("aria-label", `${count} unresolved convoy warning${count === 1 ? "" : "s"}`);
+        badge.setAttribute("role", "status");
+        badge.setAttribute("aria-label", label);
+        badge.title = label;
       } else {
         badge.hidden = true;
         badge.removeAttribute("aria-label");
+        badge.removeAttribute("title");
       }
     } catch {
       // Silent — previous count preserved.

@@ -2,6 +2,7 @@ import { ok, err } from "./result.js";
 import type { Result } from "./result.js";
 import { StorageError, ValidationError } from "./errors.js";
 import type { MonstheraError } from "./errors.js";
+import { ollamaRequest, normalizeOllamaBaseUrl } from "./ollama-client.js";
 
 /**
  * Provider-agnostic text generation primitive used by the synthesis (`think`)
@@ -45,48 +46,48 @@ export class OllamaTextGenerator implements TextGenerator {
   private readonly timeoutMs: number;
 
   constructor(options: OllamaTextGeneratorOptions) {
-    this.baseUrl = options.ollamaUrl.replace(/\/+$/, "");
+    this.baseUrl = normalizeOllamaBaseUrl(options.ollamaUrl);
     this.modelName = options.model;
     this.temperature = options.temperature ?? 0.2;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   async generate(prompt: string, opts?: TextGeneratorOptions): Promise<Result<string, MonstheraError>> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: this.modelName,
-          prompt,
-          stream: false,
-          ...(opts?.json ? { format: "json" } : {}),
-          options: { temperature: opts?.temperature ?? this.temperature },
-        }),
-        signal: AbortSignal.timeout(this.timeoutMs),
-      });
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        return err(new StorageError(`Ollama generate failed (${response.status})`, { status: response.status, body }));
-      }
-      const data = (await response.json()) as { response?: string };
-      if (typeof data.response !== "string") {
-        return err(new StorageError("Ollama response missing 'response' field"));
-      }
-      return ok(data.response);
-    } catch (e) {
-      return err(new StorageError("Ollama generate request failed", { cause: e instanceof Error ? e.message : String(e) }));
+    const result = await ollamaRequest({
+      url: `${this.baseUrl}/api/generate`,
+      method: "POST",
+      body: {
+        model: this.modelName,
+        prompt,
+        stream: false,
+        ...(opts?.json ? { format: "json" } : {}),
+        options: { temperature: opts?.temperature ?? this.temperature },
+      },
+      timeoutMs: this.timeoutMs,
+      includeBodyDetail: true,
+      statusErrorMessage: "Ollama generate failed",
+      transportErrorMessage: "Ollama generate request failed",
+    });
+    if (!result.ok) return result;
+
+    const data = result.value as { response?: string };
+    if (typeof data.response !== "string") {
+      return err(new StorageError("Ollama response missing 'response' field"));
     }
+    return ok(data.response);
   }
 
   async healthCheck(): Promise<Result<{ ready: true }, MonstheraError>> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/tags`, { method: "GET", signal: AbortSignal.timeout(HEALTHCHECK_TIMEOUT_MS) });
-      if (!response.ok) return err(new StorageError(`Ollama healthCheck failed (${response.status})`));
-      return ok({ ready: true });
-    } catch (e) {
-      return err(new StorageError("Ollama unreachable", { cause: e instanceof Error ? e.message : String(e) }));
-    }
+    const result = await ollamaRequest({
+      url: `${this.baseUrl}/api/tags`,
+      method: "GET",
+      timeoutMs: HEALTHCHECK_TIMEOUT_MS,
+      parse: "none",
+      statusErrorMessage: "Ollama healthCheck failed",
+      transportErrorMessage: "Ollama unreachable",
+    });
+    if (!result.ok) return result;
+    return ok({ ready: true });
   }
 }
 

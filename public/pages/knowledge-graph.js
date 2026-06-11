@@ -7,7 +7,7 @@ function loadCytoscape() {
   return new Promise((resolve, reject) => {
     if (window.cytoscape) { resolve(window.cytoscape); return; }
     const script = document.createElement("script");
-    script.src = "https://unpkg.com/cytoscape@3/dist/cytoscape.min.js";
+    script.src = "/vendor/cytoscape.min.js";
     script.onload = () => resolve(window.cytoscape);
     script.onerror = reject;
     document.head.appendChild(script);

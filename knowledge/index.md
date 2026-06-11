@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 123 knowledge articles and 24 work articles.
-> Last updated: 2026-06-10 11:40:02
+> Auto-generated catalog of 135 knowledge articles and 29 work articles.
+> Last updated: 2026-06-10 23:43:26
 
 ## Knowledge
 
@@ -65,6 +65,7 @@
 
 ### decision
 
+- [Decisión C2: salience (PR-13b) descartado para siempre — inmedible por construcción y contraindicado por la evidencia de C1](notes/decisin-c2-salience-pr-13b-descartado-para-siempre-inmedible-por-construccin-y-contraindicado-por-la-evidencia-de-c1.md) — Cierra el deferred PR-13b (salience bonus en ranking, diferido en M3 por "eval s
 - [Decision: agent dispatch contract — events, not spawning](notes/agent-dispatch-design-decisions.md) — ADR-008 captures the formal decision (event lifecycle, dispatcher shape). This n
 - [Decision: convoy dashboard — panel, sidebar badge, ribbon](notes/convoy-dashboard-design-decisions.md) — ADR-014 captures the formal decisions: dedicated page, sidebar badge as the sing
 - [Decision: convoy hardening — get, provenance events, single-convoy invariant](notes/convoy-hardening-design-decisions.md) — ADR-013 captures the formal decision (event types, the single-convoy invariant,
@@ -129,7 +130,7 @@
 
 ### reference
 
-- [Dashboard REST API endpoints](notes/dashboard-rest-api-endpoints.md) — # Dashboard REST API Endpoints  ## Overview  All API routes are handled by `src/
+- [Dashboard REST API endpoints](notes/dashboard-rest-api-endpoints.md) — # Dashboard REST API Endpoints  ## Overview  Routing was split out of the old mo
 - [Monsthera CLI Command Cheatsheet](notes/monsthera-cli-command-cheatsheet.md) — # Monsthera CLI Command Cheatsheet  Complete reference for the `monsthera` CLI s
 - [Package entrypoints and barrel exports](notes/package-entrypoints-and-barrel-exports.md) — ## Overview  Monsthera uses barrel files as public-module boundaries. They are n
 
@@ -168,13 +169,29 @@
 - [Solution: PR P1 — eval keystone: expansión del golden set + honestidad semántica](notes/distilled-w-zluxybat.md) — > Distilled from work [w-zluxybat] on completion. Origin: `distilled`.  Wave 2 d
 - [T5: Minimal-diff frontmatter write on knowledge update](notes/t5-minimal-diff-frontmatter-write-on-knowledge-update.md) — ## Summary  Final task (T5) of the real-corpus dogfood follow-up. Shipped on bra
 - [Wave A1: write path honra filePath — update/delete sobre archivos ID-named](notes/wave-a1-write-path-honra-filepath-updatedelete-sobre-archivos-id-named.md) — Cierra el gotcha registrado en PR-16 (k-zv7qfvll): todo el write path resolvía s
+- [Wave A2: GUARD_FAILED min_enrichment_met ahora nombra roles pendientes y remedios](notes/wave-a2-guard-failed-min-enrichment-met-ahora-nombra-roles-pendientes-y-remedios.md) — Cierra la fricción #1 del quickstart de work tracking (k-e9atys0k): `GUARD_FAILE
+- [Wave B1: ingest git visible en help top-level + relojes deterministas en tests time-sensitive](notes/wave-b1-ingest-git-visible-en-help-top-level-relojes-deterministas-en-tests-time-sensitive.md) — Wave B1 (auditoría P3). Rama `fix/b1-ingest-help-flaky-clocks`, apilada sobre #1
+- [Wave B2: "When to use" en las 69 tool descriptions MCP — schemas byte-idénticos](notes/wave-b2-when-to-use-en-las-69-tool-descriptions-mcp-schemas-byte-idnticos.md) — Wave B2 (auditoría P3). Rama `chore/b2-tool-descriptions-when-to-use`, apilada s
+- [Wave B3: ollama-client compartido — la triplicación fetch+parse+timeout consolidada sin cambio de comportamiento](notes/wave-b3-ollama-client-compartido-la-triplicacin-fetchparsetimeout-consolidada-sin-cambio-de-comportamiento.md) — Wave B3 (auditoría P3). Rama `refactor/b3-ollama-client`, apilada sobre #155.  #
+- [Wave C1: el colapso semántico era un mismatch de escala — NDCG 0.098 → 0.899, semantic ahora supera a bm25](notes/wave-c1-el-colapso-semntico-era-un-mismatch-de-escala-ndcg-0098-0899-semantic-ahora-supera-a-bm25.md) — Rama `fix/c1-hybrid-scale-mismatch`, apilada sobre #156. **La primera medición r
+- [Wave C3: escalares de extraFrontmatter como términos de búsqueda — cierra el último deferred de ADR-020](notes/wave-c3-escalares-de-extrafrontmatter-como-trminos-de-bsqueda-cierra-el-ltimo-deferred-de-adr-020.md) — Rama `feat/c3-cf-search-terms`, apilada sobre #158. Cierra el deferred "cf searc
+- [Wave D0: router del dashboard partido en routes/ por dominio — 1433 → 189 líneas, cero cambio de comportamiento](notes/wave-d0-router-del-dashboard-partido-en-routes-por-dominio-1433-189-lneas-cero-cambio-de-comportamiento.md) — Rama `refactor/d0-dashboard-routes`, apilada sobre #159. El archivo más grande d
+- [Wave D1: responsive del sidebar, search results-first, y el badge fantasma de Convoys](notes/wave-d1-responsive-del-sidebar-search-results-first-y-el-badge-fantasma-de-convoys.md) — Rama `feat/d1-dashboard-ux-prio1`, apilada sobre #160. Los tres hallazgos PRIO-1
+- [Wave D2: página Sessions, card de retrieval-quality, y heroes colapsables persistentes](notes/wave-d2-pgina-sessions-card-de-retrieval-quality-y-heroes-colapsables-persistentes.md) — Rama `feat/d2-dashboard-features`, apilada sobre #161. Hallazgos (c)/(e)/(f) del
+- [Wave D3: assets self-hosted (cero CDN), footer informativo, y las 7 notas dashboard-* refrescadas](notes/wave-d3-assets-self-hosted-cero-cdn-footer-informativo-y-las-7-notas-dashboard-refrescadas.md) — Rama `chore/d3-dashboard-polish`, apilada sobre #162. Cierra Wave D.  ## (g) Pol
+- [Wave E1: work/lint.ts partido en rules/ por familia — 871 → 408, findings del corpus byte-idénticos](notes/wave-e1-worklintts-partido-en-rules-por-familia-871-408-findings-del-corpus-byte-idnticos.md) — Rama `refactor/e1-lint-rules`, apilada sobre #163. Segundo archivo del backlog d
 
 ## Work
 
-### planning (2)
+### planning (7)
 
 - [findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](work-articles/w-c09d7wa9.md) [medium] — ## Objective  Descubierto durante Wave A1 (write path). `Fil
+- [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
 - [Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](work-articles/w-ymavjqkd.md) [high] — ## Objective  Dos quick fixes consumer-driven descubiertos e
+- [Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](work-articles/w-4vc60xph.md) [medium] — ## Objective  Tres quick wins DX de la auditoría (k-3zo9w9dg
+- [Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](work-articles/w-bjggjpsg.md) [high] — ## Objective  (Ver historial: C1 reformulado por el descubri
+- [Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](work-articles/w-y0wuvaix.md) [medium] — ## Objective  (Original en historial.) Hallazgos (a)-(h) del
+- [Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](work-articles/w-s16wia61.md) [medium] — ## Objective  (Original en historial.) Split de `src/work/li
 
 ### done (21)
 

@@ -500,6 +500,7 @@ export async function render(container) {
       { id: "list", label: "List" },
     ];
     const workPrimer = renderHeroCallout({
+      collapseKey: "work",
       eyebrow: "Execution contract",
       title: showCreate ? "Capture the work clearly before it spreads across agents" : "Use Work to tighten contracts and move execution safely",
       body: "This page is the source of truth for objective, ownership, references, blockers, and review. If a handoff matters, it should be visible here.",

@@ -11,7 +11,7 @@ codeRefs: [src/knowledge/file-repository.ts, src/work/guards.ts, src/cli/work-co
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-10T11:28:58.838Z
-updatedAt: 2026-06-10T11:28:58.838Z
+updatedAt: 2026-06-10T11:52:57.990Z
 enrichmentRolesJson: {"items":[{"role":"testing","agentId":"claude-code","status":"pending"}]}
 reviewersJson: {"items":[]}
 phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T11:28:58.838Z"}]}
@@ -30,3 +30,11 @@ Dos quick fixes consumer-driven descubiertos en el workstream Banyan 2026-06-10 
 - A2: TDD sobre guards + un test CLI; el mensaje enumera roles pendientes y el remedio exacto. Gate completo verde.
 - 1 PR pequeño + 1 knowledge note (categoría solution) por fix. PRs apilados (tocan knowledge/).
 - Sin regresión en `monsthera eval` al cierre de la wave.
+
+## Status 2026-06-10 — código completo, PRs abiertos
+
+- A1 → PR #152 (`fix/a1-write-path-id-named`), nota k-lyfpgowg. Causa raíz triple (duplicado + lock-touch envenenando corpus + delete no-op silencioso); aceptación en clon scratch Banyan (72 ID-named): minimal-diff de 2 líneas exactas, delete real, corpus limpio. Follow-up registrado: w-c09d7wa9 (findBySlug path-derivado).
+- A2 → PR #153 apilado sobre #152 (`fix/a2-guard-failed-actionable`), nota k-l6o5ujfw. `GuardEntry.recoveryHint` (espejo sync del patrón async); smoke CLI verbatim verde.
+- **Eval gate de cierre: SIN regresión atribuible a la wave** (mismo engine bm25: NDCG 0.8782 main → 0.8767 rama, MRR idéntico 0.8929). Dos hallazgos PRE-EXISTENTES documentados para C1: (a) engine semantic colapsa el golden set (NDCG 0.11 vs 0.88 bm25, también en main); (b) baseline.json stale vs corpus actual (bm25 0.9449→0.8782 por drift de notas post-auditoría #144–#151).
+
+Pendiente para `done`: merge de #152 y #153 por el usuario.

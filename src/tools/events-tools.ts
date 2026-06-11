@@ -196,7 +196,7 @@ export function eventsToolDefinitions(): ToolDefinition[] {
     {
       name: "events_subscribe",
       description:
-        "Read recent orchestration events with optional filters. Returns a snapshot plus a `cursor` (the most recent event id seen); call again with `since=<cursor>` to poll for new events. MCP has no native push, so this is poll-with-cursor rather than a true subscription.",
+        "Read recent orchestration events with optional filters. Returns a snapshot plus a `cursor` (the most recent event id seen); call again with `since=<cursor>` to poll for new events. MCP has no native push, so this is poll-with-cursor rather than a true subscription. When to use: From a dispatcher or watcher loop tailing agent lifecycle activity — keep passing the returned cursor; for a one-off history query, `get_events` is the simpler read.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -217,7 +217,7 @@ export function eventsToolDefinitions(): ToolDefinition[] {
     {
       name: "events_emit",
       description:
-        "Emit one agent-lifecycle event. Accepts only `agent_started`, `agent_completed`, or `agent_failed` — `agent_needed` is dispatcher-only. The work article must exist; required fields are validated strictly.",
+        "Emit one agent-lifecycle event. Accepts only `agent_started`, `agent_completed`, or `agent_failed` — `agent_needed` is dispatcher-only. The work article must exist; required fields are validated strictly. When to use: From the agent harness to report your own start, completion, or failure on a work article; for other orchestration event types (guards, dependencies, phase changes) use `log_event`.",
       inputSchema: {
         type: "object" as const,
         properties: {

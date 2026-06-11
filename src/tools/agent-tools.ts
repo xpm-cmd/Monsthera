@@ -24,7 +24,7 @@ export function agentToolDefinitions(): ToolDefinition[] {
     {
       name: "list_agents",
       description:
-        "Return the derived agent directory: every agent inferred from work article authorship, leads, assignees, reviewers, and enrichment roles, with per-agent counts and a workspace-level summary. Use to discover who owns what and who is active before assigning reviewers or picking a lead.",
+        "Return the derived agent directory: every agent inferred from work article authorship, leads, assignees, reviewers, and enrichment roles, with per-agent counts and a workspace-level summary. Use to discover who owns what and who is active before assigning reviewers or picking a lead. When to use: Start here when you do not yet know which agent ids exist or need per-agent workload counts to compare candidates; once you have an id, get_agent gives the full profile.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -33,7 +33,7 @@ export function agentToolDefinitions(): ToolDefinition[] {
     {
       name: "get_agent",
       description:
-        "Return a single agent profile by ID with per-work touchpoints, current focus, and recent events. Use after list_agents when you need the full breakdown for handoff or review assignment.",
+        "Return a single agent profile by ID with per-work touchpoints, current focus, and recent events. Use after list_agents when you need the full breakdown for handoff or review assignment. When to use: When you already hold an agent id and need that agent's focus and touchpoints; to find an id or compare agents side by side, start with list_agents.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -45,7 +45,7 @@ export function agentToolDefinitions(): ToolDefinition[] {
     {
       name: "get_agent_experience",
       description:
-        "Return the workspace-level agent-experience snapshot: scores (overall, contract, context, ownership, review), coverage metrics, automation posture, search freshness, and ranked recommendations to improve token economy and handoff quality. Read-only; use for self-assessment or to decide what to improve next.",
+        "Return the workspace-level agent-experience snapshot: scores (overall, contract, context, ownership, review), coverage metrics, automation posture, search freshness, and ranked recommendations to improve token economy and handoff quality. Read-only; use for self-assessment or to decide what to improve next. When to use: Run it when handoffs feel lossy, reviews stall, or you are choosing which workflow gap to fix next — it diagnoses the workspace as a whole, not one agent (that is get_agent).",
       inputSchema: {
         type: "object" as const,
         properties: {},

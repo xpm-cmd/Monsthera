@@ -97,11 +97,16 @@ describe("Overview empty-state contract", () => {
   });
 });
 
-describe("Dashboard HTML lucide pin", () => {
-  it("serves the bundled index.html with a pinned lucide version (no @latest)", async () => {
+describe("Dashboard HTML asset policy", () => {
+  it("serves the bundled index.html with self-hosted assets only (no CDN references)", async () => {
     // This test uses the real public/ folder rather than the fixture —
-    // otherwise we would assert against the fixture's lucide reference
+    // otherwise we would assert against the fixture's asset references
     // instead of the real dashboard. Spin up a second dashboard.
+    //
+    // History: this used to pin a lucide unpkg VERSION (guarding against a
+    // floating @latest). Wave D3 superseded that concern by self-hosting
+    // every third-party asset under /vendor — the invariant is now "zero
+    // external requests", which subsumes the version-drift worry.
     const realPublic = path.resolve(import.meta.dirname, "../../../public");
     const realContainer = await createTestContainer();
     let realDashboard: DashboardServer | undefined;
@@ -110,12 +115,11 @@ describe("Dashboard HTML lucide pin", () => {
       const res = await fetch(`http://localhost:${realDashboard.port}/`);
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("unpkg.com/lucide@");
-      expect(html).not.toContain("lucide@latest");
-      // Version should be a semver-looking string, not `latest`.
-      const match = html.match(/lucide@([^/"\s]+)/);
-      expect(match).not.toBeNull();
-      expect(match![1]).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(html).toContain("/vendor/lucide.min.js");
+      expect(html).toContain("/vendor/fonts.css");
+      expect(html).not.toContain("unpkg.com");
+      expect(html).not.toContain("fonts.googleapis.com");
+      expect(html).not.toContain("fonts.gstatic.com");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EPERM") return;
       throw error;

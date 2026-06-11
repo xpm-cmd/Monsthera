@@ -34,10 +34,19 @@ export function renderAlert(title, body, actions) {
     </div>`;
 }
 
-export function renderHeroCallout({ eyebrow, title, body, meta = [], steps = [] }) {
+export function renderHeroCallout({ eyebrow, title, body, meta = [], steps = [], collapseKey = null }) {
+  // Didactic heroes are collapsible and the choice persists per page
+  // (same localStorage pattern as monsthera-theme). Callouts without a
+  // collapseKey (e.g. Overview's dynamic next-best-action) render as before.
+  const collapsed = collapseKey
+    ? localStorage.getItem(`monsthera-hero-${collapseKey}`) === "collapsed"
+    : false;
+  const toggle = collapseKey
+    ? `<button type="button" class="hero-callout__toggle" data-hero-toggle aria-expanded="${String(!collapsed)}">${collapsed ? "Show guide" : "Hide"}</button>`
+    : "";
   return `
-    <section class="hero-callout">
-      ${eyebrow ? `<div class="hero-callout__eyebrow">${esc(eyebrow)}</div>` : ""}
+    <section class="hero-callout${collapsed ? " hero-callout--collapsed" : ""}"${collapseKey ? ` data-hero-key="${esc(collapseKey)}"` : ""}>
+      ${eyebrow || toggle ? `<div class="hero-callout__topline">${eyebrow ? `<div class="hero-callout__eyebrow">${esc(eyebrow)}</div>` : "<span></span>"}${toggle}</div>` : ""}
       <div class="hero-callout__title">${esc(title)}</div>
       ${body ? `<div class="hero-callout__body">${esc(body)}</div>` : ""}
       ${meta.length > 0 ? `<div class="hero-callout__meta">${meta.join("")}</div>` : ""}

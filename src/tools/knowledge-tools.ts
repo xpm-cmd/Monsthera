@@ -36,12 +36,12 @@ function toStringArray(value: unknown): string[] | null {
   return value as string[];
 }
 
-/** Returns the 9 knowledge tool definitions for MCP ListTools */
+/** Returns the knowledge tool definitions for MCP ListTools */
 export function knowledgeToolDefinitions(): ToolDefinition[] {
   return [
     {
       name: "create_article",
-      description: "Create a reusable knowledge article when a decision, guide, imported source, or implementation pattern should remain available for later agents. Search sync happens automatically; use reindex_all only after bulk imports or recovery work. Slug is auto-generated from title by default; call `preview_slug` first and/or pass an explicit `slug` for nontrivial titles to avoid cross-link drift.",
+      description: "Create a reusable knowledge article when a decision, guide, imported source, or implementation pattern should remain available for later agents. Search sync happens automatically; use reindex_all only after bulk imports or recovery work. Slug is auto-generated from title by default; call `preview_slug` first and/or pass an explicit `slug` for nontrivial titles to avoid cross-link drift. When to use: capture a decision, root cause, or pattern the moment it crystallizes mid-task; for many articles at once prefer batch_create_articles, and for existing files on disk prefer ingest_local_sources.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -59,7 +59,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "preview_slug",
-      description: "Preview the slug that would be auto-generated for a given article title. Read-only: reports the deterministic slug, whether that slug already exists, and any near-miss conflicts (Jaccard similarity >= 0.7 on hyphen-split tokens) that sibling articles may have authored wikilinks against. Call before create_article for nontrivial titles so cross-links do not silently drift.",
+      description: "Preview the slug that would be auto-generated for a given article title. Read-only: reports the deterministic slug, whether that slug already exists, and any near-miss conflicts (Jaccard similarity >= 0.7 on hyphen-split tokens) that sibling articles may have authored wikilinks against. Call before create_article for nontrivial titles so cross-links do not silently drift. When to use: just before create_article when the title is long, punctuated, or likely to be wikilinked by other articles; skip it for short unambiguous titles.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -70,7 +70,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "get_article",
-      description: "Open a specific knowledge article by ID or slug after search, context-pack selection, or work references point to it.",
+      description: "Open a specific knowledge article by ID or slug after search, context-pack selection, or work references point to it. When to use: when you hold one specific id or slug and need the full body plus graph connections; to fetch many ids from a ranked result list, prefer batch_get_articles.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -81,7 +81,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "update_article",
-      description: "Update an existing knowledge article as understanding improves. Add durable wording, code refs, and reusable conclusions instead of leaving them only in chat or work history. Search sync happens automatically; manual reindex is not needed for normal edits. Pass `new_slug` to atomically rename the article and fix every incoming reference in one operation.",
+      description: "Update an existing knowledge article as understanding improves. Add durable wording, code refs, and reusable conclusions instead of leaving them only in chat or work history. Search sync happens automatically; manual reindex is not needed for normal edits. Pass `new_slug` to atomically rename the article and fix every incoming reference in one operation. When to use: when new findings refine or extend an existing article — prefer this over creating a near-duplicate; for the same edit across many articles, prefer batch_update_articles.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -103,7 +103,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "delete_article",
-      description: "Delete a knowledge article by ID. Search sync happens automatically; manual remove_from_index is only for repair flows.",
+      description: "Delete a knowledge article by ID. Search sync happens automatically; manual remove_from_index is only for repair flows. When to use: when an article is obsolete or duplicates a better one; if the content is merely outdated, prefer update_article so incoming references keep resolving.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -114,7 +114,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "list_articles",
-      description: "List knowledge articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_article (or batch_get_articles for many) to read full content. Filters: `category`, `tag` (single tag; matches if the article carries it), `hasCodeRefs` (true = articles grounded in code, false = prose-only), `filter` (custom-frontmatter `custom.<key><op><value>`, ADR-020).",
+      description: "List knowledge articles with optional AND-combined filters. Returns summaries (no content) with pagination; use get_article (or batch_get_articles for many) to read full content. Filters: `category`, `tag` (single tag; matches if the article carries it), `hasCodeRefs` (true = articles grounded in code, false = prose-only), `filter` (custom-frontmatter `custom.<key><op><value>`, ADR-020). When to use: when browsing or auditing by category, tag, code-ref presence, or frontmatter field rather than by topic; for topical lookups, prefer search_articles or build_context_pack.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -135,7 +135,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "search_articles",
-      description: "Search knowledge articles by query string. Use this for a knowledge-only lookup; use search or build_context_pack when the task may span both work and knowledge.",
+      description: "Search knowledge articles by query string. Use this for a knowledge-only lookup; use search or build_context_pack when the task may span both work and knowledge. When to use: quick knowledge-only lookups where ranked summaries are enough — prior decisions, finding an article id; before coding or deep investigation, prefer build_context_pack.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -148,7 +148,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "batch_create_articles",
-      description: `Create many knowledge articles in a single call. Best-effort: each entry is validated and created independently, and the response reports per-item success or failure without aborting the batch. Accepts 1-${MAX_BATCH_ARTICLES} entries using the same schema as create_article. Search sync runs per-item; wiki index.md is rebuilt once at the end. Use for bulk imports or migrations; for a single article, prefer create_article.`,
+      description: `Create many knowledge articles in a single call. Best-effort: each entry is validated and created independently, and the response reports per-item success or failure without aborting the batch. Accepts 1-${MAX_BATCH_ARTICLES} entries using the same schema as create_article. Search sync runs per-item; wiki index.md is rebuilt once at the end. Use for bulk imports or migrations; for a single article, prefer create_article. When to use: when an import, migration, or distillation step yields several ready articles in one sitting; one or two articles do not justify the batch.`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -175,7 +175,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "batch_get_articles",
-      description: `Fetch many knowledge articles by id in a single call. Best-effort: each id is resolved independently and the response reports per-item success or failure in the requested order. Accepts 1-${MAX_BATCH_ARTICLES} ids. Designed as the natural follow-up to build_context_pack / search — send the ids from the ranked results instead of calling get_article N times. For a single article, prefer get_article (which also returns graph connections).`,
+      description: `Fetch many knowledge articles by id in a single call. Best-effort: each id is resolved independently and the response reports per-item success or failure in the requested order. Accepts 1-${MAX_BATCH_ARTICLES} ids. Designed as the natural follow-up to build_context_pack / search — send the ids from the ranked results instead of calling get_article N times. For a single article, prefer get_article (which also returns graph connections). When to use: right after a ranked search or context pack returns multiple promising ids and you need every body before deciding; skip it when the pack was built with include_content, which already inlines them.`,
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -190,7 +190,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "batch_update_articles",
-      description: `Update many knowledge articles in a single call. Best-effort: each entry is validated and applied independently, and the response reports per-item success or failure. Accepts 1-${MAX_BATCH_ARTICLES} entries; each requires \`id\` plus any subset of update_article fields (including \`new_slug\` and \`rewrite_inline_wikilinks\`). Rename semantics match update_article — per-item collision checks and referrer updates still apply. Use for bulk edits, migrations, or citation backfills; for a single article, prefer update_article.`,
+      description: `Update many knowledge articles in a single call. Best-effort: each entry is validated and applied independently, and the response reports per-item success or failure. Accepts 1-${MAX_BATCH_ARTICLES} entries; each requires \`id\` plus any subset of update_article fields (including \`new_slug\` and \`rewrite_inline_wikilinks\`). Rename semantics match update_article — per-item collision checks and referrer updates still apply. Use for bulk edits, migrations, or citation backfills; for a single article, prefer update_article. When to use: when one logical change must land across many articles at once — tag sweeps, citation backfills, slug migrations — rather than looping update_article per id.`,
       inputSchema: {
         type: "object" as const,
         properties: {

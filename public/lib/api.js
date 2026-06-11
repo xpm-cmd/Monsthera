@@ -61,6 +61,9 @@ export { ApiError };
 export function getHealth() { return get("/api/health"); }
 export function getStatus() { return get("/api/status"); }
 export function getSystemRuntime() { return get("/api/system/runtime"); }
+export function getSystemEval() { return get("/api/system/eval"); }
+export function getSessions() { return get("/api/sessions"); }
+export function getSessionById(id) { return get(`/api/sessions/${encodeURIComponent(id)}`); }
 export function getStructureGraph() { return get("/api/structure/graph"); }
 export function getCodeRef(refPath) {
   return get(`/api/code/ref?path=${encodeURIComponent(refPath)}`);

@@ -14,7 +14,7 @@ export function refsToolDefinitions(): ToolDefinition[] {
     {
       name: "refs_incoming",
       description:
-        "List every knowledge or work article that cites `<id>`. Full set, no truncation — audit-grade. Complements `get_article.connections.referencedBy`, which is capped at 10 for browsing.",
+        "List every knowledge or work article that cites `<id>`. Full set, no truncation — audit-grade. Complements `get_article.connections.referencedBy`, which is capped at 10 for browsing. When to use: Before deleting, merging, or heavily rewriting an article, to enumerate every citer the change would break; for casual browsing the capped connections block is enough.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -26,7 +26,7 @@ export function refsToolDefinitions(): ToolDefinition[] {
     {
       name: "refs_outgoing",
       description:
-        "List every knowledge or work article cited by `<id>`. Full set, no truncation.",
+        "List every knowledge or work article cited by `<id>`. Full set, no truncation. When to use: When auditing an article's evidence trail — e.g. checking a summary's sources before trusting it — where the capped `get_article` view may have truncated the list.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -38,7 +38,7 @@ export function refsToolDefinitions(): ToolDefinition[] {
     {
       name: "refs_orphans",
       description:
-        "List every citation in the corpus whose target does not resolve to an existing article. Picks up both frontmatter `references` entries and inline `k-*` / `w-*` IDs mentioned in prose. Returns the source article id plus the markdown-root-relative path so reviewers can jump directly to the file.",
+        "List every citation in the corpus whose target does not resolve to an existing article. Picks up both frontmatter `references` entries and inline `k-*` / `w-*` IDs mentioned in prose. Returns the source article id plus the markdown-root-relative path so reviewers can jump directly to the file. When to use: As a corpus hygiene sweep after deletions, renames, or bulk imports; it catches broken citation targets, while `refs_stale` covers age and code-ref drift.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -47,7 +47,7 @@ export function refsToolDefinitions(): ToolDefinition[] {
     {
       name: "verify_citations",
       description:
-        "Verify inline citation-with-number pairs against the cited article's content. For every `(citation, adjacent-number)` pair in source prose, resolve the citation to a knowledge or work article and check whether the claimed number appears in that article's text. Mismatches surface as `{ sourceArticle, citedArticle, claimedValue, foundValues, lineHint }`. Orphan (unknown-target) citations are NOT reported here — use `refs_orphans` for that. Pass `articleId` to check a single article, or `all: true` to iterate every article in the corpus (O(N*M) in citation pairs — use with intent).",
+        "Verify inline citation-with-number pairs against the cited article's content. For every `(citation, adjacent-number)` pair in source prose, resolve the citation to a knowledge or work article and check whether the claimed number appears in that article's text. Mismatches surface as `{ sourceArticle, citedArticle, claimedValue, foundValues, lineHint }`. Orphan (unknown-target) citations are NOT reported here — use `refs_orphans` for that. Pass `articleId` to check a single article, or `all: true` to iterate every article in the corpus (O(N*M) in citation pairs — use with intent). When to use: When reviewing an article that quotes figures (counts, dates, percentages) from other articles and those numbers must hold up; default to single-article checks and save `all: true` for scheduled audits.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -65,7 +65,7 @@ export function refsToolDefinitions(): ToolDefinition[] {
     {
       name: "refs_stale",
       description:
-        "Consolidated, read-only staleness report for the whole corpus. Returns `staleArticles` (knowledge/work older than the 45-day attention window, or — for knowledge — whose linked source file is newer than the article), `staleCodeRefs` (codeRefs that no longer resolve on disk), and `sourceNewer` (knowledge whose imported source changed after its last update, i.e. re-import candidates), plus a summary. Sibling of `refs_orphans` for hygiene sweeps; pairs with `monsthera doctor`.",
+        "Consolidated, read-only staleness report for the whole corpus. Returns `staleArticles` (knowledge/work older than the 45-day attention window, or — for knowledge — whose linked source file is newer than the article), `staleCodeRefs` (codeRefs that no longer resolve on disk), and `sourceNewer` (knowledge whose imported source changed after its last update, i.e. re-import candidates), plus a summary. Sibling of `refs_orphans` for hygiene sweeps; pairs with `monsthera doctor`. When to use: As a periodic maintenance sweep, or before leaning on older articles or code refs — anything flagged deserves re-validation or re-import before you build on it.",
       inputSchema: {
         type: "object" as const,
         properties: {},

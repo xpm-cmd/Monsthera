@@ -75,6 +75,7 @@ router
   .add("/knowledge", () => loadPage("./pages/knowledge.js"))
   .add("/knowledge/graph", () => loadPage("./pages/knowledge-graph.js"))
   .add("/search", () => loadPage("./pages/search.js"))
+  .add("/sessions", () => loadPage("./pages/sessions.js"))
   .add("/system", () => loadPage("./pages/system/health.js"))
   .add("/system/models", () => loadPage("./pages/system/models.js"))
   .add("/system/agents", () => loadPage("./pages/system/agents.js"))
@@ -98,6 +99,19 @@ document.addEventListener("click", (e) => {
     e.preventDefault();
     router.navigate(link.getAttribute("href"));
   }
+});
+
+// ─── Collapsible hero callouts (persisted per page) ─────────────────────────
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-hero-toggle]");
+  if (!btn) return;
+  const root = btn.closest("[data-hero-key]");
+  if (!root) return;
+  const collapsed = root.classList.toggle("hero-callout--collapsed");
+  localStorage.setItem(`monsthera-hero-${root.dataset.heroKey}`, collapsed ? "collapsed" : "open");
+  btn.setAttribute("aria-expanded", String(!collapsed));
+  btn.textContent = collapsed ? "Show guide" : "Hide";
 });
 
 // ─── Boot ───────────────────────────────────────────────────────────────────

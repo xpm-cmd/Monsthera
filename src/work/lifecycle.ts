@@ -8,6 +8,7 @@ import {
   has_objective,
   has_acceptance_criteria,
   min_enrichment_met,
+  minEnrichmentRecoveryHint,
   implementation_linked,
   all_reviewers_approved,
   snapshot_ready,
@@ -29,6 +30,13 @@ const TERMINAL_PHASES = new Set<WorkPhaseType>([WorkPhase.DONE, WorkPhase.CANCEL
 export interface GuardEntry {
   readonly name: string;
   readonly check: (article: WorkArticle) => boolean;
+  /**
+   * Agent-facing recovery text appended to `GuardFailedError.message` when
+   * this guard blocks a transition. Sync counterpart of
+   * `AsyncGuardEntry.recoveryHint`, but built from the article so the hint
+   * can name the specific missing pieces (e.g. pending enrichment roles).
+   */
+  readonly recoveryHint?: (article: WorkArticle) => string;
 }
 
 /** Async guards consult dependencies that are not embedded in the article. */
@@ -118,7 +126,11 @@ export function getGuardSet(
       case "enrichment:implementation": {
         const config = WORK_TEMPLATES[article.template];
         return [
-          { name: "min_enrichment_met", check: (a) => min_enrichment_met(a, config.minEnrichmentCount) },
+          {
+            name: "min_enrichment_met",
+            check: (a) => min_enrichment_met(a, config.minEnrichmentCount),
+            recoveryHint: (a) => minEnrichmentRecoveryHint(a, config.minEnrichmentCount),
+          },
         ];
       }
       case "implementation:review":
@@ -317,7 +329,9 @@ export function checkTransition(
   for (const guard of guards) {
     if (!guard.check(article)) {
       if (!options.skipGuard) {
-        return err(new GuardFailedError(guard.name, `Guard "${guard.name}" failed for transition from "${from}" to "${targetPhase}"`));
+        const base = `Guard "${guard.name}" failed for transition from "${from}" to "${targetPhase}"`;
+        const message = guard.recoveryHint ? `${base}. ${guard.recoveryHint(article)}` : base;
+        return err(new GuardFailedError(guard.name, message));
       }
       failed.push(guard.name);
     }

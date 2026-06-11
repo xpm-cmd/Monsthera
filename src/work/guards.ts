@@ -23,6 +23,29 @@ export function min_enrichment_met(article: WorkArticle, min: number): boolean {
   return count >= min;
 }
 
+/**
+ * Agent-facing recovery hint for a failed `min_enrichment_met` guard.
+ * Names the roles still pending and the exact commands that unblock the
+ * transition, so a blocked `advance` is actionable from the error alone
+ * (consumer feedback: the bare GUARD_FAILED was the one "read the help
+ * twice" moment of the work-tracking quickstart).
+ */
+export function minEnrichmentRecoveryHint(article: WorkArticle, min: number): string {
+  const contributed = article.enrichmentRoles.filter(
+    (r) => r.status === "contributed" || r.status === "skipped"
+  ).length;
+  const pending = article.enrichmentRoles
+    .filter((r) => r.status === "pending")
+    .map((r) => r.role);
+  const pendingPart = pending.length > 0 ? `; pending: ${pending.join(", ")}` : "";
+  return (
+    `${contributed}/${min} enrichment role(s) contributed or skipped${pendingPart}. ` +
+    `Remedy: work enrich ${article.id} --role <role> --status contributed|skipped ` +
+    `per pending role (MCP: contribute_enrichment), or re-run the advance with ` +
+    `--skip-guard-reason "<why>" (MCP: skip_guard) to bypass with an audit trail.`
+  );
+}
+
 // ─── Implementation Guards ───
 
 export function implementation_linked(article: WorkArticle): boolean {

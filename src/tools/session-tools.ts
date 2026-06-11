@@ -31,7 +31,7 @@ export function sessionToolDefinitions(): ToolDefinition[] {
     {
       name: "session_open",
       description:
-        "Open a new agent session. Auto-supersedes any prior open session for the same (agentId, repo). Returns the new Session record plus the parent (last closed) and any orphan handoff that did not finish.",
+        "Open a new agent session. Auto-supersedes any prior open session for the same (agentId, repo). Returns the new Session record plus the parent (last closed) and any orphan handoff that did not finish. When to use: First call of an agent session, before any work begins, so the handoff chain stays unbroken; the returned parent handoff is your warm-start context.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -46,7 +46,7 @@ export function sessionToolDefinitions(): ToolDefinition[] {
     {
       name: "session_close",
       description:
-        "Close an open session and persist the Stage A facts artifact. ADR-019 PREFERRED: pass `content` (full handoff body authored by you, the executing agent) — synchronous, skips the LLM pipeline entirely, produces a higher-quality handoff because the writer has full session context. LEGACY: pass `note` (short string) + leave `content` empty → triggers the local-Ollama pipeline (Stages B/C/D) which expands the note into a structured handoff. Returns immediately when `sync` is false (default, legacy path only); the LLM pipeline runs in the background. Set `sync: true` to wait for the full handoff to be persisted (useful in tests and programmatic flows). Agent-direct (`content`) is always synchronous.",
+        "Close an open session and persist the Stage A facts artifact. ADR-019 PREFERRED: pass `content` (full handoff body authored by you, the executing agent) — synchronous, skips the LLM pipeline entirely, produces a higher-quality handoff because the writer has full session context. LEGACY: pass `note` (short string) + leave `content` empty → triggers the local-Ollama pipeline (Stages B/C/D) which expands the note into a structured handoff. Returns immediately when `sync` is false (default, legacy path only); the LLM pipeline runs in the background. Set `sync: true` to wait for the full handoff to be persisted (useful in tests and programmatic flows). Agent-direct (`content`) is always synchronous. When to use: Last call of a session, after outcomes are settled — close promptly so the next session_open finds a parent handoff instead of an orphan.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -62,7 +62,7 @@ export function sessionToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "session_get",
-      description: "Fetch a session record by id.",
+      description: "Fetch a session record by id. When to use: When you hold a session id from session_list or an open/close response and need the raw lifecycle record; for the handoff content itself, use session_brief.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -73,7 +73,7 @@ export function sessionToolDefinitions(): ToolDefinition[] {
     },
     {
       name: "session_list",
-      description: "List sessions newest-first with optional filters.",
+      description: "List sessions newest-first with optional filters. When to use: To locate session ids, spot an agent's open or abandoned sessions before cleanup, or reconstruct a cross-agent timeline for a repo.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -87,7 +87,7 @@ export function sessionToolDefinitions(): ToolDefinition[] {
     {
       name: "session_brief",
       description:
-        "Read-side complement to session_open --teaser-only. Returns a depth-sliced view of a session's handoff article so a running agent can re-orient mid-flight. Provide either sessionId, or agentId+repo (resolves to the latest closed session).",
+        "Read-side complement to session_open --teaser-only. Returns a depth-sliced view of a session's handoff article so a running agent can re-orient mid-flight. Provide either sessionId, or agentId+repo (resolves to the latest closed session). When to use: Mid-session after context loss (compaction, a long pause), or to peek at another agent's latest handoff without opening a session of your own.",
       inputSchema: {
         type: "object" as const,
         properties: {
