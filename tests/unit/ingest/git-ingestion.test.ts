@@ -113,3 +113,70 @@ describe("IngestService.importPr (PR-15)", () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe("per-commit codeRefs (F5, deferred from PR-15)", () => {
+  it("each ingested article carries the commit's changed files as codeRefs", async () => {
+    const repo = new InMemoryKnowledgeArticleRepository();
+    const service = new IngestService({
+      knowledgeRepo: repo,
+      repoPath: "/tmp/repo",
+      logger: silentLogger(),
+      commandRunner: gitRunner([
+        { match: (a) => a[0] === "log", stdout: COMMIT_LOG },
+        { match: (a) => a[0] === "show" && a.includes("aaa111"), stdout: "src/foo.ts\nsrc/foo.test.ts\n" },
+        { match: (a) => a[0] === "show" && a.includes("bbb222"), stdout: "docs/bar.md\n" },
+      ]),
+    });
+
+    const result = await service.importGitHistory({ range: "HEAD~2..HEAD" });
+    expect(result.ok).toBe(true);
+
+    const all = await repo.findMany();
+    if (!all.ok) return;
+    const bySource = new Map(all.value.map((a) => [a.sourcePath, a]));
+    expect(bySource.get("git:aaa111")?.codeRefs).toEqual(["src/foo.ts", "src/foo.test.ts"]);
+    expect(bySource.get("git:bbb222")?.codeRefs).toEqual(["docs/bar.md"]);
+  });
+
+  it("caps codeRefs at 20 files for monster commits", async () => {
+    const repo = new InMemoryKnowledgeArticleRepository();
+    const manyFiles = Array.from({ length: 25 }, (_, i) => `src/file-${i}.ts`).join("\n") + "\n";
+    const service = new IngestService({
+      knowledgeRepo: repo,
+      repoPath: "/tmp/repo",
+      logger: silentLogger(),
+      commandRunner: gitRunner([
+        { match: (a) => a[0] === "log", stdout: "ccc333|chore: huge sweep|2026-05-12T23:30:00+10:00\n" },
+        { match: (a) => a[0] === "show", stdout: manyFiles },
+      ]),
+    });
+
+    const result = await service.importGitHistory({ range: "HEAD~1..HEAD" });
+    expect(result.ok).toBe(true);
+
+    const all = await repo.findMany();
+    if (!all.ok) return;
+    expect(all.value[0]?.codeRefs).toHaveLength(20);
+    expect(all.value[0]?.codeRefs[0]).toBe("src/file-0.ts");
+  });
+
+  it("fails open: a git show failure leaves codeRefs empty without failing the ingest", async () => {
+    const repo = new InMemoryKnowledgeArticleRepository();
+    const service = new IngestService({
+      knowledgeRepo: repo,
+      repoPath: "/tmp/repo",
+      logger: silentLogger(),
+      // No `show` handler: the stub runner errors on it, like a git failure would.
+      commandRunner: gitRunner([{ match: (a) => a[0] === "log", stdout: COMMIT_LOG }]),
+    });
+
+    const result = await service.importGitHistory({ range: "HEAD~2..HEAD" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.createdCount).toBe(2);
+
+    const all = await repo.findMany();
+    if (!all.ok) return;
+    expect(all.value.every((a) => a.codeRefs.length === 0)).toBe(true);
+  });
+});

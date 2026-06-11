@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 145 knowledge articles and 29 work articles.
-> Last updated: 2026-06-11 06:03:56
+> Auto-generated catalog of 146 knowledge articles and 29 work articles.
+> Last updated: 2026-06-11 06:09:03
 
 ## Knowledge
 
@@ -190,6 +190,7 @@
 - [Wave E4: hybrid-ranker extraído de search/service.ts — eval idéntico a 4 decimales como arnés](notes/wave-e4-hybrid-ranker-extrado-de-searchservicets-eval-idntico-a-4-decimales-como-arns.md) — Rama `refactor/e4-hybrid-ranker` desde main post-#168. **Cierra el backlog de sp
 - [Wave F1+F4: el smoke contra Dolt real encontró un bug de id en su primer contacto; ADR-014 duplicado renumerado a 021](notes/wave-f1f4-el-smoke-contra-dolt-real-encontr-un-bug-de-id-en-su-primer-contacto-adr-014-duplicado-renumerado-a-021.md) — Rama `chore/f4-adr014-rename` (F4+F1 combinados, seccionados).  ## F1 — el argum
 - [Wave F2+F3: coverage de lint/hook commands (0.97%→57%, 2.3%→74%) y ratchet de floors a 74/82/62](notes/wave-f2f3-coverage-de-linthook-commands-09757-2374-y-ratchet-de-floors-a-748262.md) — Rama `test/f2-cli-coverage` desde main post-#169. F2+F3 del backlog opcional.  #
+- [Wave F5: per-commit codeRefs en la ingesta git — cierra el último deferred de M3](notes/wave-f5-per-commit-coderefs-en-la-ingesta-git-cierra-el-ltimo-deferred-de-m3.md) — Rama `feat/f5-percommit-coderefs`. **Cierra el último deferred de M3** (PR-15 pe
 
 ## Work
 
