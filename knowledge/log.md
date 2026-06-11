@@ -297,3 +297,7 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 11:13:10]** advance work | findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named → done (w-c09d7wa9)
 - **[2026-06-11 11:20:13]** advance work | Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3 → enrichment (w-j7ao5fak)
 - **[2026-06-11 11:24:47]** create knowledge | Decisión G2: forbidden por staleness caduca con el refresh del artículo — re-revisión post-D3 del golden set (k-896cica1)
+- **[2026-06-11 11:28:31]** advance work | Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3 → done (w-j7ao5fak)
+- **[2026-06-11 11:29:03]** create work | Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar (w-j7unmtos)
+- **[2026-06-11 11:29:13]** advance work | Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar → enrichment (w-j7unmtos)
+- **[2026-06-11 11:29:40]** create knowledge | Decisión G3: demotion por vigencia descartada sin implementar — el trigger no dispara y la palanca perdió su premisa (k-a5gjeblo)

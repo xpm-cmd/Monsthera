@@ -2,7 +2,7 @@
 id: w-j7ao5fak
 title: Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3
 template: spike
-phase: enrichment
+phase: done
 priority: low
 author: claude-code
 tags: [eval, golden-set, follow-up, wave-d]
@@ -11,10 +11,11 @@ codeRefs: [tests/eval/golden/dashboard.json, tests/eval/baseline.json]
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-10T23:29:32.042Z
-updatedAt: 2026-06-11T11:20:13.728Z
+updatedAt: 2026-06-11T11:28:31.182Z
 enrichmentRolesJson: {"items":[]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T23:29:32.042Z","exitedAt":"2026-06-11T11:20:13.728Z"},{"phase":"enrichment","enteredAt":"2026-06-11T11:20:13.728Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T23:29:32.042Z","exitedAt":"2026-06-11T11:20:13.728Z"},{"phase":"enrichment","enteredAt":"2026-06-11T11:20:13.728Z","exitedAt":"2026-06-11T11:28:31.182Z"},{"phase":"done","enteredAt":"2026-06-11T11:28:31.182Z","reason":"Spike solo-agent merge-as-you-go: cierre = PR #175 mergeado (5dc95d3) con CI verde 1m46s + gate completo local; AC cumplidos — veredicto por caso documentado en golden notes + decision note + baseline recapturado.","metadata":{"pr":175,"merged_sha":"5dc95d3","decision_note":"k-896cica1","contamination":"0.7273→0.6364","relevance":"idéntica a 4 decimales pre/post"}}]}
+completedAt: 2026-06-11T11:28:31.182Z
 ---
 
 ## Objective
