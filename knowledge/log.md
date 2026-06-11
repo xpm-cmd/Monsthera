@@ -295,3 +295,5 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 11:13:02]** advance work | findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named → review (w-c09d7wa9)
 - **[2026-06-11 11:13:10]** create knowledge | Solution: findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named (k-4bb1ru11)
 - **[2026-06-11 11:13:10]** advance work | findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named → done (w-c09d7wa9)
+- **[2026-06-11 11:20:13]** advance work | Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3 → enrichment (w-j7ao5fak)
+- **[2026-06-11 11:24:47]** create knowledge | Decisión G2: forbidden por staleness caduca con el refresh del artículo — re-revisión post-D3 del golden set (k-896cica1)

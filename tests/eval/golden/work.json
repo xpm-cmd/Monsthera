@@ -10,7 +10,7 @@
       "k-g0buqcg5"
     ],
     "forbiddenArticleIds": ["k-2jb9bh3p", "k-5nuw1j8i", "k-imz9hai0"],
-    "note": "The work-article-model cluster: ADR-002 + guard system + template system + work design. Dashboard SPA/work-page-UX/UI-library notes describe the UI that renders work, not the model — forbidden (per task spec: work-phases query must not surface dashboard-UI notes)."
+    "note": "The work-article-model cluster: ADR-002 + guard system + template system + work design. Dashboard SPA/work-page-UX/UI-library notes describe the UI that renders work, not the model — forbidden (per task spec: work-phases query must not surface dashboard-UI notes). Re-reviewed post-D3 refresh 2026-06-11: k-5nuw1j8i now renders lifecycle semantics (NEXT_PHASE, skip-guard, reviewers) but remains page-UX documentation, not the model spec; forbidden stands for all three."
   },
   {
     "query": "work phase history skipped guard audit trail",

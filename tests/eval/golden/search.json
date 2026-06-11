@@ -9,7 +9,7 @@
       "k-cg3xlfgt"
     ],
     "forbiddenArticleIds": ["k-kmnflb56", "k-imz9hai0"],
-    "note": "Search-ranking + SearchService + trust-signal cluster. Dashboard REST API and UI component notes are unrelated to ranking internals — forbidden."
+    "note": "Search-ranking + SearchService + trust-signal cluster. Dashboard REST API and UI component notes are unrelated to ranking internals — forbidden (re-reviewed post-D3 refresh 2026-06-11: k-kmnflb56 documents the /api/search surface, not ranking internals; k-imz9hai0 is UI primitives; forbidden stands)."
   },
   {
     "query": "context pack builder scoring diagnostics mode ranking",

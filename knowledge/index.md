@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 149 knowledge articles and 30 work articles.
-> Last updated: 2026-06-11 11:13:10
+> Auto-generated catalog of 150 knowledge articles and 30 work articles.
+> Last updated: 2026-06-11 11:24:47
 
 ## Knowledge
 
@@ -66,6 +66,7 @@
 ### decision
 
 - [Decisión C2: salience (PR-13b) descartado para siempre — inmedible por construcción y contraindicado por la evidencia de C1](notes/decisin-c2-salience-pr-13b-descartado-para-siempre-inmedible-por-construccin-y-contraindicado-por-la-evidencia-de-c1.md) — Cierra el deferred PR-13b (salience bonus en ranking, diferido en M3 por "eval s
+- [Decisión G2: forbidden por staleness caduca con el refresh del artículo — re-revisión post-D3 del golden set](notes/decisin-g2-forbidden-por-staleness-caduca-con-el-refresh-del-artculo-re-revisin-post-d3-del-golden-set.md) — Cierra w-j7ao5fak. Rama `chore/g2-golden-forbidden-rereview`.  ## El criterio ge
 - [Decision: agent dispatch contract — events, not spawning](notes/agent-dispatch-design-decisions.md) — ADR-008 captures the formal decision (event lifecycle, dispatcher shape). This n
 - [Decision: convoy dashboard — panel, sidebar badge, ribbon](notes/convoy-dashboard-design-decisions.md) — ADR-014 captures the formal decisions: dedicated page, sidebar badge as the sing
 - [Decision: convoy hardening — get, provenance events, single-convoy invariant](notes/convoy-hardening-design-decisions.md) — ADR-013 captures the formal decision (event types, the single-convoy invariant,
@@ -197,7 +198,7 @@
 
 ## Work
 
-### planning (1)
+### enrichment (1)
 
 - [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
 

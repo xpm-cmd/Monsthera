@@ -34,8 +34,8 @@
     "mode": "code",
     "type": "knowledge",
     "expectedArticleIds": ["k-kmnflb56"],
-    "forbiddenArticleIds": ["k-imz9hai0", "k-2jb9bh3p"],
-    "note": "REST API endpoints note is the answer. The UI component library and SPA-routing notes are frontend, not the HTTP API surface — forbidden."
+    "forbiddenArticleIds": ["k-imz9hai0"],
+    "note": "REST API endpoints note is the answer. The UI component library is frontend-only — forbidden (re-reviewed post-D3 refresh 2026-06-11: still true). k-2jb9bh3p was removed from forbidden in that re-review: the D3 refresh expanded it with the server composition root + routes/*.ts split-router section, so 'frontend, not the HTTP API surface' no longer describes it — now a legitimate partial answer (neutral, not expected; k-kmnflb56 stays the full reference)."
   },
   {
     "query": "convoy dashboard panel sidebar badge ribbon",
