@@ -324,3 +324,11 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 13:04:26]** create work | Snapshot capturedAt pierde el timezone en el round-trip Dolt — snapshots frescos nacen stale al este de UTC (w-arq1yroe)
 - **[2026-06-11 13:04:30]** advance work | H2 — Des-saturar el eval: contamination normalizada + golden set 28→40+ + régimen operativo → implementation (w-6fpupnwl)
 - **[2026-06-11 13:06:24]** update knowledge | Decisión H2: régimen del eval — contamination normalizada, expansión por wave y trigger de saturación (k-sqb6um9l)
+- **[2026-06-11 22:14:47]** advance work | H2 — Des-saturar el eval: contamination normalizada + golden set 28→40+ + régimen operativo → review (w-6fpupnwl)
+- **[2026-06-11 22:15:03]** create knowledge | Solution: H2 — Des-saturar el eval: contamination normalizada + golden set 28→40+ + régimen operativo (k-278rsyhw)
+- **[2026-06-11 22:15:03]** advance work | H2 — Des-saturar el eval: contamination normalizada + golden set 28→40+ + régimen operativo → done (w-6fpupnwl)
+- **[2026-06-11 22:16:04]** create work | H3 (spike) — Embedding input: title + tags + contenido des-boilerplateado, implementar-o-descartar (w-19jefagr)
+- **[2026-06-11 22:20:27]** reindex knowledge | Reindex: 157 knowledge, 37 work
+- **[2026-06-11 22:23:34]** reindex knowledge | Reindex: 157 knowledge, 37 work
+- **[2026-06-11 22:24:50]** create knowledge | Decisión H3: embedding input ponderado descartado — la hipótesis del boilerplate quedó falsificada por el A/B (k-lyyxwlnf)
+- **[2026-06-11 22:25:00]** advance work | H3 (spike) — Embedding input: title + tags + contenido des-boilerplateado, implementar-o-descartar → enrichment (w-19jefagr)
