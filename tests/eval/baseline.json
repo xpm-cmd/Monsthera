@@ -1,16 +1,108 @@
 {
   "target": "pack",
   "k": 10,
-  "caseCount": 28,
+  "caseCount": 43,
   "engine": "semantic",
   "aggregate": {
-    "precisionAtK": 0.1857,
-    "recallAtK": 0.9613,
-    "ndcgAtK": 0.8885,
-    "mrr": 0.8929,
-    "contaminationRate": 0.6364
+    "precisionAtK": 0.1814,
+    "recallAtK": 0.9748,
+    "ndcgAtK": 0.918,
+    "mrr": 0.9419,
+    "contaminationRate": 0.5952,
+    "contaminationHitsPerCase": 0.8571
   },
   "cases": [
+    {
+      "query": "tag hygiene normalization near duplicate lint",
+      "expected": [
+        "k-doed4dzy"
+      ],
+      "rankedTopK": [
+        "k-doed4dzy",
+        "k-talge4d2",
+        "k-eiv217in",
+        "k-dpdrql19",
+        "k-jvccuix2",
+        "k-9dsf5kqm",
+        "k-qvn9uqqu",
+        "k-s07gu3dm",
+        "k-8d85l75r",
+        "k-m9xeflrk"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "wiki index navegable filepath gitignore exclusion",
+      "expected": [
+        "k-zv7qfvll",
+        "k-koa51gtj"
+      ],
+      "rankedTopK": [
+        "k-zv7qfvll",
+        "k-lyfpgowg",
+        "k-koa51gtj",
+        "k-p4f05mkz",
+        "k-x4xfniba",
+        "k-5n0xvgg3",
+        "k-1s76awex",
+        "k-p90ik5jo",
+        "k-gzzzt7uk",
+        "k-7j6lirme"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 0.9197,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "orphan citation stem resolution id shape precision",
+      "expected": [
+        "k-x4xfniba",
+        "k-e60cayja"
+      ],
+      "rankedTopK": [
+        "k-x4xfniba",
+        "k-s07gu3dm",
+        "k-m9xeflrk",
+        "k-e60cayja",
+        "k-cv-round-4-calibration",
+        "k-c04vr46t",
+        "k-luk3gkdj",
+        "k-s3o4od24",
+        "k-mjxct637",
+        "k-pwksnl38"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 0.8772,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "provenance origin distilled custom frontmatter",
+      "expected": [
+        "k-pajgyr76",
+        "k-qvn9uqqu"
+      ],
+      "rankedTopK": [
+        "k-qvn9uqqu",
+        "k-pajgyr76",
+        "k-eiv217in",
+        "k-v27p0qw2",
+        "k-zj0lp1yv",
+        "k-8d85l75r",
+        "k-v9l1e8qa",
+        "k-zulf5wam",
+        "k-gu0h02zt",
+        "k-thm5ixw2"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
     {
       "query": "dashboard architecture spa routing data flow state",
       "expected": [
@@ -34,7 +126,8 @@
       "recall": 1,
       "ndcg": 0.9066,
       "reciprocalRank": 1,
-      "contamination": 0
+      "contamination": 0,
+      "contaminationHits": 0
     },
     {
       "query": "dashboard page ux flow knowledge work",
@@ -103,7 +196,8 @@
       "recall": 1,
       "ndcg": 1,
       "reciprocalRank": 1,
-      "contamination": 1
+      "contamination": 1,
+      "contaminationHits": 1
     },
     {
       "query": "convoy dashboard panel sidebar badge ribbon",
@@ -127,6 +221,170 @@
       "recall": 1,
       "ndcg": 0.9197,
       "reciprocalRank": 1
+    },
+    {
+      "query": "dashboard assets self hosted no cdn footer",
+      "expected": [
+        "k-zuks8lor",
+        "k-f06au36t"
+      ],
+      "rankedTopK": [
+        "k-zuks8lor",
+        "k-2jb9bh3p",
+        "k-l7oy85r0",
+        "k-imz9hai0",
+        "k-f06au36t",
+        "k-kmnflb56",
+        "k-k2ylcsm9",
+        "k-gqkb0d2i",
+        "k-jgazhhz6",
+        "k-w8xru25o"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 0.8503,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "findbyslug frontmatter scan id-named slug identity",
+      "expected": [
+        "k-p90ik5jo",
+        "k-y8xvwfu7",
+        "k-lyfpgowg"
+      ],
+      "rankedTopK": [
+        "k-p90ik5jo",
+        "k-4bb1ru11",
+        "k-y8xvwfu7",
+        "k-lyfpgowg",
+        "k-r1kmcqoj",
+        "k-eiv217in",
+        "k-qvn9uqqu",
+        "k-talge4d2",
+        "k-v27p0qw2",
+        "k-8d85l75r"
+      ],
+      "precision": 0.3,
+      "recall": 1,
+      "ndcg": 0.906,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "repository cache stat invalidation corpus parse lookup",
+      "expected": [
+        "k-y8xvwfu7"
+      ],
+      "rankedTopK": [
+        "k-y8xvwfu7",
+        "k-d7m7jhus",
+        "k-2jeulllv",
+        "k-s07gu3dm",
+        "k-hjc2eo08",
+        "k-doed4dzy",
+        "k-x8umv6et",
+        "k-5n0xvgg3",
+        "k-code-intel-m3-impl",
+        "k-ormciy7d"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1,
+      "contamination": 1,
+      "contaminationHits": 1
+    },
+    {
+      "query": "silent drop strict schema validation sourcepath write path",
+      "expected": [
+        "k-2e0b09bj"
+      ],
+      "rankedTopK": [
+        "k-2e0b09bj",
+        "k-lyfpgowg",
+        "k-84hmqyez",
+        "k-c04vr46t",
+        "k-doed4dzy",
+        "k-qvn9uqqu",
+        "k-4bb1ru11",
+        "k-mjxct637",
+        "k-2njgnd6v",
+        "k-aua5adqn"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "minimal diff frontmatter patch byte identical update",
+      "expected": [
+        "k-8d85l75r"
+      ],
+      "rankedTopK": [
+        "k-8d85l75r",
+        "k-qvn9uqqu",
+        "k-v27p0qw2",
+        "k-s3o4od24",
+        "k-eiv217in",
+        "k-gao610s2",
+        "k-talge4d2",
+        "k-r1kmcqoj",
+        "k-zj0lp1yv",
+        "k-p90ik5jo"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "git history ingestion commits pr facts",
+      "expected": [
+        "k-gu0h02zt",
+        "k-p4f05mkz"
+      ],
+      "rankedTopK": [
+        "k-gu0h02zt",
+        "k-p4f05mkz",
+        "k-pajgyr76",
+        "k-zydgbqeg",
+        "k-m9xeflrk",
+        "k-vo0fhcxl",
+        "k-qqyuj7ze",
+        "k-luk3gkdj",
+        "k-1s76awex",
+        "k-mjxct637"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "session handoff cognitive brief distillation",
+      "expected": [
+        "k-1s76awex",
+        "k-vo0fhcxl",
+        "k-1ps6iyqf"
+      ],
+      "rankedTopK": [
+        "k-1s76awex",
+        "k-vo0fhcxl",
+        "k-5umd9fff",
+        "k-1ps6iyqf",
+        "k-gsxgt3qx",
+        "k-vwp3wrl6",
+        "k-s5jroill",
+        "k-8wefem2p",
+        "k-pajgyr76",
+        "k-wg45tid4"
+      ],
+      "precision": 0.3,
+      "recall": 1,
+      "ndcg": 0.9675,
+      "reciprocalRank": 1,
+      "contamination": 1,
+      "contaminationHits": 2
     },
     {
       "query": "hybrid knowledge architecture overview",
@@ -171,7 +429,8 @@
       "recall": 1,
       "ndcg": 1,
       "reciprocalRank": 1,
-      "contamination": 2
+      "contamination": 1,
+      "contaminationHits": 2
     },
     {
       "query": "surface boundaries mcp cli dashboard container",
@@ -203,20 +462,21 @@
       "rankedTopK": [
         "k-qhu1sw8h",
         "k-w9r21jkj",
+        "k-84hmqyez",
         "k-u16rujhn",
         "k-c04vr46t",
+        "w-4yr6svbk",
         "k-luk3gkdj",
         "k-mjxct637",
         "w-0ieze72s",
-        "k-burm5wh0",
-        "k-code-intel-m3-impl",
-        "k-5n0xvgg3"
+        "k-burm5wh0"
       ],
       "precision": 0.1,
       "recall": 1,
       "ndcg": 1,
       "reciprocalRank": 1,
-      "contamination": 1
+      "contamination": 1,
+      "contaminationHits": 1
     },
     {
       "query": "search service unified indexing context pack",
@@ -331,7 +591,8 @@
       "recall": 0.75,
       "ndcg": 0.5319,
       "reciprocalRank": 0.5,
-      "contamination": 0
+      "contamination": 0,
+      "contaminationHits": 0
     },
     {
       "query": "agent dispatch contract events not spawning",
@@ -340,21 +601,21 @@
         "k-40emzavw"
       ],
       "rankedTopK": [
-        "k-3kjlxadt",
         "k-agent-dispatch-design-decisions",
+        "k-3kjlxadt",
         "k-c8uur83h",
         "k-1s76awex",
         "k-1byd4jko",
         "k-5umd9fff",
-        "k-jgazhhz6",
         "k-u16rujhn",
+        "k-jgazhhz6",
         "k-uo9iz2e0",
         "k-zulf5wam"
       ],
       "precision": 0.1,
       "recall": 0.5,
-      "ndcg": 0.3869,
-      "reciprocalRank": 0.5
+      "ndcg": 0.6131,
+      "reciprocalRank": 1
     },
     {
       "query": "wave planning execution batching dispatch",
@@ -378,7 +639,8 @@
       "recall": 1,
       "ndcg": 0.9197,
       "reciprocalRank": 1,
-      "contamination": 0
+      "contamination": 0,
+      "contaminationHits": 0
     },
     {
       "query": "convoy single-convoy invariant hardening provenance events",
@@ -404,6 +666,98 @@
       "reciprocalRank": 0.5
     },
     {
+      "query": "semantic scale mismatch hybrid merge score collapse",
+      "expected": [
+        "k-73ofos2z",
+        "k-24mp31p1"
+      ],
+      "rankedTopK": [
+        "k-73ofos2z",
+        "k-zoawqis5",
+        "k-5xnflq1k",
+        "k-ypsx5ask",
+        "k-24mp31p1",
+        "k-ovlxucc1",
+        "k-ormciy7d",
+        "k-m9xeflrk",
+        "k-1s76awex",
+        "k-s07gu3dm"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 0.8503,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "golden set forbidden contamination criteria re-review refresh",
+      "expected": [
+        "k-896cica1",
+        "k-n8wdamc0"
+      ],
+      "rankedTopK": [
+        "k-896cica1",
+        "k-n8wdamc0",
+        "k-sqb6um9l",
+        "k-bkv93zhv",
+        "k-ormciy7d",
+        "k-m9xeflrk",
+        "k-a5gjeblo",
+        "k-24mp31p1",
+        "k-73ofos2z",
+        "k-drift-prevention-design"
+      ],
+      "precision": 0.2,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
+      "query": "staleness demotion vigencia trigger discarded without implementing",
+      "expected": [
+        "k-a5gjeblo"
+      ],
+      "rankedTopK": [
+        "k-a5gjeblo",
+        "k-2jeulllv",
+        "k-896cica1",
+        "k-5gwkhix1",
+        "k-sqb6um9l",
+        "k-24mp31p1",
+        "k-r51xph09",
+        "k-cg3xlfgt",
+        "k-e60cayja",
+        "k-m9xeflrk"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1,
+      "contamination": 1,
+      "contaminationHits": 2
+    },
+    {
+      "query": "salience reranking discarded immeasurable",
+      "expected": [
+        "k-r51xph09"
+      ],
+      "rankedTopK": [
+        "k-r51xph09",
+        "k-zoawqis5",
+        "k-24mp31p1",
+        "k-ovlxucc1",
+        "k-cg3xlfgt",
+        "k-pajgyr76",
+        "k-a5gjeblo",
+        "k-bkv93zhv",
+        "k-pupprz0g",
+        "k-gu0h02zt"
+      ],
+      "precision": 0.1,
+      "recall": 1,
+      "ndcg": 1,
+      "reciprocalRank": 1
+    },
+    {
       "query": "search ranking bm25 semantic hybrid trust reranking",
       "expected": [
         "k-zoawqis5",
@@ -426,7 +780,8 @@
       "recall": 0.6667,
       "ndcg": 0.7654,
       "reciprocalRank": 1,
-      "contamination": 0
+      "contamination": 0,
+      "contaminationHits": 0
     },
     {
       "query": "context pack builder scoring diagnostics mode ranking",
@@ -467,13 +822,14 @@
         "k-1ps6iyqf",
         "k-t2ihkk5i",
         "k-m9xeflrk",
-        "k-73ofos2z"
+        "k-klbt2h37"
       ],
       "precision": 0.2,
       "recall": 1,
       "ndcg": 1,
       "reciprocalRank": 1,
-      "contamination": 1
+      "contamination": 1,
+      "contaminationHits": 1
     },
     {
       "query": "bm25 scoring fallback in-memory index degraded mode",
@@ -508,12 +864,12 @@
         "k-t2ihkk5i",
         "k-zoawqis5",
         "k-qszeow1i",
+        "k-a5gjeblo",
         "k-klbt2h37",
         "k-ovlxucc1",
         "k-0bz1r6n0",
         "k-5xnflq1k",
-        "k-1s76awex",
-        "k-gtgddgs3"
+        "k-1s76awex"
       ],
       "precision": 0.1,
       "recall": 1,
@@ -532,8 +888,8 @@
         "k-n3gtykv5",
         "k-qlgfto92",
         "k-nug0kosj",
-        "k-40emzavw",
         "k-g0buqcg5",
+        "k-40emzavw",
         "k-ofsgt3dd",
         "k-burm5wh0",
         "k-qti3v876",
@@ -542,9 +898,10 @@
       ],
       "precision": 0.4,
       "recall": 1,
-      "ndcg": 0.9268,
+      "ndcg": 0.9439,
       "reciprocalRank": 1,
-      "contamination": 1
+      "contamination": 0.3333,
+      "contaminationHits": 1
     },
     {
       "query": "work phase history skipped guard audit trail",
@@ -581,8 +938,8 @@
         "k-5n0xvgg3",
         "k-quo5tdc1",
         "k-code-intel-m3-impl",
-        "k-6qapdb1a",
         "k-code-intel-m2-impl",
+        "k-6qapdb1a",
         "k-hjc2eo08",
         "k-1s76awex",
         "k-aopzp0i8",
@@ -616,7 +973,8 @@
       "recall": 1,
       "ndcg": 1,
       "reciprocalRank": 1,
-      "contamination": 1
+      "contamination": 1,
+      "contaminationHits": 1
     },
     {
       "query": "environment snapshot cold start context pack work",
@@ -631,10 +989,10 @@
         "w-y988ky96",
         "w-guptmc33",
         "w-r85lzqhv",
+        "w-arq1yroe",
         "w-21c2n6q5",
         "w-4vc60xph",
-        "w-dzur84o8",
-        "w-w7yhmqse"
+        "w-dzur84o8"
       ],
       "precision": 0.2,
       "recall": 1,
@@ -650,20 +1008,21 @@
       "rankedTopK": [
         "w-mc21yp9s",
         "w-ymavjqkd",
+        "w-n75fifq1",
         "w-y988ky96",
         "w-guptmc33",
         "w-5zsmz0f7",
+        "w-7nnee3c2",
         "w-df869qxf",
-        "w-kppfuyle",
-        "w-j7ao5fak",
-        "w-qqzud6wf",
-        "w-zxi617cw"
+        "w-4yr6svbk",
+        "w-kppfuyle"
       ],
       "precision": 0.2,
       "recall": 1,
-      "ndcg": 0.8503,
+      "ndcg": 0.8316,
       "reciprocalRank": 1,
-      "contamination": 0
+      "contamination": 0,
+      "contaminationHits": 0
     }
   ],
   "semanticEnabled": true

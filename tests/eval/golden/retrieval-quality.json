@@ -1,0 +1,31 @@
+[
+  {
+    "query": "semantic scale mismatch hybrid merge score collapse",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-73ofos2z", "k-24mp31p1"],
+    "note": "H2 expansion (2026-06-11): the C1 root-cause note and the Wave C arc summary are both correct answers for the semantic-collapse story. Multi-relevant on purpose — mined ranking placed them at 1 and 5, so NDCG discriminates."
+  },
+  {
+    "query": "golden set forbidden contamination criteria re-review refresh",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-896cica1", "k-n8wdamc0"],
+    "note": "H2 expansion (2026-06-11): the G2 expiry-criterion decision plus the P1 note that introduced the contamination guardrail. Multi-relevant; k-bkv93zhv (work-side duplicate of P1) deliberately neutral."
+  },
+  {
+    "query": "staleness demotion vigencia trigger discarded without implementing",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-a5gjeblo"],
+    "forbiddenArticleIds": ["k-2jeulllv", "k-5gwkhix1"],
+    "note": "H2 expansion (2026-06-11): the query asks for the G3 RANKING-demotion discard decision. Forbidden are TOPICAL: k-2jeulllv (PR-8) is the corpus staleness REPORT and k-5gwkhix1 (P2) the per-category staleness windows — corpus-hygiene tooling, not ranking demotion; sharing the word 'staleness' is exactly the confusion to penalize. Mined: both ranked 2 and 4 above other relevant material."
+  },
+  {
+    "query": "salience reranking discarded immeasurable",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-r51xph09"],
+    "note": "H2 expansion (2026-06-11): hard case by construction — mined top score was only 9.33 with the implemented-reranker docs (k-zoawqis5, k-ovlxucc1) crowding right behind; they are topically adjacent (reranking) so they stay neutral, but rank-1 stability of the C2 discard decision is what this case watches."
+  }
+]

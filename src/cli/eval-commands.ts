@@ -107,7 +107,7 @@ function renderReport(report: EvalReport, semanticEnabled: boolean): string {
   lines.push(
     `AGGREGATE  P@${report.k}=${a.precisionAtK.toFixed(4)} R@${report.k}=${a.recallAtK.toFixed(4)} ` +
       `NDCG@${report.k}=${a.ndcgAtK.toFixed(4)} MRR=${a.mrr.toFixed(4)} ` +
-      `CONTAM=${a.contaminationRate.toFixed(4)}`,
+      `CONTAM=${a.contaminationRate.toFixed(4)} HITS/CASE=${a.contaminationHitsPerCase.toFixed(4)}`,
   );
   return lines.join("\n");
 }
@@ -139,5 +139,9 @@ function printBaselineDeltas(report: EvalReport, baselinePath: string): void {
   // contaminationRate is additive; tolerate older baselines that predate it.
   if (base.contaminationRate !== undefined) {
     process.stdout.write(`  CONTAM=${fmt(a.contaminationRate, base.contaminationRate)}\n`);
+  }
+  // Raw-hit secondary series (H2); same tolerance for older baselines.
+  if (base.contaminationHitsPerCase !== undefined) {
+    process.stdout.write(`  CONTAM_HITS/CASE=${fmt(a.contaminationHitsPerCase, base.contaminationHitsPerCase)}\n`);
   }
 }

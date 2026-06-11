@@ -119,7 +119,8 @@ describe("runEval", () => {
 
   it("counts forbiddenArticleIds contamination in the top-k and aggregates a rate", async () => {
     // Two forbidden distractors; one ("bad-1") leaks into the top-3, the other
-    // ("bad-2") does not appear at all → contamination = 1.
+    // ("bad-2") does not appear at all → contamination = 1/2 normalized (H2);
+    // the raw count (pre-H2 metric) is 1.
     const guarded: GoldenCase = {
       query: "q",
       expectedArticleIds: ["k-1"],
@@ -129,8 +130,9 @@ describe("runEval", () => {
     const report = await runEval({ provider, cases: [guarded], target: "pack", k: 3 });
     const c = report.cases[0]!;
 
-    expect(c.contamination).toBe(1);
-    expect(report.aggregate.contaminationRate).toBe(1);
+    expect(c.contamination).toBe(0.5);
+    expect(report.aggregate.contaminationRate).toBe(0.5);
+    expect(report.aggregate.contaminationHitsPerCase).toBe(1);
     // Relevance math is untouched by the forbidden list.
     expect(c.precision).toBeCloseTo(1 / 3, 4);
     expect(c.reciprocalRank).toBe(1);
@@ -155,6 +157,58 @@ describe("runEval", () => {
 
     expect(report.cases[0]!.contamination).toBeUndefined();
     expect(report.aggregate.contaminationRate).toBe(0); // mean of empty list
+  });
+
+  it("normalizes per-case contamination by the forbidden-list size (H2)", async () => {
+    // 2 forbidden, 1 leaks → contamination 0.5 (was: raw count 1). The raw
+    // count survives as contaminationHits so history stays comparable.
+    const guarded: GoldenCase = {
+      query: "q",
+      expectedArticleIds: ["k-1"],
+      forbiddenArticleIds: ["bad-1", "bad-2"],
+    };
+    const provider = fakeProvider(["k-1", "bad-1", "z"], []);
+    const report = await runEval({ provider, cases: [guarded], target: "pack", k: 3 });
+    const c = report.cases[0]!;
+
+    expect(c.contamination).toBe(0.5);
+    expect(c.contaminationHits).toBe(1);
+  });
+
+  it("aggregates the normalized rate and the raw hit mean separately (H2)", async () => {
+    // Case A: 2 forbidden, 1 hit → 0.5 normalized, 1 raw.
+    // Case B: 1 forbidden, 1 hit → 1.0 normalized, 1 raw.
+    // Normalized rate = 0.75; raw mean (the pre-H2 metric) = 1.
+    const caseA: GoldenCase = {
+      query: "a",
+      expectedArticleIds: ["k-1"],
+      forbiddenArticleIds: ["bad-1", "bad-2"],
+    };
+    const caseB: GoldenCase = {
+      query: "b",
+      expectedArticleIds: ["k-1"],
+      forbiddenArticleIds: ["bad-1"],
+    };
+    const provider = fakeProvider(["k-1", "bad-1", "z"], []);
+    const report = await runEval({ provider, cases: [caseA, caseB], target: "pack", k: 3 });
+
+    expect(report.aggregate.contaminationRate).toBe(0.75);
+    expect(report.aggregate.contaminationHitsPerCase).toBe(1);
+  });
+
+  it("a clean guarded case reports zero on both contamination fields (H2)", async () => {
+    const guarded: GoldenCase = {
+      query: "q",
+      expectedArticleIds: ["k-1"],
+      forbiddenArticleIds: ["bad-1", "bad-2", "bad-3"],
+    };
+    const provider = fakeProvider(["k-1", "z"], []);
+    const report = await runEval({ provider, cases: [guarded], target: "pack", k: 5 });
+
+    expect(report.cases[0]!.contamination).toBe(0);
+    expect(report.cases[0]!.contaminationHits).toBe(0);
+    expect(report.aggregate.contaminationRate).toBe(0);
+    expect(report.aggregate.contaminationHitsPerCase).toBe(0);
   });
 
   it("stamps the supplied engine onto the report", async () => {
