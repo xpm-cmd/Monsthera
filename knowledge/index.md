@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 150 knowledge articles and 30 work articles.
-> Last updated: 2026-06-11 11:24:47
+> Auto-generated catalog of 151 knowledge articles and 31 work articles.
+> Last updated: 2026-06-11 11:29:40
 
 ## Knowledge
 
@@ -67,6 +67,7 @@
 
 - [Decisión C2: salience (PR-13b) descartado para siempre — inmedible por construcción y contraindicado por la evidencia de C1](notes/decisin-c2-salience-pr-13b-descartado-para-siempre-inmedible-por-construccin-y-contraindicado-por-la-evidencia-de-c1.md) — Cierra el deferred PR-13b (salience bonus en ranking, diferido en M3 por "eval s
 - [Decisión G2: forbidden por staleness caduca con el refresh del artículo — re-revisión post-D3 del golden set](notes/decisin-g2-forbidden-por-staleness-caduca-con-el-refresh-del-artculo-re-revisin-post-d3-del-golden-set.md) — Cierra w-j7ao5fak. Rama `chore/g2-golden-forbidden-rereview`.  ## El criterio ge
+- [Decisión G3: demotion por vigencia descartada sin implementar — el trigger no dispara y la palanca perdió su premisa](notes/decisin-g3-demotion-por-vigencia-descartada-sin-implementar-el-trigger-no-dispara-y-la-palanca-perdi-su-premisa.md) — Cierra w-j7unmtos. Wave G3 era condicional: "solo si, post-G2, contamination sig
 - [Decision: agent dispatch contract — events, not spawning](notes/agent-dispatch-design-decisions.md) — ADR-008 captures the formal decision (event lifecycle, dispatcher shape). This n
 - [Decision: convoy dashboard — panel, sidebar badge, ribbon](notes/convoy-dashboard-design-decisions.md) — ADR-014 captures the formal decisions: dedicated page, sidebar badge as the sing
 - [Decision: convoy hardening — get, provenance events, single-convoy invariant](notes/convoy-hardening-design-decisions.md) — ADR-013 captures the formal decision (event types, the single-convoy invariant,
@@ -200,9 +201,9 @@
 
 ### enrichment (1)
 
-- [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
+- [Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar](work-articles/w-j7unmtos.md) [low] — ## Objective  Item condicional del handoff Wave G: solo si,
 
-### done (28)
+### done (29)
 
 - [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
 - [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
@@ -218,6 +219,7 @@
 - [fix: process command validation by substring is spoofable](work-articles/w-8qeo1wwj.md) [high] — ## Issue  `validateProcessCommand()` matches a managed proce
 - [fix: workspace backup captures inconsistent Dolt snapshot](work-articles/w-df869qxf.md) [critical] — ## Issue  `workspace backup` calls `fs.cp(.monsthera/dolt, b
 - [fix: workspace restore corrupts Dolt when daemon is running](work-articles/w-kppfuyle.md) [critical] — ## Issue  `workspace restore --force` deletes and recreates
+- [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
 - [Implement Code Intelligence M3 — Lightweight Code Inventory](work-articles/w-w7yhmqse.md) [high] — ## Objective  Implement Milestone 3 of ADR-015 (Code Intelli
 - [Observational benchmark: Monsthera retrieval paths vs. grep](work-articles/w-dzur84o8.md) [medium] — ## Objective  Capture an observational data point comparing
 - [Opt-in ready_to_implement guard consuming environment snapshots](work-articles/w-y988ky96.md) [medium] — ## Objective  Add a template-opt-in guard that blocks the `e
