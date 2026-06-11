@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 151 knowledge articles and 31 work articles.
-> Last updated: 2026-06-11 11:33:02
+> Auto-generated catalog of 152 knowledge articles and 33 work articles.
+> Last updated: 2026-06-11 12:19:45
 
 ## Knowledge
 
@@ -196,8 +196,17 @@
 - [Wave F2+F3: coverage de lint/hook commands (0.97%→57%, 2.3%→74%) y ratchet de floors a 74/82/62](notes/wave-f2f3-coverage-de-linthook-commands-09757-2374-y-ratchet-de-floors-a-748262.md) — Rama `test/f2-cli-coverage` desde main post-#169. F2+F3 del backlog opcional.  #
 - [Wave F5: per-commit codeRefs en la ingesta git — cierra el último deferred de M3](notes/wave-f5-per-commit-coderefs-en-la-ingesta-git-cierra-el-ltimo-deferred-de-m3.md) — Rama `feat/f5-percommit-coderefs`. **Cierra el último deferred de M3** (PR-15 pe
 - [Wave G1: findBySlug escanea frontmatter cuando el path directo falla — slug-get y collision-check ven archivos ID-named](notes/wave-g1-findbyslug-escanea-frontmatter-cuando-el-path-directo-falla-slug-get-y-collision-check-ven-archivos-id-named.md) — Cierra w-c09d7wa9 (follow-up registrado en Wave A1, k-lyfpgowg). Rama `fix/g1-fi
+- [Wave H1: cache stat-based del knowledge repository — O(corpus-parse) por lookup pagado y findBySlug con identidad única](notes/wave-h1-cache-stat-based-del-knowledge-repository-ocorpus-parse-por-lookup-pagado-y-findbyslug-con-identidad-nica.md) — Cierra w-n75fifq1. Rama `perf/h1-repository-cache`.  ## El problema  Todo lookup
 
 ## Work
+
+### planning (1)
+
+- [Work file-repository: adoptar StatCachedDirectoryReader en los métodos de filtro](work-articles/w-7nnee3c2.md) [low] — ## Objective  H1 (w-n75fifq1) introdujo `StatCachedDirectory
+
+### implementation (1)
+
+- [H1 — Repository cache: matar el O(corpus-parse) por lookup en knowledge file-repository](work-articles/w-n75fifq1.md) [high] — ## Objective  Todo lookup del knowledge file-repository re-p
 
 ### done (30)
 
