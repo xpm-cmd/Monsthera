@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 143 knowledge articles and 29 work articles.
-> Last updated: 2026-06-11 05:47:40
+> Auto-generated catalog of 144 knowledge articles and 29 work articles.
+> Last updated: 2026-06-11 05:53:50
 
 ## Knowledge
 
@@ -188,6 +188,7 @@
 - [Wave E2: createContainer partido en factories por subsistema — 697 → 519, orden de construcción byte-a-byte](notes/wave-e2-createcontainer-partido-en-factories-por-subsistema-697-519-orden-de-construccin-byte-a-byte.md) — Rama `refactor/e2-container-factories` desde main post-#165. Tercer split del ba
 - [Wave E3: structure/service.ts — citation-analyzer, staleness, code-ref-indexer y tag-edge-builder extraídos (1337 → 874)](notes/wave-e3-structureservicets-citation-analyzer-staleness-code-ref-indexer-y-tag-edge-builder-extrados-1337-874.md) — Rama `refactor/e3-structure-modules` desde main post-#167. Cuarto split del back
 - [Wave E4: hybrid-ranker extraído de search/service.ts — eval idéntico a 4 decimales como arnés](notes/wave-e4-hybrid-ranker-extrado-de-searchservicets-eval-idntico-a-4-decimales-como-arns.md) — Rama `refactor/e4-hybrid-ranker` desde main post-#168. **Cierra el backlog de sp
+- [Wave F2+F3: coverage de lint/hook commands (0.97%→57%, 2.3%→74%) y ratchet de floors a 74/82/62](notes/wave-f2f3-coverage-de-linthook-commands-09757-2374-y-ratchet-de-floors-a-748262.md) — Rama `test/f2-cli-coverage` desde main post-#169. F2+F3 del backlog opcional.  #
 
 ## Work
 
