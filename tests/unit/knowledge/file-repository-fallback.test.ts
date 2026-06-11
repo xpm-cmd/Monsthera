@@ -21,6 +21,8 @@ interface SeedArticle {
   readonly slug: string;
   readonly category?: string;
   readonly content?: string;
+  /** Override the file name (ID-named corpora); defaults to `<slug>.md`. */
+  readonly fileName?: string;
 }
 
 async function seed(dir: string, a: SeedArticle): Promise<void> {
@@ -40,7 +42,7 @@ async function seed(dir: string, a: SeedArticle): Promise<void> {
     a.content ?? `Body of ${a.title}`,
   ].join("\n");
   await fs.mkdir(path.join(dir, "notes"), { recursive: true });
-  await fs.writeFile(path.join(dir, "notes", `${a.slug}.md`), fm, "utf-8");
+  await fs.writeFile(path.join(dir, "notes", a.fileName ?? `${a.slug}.md`), fm, "utf-8");
 }
 
 let primary: string;
@@ -88,6 +90,43 @@ describe("FileSystemKnowledgeArticleRepository — worktree fallback", () => {
       expect(found.ok).toBe(true);
       if (!found.ok) return;
       expect(found.value.title).toBe("Primary version");
+    });
+
+    // w-c09d7wa9: ID-named files (Option-A corpora) miss the slug-named
+    // fast path; the frontmatter-scan fallback must keep the same
+    // cross-worktree visibility and primary-wins semantics.
+    it("resolves an ID-named article living in the fallback dir (frontmatter scan)", async () => {
+      await seed(fallback, {
+        id: "k-idnamed-fb",
+        title: "ID-named in fallback",
+        slug: "id-named-in-fallback",
+        fileName: "k-idnamed-fb-note.md",
+      });
+      const repo = new FileSystemKnowledgeArticleRepository(primary, fallback);
+      const found = await repo.findBySlug(slug("id-named-in-fallback"));
+      expect(found.ok).toBe(true);
+      if (!found.ok) return;
+      expect(found.value.title).toBe("ID-named in fallback");
+    });
+
+    it("primary wins when ID-named articles in both dirs share a slug (scan path)", async () => {
+      await seed(primary, {
+        id: "k-idnamed-prim",
+        title: "Primary ID-named",
+        slug: "shared-id-named-slug",
+        fileName: "k-idnamed-prim-note.md",
+      });
+      await seed(fallback, {
+        id: "k-idnamed-fb2",
+        title: "Fallback ID-named",
+        slug: "shared-id-named-slug",
+        fileName: "k-idnamed-fb2-note.md",
+      });
+      const repo = new FileSystemKnowledgeArticleRepository(primary, fallback);
+      const found = await repo.findBySlug(slug("shared-id-named-slug"));
+      expect(found.ok).toBe(true);
+      if (!found.ok) return;
+      expect(found.value.title).toBe("Primary ID-named");
     });
   });
 

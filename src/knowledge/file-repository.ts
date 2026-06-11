@@ -532,19 +532,27 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
   async findBySlug(slugValue: Slug): Promise<Result<KnowledgeArticle, NotFoundError | StorageError>> {
     const primary = await this.readFromPath(this.articlePath(slugValue));
     if (primary.ok) return primary;
+    if (!(primary.error instanceof NotFoundError)) return primary;
 
-    if (this.fallbackNotesDir !== null && primary.error instanceof NotFoundError) {
+    if (this.fallbackNotesDir !== null) {
       const fallback = await this.readFromPath(
         path.join(this.fallbackNotesDir, `${slugValue}.md`),
       );
       if (fallback.ok) return fallback;
-      // Fall through to the standardised slug-shaped error below.
+      // Fall through to the frontmatter scan below.
     }
 
-    if (primary.error instanceof NotFoundError) {
-      return err(new NotFoundError("KnowledgeArticle", `slug:${slugValue}`));
-    }
-    return primary;
+    // The slug-named fast path missed: the article may live in an ID-named
+    // file (Option-A external corpora name files by id, with the real slug
+    // only in frontmatter). `loadAll` merges primary + worktree fallback
+    // with primary-wins semantics, so the scan keeps the same visibility
+    // rules as the direct reads above.
+    const all = await this.loadAll();
+    if (!all.ok) return all;
+    const match = all.value.find((article) => article.slug === slugValue);
+    if (match) return ok(match);
+
+    return err(new NotFoundError("KnowledgeArticle", `slug:${slugValue}`));
   }
 
   async findByCategory(category: string): Promise<Result<KnowledgeArticle[], StorageError>> {
