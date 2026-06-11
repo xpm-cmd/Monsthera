@@ -14,11 +14,13 @@ export default defineConfig({
       exclude: ["node_modules/", "tests/", "dist/", "**/*.d.ts"],
       // Ratchet floors: set at-or-just-below current real coverage so it can
       // only go up, never silently regress. These are NOT the 80/70 aspiration —
-      // raise each floor as coverage improves. (functions already clears 80.)
+      // raise each floor as coverage improves. Ratcheted 2026-06-11 after the
+      // F2 CLI-command backfill (real: lines 74.34 / functions 83.13 /
+      // branches 62.96).
       thresholds: {
-        lines: 72,
-        functions: 80,
-        branches: 61,
+        lines: 74,
+        functions: 82,
+        branches: 62,
       },
     },
   },

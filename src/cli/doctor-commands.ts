@@ -2,7 +2,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { MonstheraContainer } from "../core/container.js";
-import { resolveCodeRef } from "../core/code-refs.js";
+import { codeRefExists } from "../structure/code-ref-indexer.js";
 import {
   isLegacyKnowledgeArticle,
   isLegacyWorkArticle,
@@ -136,15 +136,6 @@ async function collectLegacyArticles(
   }
 
   return articles.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
-}
-
-async function codeRefExists(repoPath: string, codeRef: string): Promise<boolean> {
-  try {
-    await fs.access(resolveCodeRef(repoPath, codeRef));
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function collectRepairableArticles(
