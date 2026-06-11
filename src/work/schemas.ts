@@ -29,8 +29,18 @@ export const WorkArticleFrontmatterSchema = z.object({
     .optional(),
 });
 
-/** Schema for create input (from MCP tool / service caller) */
-export const CreateWorkArticleInputSchema = z.object({
+/**
+ * Schema for create input (from MCP tool / service caller).
+ *
+ * H4: strict — unknown keys raise a ValidationError instead of vanishing.
+ * The comment on `dependencies`/`blockedBy` below records the bite mark
+ * the old strip mode left; strictness closes that class. Lifecycle fields
+ * (`phase`, `enrichmentRoles`, `reviewers`, `phaseHistory`, timestamps,
+ * `completedAt`) are deliberately absent: they are system-owned — phase
+ * moves only through advancePhase, and the repo-input variants exist for
+ * direct-repo callers (tests, imports), not the service surface.
+ */
+export const CreateWorkArticleInputSchema = z.strictObject({
   title: z.string().min(1).max(200),
   template: z.enum(["feature", "bugfix", "refactor", "spike"]),
   priority: z.enum(["critical", "high", "medium", "low"]),
@@ -49,8 +59,8 @@ export const CreateWorkArticleInputSchema = z.object({
   content: z.string().optional(),
 });
 
-/** Schema for update input — all fields optional */
-export const UpdateWorkArticleInputSchema = z.object({
+/** Schema for update input — all fields optional. Strict (see create schema). */
+export const UpdateWorkArticleInputSchema = z.strictObject({
   title: z.string().min(1).max(200).optional(),
   priority: z.enum(["critical", "high", "medium", "low"]).optional(),
   lead: z.string().optional(),

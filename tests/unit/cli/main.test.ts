@@ -374,6 +374,45 @@ describe("CLI main()", () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
+    it("knowledge create --source-path persists provenance (H4 parity)", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Sourced", "--category", "context",
+          "--content", "body", "--source-path", "docs/origin.md",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      const got = await captureStdout(() =>
+        main(["knowledge", "get", id, "--json", "--repo", repoPath]),
+      );
+      expect(got).toContain('"sourcePath": "docs/origin.md"');
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
+    it("knowledge update --source-path applies provenance (H4 parity)", async () => {
+      const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
+      const created = await captureStdout(() =>
+        main([
+          "knowledge", "create",
+          "--title", "Relink", "--category", "context",
+          "--content", "body",
+          "--repo", repoPath,
+        ]),
+      );
+      const id = created.match(/k-[a-z0-9]+/)?.[0] ?? "";
+      await captureStdout(() =>
+        main(["knowledge", "update", id, "--source-path", "docs/relinked.md", "--repo", repoPath]),
+      );
+      const got = await captureStdout(() =>
+        main(["knowledge", "get", id, "--json", "--repo", repoPath]),
+      );
+      expect(got).toContain('"sourcePath": "docs/relinked.md"');
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
+
     it("knowledge update --dry-run previews the diff without writing", async () => {
       const repoPath = `/tmp/monsthera-cli-test-${randomUUID()}`;
       const created = await captureStdout(() =>

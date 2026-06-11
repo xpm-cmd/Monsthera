@@ -11,6 +11,7 @@ import type { WikiBookkeeper } from "./wiki-bookkeeper.js";
 import type { UpdateArticleInput } from "./schemas.js";
 import type { WorkArticle } from "../work/repository.js";
 import { validateCreateInput, validateUpdateInput } from "./schemas.js";
+import { applyTagDelta } from "./tags.js";
 import { toSlug } from "./slug.js";
 import { nearMissConflicts } from "./slug-conflict.js";
 import { extractWikilinks, rewriteWikilinkSlug } from "../structure/wikilink.js";
@@ -182,7 +183,17 @@ export class KnowledgeService {
     const validated = validateUpdateInput(input);
     if (!validated.ok) return validated;
 
-    const { new_slug, rewrite_inline_wikilinks, ...rest } = validated.value;
+    const { new_slug, rewrite_inline_wikilinks, add_tags, remove_tags, ...rest } = validated.value;
+
+    // Resolve incremental tag ops against the article's current tags HERE so
+    // every entry point (single update, batch, rename) shares one
+    // implementation — the MCP handler used to do this itself, which left
+    // batch updates silently dropping add_tags/remove_tags (H4).
+    if (add_tags !== undefined || remove_tags !== undefined) {
+      const current = await this.repo.findById(id);
+      if (!current.ok) return current;
+      rest.tags = applyTagDelta(current.value.tags, add_tags ?? [], remove_tags ?? []);
+    }
 
     if (new_slug === undefined) {
       this.logger.info("Updating knowledge article", { operation: "updateArticle", id });
@@ -344,7 +355,7 @@ export class KnowledgeService {
     id: string,
     newSlugRaw: string,
     rewriteInlineWikilinks: boolean,
-    otherFields: Omit<UpdateArticleInput, "new_slug" | "rewrite_inline_wikilinks">,
+    otherFields: Omit<UpdateArticleInput, "new_slug" | "rewrite_inline_wikilinks" | "add_tags" | "remove_tags">,
   ): Promise<Result<KnowledgeArticle, NotFoundError | ValidationError | AlreadyExistsError | StorageError>> {
     this.logger.info("Renaming knowledge article", {
       operation: "renameArticle",
@@ -461,6 +472,10 @@ export class KnowledgeService {
         ...(entry.articleId === target.id && otherFields.category !== undefined ? { category: otherFields.category } : {}),
         ...(entry.articleId === target.id && otherFields.tags !== undefined ? { tags: otherFields.tags } : {}),
         ...(entry.articleId === target.id && otherFields.codeRefs !== undefined ? { codeRefs: otherFields.codeRefs } : {}),
+        // H4: a real rename used to silently discard these two — WriteWithSlugInput
+        // simply had no fields for them while repo.update honored both.
+        ...(entry.articleId === target.id && otherFields.sourcePath !== undefined ? { sourcePath: otherFields.sourcePath } : {}),
+        ...(entry.articleId === target.id && otherFields.extraFrontmatter !== undefined ? { extraFrontmatter: otherFields.extraFrontmatter } : {}),
       });
       if (!writeResult.ok) {
         // Rollback already-applied entries in reverse order (best effort).

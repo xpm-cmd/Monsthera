@@ -30,6 +30,8 @@ export function workToolDefinitions(): ToolDefinition[] {
           tags: { type: "array", items: { type: "string" }, description: "Tags" },
           references: { type: "array", items: { type: "string" }, description: "Knowledge article IDs or slugs this work builds on" },
           codeRefs: { type: "array", items: { type: "string" }, description: "Code references (file paths, optionally with line ranges)" },
+          dependencies: { type: "array", items: { type: "string" }, description: "Work IDs this item depends on — seeds the dep graph atomically at create (same semantics as add_dependency)" },
+          blockedBy: { type: "array", items: { type: "string" }, description: "Work IDs that block this item from being picked up" },
           content: { type: "string", description: "Initial content (markdown). Include ## Objective and ## Acceptance Criteria so guards pass." },
         },
         required: ["title", "template", "priority", "author"],
