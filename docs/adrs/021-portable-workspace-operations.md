@@ -1,4 +1,8 @@
-# ADR-014: Portable Workspace Operations
+# ADR-021: Portable Workspace Operations
+
+> Renumbered from ADR-014 on 2026-06-11: the number was accidentally shared
+> with `014-convoy-dashboard.md`, whose ADR-014 identity is baked into merged
+> PR history and the convoy design notes — this document moved instead.
 
 ## Status
 

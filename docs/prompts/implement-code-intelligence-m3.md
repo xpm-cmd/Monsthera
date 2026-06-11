@@ -57,7 +57,7 @@ do not deviate unilaterally.
    — the contract. Read it twice.
 2. [`docs/adrs/015-code-intelligence-strategy.md`](../adrs/015-code-intelligence-strategy.md)
    — parent strategy, the layered model.
-3. [`docs/adrs/014-portable-workspace-operations.md`](../adrs/014-portable-workspace-operations.md)
+3. [`docs/adrs/021-portable-workspace-operations.md`](../adrs/021-portable-workspace-operations.md)
    — the JSON-first / Dolt-optional rule that ADR-017 D1 honors.
 4. [`knowledge/work-articles/w-w7yhmqse.md`](../../knowledge/work-articles/w-w7yhmqse.md)
    — the M3 work article (objectives, scope, phases, acceptance gates).
@@ -79,7 +79,7 @@ do not deviate unilaterally.
 
 ## Architectural constraints (non-negotiable)
 
-These are repeated from the project's CLAUDE.md, ADR-014, ADR-015, and
+These are repeated from the project's CLAUDE.md, ADR-021 (formerly 014), ADR-015, and
 ADR-017. Violations will be rejected in review.
 
 - **Domain code uses `Result<T, E>` from `src/core/result.ts`. Throws

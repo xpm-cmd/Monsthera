@@ -1,7 +1,7 @@
 # Monsthera Index
 
 > Auto-generated catalog of 144 knowledge articles and 29 work articles.
-> Last updated: 2026-06-11 05:53:50
+> Last updated: 2026-06-11 05:56:39
 
 ## Knowledge
 
@@ -21,13 +21,13 @@
 - [ADR-012: Drift Prevention Closure (S5 PR B)](notes/adr-012-drift-prevention-closure.md) — # ADR-012: Drift Prevention Closure (S5 PR B)  **Status:** Accepted **Date:** 20
 - [ADR-013: Convoy Hardening — get, provenance events, single-convoy invariant](notes/adr-013-convoy-hardening.md) — # ADR-013: Convoy Hardening — get, provenance events, single-convoy invariant  *
 - [ADR-014: Convoy Dashboard — dedicated page, sidebar badge, lifecycle ribbon](notes/adr-014-convoy-dashboard.md) — # ADR-014: Convoy Dashboard — dedicated page, sidebar badge, lifecycle ribbon  *
-- [ADR-014: Portable Workspace Operations](notes/adr-014-portable-workspace-operations.md) — # ADR-014: Portable Workspace Operations  ## Status  Accepted — 2026-04-26  ## C
 - [ADR-015 Code Intelligence Strategy](notes/adr-015-code-intelligence-strategy.md) — ## Source - Path: `docs/adrs/015-code-intelligence-strategy.md` - Status: Accept
 - [ADR-016: Self update rollback and doctor](notes/adr-016-self-update-rollback-and-doctor.md) — # ADR-016: Self update rollback and doctor  ## Status  Accepted — 2026-04-26  ##
 - [ADR-017: Code Intelligence M3 — Lightweight Code Inventory](notes/adr-017-code-intelligence-m3-lightweight-inventory.md) — # ADR-017: Code Intelligence M3 — Lightweight Code Inventory  **Status:** Accept
 - [ADR-018: Cognitive handoff sessions](notes/adr-018-cognitive-handoff-sessions.md) — # ADR-018: Cognitive handoff sessions  **Status:** Accepted **Date:** 2026-05-16
 - [ADR-019: Agent-direct handoff (reversal of ADR-018 D2/D3)](notes/adr-019-agent-direct-handoff-reversal-of-adr-018-d2d3.md) — # ADR-019: Agent-direct handoff (reversal of ADR-018 D2/D3)  **Status:** Accepte
 - [ADR-020: Typed / Custom Frontmatter Fields](notes/adr-020-typed-custom-frontmatter-fields.md) — # ADR-020: Typed / Custom Frontmatter Fields  **Status:** Accepted — implemented
+- [ADR-021: Portable Workspace Operations](notes/adr-021-portable-workspace-operations.md) — # ADR-014: Portable Workspace Operations  ## Status  Accepted — 2026-04-26  ## C
 - [Monsthera: Hybrid Knowledge Architecture v6](notes/monsthera-hybrid-knowledge-architecture-v6.md) — ## Overview  Monsthera is a TypeScript MCP server for AI agent coordination. Thi
 
 ### context

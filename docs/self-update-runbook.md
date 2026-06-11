@@ -9,7 +9,7 @@ All commands assume the current working directory is the workspace repo
 
 ## Mental model
 
-A Monsthera install has three layers (see ADR-014 for the canonical design):
+A Monsthera install has three layers (see ADR-021 for the canonical design):
 
 - **Install checkout** — the cloned git repository with `node_modules/` and
   `dist/`. Updated by `git pull` + `pnpm install` + `pnpm build`.
@@ -218,7 +218,7 @@ monsthera workspace restore .monsthera/backups/<backup-id> --force
 
 ## Related references
 
-- ADR-014: `docs/adrs/014-portable-workspace-operations.md`
+- ADR-021: `docs/adrs/021-portable-workspace-operations.md`
 - ADR-016: `docs/adrs/016-self-update-rollback-and-doctor.md`
 - Dolt local: `docs/dolt-local.md`
 - Consumer setup: `docs/consumer-setup.md`

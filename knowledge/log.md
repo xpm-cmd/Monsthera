@@ -280,3 +280,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 00:48:49]** create knowledge | Wave E3: structure/service.ts — citation-analyzer, staleness, code-ref-indexer y tag-edge-builder extraídos (1337 → 874) (k-e60cayja)
 - **[2026-06-11 05:47:40]** create knowledge | Wave E4: hybrid-ranker extraído de search/service.ts — eval idéntico a 4 decimales como arnés (k-5xnflq1k)
 - **[2026-06-11 05:53:50]** create knowledge | Wave F2+F3: coverage de lint/hook commands (0.97%→57%, 2.3%→74%) y ratchet de floors a 74/82/62 (k-jvccuix2)
+- **[2026-06-11 05:56:39]** rename knowledge | adr-014-portable-workspace-operations -> adr-021-portable-workspace-operations (0 referrers updated) (k-dsn4wl6r)
