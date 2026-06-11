@@ -1,7 +1,7 @@
 # Monsthera Index
 
 > Auto-generated catalog of 158 knowledge articles and 37 work articles.
-> Last updated: 2026-06-11 22:25:00
+> Last updated: 2026-06-11 22:27:55
 
 ## Knowledge
 
@@ -211,11 +211,7 @@
 - [Snapshot capturedAt pierde el timezone en el round-trip Dolt — snapshots frescos nacen stale al este de UTC](work-articles/w-arq1yroe.md) [medium] — ## Objective  Encontrado en vivo durante H2 (2026-06-11, hos
 - [Work file-repository: adoptar StatCachedDirectoryReader en los métodos de filtro](work-articles/w-7nnee3c2.md) [low] — ## Objective  H1 (w-n75fifq1) introdujo `StatCachedDirectory
 
-### enrichment (1)
-
-- [H3 (spike) — Embedding input: title + tags + contenido des-boilerplateado, implementar-o-descartar](work-articles/w-19jefagr.md) [medium] — ## Objective  Trigger evaluado post-H2: DISPARA. El eval exp
-
-### done (33)
+### done (34)
 
 - [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
 - [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
@@ -234,6 +230,7 @@
 - [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
 - [H1 — Repository cache: matar el O(corpus-parse) por lookup en knowledge file-repository](work-articles/w-n75fifq1.md) [high] — ## Objective  Todo lookup del knowledge file-repository re-p
 - [H2 — Des-saturar el eval: contamination normalizada + golden set 28→40+ + régimen operativo](work-articles/w-6fpupnwl.md) [high] — ## Objective  (a) **Normalizar contamination**: hoy es media
+- [H3 (spike) — Embedding input: title + tags + contenido des-boilerplateado, implementar-o-descartar](work-articles/w-19jefagr.md) [medium] — ## Objective  Trigger evaluado post-H2: DISPARA. El eval exp
 - [H4 — Cerrar los drops silenciosos de la capa de tools MCP (knowledge + work)](work-articles/w-4yr6svbk.md) [high] — ## Objective  Caso conocido: el tool MCP `update_article` ig
 - [Implement Code Intelligence M3 — Lightweight Code Inventory](work-articles/w-w7yhmqse.md) [high] — ## Objective  Implement Milestone 3 of ADR-015 (Code Intelli
 - [Observational benchmark: Monsthera retrieval paths vs. grep](work-articles/w-dzur84o8.md) [medium] — ## Objective  Capture an observational data point comparing
