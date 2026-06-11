@@ -3,8 +3,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { FileSystemKnowledgeArticleRepository } from "../../../src/knowledge/file-repository.js";
+import { KnowledgeService } from "../../../src/knowledge/service.js";
 import { parseMarkdown } from "../../../src/knowledge/markdown.js";
 import { slug } from "../../../src/core/types.js";
+import { ErrorCode } from "../../../src/core/errors.js";
+import type { Logger } from "../../../src/core/logger.js";
 
 /**
  * P0-B (Banyan ISSUE-004) — `KnowledgeArticle.filePath` runtime metadata.
@@ -187,5 +190,65 @@ describe("FileSystemKnowledgeArticleRepository — writes honor filePath (ID-nam
 
     const entries = await fs.readdir(path.join(root, "notes"));
     expect(entries).toEqual([]);
+  });
+});
+
+/**
+ * Follow-up w-c09d7wa9: `findBySlug` was purely path-derived
+ * (`notes/<slug>.md`), so an ID-named article resolved as NotFound — and the
+ * explicit-slug collision check in `KnowledgeService.createArticle` (which
+ * delegates to `findBySlug`) silently missed the collision. When the
+ * slug-named fast path misses, `findBySlug` must fall back to a frontmatter
+ * scan.
+ */
+describe("FileSystemKnowledgeArticleRepository — findBySlug resolves ID-named files", () => {
+  const noopLogger: Logger = {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+    child: () => noopLogger,
+  };
+
+  it("findBySlug returns the article when its file is ID-named (frontmatter scan)", async () => {
+    await seedRaw(ID_NAMED_FILE, ID_NAMED_RAW);
+    const repo = new FileSystemKnowledgeArticleRepository(root);
+
+    const found = await repo.findBySlug(slug("some-slug"));
+    expect(found.ok).toBe(true);
+    if (!found.ok) return;
+    expect(found.value.id).toBe("k-9999test");
+    expect(found.value.filePath).toBe(`notes/${ID_NAMED_FILE}`);
+  });
+
+  it("findBySlug still returns slug-shaped NotFound when no article carries the slug", async () => {
+    await seedRaw(ID_NAMED_FILE, ID_NAMED_RAW);
+    const repo = new FileSystemKnowledgeArticleRepository(root);
+
+    const missing = await repo.findBySlug(slug("missing-slug"));
+    expect(missing.ok).toBe(false);
+    if (missing.ok) return;
+    expect(missing.error.code).toBe(ErrorCode.NOT_FOUND);
+    expect(missing.error.message).toContain("slug:missing-slug");
+  });
+
+  it("create with an explicit slug colliding with an ID-named article returns AlreadyExists", async () => {
+    await seedRaw(ID_NAMED_FILE, ID_NAMED_RAW);
+    const repo = new FileSystemKnowledgeArticleRepository(root);
+    const service = new KnowledgeService({ knowledgeRepo: repo, logger: noopLogger });
+
+    const result = await service.createArticle({
+      title: "A Different Title",
+      category: "context",
+      content: "Body that must not land.",
+      slug: "some-slug",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCode.ALREADY_EXISTS);
+
+    // No second article was written: the ID-named file is still alone.
+    const entries = await fs.readdir(path.join(root, "notes"));
+    expect(entries).toEqual([ID_NAMED_FILE]);
   });
 });

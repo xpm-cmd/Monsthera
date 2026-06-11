@@ -289,3 +289,6 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 06:10:54]** advance work | Wave F: backlog opcional — Dolt smoke real, CLI coverage, ratchet, ADR-021, per-commit codeRefs → review (w-05pf7hpm)
 - **[2026-06-11 06:10:56]** create knowledge | Solution: Wave F: backlog opcional — Dolt smoke real, CLI coverage, ratchet, ADR-021, per-commit codeRefs (k-thm5ixw2)
 - **[2026-06-11 06:10:56]** advance work | Wave F: backlog opcional — Dolt smoke real, CLI coverage, ratchet, ADR-021, per-commit codeRefs → done (w-05pf7hpm)
+- **[2026-06-11 11:04:58]** advance work | findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named → enrichment (w-c09d7wa9)
+- **[2026-06-11 11:05:34]** advance work | findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named → implementation (w-c09d7wa9)
+- **[2026-06-11 11:09:46]** create knowledge | Wave G1: findBySlug escanea frontmatter cuando el path directo falla — slug-get y collision-check ven archivos ID-named (k-p90ik5jo)
