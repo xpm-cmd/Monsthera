@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 148 knowledge articles and 30 work articles.
-> Last updated: 2026-06-11 11:09:46
+> Auto-generated catalog of 149 knowledge articles and 30 work articles.
+> Last updated: 2026-06-11 11:13:10
 
 ## Knowledge
 
@@ -165,6 +165,7 @@
 - [PR-9: Deterministic cross-article contradiction detection](notes/pr9-contradiction-detection.md) — Third PR of M2. Surfaces when two corpus articles disagree on the same canonical
 - [PR1: corpus tag-hygiene (write-path normalize + lint rule)](notes/pr1-corpus-tag-hygiene-write-path-normalize-lint-rule.md) — ## Problem  Creating an article with `--tags "'family:kriging', family:kriging,
 - [PR2: knowledge CLI safety + ergonomics (dry-run, incremental tags, json, quiet)](notes/pr2-knowledge-cli-safety-ergonomics-dry-run-incremental-tags-json-quiet.md) — ## Summary  PR2 of the real-corpus dogfood follow-up — P1 CLI safety + ergonomic
+- [Solution: findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](notes/distilled-w-c09d7wa9.md) — > Distilled from work [w-c09d7wa9] on completion. Origin: `distilled`.  ## Objec
 - [Solution: PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet](notes/distilled-w-kw9xy2i5.md) — > Distilled from work [w-kw9xy2i5] on completion. Origin: `distilled`.  Wave 1 d
 - [Solution: PR P1 — eval keystone: expansión del golden set + honestidad semántica](notes/distilled-w-zluxybat.md) — > Distilled from work [w-zluxybat] on completion. Origin: `distilled`.  Wave 2 d
 - [Solution: Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](notes/distilled-w-ymavjqkd.md) — > Distilled from work [w-ymavjqkd] on completion. Origin: `distilled`.  ## Objec
@@ -200,11 +201,7 @@
 
 - [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
 
-### implementation (1)
-
-- [findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](work-articles/w-c09d7wa9.md) [medium] — ## Objective  Descubierto durante Wave A1 (write path). `Fil
-
-### done (27)
+### done (28)
 
 - [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
 - [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
@@ -212,6 +209,7 @@
 - [Dashboard snapshot-diff endpoint and drift banner](work-articles/w-r85lzqhv.md) [medium] — ## Objective  Give an agent resuming a work article in \`imp
 - [Dolt persistence for environment snapshots](work-articles/w-guptmc33.md) [high] — ## Objective  Make environment snapshots persist across Mons
 - [feat: workspace schema migration runner for future schema bumps](work-articles/w-z0o5hfx9.md) [high] — ## Issue  The workspace manifest carries a `workspaceSchemaV
+- [findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](work-articles/w-c09d7wa9.md) [medium] — ## Objective  Descubierto durante Wave A1 (write path). `Fil
 - [fix: $EDITOR command injection via whitespace split](work-articles/w-49aol9fa.md) [critical] — ## Issue  `$EDITOR` / `$VISUAL` are split on whitespace and
 - [fix: dashboard wildcard CORS + token in <meta> enables CSRF](work-articles/w-pd3211af.md) [critical] — ## Issue  The dashboard HTTP server returns `Access-Control-
 - [fix: knowledge create slug TOCTOU loses articles on parallel create](work-articles/w-5zsmz0f7.md) [high] — ## Issue  `FileSystemKnowledgeArticleRepository.create()` ch
