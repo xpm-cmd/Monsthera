@@ -218,3 +218,6 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-10 10:43:04]** create knowledge | PR-19: Lean symbol extraction en el code inventory (Banyan P2) (k-hjc2eo08)
 - **[2026-06-10 10:57:31]** create knowledge | PR-20: work tracking quickstart para consumidores (Banyan P3, docs-only) (k-e9atys0k)
 - **[2026-06-10 11:14:56]** reindex knowledge | Reindex: 122 knowledge, 22 work
+- **[2026-06-10 11:28:59]** create work | Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo (w-ymavjqkd)
+- **[2026-06-10 11:36:09]** create work | findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named (w-c09d7wa9)
+- **[2026-06-10 11:40:02]** create knowledge | Wave A1: write path honra filePath — update/delete sobre archivos ID-named (k-lyfpgowg)
