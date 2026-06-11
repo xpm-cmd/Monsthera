@@ -332,3 +332,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 22:23:34]** reindex knowledge | Reindex: 157 knowledge, 37 work
 - **[2026-06-11 22:24:50]** create knowledge | Decisión H3: embedding input ponderado descartado — la hipótesis del boilerplate quedó falsificada por el A/B (k-lyyxwlnf)
 - **[2026-06-11 22:25:00]** advance work | H3 (spike) — Embedding input: title + tags + contenido des-boilerplateado, implementar-o-descartar → enrichment (w-19jefagr)
+- **[2026-06-11 22:27:55]** advance work | H3 (spike) — Embedding input: title + tags + contenido des-boilerplateado, implementar-o-descartar → done (w-19jefagr)
