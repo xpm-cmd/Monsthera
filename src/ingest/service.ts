@@ -14,7 +14,7 @@ import { ORIGIN } from "../knowledge/provenance.js";
 import type { SearchMutationSync } from "../search/sync.js";
 import { realCommandRunner } from "../ops/command-runner.js";
 import type { CommandRunner } from "../ops/command-runner.js";
-import { listCommitsInRange } from "../sessions/facts-extractor-git.js";
+import { listCommitsInRange, listCommitFiles } from "../sessions/facts-extractor-git.js";
 import type { SessionFactsCommit } from "../sessions/schemas.js";
 import { validateIngestLocalInput, validateIngestGitInput, validateIngestPrInput } from "./schemas.js";
 import type { IngestMode } from "./schemas.js";
@@ -56,6 +56,9 @@ export interface IngestServiceDeps {
 }
 
 const GIT_INGEST_TIMEOUT_MS = 10_000;
+
+/** Cap per-commit codeRefs so a monster sweep commit cannot bloat an article. */
+const MAX_COMMIT_CODE_REFS = 20;
 
 export class IngestService {
   private readonly knowledgeRepo: KnowledgeArticleRepository;
@@ -310,6 +313,18 @@ export class IngestService {
       const sourcePath = `git:${commit.sha}`;
       const title = truncateCommitTitle(commit.subject);
       const content = buildCommitContent(commit, range);
+      // F5 (deferred from PR-15): the commit's changed files become codeRefs,
+      // capped for monster commits. Fail-open — file listing is enrichment,
+      // and a git failure here must not sink the ingest.
+      const filesResult = await listCommitFiles({
+        repo: this.repoPath,
+        sha: commit.sha,
+        runner: this.commandRunner,
+        timeoutMs: GIT_INGEST_TIMEOUT_MS,
+      });
+      const codeRefs = filesResult.ok
+        ? filesResult.value.slice(0, MAX_COMMIT_CODE_REFS)
+        : [];
       const existing = opts.replaceExisting ? existingBySourcePath.get(sourcePath) : undefined;
 
       if (existing) {
@@ -318,7 +333,7 @@ export class IngestService {
           category,
           content,
           tags: [...tags],
-          codeRefs: [],
+          codeRefs: [...codeRefs],
           sourcePath,
           extraFrontmatter: { origin: ORIGIN.INGESTED },
         });
@@ -336,7 +351,7 @@ export class IngestService {
         category,
         content,
         tags: [...tags],
-        codeRefs: [],
+        codeRefs: [...codeRefs],
         sourcePath,
         extraFrontmatter: { origin: ORIGIN.INGESTED },
       });

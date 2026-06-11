@@ -222,6 +222,29 @@ export async function listCommitsInRange(
   return ok(parseCommitLines(result.value.stdout));
 }
 
+/**
+ * List the files changed by one commit (`git show --name-only --format=`).
+ * Used by the F5 per-commit codeRefs enrichment in git ingestion; callers
+ * treat a failure as "no files" (enrichment, not core data).
+ */
+export async function listCommitFiles(
+  options: { repo: string; sha: string; runner: CommandRunner; timeoutMs?: number },
+): Promise<Result<string[], StorageError>> {
+  const result = await options.runner({
+    command: "git",
+    args: ["show", "--name-only", "--format=", options.sha],
+    cwd: options.repo,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  });
+  if (!result.ok) return err(result.error);
+  return ok(
+    result.value.stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0),
+  );
+}
+
 /** Parse `%H|%s|%cI` git-log lines into commits. Shared by the window + range helpers. */
 function parseCommitLines(stdout: string): SessionFactsCommit[] {
   const commits: SessionFactsCommit[] = [];
