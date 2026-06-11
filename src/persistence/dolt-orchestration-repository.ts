@@ -2,7 +2,7 @@ import type { Pool, RowDataPacket } from "mysql2/promise";
 import { ok } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import type { StorageError } from "../core/errors.js";
-import { generateId, timestamp, workId, agentId } from "../core/types.js";
+import { timestamp, workId, agentId } from "../core/types.js";
 import type { Timestamp, WorkId } from "../core/types.js";
 import type {
   OrchestrationEvent,
@@ -12,7 +12,7 @@ import type {
 import { executeQuery, executeMutation } from "./connection.js";
 
 interface OrchestrationEventRow extends RowDataPacket {
-  id: string;
+  id: number | string;
   work_id: string;
   event_type: string;
   agent_id?: string | null;
@@ -26,16 +26,19 @@ export class DoltOrchestrationRepository implements OrchestrationEventRepository
   async logEvent(
     event: Omit<OrchestrationEvent, "id" | "createdAt">,
   ): Promise<Result<OrchestrationEvent, StorageError>> {
-    const id = generateId("evt");
     const createdAt = timestamp();
 
+    // The schema's id column is INT AUTO_INCREMENT. The repository used to
+    // insert a generated "evt-*" string here and return it — real Dolt
+    // coerced it on write, so the id callers received did not exist in the
+    // database (found by the F1 real-Dolt smoke; mocks never noticed).
+    // Let the database assign the id and return the persisted one.
     const insertSql = `
-      INSERT INTO orchestration_events (id, work_id, event_type, agent_id, details, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO orchestration_events (work_id, event_type, agent_id, details, created_at)
+      VALUES (?, ?, ?, ?, ?)
     `;
 
     const insertResult = await executeMutation(this.pool, insertSql, [
-      id,
       event.workId,
       event.eventType,
       event.agentId ?? null,
@@ -46,7 +49,7 @@ export class DoltOrchestrationRepository implements OrchestrationEventRepository
     if (!insertResult.ok) return insertResult;
 
     const logged: OrchestrationEvent = {
-      id,
+      id: String(insertResult.value.insertId),
       workId: event.workId,
       eventType: event.eventType,
       agentId: event.agentId,
@@ -126,7 +129,7 @@ export class DoltOrchestrationRepository implements OrchestrationEventRepository
       : (row.details ?? {});
 
     return {
-      id: row.id,
+      id: String(row.id),
       workId: workId(row.work_id),
       eventType: row.event_type as OrchestrationEventType,
       agentId: row.agent_id ? agentId(row.agent_id) : undefined,

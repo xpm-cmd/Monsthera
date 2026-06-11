@@ -1,17 +1,17 @@
 ---
 id: k-dsn4wl6r
-title: ADR-014: Portable Workspace Operations
-slug: adr-014-portable-workspace-operations
+title: ADR-021: Portable Workspace Operations
+slug: adr-021-portable-workspace-operations
 category: architecture
 tags: []
 codeRefs: [package.json]
 references: []
-sourcePath: docs/adrs/014-portable-workspace-operations.md
+sourcePath: docs/adrs/021-portable-workspace-operations.md
 createdAt: 2026-06-10T09:08:27.823Z
-updatedAt: 2026-06-10T09:08:27.823Z
+updatedAt: 2026-06-11T05:56:39.142Z
 ---
 
-# ADR-014: Portable Workspace Operations
+# ADR-021: Portable Workspace Operations
 
 ## Status
 

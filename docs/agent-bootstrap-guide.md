@@ -621,4 +621,4 @@ The above is a verbatim copy-paste template. Customise the trigger phrases ("cie
 
 - [`consumer-setup.md`](consumer-setup.md) — wiring Monsthera as an MCP server / CLI in a downstream repo (prerequisites for this guide).
 - [`adrs/017-code-intelligence-m3-lightweight-inventory.md`](adrs/017-code-intelligence-m3-lightweight-inventory.md) — the M3 ADR that introduced `stats.codeInventory.built` and `monsthera code reindex`, both surfaced by Phase B.
-- [`adrs/014-portable-workspace-operations.md`](adrs/014-portable-workspace-operations.md) — the JSON-first / Dolt-optional contract that the script honours when probing `monsthera self status`.
+- [`adrs/021-portable-workspace-operations.md`](adrs/021-portable-workspace-operations.md) — the JSON-first / Dolt-optional contract that the script honours when probing `monsthera self status`.
