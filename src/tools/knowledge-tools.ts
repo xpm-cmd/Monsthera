@@ -1,7 +1,6 @@
 import type { KnowledgeService } from "../knowledge/service.js";
 import type { StructureService, NeighborResult } from "../structure/service.js";
 import { successResponse, errorResponse, requireString, optionalString, optionalNumber, isErrorResponse, MAX_QUERY_LENGTH, MAX_TITLE_LENGTH } from "./validation.js";
-import { applyTagDelta } from "../knowledge/tags.js";
 import { parseCustomFilter, matchesCustomFilter, type CustomFilter } from "../knowledge/custom-filter.js";
 
 /** MCP tool definition shape */
@@ -25,17 +24,6 @@ export interface ToolResponse {
 /** Maximum number of articles accepted by batch_create_articles / batch_update_articles. */
 export const MAX_BATCH_ARTICLES = 100;
 
-/**
- * Coerce an optional MCP `args` value to a string array for the incremental
- * tag ops: `undefined` → `[]`; a non-array or array containing a non-string →
- * `null` so the caller can return a VALIDATION_FAILED response.
- */
-function toStringArray(value: unknown): string[] | null {
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || !value.every((x) => typeof x === "string")) return null;
-  return value as string[];
-}
-
 /** Returns the knowledge tool definitions for MCP ListTools */
 export function knowledgeToolDefinitions(): ToolDefinition[] {
   return [
@@ -52,6 +40,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           codeRefs: { type: "array", items: { type: "string" }, description: "Code references" },
           references: { type: "array", items: { type: "string" }, description: "References to other articles (IDs or slugs)" },
           slug: { type: "string", description: "Optional explicit slug. If omitted, auto-generated from title. Call preview_slug first for nontrivial titles." },
+          sourcePath: { type: "string", description: "Provenance pointer to the source file this article was imported/derived from (e.g. docs/spec.md). Round-tripped in frontmatter." },
           extraFrontmatter: { type: "object", description: "ADR-020: typed/custom frontmatter fields (e.g. { origin: \"human\", ticket: \"ABC-123\" }). Persisted and round-tripped verbatim alongside the standard fields." },
         },
         required: ["title", "category", "content"],
@@ -96,6 +85,7 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
           references: { type: "array", items: { type: "string" }, description: "References to other articles (IDs or slugs)" },
           new_slug: { type: "string", description: "Optional: rename the article's slug. Collision-checked. All incoming references in other articles' `references` arrays are updated automatically. Use `rewrite_inline_wikilinks: true` to also update inline `[[old-slug]]` wikilinks in bodies." },
           rewrite_inline_wikilinks: { type: "boolean", description: "When renaming via `new_slug`, also rewrite `[[old-slug]]` / `[[old-slug|display]]` / `[[old-slug#anchor]]` wikilinks in other articles' bodies (display text and anchors preserved). Default false — body content changes are opt-in." },
+          sourcePath: { type: "string", description: "Provenance pointer to the source file this article was imported/derived from. Applied on plain updates and renames alike." },
           extraFrontmatter: { type: "object", description: "ADR-020: typed/custom frontmatter fields. Replaces the article's prior custom-frontmatter map when supplied." },
         },
         required: ["id"],
@@ -165,6 +155,8 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
                 codeRefs: { type: "array", items: { type: "string" } },
                 references: { type: "array", items: { type: "string" } },
                 slug: { type: "string", description: "Optional explicit slug" },
+                sourcePath: { type: "string", description: "Provenance pointer to the source file" },
+                extraFrontmatter: { type: "object", description: "ADR-020 custom frontmatter (same as create_article)" },
               },
               required: ["title", "category", "content"],
             },
@@ -204,11 +196,15 @@ export function knowledgeToolDefinitions(): ToolDefinition[] {
                 title: { type: "string" },
                 category: { type: "string" },
                 content: { type: "string" },
-                tags: { type: "array", items: { type: "string" } },
+                tags: { type: "array", items: { type: "string" }, description: "Full replace. Mutually exclusive with add_tags/remove_tags." },
+                add_tags: { type: "array", items: { type: "string" }, description: "Incremental add (same semantics as update_article)" },
+                remove_tags: { type: "array", items: { type: "string" }, description: "Incremental remove (case-insensitive)" },
                 codeRefs: { type: "array", items: { type: "string" } },
                 references: { type: "array", items: { type: "string" } },
                 new_slug: { type: "string" },
                 rewrite_inline_wikilinks: { type: "boolean" },
+                sourcePath: { type: "string", description: "Provenance pointer to the source file" },
+                extraFrontmatter: { type: "object", description: "ADR-020 custom frontmatter (same as update_article)" },
               },
               required: ["id"],
             },
@@ -291,27 +287,11 @@ export async function handleKnowledgeTool(
     case "update_article": {
       const id = requireString(args, "id");
       if (isErrorResponse(id)) return id;
-      // Destructure the incremental tag ops OUT before the spread: the service's
-      // Zod schema would silently strip unknown keys, so add_tags/remove_tags
-      // must be resolved here into a concrete `tags` array.
-      const { id: _id, add_tags, remove_tags, ...updateFields } = args;
-      const wantsDelta = add_tags !== undefined || remove_tags !== undefined;
-      if (wantsDelta && updateFields.tags !== undefined) {
-        return errorResponse(
-          "VALIDATION_FAILED",
-          "Use `tags` (full replace) or `add_tags`/`remove_tags` (incremental), not both.",
-        );
-      }
-      if (wantsDelta) {
-        const add = toStringArray(add_tags);
-        const remove = toStringArray(remove_tags);
-        if (add === null || remove === null) {
-          return errorResponse("VALIDATION_FAILED", "`add_tags` and `remove_tags` must be arrays of strings");
-        }
-        const current = await service.getArticle(id);
-        if (!current.ok) return errorResponse(current.error.code, current.error.message);
-        updateFields.tags = applyTagDelta(current.value.tags, add, remove);
-      }
+      // add_tags/remove_tags pass straight through: the service owns delta
+      // resolution and the tags-vs-delta exclusivity check (H4), so single
+      // and batch updates share one implementation. The service schema is
+      // strict — any unknown key comes back as VALIDATION_FAILED.
+      const { id: _id, ...updateFields } = args;
       const result = await service.updateArticle(id, updateFields);
       if (!result.ok) return errorResponse(result.error.code, result.error.message);
       return successResponse(result.value);

@@ -523,6 +523,10 @@ export class FileSystemKnowledgeArticleRepository implements KnowledgeArticleRep
       tags: input.tags ?? existing.tags,
       codeRefs: input.codeRefs ?? existing.codeRefs,
       references: input.references ?? existing.references,
+      ...(input.sourcePath !== undefined ? { sourcePath: input.sourcePath } : {}),
+      ...(input.extraFrontmatter !== undefined
+        ? { extraFrontmatter: { ...input.extraFrontmatter } }
+        : {}),
       updatedAt: timestamp(),
     };
 

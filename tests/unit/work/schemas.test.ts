@@ -296,15 +296,12 @@ describe("validateWorkFrontmatter", () => {
 // ─── 7. Edge cases ────────────────────────────────────────────────────────────
 
 describe("edge cases", () => {
-  it("extra properties are stripped (passthrough not enabled)", () => {
+  it("extra properties are rejected (H4: strict — a typo must surface, not vanish)", () => {
     const result = CreateWorkArticleInputSchema.safeParse({
       ...validCreateInput,
-      unknownField: "should be stripped",
+      unknownField: "should be rejected",
     });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(Object.keys(result.data)).not.toContain("unknownField");
-    }
+    expect(result.success).toBe(false);
   });
 
   it("title at exactly 200 characters is accepted", () => {

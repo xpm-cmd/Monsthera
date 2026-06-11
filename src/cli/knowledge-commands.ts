@@ -335,6 +335,7 @@ async function handleKnowledgeCreate(args: string[]): Promise<void> {
         { name: "--content-file <path>", description: "Read the markdown body verbatim from disk. Avoids shell heredoc corruption of backticks etc." },
         { name: "--tags t1,t2", description: "Comma-separated tag list." },
         { name: "--code-refs r1,r2", description: "Comma-separated code-reference paths." },
+        { name: "--source-path <path>", description: "Provenance pointer to the source file this article was imported/derived from (H4 parity with the MCP tool)." },
         { name: "--field key=value", description: "Custom frontmatter field (repeatable). Persisted verbatim (ADR-020)." },
         { name: "--repo, -r <path>", description: "Repository path.", default: "cwd" },
       ],
@@ -382,6 +383,8 @@ async function handleKnowledgeCreate(args: string[]): Promise<void> {
     const input: Record<string, unknown> = { title, category, content };
     if (tags) input.tags = tags;
     if (codeRefs) input.codeRefs = codeRefs;
+    const sourcePath = parseFlag(args, "--source-path");
+    if (sourcePath) input.sourcePath = sourcePath;
     const fields = parseFields(args);
     if (fields) input.extraFrontmatter = fields;
 
@@ -521,6 +524,7 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
         { name: "--tags t1,t2", description: "Replace the entire tag list with this comma-separated set." },
         { name: "--add-tag t1,t2", description: "Add tags to the existing set (normalized + deduped). Mutually exclusive with --tags." },
         { name: "--remove-tag t1,t2", description: "Remove tags from the existing set (case-insensitive). Mutually exclusive with --tags." },
+        { name: "--source-path <path>", description: "New provenance pointer to the source file (H4 parity with the MCP tool)." },
         { name: "--field key=value", description: "Set a custom frontmatter field (repeatable). Replaces the article's custom-field map (ADR-020)." },
         { name: "--dry-run", description: "Print the field-level diff that would be applied and exit without writing." },
         { name: "--quiet, -q", description: "On success, print a one-line summary instead of the full article body." },
@@ -558,6 +562,8 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
     if (category) input.category = category;
     if (content) input.content = content;
     if (tags) input.tags = tags;
+    const sourcePath = parseFlag(args, "--source-path");
+    if (sourcePath) input.sourcePath = sourcePath;
     const fields = parseFields(args);
     if (fields) input.extraFrontmatter = fields;
 
@@ -574,7 +580,7 @@ async function handleKnowledgeUpdate(args: string[]): Promise<void> {
 
     if (Object.keys(input).length === 0) {
       console.error(
-        "No update fields provided. Use --title, --category, --content, --tags, --add-tag, --remove-tag, or --field.",
+        "No update fields provided. Use --title, --category, --content, --tags, --add-tag, --remove-tag, --source-path, or --field.",
       );
       process.exit(1);
     }

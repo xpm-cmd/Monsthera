@@ -103,4 +103,9 @@ export interface WriteWithSlugInput {
   category?: string;
   tags?: string[];
   codeRefs?: string[];
+  sourcePath?: string;
+  /** Replaces the prior custom-frontmatter map when supplied (H4: the
+   * rename path used to silently discard it because this field was
+   * missing here while `repo.update` honored it). */
+  extraFrontmatter?: Record<string, unknown>;
 }
