@@ -1,0 +1,31 @@
+[
+  {
+    "query": "findbyslug frontmatter scan id-named slug identity",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-p90ik5jo", "k-y8xvwfu7", "k-lyfpgowg"],
+    "note": "H2 expansion (2026-06-11): the slug-identity arc across three waves — G1 (scan fallback), H1 (duality dissolved, frontmatter as single identity), A1 (write path honors filePath). Three-way multi-relevant; NDCG-significant by construction."
+  },
+  {
+    "query": "repository cache stat invalidation corpus parse lookup",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-y8xvwfu7"],
+    "forbiddenArticleIds": ["k-d7m7jhus"],
+    "note": "H2 expansion (2026-06-11): forbidden is PROVENANCE-topical: k-d7m7jhus is the auto-distilled stub of work item w-n75fifq1 — same topic, strictly less content than the canonical H1 solution note; surfacing the stub above/with the canonical note costs the reader a hop. Reason survives refresh (a distillate stays a distillate). Mined: it ranked 2, right behind the canonical note."
+  },
+  {
+    "query": "silent drop strict schema validation sourcepath write path",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-2e0b09bj"],
+    "note": "H2 expansion (2026-06-11): the H4 silent-drops note. Adjacent write-path notes (A1 filePath, tag-hygiene normalize) stay neutral — they share the write-path vocabulary legitimately."
+  },
+  {
+    "query": "minimal diff frontmatter patch byte identical update",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-8d85l75r"],
+    "note": "H2 expansion (2026-06-11): T5 minimal-diff write. Single-expected; the ADR-020 family that follows it in the mined ranking is adjacent (frontmatter) but does not answer the byte-identical patch question."
+  }
+]

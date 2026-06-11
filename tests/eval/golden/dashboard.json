@@ -8,7 +8,10 @@
       "k-l7oy85r0",
       "k-jgazhhz6"
     ],
-    "forbiddenArticleIds": ["k-n3gtykv5", "k-qlgfto92"],
+    "forbiddenArticleIds": [
+      "k-n3gtykv5",
+      "k-qlgfto92"
+    ],
     "note": "Dashboard architecture/SPA + data-flow + pages-and-features cluster. Work-article model and guard-system notes are backend, not the dashboard UI — forbidden."
   },
   {
@@ -26,22 +29,41 @@
     "query": "dashboard ui component library primitives",
     "mode": "code",
     "type": "knowledge",
-    "expectedArticleIds": ["k-imz9hai0"],
+    "expectedArticleIds": [
+      "k-imz9hai0"
+    ],
     "note": "Dashboard UI Component Library — single-answer precision anchor."
   },
   {
     "query": "dashboard rest api endpoints routes",
     "mode": "code",
     "type": "knowledge",
-    "expectedArticleIds": ["k-kmnflb56"],
-    "forbiddenArticleIds": ["k-imz9hai0"],
+    "expectedArticleIds": [
+      "k-kmnflb56"
+    ],
+    "forbiddenArticleIds": [
+      "k-imz9hai0"
+    ],
     "note": "REST API endpoints note is the answer. The UI component library is frontend-only — forbidden (re-reviewed post-D3 refresh 2026-06-11: still true). k-2jb9bh3p was removed from forbidden in that re-review: the D3 refresh expanded it with the server composition root + routes/*.ts split-router section, so 'frontend, not the HTTP API surface' no longer describes it — now a legitimate partial answer (neutral, not expected; k-kmnflb56 stays the full reference)."
   },
   {
     "query": "convoy dashboard panel sidebar badge ribbon",
     "mode": "research",
     "type": "knowledge",
-    "expectedArticleIds": ["k-convoy-dashboard-design-decisions", "k-91f42ekj"],
+    "expectedArticleIds": [
+      "k-convoy-dashboard-design-decisions",
+      "k-91f42ekj"
+    ],
     "note": "ADR-014 convoy dashboard decision + S5 convoy-dashboard plan; the convoy-UI pair (distinct from the orchestration cluster)."
+  },
+  {
+    "query": "dashboard assets self hosted no cdn footer",
+    "mode": "general",
+    "type": "knowledge",
+    "expectedArticleIds": [
+      "k-zuks8lor",
+      "k-f06au36t"
+    ],
+    "note": "H2 expansion (2026-06-11): D3 (self-hosted assets, footer) plus the Wave D arc summary. Multi-relevant; the dashboard-* reference notes that flood ranks 2-4 are adjacent-neutral (same surface, different question)."
   }
 ]

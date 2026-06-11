@@ -1,0 +1,17 @@
+[
+  {
+    "query": "git history ingestion commits pr facts",
+    "mode": "code",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-gu0h02zt", "k-p4f05mkz"],
+    "note": "H2 expansion (2026-06-11): PR-15 git/PR ingestion plus F5 per-commit codeRefs (the deferred it closed). Multi-relevant; mined ranks 1 and 2."
+  },
+  {
+    "query": "session handoff cognitive brief distillation",
+    "mode": "research",
+    "type": "knowledge",
+    "expectedArticleIds": ["k-1s76awex", "k-vo0fhcxl", "k-1ps6iyqf"],
+    "forbiddenArticleIds": ["k-5umd9fff", "k-gsxgt3qx"],
+    "note": "H2 expansion (2026-06-11): the handoff SYSTEM docs (ADR-018, system design, ADR-019 reversal). Forbidden are TOPICAL: k-5umd9fff and k-gsxgt3qx are concrete handoff INSTANCES — session artifacts, not the design; the mined ranking interleaved 4 instances into the top-10, which is exactly the instance-flooding failure mode this case penalizes. Reason survives refresh (an instance stays an instance)."
+  }
+]

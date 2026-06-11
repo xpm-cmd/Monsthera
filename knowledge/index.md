@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 154 knowledge articles and 34 work articles.
-> Last updated: 2026-06-11 12:46:06
+> Auto-generated catalog of 156 knowledge articles and 36 work articles.
+> Last updated: 2026-06-11 13:06:24
 
 ## Knowledge
 
@@ -68,6 +68,7 @@
 - [Decisión C2: salience (PR-13b) descartado para siempre — inmedible por construcción y contraindicado por la evidencia de C1](notes/decisin-c2-salience-pr-13b-descartado-para-siempre-inmedible-por-construccin-y-contraindicado-por-la-evidencia-de-c1.md) — Cierra el deferred PR-13b (salience bonus en ranking, diferido en M3 por "eval s
 - [Decisión G2: forbidden por staleness caduca con el refresh del artículo — re-revisión post-D3 del golden set](notes/decisin-g2-forbidden-por-staleness-caduca-con-el-refresh-del-artculo-re-revisin-post-d3-del-golden-set.md) — Cierra w-j7ao5fak. Rama `chore/g2-golden-forbidden-rereview`.  ## El criterio ge
 - [Decisión G3: demotion por vigencia descartada sin implementar — el trigger no dispara y la palanca perdió su premisa](notes/decisin-g3-demotion-por-vigencia-descartada-sin-implementar-el-trigger-no-dispara-y-la-palanca-perdi-su-premisa.md) — Cierra w-j7unmtos. Wave G3 era condicional: "solo si, post-G2, contamination sig
+- [Decisión H2: régimen del eval — contamination normalizada, expansión por wave y trigger de saturación](notes/decisin-h2-rgimen-del-eval-contamination-normalizada-expansin-por-wave-y-trigger-de-saturacin.md) — Cierra w-6fpupnwl. Rama `feat/h2-eval-desaturation`. Esta nota es el contrato op
 - [Decision: agent dispatch contract — events, not spawning](notes/agent-dispatch-design-decisions.md) — ADR-008 captures the formal decision (event lifecycle, dispatcher shape). This n
 - [Decision: convoy dashboard — panel, sidebar badge, ribbon](notes/convoy-dashboard-design-decisions.md) — ADR-014 captures the formal decisions: dedicated page, sidebar badge as the sing
 - [Decision: convoy hardening — get, provenance events, single-convoy invariant](notes/convoy-hardening-design-decisions.md) — ADR-013 captures the formal decision (event types, the single-convoy invariant,
@@ -169,6 +170,7 @@
 - [PR2: knowledge CLI safety + ergonomics (dry-run, incremental tags, json, quiet)](notes/pr2-knowledge-cli-safety-ergonomics-dry-run-incremental-tags-json-quiet.md) — ## Summary  PR2 of the real-corpus dogfood follow-up — P1 CLI safety + ergonomic
 - [Solution: findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](notes/distilled-w-c09d7wa9.md) — > Distilled from work [w-c09d7wa9] on completion. Origin: `distilled`.  ## Objec
 - [Solution: H1 — Repository cache: matar el O(corpus-parse) por lookup en knowledge file-repository](notes/distilled-w-n75fifq1.md) — > Distilled from work [w-n75fifq1] on completion. Origin: `distilled`.  ## Objec
+- [Solution: H4 — Cerrar los drops silenciosos de la capa de tools MCP (knowledge + work)](notes/distilled-w-4yr6svbk.md) — > Distilled from work [w-4yr6svbk] on completion. Origin: `distilled`.  ## Objec
 - [Solution: PR P0 — audit hardening: README status, dashboard auth GET, SDK bump, coverage ratchet](notes/distilled-w-kw9xy2i5.md) — > Distilled from work [w-kw9xy2i5] on completion. Origin: `distilled`.  Wave 1 d
 - [Solution: PR P1 — eval keystone: expansión del golden set + honestidad semántica](notes/distilled-w-zluxybat.md) — > Distilled from work [w-zluxybat] on completion. Origin: `distilled`.  Wave 2 d
 - [Solution: Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](notes/distilled-w-ymavjqkd.md) — > Distilled from work [w-ymavjqkd] on completion. Origin: `distilled`.  ## Objec
@@ -202,15 +204,16 @@
 
 ## Work
 
-### planning (1)
+### planning (2)
 
+- [Snapshot capturedAt pierde el timezone en el round-trip Dolt — snapshots frescos nacen stale al este de UTC](work-articles/w-arq1yroe.md) [medium] — ## Objective  Encontrado en vivo durante H2 (2026-06-11, hos
 - [Work file-repository: adoptar StatCachedDirectoryReader en los métodos de filtro](work-articles/w-7nnee3c2.md) [low] — ## Objective  H1 (w-n75fifq1) introdujo `StatCachedDirectory
 
 ### implementation (1)
 
-- [H4 — Cerrar los drops silenciosos de la capa de tools MCP (knowledge + work)](work-articles/w-4yr6svbk.md) [high] — ## Objective  Caso conocido: el tool MCP `update_article` ig
+- [H2 — Des-saturar el eval: contamination normalizada + golden set 28→40+ + régimen operativo](work-articles/w-6fpupnwl.md) [high] — ## Objective  (a) **Normalizar contamination**: hoy es media
 
-### done (31)
+### done (32)
 
 - [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
 - [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
@@ -228,6 +231,7 @@
 - [fix: workspace restore corrupts Dolt when daemon is running](work-articles/w-kppfuyle.md) [critical] — ## Issue  `workspace restore --force` deletes and recreates
 - [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
 - [H1 — Repository cache: matar el O(corpus-parse) por lookup en knowledge file-repository](work-articles/w-n75fifq1.md) [high] — ## Objective  Todo lookup del knowledge file-repository re-p
+- [H4 — Cerrar los drops silenciosos de la capa de tools MCP (knowledge + work)](work-articles/w-4yr6svbk.md) [high] — ## Objective  Caso conocido: el tool MCP `update_article` ig
 - [Implement Code Intelligence M3 — Lightweight Code Inventory](work-articles/w-w7yhmqse.md) [high] — ## Objective  Implement Milestone 3 of ADR-015 (Code Intelli
 - [Observational benchmark: Monsthera retrieval paths vs. grep](work-articles/w-dzur84o8.md) [medium] — ## Objective  Capture an observational data point comparing
 - [Opt-in ready_to_implement guard consuming environment snapshots](work-articles/w-y988ky96.md) [medium] — ## Objective  Add a template-opt-in guard that blocks the `e

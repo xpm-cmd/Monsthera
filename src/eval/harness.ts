@@ -77,11 +77,16 @@ export interface EvalCaseResult {
   readonly ndcg: number;
   readonly reciprocalRank: number;
   /**
-   * Number of `forbiddenArticleIds` that leaked into `rankedTopK` (0 = clean).
+   * Share of this case's `forbiddenArticleIds` that leaked into `rankedTopK`,
+   * normalized to [0,1] (`hits / |forbidden|`; 0 = clean). H2 redefinition:
+   * the raw count made cases with bigger forbidden lists weigh more in the
+   * aggregate (one case could contribute 3.0 while another maxed at 1.0).
    * Present only when the case declares a forbidden list; a precision/
    * false-positive guardrail that is fully independent of P/R/NDCG/MRR.
    */
   readonly contamination?: number;
+  /** Raw leak count (the pre-H2 metric), kept so history stays comparable. */
+  readonly contaminationHits?: number;
   readonly error?: string;
 }
 
@@ -102,11 +107,18 @@ export interface EvalReport {
     readonly ndcgAtK: number;
     readonly mrr: number;
     /**
-     * Mean `contamination` over only the cases that declare a forbidden list.
-     * 0 when no case declares one (so a golden set without forbidden ids reads
-     * a clean 0). Reported separately from the relevance metrics.
+     * Mean normalized `contamination` ([0,1] per case) over only the cases
+     * that declare a forbidden list. 0 when no case declares one (so a golden
+     * set without forbidden ids reads a clean 0). Reported separately from
+     * the relevance metrics.
      */
     readonly contaminationRate: number;
+    /**
+     * Mean RAW leak count per guarded case — the pre-H2 `contaminationRate`
+     * semantics, kept as a secondary series so historical baselines remain
+     * comparable across the redefinition.
+     */
+    readonly contaminationHitsPerCase: number;
   };
   readonly cases: readonly EvalCaseResult[];
 }
@@ -154,6 +166,7 @@ export async function runEval(opts: {
   const { provider, cases: goldenCases, target, k, engine = "unknown" } = opts;
   const cases: EvalCaseResult[] = [];
   const contaminationScores: number[] = [];
+  const contaminationHitCounts: number[] = [];
 
   for (const c of goldenCases) {
     const relevant = new Set(c.expectedArticleIds);
@@ -161,10 +174,15 @@ export async function runEval(opts: {
     const rankedTopK = ids.slice(0, k);
 
     let contamination: number | undefined;
+    let contaminationHits: number | undefined;
     if (c.forbiddenArticleIds !== undefined && c.forbiddenArticleIds.length > 0) {
       const forbidden = new Set(c.forbiddenArticleIds);
-      contamination = rankedTopK.reduce((n, id) => (forbidden.has(id) ? n + 1 : n), 0);
+      contaminationHits = rankedTopK.reduce((n, id) => (forbidden.has(id) ? n + 1 : n), 0);
+      // Normalize by the (deduped) forbidden-list size so every guarded case
+      // contributes the same [0,1] range to the aggregate.
+      contamination = round(contaminationHits / forbidden.size);
       contaminationScores.push(contamination);
+      contaminationHitCounts.push(contaminationHits);
     }
 
     cases.push({
@@ -176,6 +194,7 @@ export async function runEval(opts: {
       ndcg: round(ndcgAtK(ids, relevant, k)),
       reciprocalRank: round(reciprocalRank(ids, relevant)),
       ...(contamination !== undefined ? { contamination } : {}),
+      ...(contaminationHits !== undefined ? { contaminationHits } : {}),
       ...(error !== undefined ? { error } : {}),
     });
   }
@@ -193,6 +212,7 @@ export async function runEval(opts: {
       // mean() returns 0 for an empty list, so a golden set with no forbidden
       // declarations reads a clean 0 rather than NaN.
       contaminationRate: round(mean(contaminationScores)),
+      contaminationHitsPerCase: round(mean(contaminationHitCounts)),
     },
     cases,
   };
