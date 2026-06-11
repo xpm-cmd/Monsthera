@@ -1,7 +1,7 @@
 # Monsthera Index
 
 > Auto-generated catalog of 151 knowledge articles and 31 work articles.
-> Last updated: 2026-06-11 11:29:40
+> Last updated: 2026-06-11 11:33:02
 
 ## Knowledge
 
@@ -199,11 +199,7 @@
 
 ## Work
 
-### enrichment (1)
-
-- [Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar](work-articles/w-j7unmtos.md) [low] — ## Objective  Item condicional del handoff Wave G: solo si,
-
-### done (29)
+### done (30)
 
 - [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
 - [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
@@ -234,6 +230,7 @@
 - [Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](work-articles/w-y0wuvaix.md) [medium] — ## Objective  (Original en historial.) Hallazgos (a)-(h) del
 - [Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](work-articles/w-s16wia61.md) [medium] — ## Objective  (Original en historial.) Split de `src/work/li
 - [Wave F: backlog opcional — Dolt smoke real, CLI coverage, ratchet, ADR-021, per-commit codeRefs](work-articles/w-05pf7hpm.md) [low] — ## Objective  Los 5 items del backlog opcional de la auditor
+- [Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar](work-articles/w-j7unmtos.md) [low] — ## Objective  Item condicional del handoff Wave G: solo si,
 
 ### cancelled (1)
 

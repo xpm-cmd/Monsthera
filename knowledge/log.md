@@ -301,3 +301,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 11:29:03]** create work | Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar (w-j7unmtos)
 - **[2026-06-11 11:29:13]** advance work | Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar → enrichment (w-j7unmtos)
 - **[2026-06-11 11:29:40]** create knowledge | Decisión G3: demotion por vigencia descartada sin implementar — el trigger no dispara y la palanca perdió su premisa (k-a5gjeblo)
+- **[2026-06-11 11:33:02]** advance work | Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar → done (w-j7unmtos)
