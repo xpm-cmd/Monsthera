@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 144 knowledge articles and 29 work articles.
-> Last updated: 2026-06-11 05:56:39
+> Auto-generated catalog of 145 knowledge articles and 29 work articles.
+> Last updated: 2026-06-11 06:03:56
 
 ## Knowledge
 
@@ -27,7 +27,7 @@
 - [ADR-018: Cognitive handoff sessions](notes/adr-018-cognitive-handoff-sessions.md) — # ADR-018: Cognitive handoff sessions  **Status:** Accepted **Date:** 2026-05-16
 - [ADR-019: Agent-direct handoff (reversal of ADR-018 D2/D3)](notes/adr-019-agent-direct-handoff-reversal-of-adr-018-d2d3.md) — # ADR-019: Agent-direct handoff (reversal of ADR-018 D2/D3)  **Status:** Accepte
 - [ADR-020: Typed / Custom Frontmatter Fields](notes/adr-020-typed-custom-frontmatter-fields.md) — # ADR-020: Typed / Custom Frontmatter Fields  **Status:** Accepted — implemented
-- [ADR-021: Portable Workspace Operations](notes/adr-021-portable-workspace-operations.md) — # ADR-014: Portable Workspace Operations  ## Status  Accepted — 2026-04-26  ## C
+- [ADR-021: Portable Workspace Operations](notes/adr-021-portable-workspace-operations.md) — # ADR-021: Portable Workspace Operations  ## Status  Accepted — 2026-04-26  ## C
 - [Monsthera: Hybrid Knowledge Architecture v6](notes/monsthera-hybrid-knowledge-architecture-v6.md) — ## Overview  Monsthera is a TypeScript MCP server for AI agent coordination. Thi
 
 ### context
@@ -188,6 +188,7 @@
 - [Wave E2: createContainer partido en factories por subsistema — 697 → 519, orden de construcción byte-a-byte](notes/wave-e2-createcontainer-partido-en-factories-por-subsistema-697-519-orden-de-construccin-byte-a-byte.md) — Rama `refactor/e2-container-factories` desde main post-#165. Tercer split del ba
 - [Wave E3: structure/service.ts — citation-analyzer, staleness, code-ref-indexer y tag-edge-builder extraídos (1337 → 874)](notes/wave-e3-structureservicets-citation-analyzer-staleness-code-ref-indexer-y-tag-edge-builder-extrados-1337-874.md) — Rama `refactor/e3-structure-modules` desde main post-#167. Cuarto split del back
 - [Wave E4: hybrid-ranker extraído de search/service.ts — eval idéntico a 4 decimales como arnés](notes/wave-e4-hybrid-ranker-extrado-de-searchservicets-eval-idntico-a-4-decimales-como-arns.md) — Rama `refactor/e4-hybrid-ranker` desde main post-#168. **Cierra el backlog de sp
+- [Wave F1+F4: el smoke contra Dolt real encontró un bug de id en su primer contacto; ADR-014 duplicado renumerado a 021](notes/wave-f1f4-el-smoke-contra-dolt-real-encontr-un-bug-de-id-en-su-primer-contacto-adr-014-duplicado-renumerado-a-021.md) — Rama `chore/f4-adr014-rename` (F4+F1 combinados, seccionados).  ## F1 — el argum
 - [Wave F2+F3: coverage de lint/hook commands (0.97%→57%, 2.3%→74%) y ratchet de floors a 74/82/62](notes/wave-f2f3-coverage-de-linthook-commands-09757-2374-y-ratchet-de-floors-a-748262.md) — Rama `test/f2-cli-coverage` desde main post-#169. F2+F3 del backlog opcional.  #
 
 ## Work
