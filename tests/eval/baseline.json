@@ -4,11 +4,11 @@
   "caseCount": 28,
   "engine": "semantic",
   "aggregate": {
-    "precisionAtK": 0.1929,
-    "recallAtK": 0.9911,
-    "ndcgAtK": 0.8989,
+    "precisionAtK": 0.1857,
+    "recallAtK": 0.9613,
+    "ndcgAtK": 0.8885,
     "mrr": 0.8929,
-    "contaminationRate": 0.7273
+    "contaminationRate": 0.6364
   },
   "cases": [
     {
@@ -21,18 +21,18 @@
       "rankedTopK": [
         "k-2jb9bh3p",
         "k-l7oy85r0",
-        "k-uo9iz2e0",
-        "k-w8xru25o",
         "k-kmnflb56",
+        "k-w8xru25o",
         "k-5nuw1j8i",
-        "k-mjxct637",
-        "k-k2ylcsm9",
-        "k-91f42ekj",
-        "k-jgazhhz6"
+        "k-uo9iz2e0",
+        "k-gqkb0d2i",
+        "k-f06au36t",
+        "k-jgazhhz6",
+        "k-imz9hai0"
       ],
       "precision": 0.3,
       "recall": 1,
-      "ndcg": 0.901,
+      "ndcg": 0.9066,
       "reciprocalRank": 1,
       "contamination": 0
     },
@@ -47,17 +47,17 @@
         "k-w8xru25o",
         "k-5nuw1j8i",
         "k-l7oy85r0",
-        "k-uo9iz2e0",
         "k-jgazhhz6",
+        "k-uo9iz2e0",
+        "k-f06au36t",
         "k-2jb9bh3p",
-        "k-convoy-dashboard-design-decisions",
-        "k-imz9hai0",
         "k-kmnflb56",
-        "k-mjxct637"
+        "k-imz9hai0",
+        "k-gqkb0d2i"
       ],
       "precision": 0.3,
       "recall": 1,
-      "ndcg": 0.9469,
+      "ndcg": 0.9675,
       "reciprocalRank": 1
     },
     {
@@ -70,12 +70,12 @@
         "k-l7oy85r0",
         "k-jgazhhz6",
         "k-2jb9bh3p",
-        "k-uo9iz2e0",
         "k-kmnflb56",
-        "k-convoy-dashboard-design-decisions",
+        "k-f06au36t",
+        "k-uo9iz2e0",
         "k-5nuw1j8i",
-        "k-91f42ekj",
-        "k-gzzzt7uk"
+        "k-zuks8lor",
+        "k-dqg0dmc3"
       ],
       "precision": 0.1,
       "recall": 1,
@@ -90,20 +90,20 @@
       "rankedTopK": [
         "k-kmnflb56",
         "k-2jb9bh3p",
-        "k-uo9iz2e0",
+        "k-gqkb0d2i",
+        "k-f06au36t",
         "k-jgazhhz6",
         "k-l7oy85r0",
-        "k-k2ylcsm9",
+        "k-dqg0dmc3",
+        "k-uo9iz2e0",
         "k-imz9hai0",
-        "k-fqn5b57c",
-        "k-8dsb3up8",
-        "k-higesjy9"
+        "k-zuks8lor"
       ],
       "precision": 0.1,
       "recall": 1,
       "ndcg": 1,
       "reciprocalRank": 1,
-      "contamination": 2
+      "contamination": 1
     },
     {
       "query": "convoy dashboard panel sidebar badge ribbon",
@@ -115,13 +115,13 @@
         "k-convoy-dashboard-design-decisions",
         "k-uo9iz2e0",
         "k-91f42ekj",
-        "k-zulf5wam",
-        "k-w8xru25o",
-        "k-imz9hai0",
-        "k-convoy-requires-resync-design-decisions",
+        "k-vvamtwke",
+        "k-jgazhhz6",
         "k-5nuw1j8i",
         "k-2jb9bh3p",
-        "k-jgazhhz6"
+        "k-kmnflb56",
+        "k-imz9hai0",
+        "k-f06au36t"
       ],
       "precision": 0.2,
       "recall": 1,
@@ -136,14 +136,14 @@
       "rankedTopK": [
         "k-ypsx5ask",
         "k-nug0kosj",
+        "k-5xnflq1k",
         "k-1s76awex",
+        "k-w8xru25o",
         "k-acodv9lb",
+        "k-2jb9bh3p",
         "k-zoawqis5",
         "k-pajgyr76",
-        "k-m9xeflrk",
-        "k-w8xru25o",
-        "k-qhu1sw8h",
-        "k-g7zu4ki4"
+        "k-m9xeflrk"
       ],
       "precision": 0.1,
       "recall": 1,
@@ -160,12 +160,12 @@
         "k-2njgnd6v",
         "k-klbt2h37",
         "k-q2wz8nb0",
-        "k-dsn4wl6r",
         "k-qvn9uqqu",
         "k-ypsx5ask",
+        "k-aua5adqn",
         "k-5n0xvgg3",
-        "k-1byd4jko",
-        "w-guptmc33"
+        "k-dsn4wl6r",
+        "k-1byd4jko"
       ],
       "precision": 0.1,
       "recall": 1,
@@ -181,14 +181,14 @@
       "rankedTopK": [
         "k-8dsb3up8",
         "k-fqn5b57c",
-        "k-mjxct637",
-        "k-l7oy85r0",
-        "k-uo9iz2e0",
-        "k-burm5wh0",
-        "k-qvn9uqqu",
         "k-jgazhhz6",
+        "k-l7oy85r0",
+        "k-2jb9bh3p",
+        "k-kmnflb56",
         "k-imz9hai0",
-        "k-2jb9bh3p"
+        "k-mjxct637",
+        "k-uo9iz2e0",
+        "k-burm5wh0"
       ],
       "precision": 0.1,
       "recall": 1,
@@ -203,13 +203,13 @@
       "rankedTopK": [
         "k-qhu1sw8h",
         "k-w9r21jkj",
-        "k-c04vr46t",
         "k-u16rujhn",
+        "k-c04vr46t",
         "k-luk3gkdj",
         "k-mjxct637",
-        "k-dsn4wl6r",
-        "k-burm5wh0",
         "w-0ieze72s",
+        "k-burm5wh0",
+        "k-code-intel-m3-impl",
         "k-5n0xvgg3"
       ],
       "precision": 0.1,
@@ -232,8 +232,8 @@
         "k-5n0xvgg3",
         "k-klbt2h37",
         "k-zoawqis5",
-        "k-gu0h02zt",
-        "k-gi8pj4gg"
+        "k-l7oy85r0",
+        "k-gu0h02zt"
       ],
       "precision": 0.1,
       "recall": 1,
@@ -249,11 +249,11 @@
         "k-rksv8m51",
         "k-8dsb3up8",
         "k-uo9iz2e0",
-        "k-convoy-dashboard-design-decisions",
         "k-m9xeflrk",
         "k-1ps6iyqf",
-        "k-qvn9uqqu",
         "k-convoy-requires-resync-design-decisions",
+        "k-convoy-dashboard-design-decisions",
+        "k-qvn9uqqu",
         "k-zulf5wam",
         "k-3swbuc36"
       ],
@@ -271,13 +271,13 @@
         "k-g7zu4ki4",
         "k-qszeow1i",
         "k-koa51gtj",
+        "k-w8xru25o",
         "k-1s76awex",
         "k-nug0kosj",
         "k-ovlxucc1",
         "k-burm5wh0",
-        "k-zoawqis5",
-        "k-pajgyr76",
-        "k-w8xru25o"
+        "k-5xnflq1k",
+        "k-zoawqis5"
       ],
       "precision": 0.1,
       "recall": 1,
@@ -296,11 +296,11 @@
         "k-eiv217in",
         "k-8d85l75r",
         "k-zj0lp1yv",
+        "k-talge4d2",
         "k-doed4dzy",
+        "k-p90ik5jo",
         "k-mjxct637",
-        "k-pupprz0g",
-        "k-pajgyr76",
-        "k-acodv9lb"
+        "k-v9l1e8qa"
       ],
       "precision": 0.2,
       "recall": 1,
@@ -319,19 +319,19 @@
         "k-1byd4jko",
         "k-convoy-requires-resync-design-decisions",
         "k-uo9iz2e0",
-        "k-zulf5wam",
         "k-40emzavw",
+        "k-zulf5wam",
         "k-91f42ekj",
         "k-3kjlxadt",
         "k-4e666q5w",
-        "k-convoy-dashboard-design-decisions",
-        "k-convoy-hardening-design-decisions"
+        "k-convoy-hardening-design-decisions",
+        "k-kmnflb56"
       ],
       "precision": 0.3,
       "recall": 0.75,
-      "ndcg": 0.5102,
+      "ndcg": 0.5319,
       "reciprocalRank": 0.5,
-      "contamination": 1
+      "contamination": 0
     },
     {
       "query": "agent dispatch contract events not spawning",
@@ -342,18 +342,18 @@
       "rankedTopK": [
         "k-3kjlxadt",
         "k-agent-dispatch-design-decisions",
-        "k-1s76awex",
         "k-c8uur83h",
+        "k-1s76awex",
         "k-1byd4jko",
         "k-5umd9fff",
+        "k-jgazhhz6",
+        "k-u16rujhn",
         "k-uo9iz2e0",
-        "k-40emzavw",
-        "k-zulf5wam",
-        "k-u16rujhn"
+        "k-zulf5wam"
       ],
-      "precision": 0.2,
-      "recall": 1,
-      "ndcg": 0.5803,
+      "precision": 0.1,
+      "recall": 0.5,
+      "ndcg": 0.3869,
       "reciprocalRank": 0.5
     },
     {
@@ -366,13 +366,13 @@
         "k-4e666q5w",
         "k-3kjlxadt",
         "k-40emzavw",
+        "k-f06au36t",
         "k-u16rujhn",
+        "k-qqyuj7ze",
         "k-e86w9l9u",
         "k-mjxct637",
-        "k-zydgbqeg",
-        "k-1byd4jko",
-        "k-agent-dispatch-design-decisions",
-        "k-1s76awex"
+        "k-gqkb0d2i",
+        "k-24mp31p1"
       ],
       "precision": 0.2,
       "recall": 1,
@@ -413,18 +413,18 @@
       "rankedTopK": [
         "k-zoawqis5",
         "k-cg3xlfgt",
+        "k-73ofos2z",
+        "k-5xnflq1k",
         "k-ovlxucc1",
         "k-t2ihkk5i",
         "k-0bz1r6n0",
         "k-174l945h",
         "k-gtgddgs3",
-        "k-qszeow1i",
-        "k-ormciy7d",
-        "k-ypsx5ask"
+        "k-24mp31p1"
       ],
-      "precision": 0.3,
-      "recall": 1,
-      "ndcg": 0.9134,
+      "precision": 0.2,
+      "recall": 0.6667,
+      "ndcg": 0.7654,
       "reciprocalRank": 1,
       "contamination": 0
     },
@@ -440,11 +440,11 @@
         "k-qszeow1i",
         "k-gtgddgs3",
         "k-pwksnl38",
+        "k-e60cayja",
         "k-5n0xvgg3",
-        "k-zoawqis5",
         "k-0bz1r6n0",
-        "k-t2ihkk5i",
-        "k-burm5wh0"
+        "k-zoawqis5",
+        "k-t2ihkk5i"
       ],
       "precision": 0.2,
       "recall": 1,
@@ -462,12 +462,12 @@
         "k-ovlxucc1",
         "k-174l945h",
         "k-zoawqis5",
+        "k-5xnflq1k",
         "k-pupprz0g",
-        "k-t2ihkk5i",
         "k-1ps6iyqf",
+        "k-t2ihkk5i",
         "k-m9xeflrk",
-        "k-klbt2h37",
-        "k-1s76awex"
+        "k-73ofos2z"
       ],
       "precision": 0.2,
       "recall": 1,
@@ -485,13 +485,13 @@
         "k-0bz1r6n0",
         "k-q2wz8nb0",
         "k-zoawqis5",
+        "k-73ofos2z",
         "k-5n0xvgg3",
         "k-x8umv6et",
         "k-gtgddgs3",
         "k-ormciy7d",
         "k-174l945h",
-        "k-code-intel-m3-impl",
-        "k-klbt2h37"
+        "k-code-intel-m3-impl"
       ],
       "precision": 0.2,
       "recall": 1,
@@ -511,9 +511,9 @@
         "k-klbt2h37",
         "k-ovlxucc1",
         "k-0bz1r6n0",
+        "k-5xnflq1k",
         "k-1s76awex",
-        "k-gtgddgs3",
-        "k-174l945h"
+        "k-gtgddgs3"
       ],
       "precision": 0.1,
       "recall": 1,
@@ -536,15 +536,15 @@
         "k-g0buqcg5",
         "k-ofsgt3dd",
         "k-burm5wh0",
-        "k-qvn9uqqu",
         "k-qti3v876",
-        "k-1byd4jko"
+        "k-5nuw1j8i",
+        "k-qvn9uqqu"
       ],
       "precision": 0.4,
       "recall": 1,
       "ndcg": 0.9268,
       "reciprocalRank": 1,
-      "contamination": 0
+      "contamination": 1
     },
     {
       "query": "work phase history skipped guard audit trail",
@@ -559,8 +559,8 @@
         "k-l6o5ujfw",
         "k-luk3gkdj",
         "k-m9xeflrk",
-        "k-burm5wh0",
         "k-n3gtykv5",
+        "k-burm5wh0",
         "k-k2ylcsm9",
         "k-gu0h02zt"
       ],
@@ -587,7 +587,7 @@
         "k-1s76awex",
         "k-aopzp0i8",
         "k-zulf5wam",
-        "k-luk3gkdj"
+        "k-vo0fhcxl"
       ],
       "precision": 0.4,
       "recall": 1,
@@ -605,12 +605,12 @@
         "k-klbt2h37",
         "k-q2wz8nb0",
         "k-acodv9lb",
+        "k-aua5adqn",
         "k-ypsx5ask",
         "k-0bz1r6n0",
-        "k-dsn4wl6r",
         "k-pupprz0g",
-        "k-qszeow1i",
-        "k-gao610s2"
+        "k-kmnflb56",
+        "k-qszeow1i"
       ],
       "precision": 0.2,
       "recall": 1,
@@ -655,7 +655,7 @@
         "w-5zsmz0f7",
         "w-df869qxf",
         "w-kppfuyle",
-        "w-c09d7wa9",
+        "w-j7ao5fak",
         "w-qqzud6wf",
         "w-zxi617cw"
       ],

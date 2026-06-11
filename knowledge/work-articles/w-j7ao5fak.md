@@ -2,7 +2,7 @@
 id: w-j7ao5fak
 title: Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3
 template: spike
-phase: planning
+phase: enrichment
 priority: low
 author: claude-code
 tags: [eval, golden-set, follow-up, wave-d]
@@ -11,10 +11,10 @@ codeRefs: [tests/eval/golden/dashboard.json, tests/eval/baseline.json]
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-10T23:29:32.042Z
-updatedAt: 2026-06-10T23:29:32.042Z
+updatedAt: 2026-06-11T11:20:13.728Z
 enrichmentRolesJson: {"items":[]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T23:29:32.042Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T23:29:32.042Z","exitedAt":"2026-06-11T11:20:13.728Z"},{"phase":"enrichment","enteredAt":"2026-06-11T11:20:13.728Z"}]}
 ---
 
 ## Objective

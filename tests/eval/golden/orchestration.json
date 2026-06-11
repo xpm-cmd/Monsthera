@@ -25,7 +25,7 @@
     "type": "knowledge",
     "expectedArticleIds": ["k-4e666q5w", "k-40emzavw"],
     "forbiddenArticleIds": ["k-2jb9bh3p", "k-l7oy85r0"],
-    "note": "Wave planning system + orchestration model. Dashboard SPA/data-flow notes are unrelated to wave batching — forbidden."
+    "note": "Wave planning system + orchestration model. Dashboard SPA/data-flow notes are unrelated to wave batching — forbidden (re-reviewed post-D3 refresh 2026-06-11: both notes remain frontend-only, no wave/batching/dispatch content; forbidden stands)."
   },
   {
     "query": "convoy single-convoy invariant hardening provenance events",
