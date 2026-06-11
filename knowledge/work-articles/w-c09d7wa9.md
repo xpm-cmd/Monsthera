@@ -2,7 +2,7 @@
 id: w-c09d7wa9
 title: findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named
 template: bugfix
-phase: planning
+phase: implementation
 priority: medium
 author: claude-code
 tags: [consumer-driven, banyan, knowledge-repository, follow-up]
@@ -11,10 +11,10 @@ codeRefs: [src/knowledge/file-repository.ts, src/knowledge/service.ts]
 dependencies: []
 blockedBy: []
 createdAt: 2026-06-10T11:36:09.607Z
-updatedAt: 2026-06-10T11:36:09.607Z
+updatedAt: 2026-06-11T11:05:34.508Z
 enrichmentRolesJson: {"items":[{"role":"testing","agentId":"claude-code","status":"pending"}]}
 reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T11:36:09.607Z"}]}
+phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T11:36:09.607Z","exitedAt":"2026-06-11T11:04:58.175Z"},{"phase":"enrichment","enteredAt":"2026-06-11T11:04:58.175Z","exitedAt":"2026-06-11T11:05:34.508Z"},{"phase":"implementation","enteredAt":"2026-06-11T11:05:34.508Z","reason":"Solo-agent session: el rol testing pendiente se cumple inline con TDD red→green (tests son parte del AC y del gate del PR).","skippedGuards":["min_enrichment_met"]}]}
 ---
 
 ## Objective
