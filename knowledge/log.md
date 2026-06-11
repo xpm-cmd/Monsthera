@@ -302,3 +302,8 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 11:29:13]** advance work | Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar → enrichment (w-j7unmtos)
 - **[2026-06-11 11:29:40]** create knowledge | Decisión G3: demotion por vigencia descartada sin implementar — el trigger no dispara y la palanca perdió su premisa (k-a5gjeblo)
 - **[2026-06-11 11:33:02]** advance work | Wave G3 (condicional): demotion por vigencia en rerankForTrust — evaluar trigger post-G2 e implementar-o-descartar → done (w-j7unmtos)
+- **[2026-06-11 11:52:53]** create work | H1 — Repository cache: matar el O(corpus-parse) por lookup en knowledge file-repository (w-n75fifq1)
+- **[2026-06-11 11:57:42]** advance work | H1 — Repository cache: matar el O(corpus-parse) por lookup en knowledge file-repository → enrichment (w-n75fifq1)
+- **[2026-06-11 12:18:56]** create work | Work file-repository: adoptar StatCachedDirectoryReader en los métodos de filtro (w-7nnee3c2)
+- **[2026-06-11 12:19:30]** create knowledge | Wave H1: cache stat-based del knowledge repository — O(corpus-parse) por lookup pagado y findBySlug con identidad única (k-y8xvwfu7)
+- **[2026-06-11 12:19:45]** advance work | H1 — Repository cache: matar el O(corpus-parse) por lookup en knowledge file-repository → implementation (w-n75fifq1)
