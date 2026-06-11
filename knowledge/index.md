@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 146 knowledge articles and 29 work articles.
-> Last updated: 2026-06-11 06:09:03
+> Auto-generated catalog of 147 knowledge articles and 30 work articles.
+> Last updated: 2026-06-11 06:10:56
 
 ## Knowledge
 
@@ -172,6 +172,7 @@
 - [Solution: Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](notes/distilled-w-bjggjpsg.md) — > Distilled from work [w-bjggjpsg] on completion. Origin: `distilled`.  ## Objec
 - [Solution: Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](notes/distilled-w-y0wuvaix.md) — > Distilled from work [w-y0wuvaix] on completion. Origin: `distilled`.  ## Objec
 - [Solution: Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](notes/distilled-w-s16wia61.md) — > Distilled from work [w-s16wia61] on completion. Origin: `distilled`.  ## Objec
+- [Solution: Wave F: backlog opcional — Dolt smoke real, CLI coverage, ratchet, ADR-021, per-commit codeRefs](notes/distilled-w-05pf7hpm.md) — > Distilled from work [w-05pf7hpm] on completion. Origin: `distilled`.  ## Objec
 - [T5: Minimal-diff frontmatter write on knowledge update](notes/t5-minimal-diff-frontmatter-write-on-knowledge-update.md) — ## Summary  Final task (T5) of the real-corpus dogfood follow-up. Shipped on bra
 - [Wave A1: write path honra filePath — update/delete sobre archivos ID-named](notes/wave-a1-write-path-honra-filepath-updatedelete-sobre-archivos-id-named.md) — Cierra el gotcha registrado en PR-16 (k-zv7qfvll): todo el write path resolvía s
 - [Wave A2: GUARD_FAILED min_enrichment_met ahora nombra roles pendientes y remedios](notes/wave-a2-guard-failed-min-enrichment-met-ahora-nombra-roles-pendientes-y-remedios.md) — Cierra la fricción #1 del quickstart de work tracking (k-e9atys0k): `GUARD_FAILE
@@ -199,7 +200,7 @@
 - [findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](work-articles/w-c09d7wa9.md) [medium] — ## Objective  Descubierto durante Wave A1 (write path). `Fil
 - [Golden set: re-revisar forbiddenArticleIds de casos dashboard tras el refresh D3](work-articles/w-j7ao5fak.md) [low] — ## Objective  El cierre de Wave D midió contamination 0.7273
 
-### done (26)
+### done (27)
 
 - [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
 - [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
@@ -227,6 +228,7 @@
 - [Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](work-articles/w-bjggjpsg.md) [high] — ## Objective  (Ver historial: C1 reformulado por el descubri
 - [Wave D: dashboard UX — split router, responsive, search results-first, heroes, Sessions, eval card, self-host](work-articles/w-y0wuvaix.md) [medium] — ## Objective  (Original en historial.) Hallazgos (a)-(h) del
 - [Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review](work-articles/w-s16wia61.md) [medium] — ## Objective  (Original en historial.) Split de `src/work/li
+- [Wave F: backlog opcional — Dolt smoke real, CLI coverage, ratchet, ADR-021, per-commit codeRefs](work-articles/w-05pf7hpm.md) [low] — ## Objective  Los 5 items del backlog opcional de la auditor
 
 ### cancelled (1)
 
