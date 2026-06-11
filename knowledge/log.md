@@ -277,3 +277,4 @@ Append-only record of knowledge and work mutations.
 - **[2026-06-11 00:14:50]** create knowledge | Solution: Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review (k-9dsf5kqm)
 - **[2026-06-11 00:14:50]** advance work | Wave E1: split de work/lint.ts en rules/ por finding type — luego PAUSA para review → done (w-s16wia61)
 - **[2026-06-11 00:30:55]** create knowledge | Wave E2: createContainer partido en factories por subsistema — 697 → 519, orden de construcción byte-a-byte (k-bhj6atny)
+- **[2026-06-11 00:48:49]** create knowledge | Wave E3: structure/service.ts — citation-analyzer, staleness, code-ref-indexer y tag-edge-builder extraídos (1337 → 874) (k-e60cayja)

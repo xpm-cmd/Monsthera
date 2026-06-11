@@ -1,5 +1,3 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { ok, err } from "../core/result.js";
 import type { Result } from "../core/result.js";
 import type { Logger } from "../core/logger.js";
@@ -7,12 +5,16 @@ import { NotFoundError } from "../core/errors.js";
 import type { StorageError } from "../core/errors.js";
 import type { KnowledgeArticle, KnowledgeArticleRepository } from "../knowledge/repository.js";
 import type { WorkArticle, WorkArticleRepository } from "../work/repository.js";
-import { normalizeCodeRefPath, resolveCodeRef } from "../core/code-refs.js";
-import { inspectKnowledgeArticle, inspectWorkArticle } from "../context/insights.js";
-import { extractStatedCanonicalValues, normaliseCanonicalNumber } from "../work/guards.js";
 import type { CanonicalValue } from "../work/policy-loader.js";
-import { normalizeTag } from "../knowledge/tags.js";
-import { extractInlineArticleIds, extractWikilinks, stripCodeRegions } from "./wikilink.js";
+import { extractInlineArticleIds, extractWikilinks } from "./wikilink.js";
+import {
+  collectOrphanCitations,
+  detectContradictionsInArticles,
+  verifyCitedValuesInArticles,
+} from "./citation-analyzer.js";
+import { assembleCodeGraphNodes, buildCodeRefOwnerIndexFromArticles } from "./code-ref-indexer.js";
+import { buildStalenessReportFromArticles } from "./staleness-report.js";
+import { assembleSharedTagEdges } from "./tag-edge-builder.js";
 
 /**
  * A reference token that is an external URL (`http://` / `https://`) is a
@@ -27,11 +29,6 @@ import { extractInlineArticleIds, extractWikilinks, stripCodeRegions } from "./w
 function isExternalReference(ref: string): boolean {
   return /^https?:\/\//i.test(ref);
 }
-
-/** Tags shared by up to this many articles get full pairwise edges. */
-const SHARED_TAG_DIRECT_THRESHOLD = 15;
-/** Tags shared by up to this many articles get a hub node instead of pairwise edges. */
-const SHARED_TAG_HUB_THRESHOLD = 30;
 
 export type StructureNodeKind = "knowledge" | "work" | "code" | "tag";
 export type StructureEdgeKind = "code_ref" | "reference" | "dependency" | "shared_tag";
@@ -291,7 +288,6 @@ export class StructureService {
     const codeRefOwners = new Map<string, Set<string>>();
     const missingReferences = new Set<string>();
     const missingDependencies = new Set<string>();
-    const omittedSharedTags = new Set<string>();
 
     // Sorted union of every article id, used by the shorthand-stem fallback
     // below. Sorting makes the first prefix hit deterministic when several
@@ -435,34 +431,14 @@ export class StructureService {
       rememberCodeRef(nodeId, article.codeRefs);
     }
 
-    const codeExistenceEntries = await Promise.all(
-      [...codeRefOwners.keys()].map(async (codeRef) => ({
-        codeRef,
-        exists: await this.codeRefExists(codeRef),
-      })),
-    );
-    const codeExistence = new Map(codeExistenceEntries.map((entry) => [entry.codeRef, entry.exists]));
-
-    for (const [codeRef, ownerIds] of codeRefOwners) {
-      const codeNodeId = `c:${codeRef}`;
-      addNode({
-        id: codeNodeId,
-        kind: "code",
-        label: path.basename(codeRef),
-        path: codeRef,
-        exists: codeExistence.get(codeRef) ?? false,
-      });
-
-      for (const ownerId of ownerIds) {
-        addEdge({
-          id: `code_ref:${ownerId}->${codeNodeId}`,
-          source: ownerId,
-          target: codeNodeId,
-          kind: "code_ref",
-          label: "codeRef",
-        });
-      }
-    }
+    // Code nodes + code_ref edges: assembly delegated to code-ref-indexer.ts.
+    const {
+      nodes: codeNodes,
+      edges: codeRefEdges,
+      codeExistenceEntries,
+    } = await assembleCodeGraphNodes(this.repoPath, codeRefOwners);
+    for (const node of codeNodes) addNode(node);
+    for (const edge of codeRefEdges) addEdge(edge);
 
     for (const article of workArticles) {
       const sourceId = `w:${article.id}`;
@@ -533,57 +509,15 @@ export class StructureService {
       }
     }
 
-    const hubTags = new Set<string>();
-
-    for (const [tag, bucket] of tagBuckets) {
-      const nodeIds = [...bucket];
-      if (nodeIds.length < 2) continue;
-
-      if (nodeIds.length > SHARED_TAG_HUB_THRESHOLD) {
-        // Tier 3: truly ubiquitous — omit entirely
-        omittedSharedTags.add(tag);
-        continue;
-      }
-
-      if (nodeIds.length > SHARED_TAG_DIRECT_THRESHOLD) {
-        // Tier 2: create a hub node and connect each article to it
-        hubTags.add(tag);
-        const hubId = `tag:${tag}`;
-        nodes.set(hubId, {
-          id: hubId,
-          kind: "tag",
-          label: tag,
-        });
-        for (const nodeId of nodeIds) {
-          addEdge({
-            id: `shared_tag:${nodeId}<->${hubId}`,
-            source: nodeId,
-            target: hubId,
-            kind: "shared_tag",
-            label: "shared tag",
-            tags: [tag],
-          });
-        }
-        continue;
-      }
-
-      // Tier 1: pairwise edges (≤ SHARED_TAG_DIRECT_THRESHOLD articles)
-      nodeIds.sort();
-      for (let index = 0; index < nodeIds.length; index += 1) {
-        for (let inner = index + 1; inner < nodeIds.length; inner += 1) {
-          const source = nodeIds[index]!;
-          const target = nodeIds[inner]!;
-          addEdge({
-            id: `shared_tag:${source}<->${target}`,
-            source,
-            target,
-            kind: "shared_tag",
-            label: "shared tag",
-            tags: [tag],
-          });
-        }
-      }
-    }
+    // Shared-tag hub nodes + edges: assembly delegated to tag-edge-builder.ts.
+    const {
+      hubNodes,
+      edges: sharedTagEdges,
+      hubTags,
+      omittedSharedTags,
+    } = assembleSharedTagEdges(tagBuckets);
+    for (const node of hubNodes) addNode(node);
+    for (const edge of sharedTagEdges) addEdge(edge);
 
     const graph: StructureGraph = {
       nodes: [...nodes.values()],
@@ -637,35 +571,7 @@ export class StructureService {
     if (!knowledgeResult.ok) return knowledgeResult;
     if (!workResult.ok) return workResult;
 
-    const byRef = new Map<string, Set<string>>();
-    const knowledgeById = new Map<string, KnowledgeArticle>();
-    const workById = new Map<string, WorkArticle>();
-
-    const remember = (nodeId: string, refs: readonly string[] | undefined): void => {
-      for (const ref of refs ?? []) {
-        const normalized = normalizeCodeRefPath(ref);
-        if (!normalized) continue;
-        let bucket = byRef.get(normalized);
-        if (!bucket) {
-          bucket = new Set();
-          byRef.set(normalized, bucket);
-        }
-        bucket.add(nodeId);
-      }
-    };
-
-    for (const article of knowledgeResult.value) {
-      const nodeId = `k:${article.id}`;
-      knowledgeById.set(nodeId, article);
-      remember(nodeId, article.codeRefs);
-    }
-    for (const article of workResult.value) {
-      const nodeId = `w:${article.id}`;
-      workById.set(nodeId, article);
-      remember(nodeId, article.codeRefs);
-    }
-
-    return ok({ byRef, knowledgeById, workById });
+    return ok(buildCodeRefOwnerIndexFromArticles(knowledgeResult.value, workResult.value));
   }
 
   async getNeighbors(
@@ -850,36 +756,9 @@ export class StructureService {
     const work = await this.workRepo.findMany();
     if (!work.ok) return work;
 
-    const sourcePaths = new Map<string, string>();
-    for (const a of knowledge.value) {
-      // Prefer the repository-provided real path: externally authored files
-      // are often ID-named, so the slug-derived path would not exist on disk.
-      sourcePaths.set(a.id, a.filePath ?? path.join("notes", `${a.slug}.md`));
-    }
-    for (const a of work.value) {
-      sourcePaths.set(a.id, path.join("work-articles", `${a.id}.md`));
-    }
-
-    const orphans: OrphanCitation[] = [];
-    for (const entry of graphResult.value.gaps.missingReferences) {
-      const colonIdx = entry.indexOf(":");
-      if (colonIdx === -1) continue;
-      const sourceArticleId = entry.slice(0, colonIdx);
-      const missingRefId = entry.slice(colonIdx + 1);
-      const sourcePath = sourcePaths.get(sourceArticleId);
-      orphans.push({
-        sourceArticleId,
-        missingRefId,
-        ...(sourcePath ? { sourcePath } : {}),
-      });
-    }
-
-    orphans.sort((a, b) => {
-      const byPath = (a.sourcePath ?? "").localeCompare(b.sourcePath ?? "");
-      return byPath !== 0 ? byPath : a.missingRefId.localeCompare(b.missingRefId);
-    });
-
-    return ok(orphans);
+    return ok(
+      collectOrphanCitations(graphResult.value.gaps.missingReferences, knowledge.value, work.value),
+    );
   }
 
   /**
@@ -928,48 +807,7 @@ export class StructureService {
     if (!knowledgeResult.ok) return knowledgeResult;
     if (!workResult.ok) return workResult;
 
-    const knowledgeArticles = knowledgeResult.value;
-    const workArticles = workResult.value;
-
-    const source = resolveArticle(articleIdOrSlug, knowledgeArticles, workArticles);
-    if (!source) return err(new NotFoundError("Article", articleIdOrSlug));
-
-    const knowledgeById = new Map<string, string>(
-      knowledgeArticles.map((a) => [a.id, a.content]),
-    );
-    const knowledgeBySlug = new Map<string, string>(
-      knowledgeArticles.map((a) => [a.slug, a.content]),
-    );
-    const workById = new Map<string, string>(
-      workArticles.map((a) => [a.id, a.content]),
-    );
-
-    const resolveTargetContent = (ref: string): string | undefined =>
-      knowledgeById.get(ref) ?? knowledgeBySlug.get(ref) ?? workById.get(ref);
-
-    const pairs = extractCitationValuePairs(source.content);
-    const findings: CitationValueFinding[] = [];
-
-    for (const pair of pairs) {
-      if (pair.citationId === source.id) continue;
-
-      const targetContent = resolveTargetContent(pair.citationId);
-      // Unknown citation targets are the domain of `getOrphanCitations`,
-      // not of value verification.
-      if (targetContent === undefined) continue;
-
-      if (contentContainsValue(targetContent, pair.claimedValue)) continue;
-
-      findings.push({
-        sourceArticle: source.id,
-        citedArticle: pair.citationId,
-        claimedValue: pair.claimedValue,
-        foundValues: extractNumericTokens(targetContent, 10),
-        lineHint: pair.lineHint,
-      });
-    }
-
-    return ok(findings);
+    return verifyCitedValuesInArticles(articleIdOrSlug, knowledgeResult.value, workResult.value);
   }
 
   /**
@@ -982,8 +820,9 @@ export class StructureService {
    *    article was last updated (a re-import candidate).
    *
    * Reuses `inspectKnowledgeArticle` / `inspectWorkArticle` (the same
-   * freshness logic `buildContextPack` applies per item) and the service's
-   * own `codeRefExists`, so the report can never drift from those surfaces.
+   * freshness logic `buildContextPack` applies per item) and
+   * `codeRefExists` (code-ref-indexer.ts), so the report can never drift
+   * from those surfaces.
    */
   async buildStalenessReport(): Promise<Result<StalenessReport, StorageError>> {
     const [knowledgeResult, workResult] = await Promise.all([
@@ -993,75 +832,9 @@ export class StructureService {
     if (!knowledgeResult.ok) return knowledgeResult;
     if (!workResult.ok) return workResult;
 
-    const knowledgeArticles = knowledgeResult.value;
-    const workArticles = workResult.value;
-
-    const staleArticles: StaleArticleEntry[] = [];
-    const staleCodeRefs: StaleCodeRefEntry[] = [];
-    const sourceNewer: SourceNewerEntry[] = [];
-
-    for (const article of knowledgeArticles) {
-      const diagnostics = await inspectKnowledgeArticle(article, { repoPath: this.repoPath });
-      if (diagnostics.freshness.state === "stale") {
-        staleArticles.push({
-          id: article.id,
-          type: "knowledge",
-          title: article.title,
-          slug: article.slug,
-          ageDays: diagnostics.freshness.ageDays,
-          detail: diagnostics.freshness.detail,
-          sourcePath: article.sourcePath,
-        });
-      }
-      if (diagnostics.freshness.sourceSyncState === "source-newer" && article.sourcePath) {
-        sourceNewer.push({
-          id: article.id,
-          title: article.title,
-          slug: article.slug,
-          sourcePath: article.sourcePath,
-          sourceUpdatedAt: diagnostics.freshness.sourceUpdatedAt,
-          articleUpdatedAt: article.updatedAt,
-        });
-      }
-      for (const codeRef of article.codeRefs) {
-        if (!(await this.codeRefExists(codeRef))) {
-          staleCodeRefs.push({ articleId: article.id, type: "knowledge", title: article.title, codeRef });
-        }
-      }
-    }
-
-    for (const article of workArticles) {
-      const diagnostics = inspectWorkArticle(article);
-      if (diagnostics.freshness.state === "stale") {
-        staleArticles.push({
-          id: article.id,
-          type: "work",
-          title: article.title,
-          ageDays: diagnostics.freshness.ageDays,
-          detail: diagnostics.freshness.detail,
-        });
-      }
-      for (const codeRef of article.codeRefs) {
-        if (!(await this.codeRefExists(codeRef))) {
-          staleCodeRefs.push({ articleId: article.id, type: "work", title: article.title, codeRef });
-        }
-      }
-    }
-
-    staleArticles.sort((a, b) => (b.ageDays ?? 0) - (a.ageDays ?? 0));
-
-    return ok({
-      staleArticles,
-      staleCodeRefs,
-      sourceNewer,
-      summary: {
-        knowledgeScanned: knowledgeArticles.length,
-        workScanned: workArticles.length,
-        staleArticleCount: staleArticles.length,
-        staleCodeRefCount: staleCodeRefs.length,
-        sourceNewerCount: sourceNewer.length,
-      },
-    });
+    return ok(
+      await buildStalenessReportFromArticles(knowledgeResult.value, workResult.value, this.repoPath),
+    );
   }
 
   /**
@@ -1094,244 +867,8 @@ export class StructureService {
     if (!knowledgeResult.ok) return knowledgeResult;
     if (!workResult.ok) return workResult;
 
-    const entries: ContradictionArticle[] = [
-      ...knowledgeResult.value.map((a) => ({
-        id: a.id as string,
-        slug: a.slug as string,
-        content: a.content,
-        tags: new Set(a.tags.map(normalizeTag)),
-        codeRefs: new Set(a.codeRefs.map(normalizeCodeRefPath)),
-      })),
-      ...workResult.value.map((a) => ({
-        id: a.id as string,
-        slug: undefined,
-        content: a.content,
-        tags: new Set(a.tags.map(normalizeTag)),
-        codeRefs: new Set(a.codeRefs.map(normalizeCodeRefPath)),
-      })),
-    ];
-
-    // name -> normalizedValue -> articles stating that value for that name
-    const byName = new Map<string, Map<string, StatedRef[]>>();
-    for (const entry of entries) {
-      const seen = new Set<string>(); // dedupe (name|normalized) within one article
-      for (const stated of extractStatedCanonicalValues(entry, canonicalValues)) {
-        const normalized = normaliseCanonicalNumber(stated.found);
-        const dedupeKey = `${stated.name}|${normalized}`;
-        if (seen.has(dedupeKey)) continue;
-        seen.add(dedupeKey);
-
-        const valueGroups = byName.get(stated.name) ?? new Map<string, StatedRef[]>();
-        const group = valueGroups.get(normalized) ?? [];
-        group.push({ entry, raw: stated.found, lineHint: stated.lineHint });
-        valueGroups.set(normalized, group);
-        byName.set(stated.name, valueGroups);
-      }
-    }
-
-    const findings: ContradictionFinding[] = [];
-    const emittedPairs = new Set<string>(); // dedupe unordered (idA|idB|name)
-
-    for (const [name, valueGroups] of byName) {
-      const normalizedValues = [...valueGroups.keys()];
-      if (normalizedValues.length < 2) continue; // every article agrees on this name
-
-      for (let i = 0; i < normalizedValues.length; i++) {
-        for (let j = i + 1; j < normalizedValues.length; j++) {
-          const groupA = valueGroups.get(normalizedValues[i]!) ?? [];
-          const groupB = valueGroups.get(normalizedValues[j]!) ?? [];
-          for (const left of groupA) {
-            for (const right of groupB) {
-              if (left.entry.id === right.entry.id) continue;
-
-              const adjacency = articleAdjacency(left.entry, right.entry);
-              if (!adjacency) continue;
-
-              const leftFirst = left.entry.id < right.entry.id;
-              const a = leftFirst ? left : right;
-              const b = leftFirst ? right : left;
-
-              const pairKey = `${a.entry.id}|${b.entry.id}|${name}`;
-              if (emittedPairs.has(pairKey)) continue;
-              emittedPairs.add(pairKey);
-
-              findings.push({
-                articleA: a.entry.id,
-                articleB: b.entry.id,
-                name,
-                valueA: a.raw,
-                valueB: b.raw,
-                sharedVia: adjacency.via,
-                sharedKey: adjacency.key,
-                lineHintA: a.lineHint,
-                lineHintB: b.lineHint,
-              });
-            }
-          }
-        }
-      }
-    }
-
-    if (opts?.articleId) {
-      const resolvedId =
-        entries.find((e) => e.id === opts.articleId || e.slug === opts.articleId)?.id ?? opts.articleId;
-      return ok(findings.filter((f) => f.articleA === resolvedId || f.articleB === resolvedId));
-    }
-
-    return ok(findings);
+    return ok(
+      detectContradictionsInArticles(canonicalValues, knowledgeResult.value, workResult.value, opts),
+    );
   }
-
-  private async codeRefExists(codeRef: string): Promise<boolean> {
-    const resolved = resolveCodeRef(this.repoPath, codeRef);
-
-    try {
-      await fs.access(resolved);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-
-// ─── Helpers for verifyCitedValues ────────────────────────────────────────
-
-interface ResolvedArticleLike {
-  readonly id: string;
-  readonly content: string;
-}
-
-function resolveArticle(
-  idOrSlug: string,
-  knowledge: ReadonlyArray<{ id: string; slug: string; content: string }>,
-  work: ReadonlyArray<{ id: string; content: string }>,
-): ResolvedArticleLike | undefined {
-  const byId = knowledge.find((a) => a.id === idOrSlug) ?? work.find((a) => a.id === idOrSlug);
-  if (byId) return { id: byId.id, content: byId.content };
-  const bySlug = knowledge.find((a) => a.slug === idOrSlug);
-  if (bySlug) return { id: bySlug.id, content: bySlug.content };
-  return undefined;
-}
-
-/** Citation-value window: how far after a citation token we look for a number. */
-const CITATION_VALUE_WINDOW = 80;
-
-/** A numeric token with optional `$`, thousands separator, decimal, and `%`. */
-const NUMERIC_TOKEN = /-?\$?\d[\d,]*(?:\.\d+)?%?/g;
-
-interface CitationValuePair {
-  readonly citationId: string;
-  readonly claimedValue: string;
-  readonly lineHint: string;
-}
-
-/**
- * Extract every `(citation, nearby-number)` pair in an article's prose.
- * A citation is either an inline `k-*` / `w-*` id or a `[[slug]]`
- * wikilink. Code regions are stripped first so example citations inside
- * fenced blocks do not produce false pairs.
- *
- * Multiple numbers after a single citation each yield a separate pair
- * — when the author wrote "see k-foo: 22.4% ($923 floor)", the verifier
- * checks both numbers against the cited article.
- */
-function extractCitationValuePairs(content: string): readonly CitationValuePair[] {
-  const stripped = stripCodeRegions(content);
-  const citationPattern = /(\b[kw]-[a-z0-9]+(?:-[a-z0-9]+)*\b|\[\[([^\]]+)\]\])/g;
-  const pairs: CitationValuePair[] = [];
-
-  for (const match of stripped.matchAll(citationPattern)) {
-    const start = match.index ?? 0;
-    const end = start + match[0].length;
-    const windowText = stripped.slice(end, end + CITATION_VALUE_WINDOW);
-    const citationId = match[2] !== undefined ? parseWikilinkSlug(match[2]) : match[0];
-    if (!citationId) continue;
-
-    for (const numMatch of windowText.matchAll(NUMERIC_TOKEN)) {
-      pairs.push({
-        citationId,
-        claimedValue: numMatch[0],
-        lineHint: extractLineAt(stripped, start),
-      });
-    }
-  }
-
-  return pairs;
-}
-
-function parseWikilinkSlug(inner: string): string | undefined {
-  const trimmed = inner.trim();
-  const pipe = trimmed.indexOf("|");
-  const slugPart = pipe >= 0 ? trimmed.slice(0, pipe) : trimmed;
-  const hash = slugPart.indexOf("#");
-  const slug = hash >= 0 ? slugPart.slice(0, hash).trim() : slugPart.trim();
-  return slug.length > 0 ? slug : undefined;
-}
-
-function contentContainsValue(content: string, claimed: string): boolean {
-  const normClaimed = normaliseNumericToken(claimed);
-  if (normClaimed === "") return false;
-  for (const match of content.matchAll(NUMERIC_TOKEN)) {
-    if (normaliseNumericToken(match[0]) === normClaimed) return true;
-  }
-  return false;
-}
-
-function normaliseNumericToken(raw: string): string {
-  return raw.replace(/[$,\s%]/g, "").trim();
-}
-
-function extractNumericTokens(content: string, limit: number): readonly string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const match of content.matchAll(NUMERIC_TOKEN)) {
-    const tok = match[0];
-    if (seen.has(tok)) continue;
-    seen.add(tok);
-    out.push(tok);
-    if (out.length >= limit) break;
-  }
-  return out;
-}
-
-function extractLineAt(text: string, index: number): string {
-  const lineStart = text.lastIndexOf("\n", index) + 1;
-  const lineEnd = text.indexOf("\n", index);
-  return text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
-}
-
-// ─── Helpers for detectContradictions ──────────────────────────────────────
-
-/** Normalized view of an article for cross-article contradiction comparison. */
-interface ContradictionArticle {
-  readonly id: string;
-  readonly slug?: string;
-  readonly content: string;
-  readonly tags: ReadonlySet<string>;
-  readonly codeRefs: ReadonlySet<string>;
-}
-
-/** One article's stated value for a canonical name, with provenance. */
-interface StatedRef {
-  readonly entry: ContradictionArticle;
-  readonly raw: string;
-  readonly lineHint: string;
-}
-
-/**
- * Whether two articles are graph-adjacent for contradiction purposes —
- * they share a normalized tag or a normalized code ref. Tags take priority
- * over code refs so the reported `sharedKey` is the most human-meaningful
- * link. Returns `undefined` when the articles are unrelated.
- */
-function articleAdjacency(
-  a: ContradictionArticle,
-  b: ContradictionArticle,
-): { via: "shared_tag" | "code_ref"; key: string } | undefined {
-  for (const tag of a.tags) {
-    if (tag.length > 0 && b.tags.has(tag)) return { via: "shared_tag", key: tag };
-  }
-  for (const ref of a.codeRefs) {
-    if (ref.length > 0 && b.codeRefs.has(ref)) return { via: "code_ref", key: ref };
-  }
-  return undefined;
 }

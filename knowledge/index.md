@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 141 knowledge articles and 29 work articles.
-> Last updated: 2026-06-11 00:30:55
+> Auto-generated catalog of 142 knowledge articles and 29 work articles.
+> Last updated: 2026-06-11 00:48:49
 
 ## Knowledge
 
@@ -186,6 +186,7 @@
 - [Wave D3: assets self-hosted (cero CDN), footer informativo, y las 7 notas dashboard-* refrescadas](notes/wave-d3-assets-self-hosted-cero-cdn-footer-informativo-y-las-7-notas-dashboard-refrescadas.md) — Rama `chore/d3-dashboard-polish`, apilada sobre #162. Cierra Wave D.  ## (g) Pol
 - [Wave E1: work/lint.ts partido en rules/ por familia — 871 → 408, findings del corpus byte-idénticos](notes/wave-e1-worklintts-partido-en-rules-por-familia-871-408-findings-del-corpus-byte-idnticos.md) — Rama `refactor/e1-lint-rules`, apilada sobre #163. Segundo archivo del backlog d
 - [Wave E2: createContainer partido en factories por subsistema — 697 → 519, orden de construcción byte-a-byte](notes/wave-e2-createcontainer-partido-en-factories-por-subsistema-697-519-orden-de-construccin-byte-a-byte.md) — Rama `refactor/e2-container-factories` desde main post-#165. Tercer split del ba
+- [Wave E3: structure/service.ts — citation-analyzer, staleness, code-ref-indexer y tag-edge-builder extraídos (1337 → 874)](notes/wave-e3-structureservicets-citation-analyzer-staleness-code-ref-indexer-y-tag-edge-builder-extrados-1337-874.md) — Rama `refactor/e3-structure-modules` desde main post-#167. Cuarto split del back
 
 ## Work
 
