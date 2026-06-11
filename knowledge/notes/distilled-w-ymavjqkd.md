@@ -1,22 +1,18 @@
 ---
-id: w-ymavjqkd
-title: Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo
-template: bugfix
-phase: done
-priority: high
-author: claude-code
-tags: [wave-a, consumer-driven, banyan]
-references: [k-3zo9w9dg, k-zv7qfvll, k-e9atys0k]
+id: k-r1kmcqoj
+title: Solution: Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo
+slug: distilled-w-ymavjqkd
+category: solution
+tags: [wave-a, consumer-driven, banyan, distilled]
 codeRefs: [src/knowledge/file-repository.ts, src/work/guards.ts, src/cli/work-commands.ts]
-dependencies: []
-blockedBy: []
-createdAt: 2026-06-10T11:28:58.838Z
-updatedAt: 2026-06-11T00:14:31.535Z
-enrichmentRolesJson: {"items":[{"role":"testing","agentId":"claude-code","status":"pending"}]}
-reviewersJson: {"items":[]}
-phaseHistoryJson: {"items":[{"phase":"planning","enteredAt":"2026-06-10T11:28:58.838Z","exitedAt":"2026-06-11T00:12:46.124Z"},{"phase":"enrichment","enteredAt":"2026-06-11T00:12:46.124Z","exitedAt":"2026-06-11T00:12:57.434Z"},{"phase":"implementation","enteredAt":"2026-06-11T00:12:57.434Z","exitedAt":"2026-06-11T00:14:30.249Z","reason":"sesión solo-agente: rol testing cubierto por TDD 5-red→green en PR #152 y 4-red→green en #153, ambos mergeados con gate completo","skippedGuards":["min_enrichment_met"]},{"phase":"review","enteredAt":"2026-06-11T00:14:30.249Z","reason":"solo-agente: implementación enlazada vía PRs #152/#153 (mergeados en #165), sin sección ## Implementation en el contrato","skippedGuards":["implementation_linked"],"exitedAt":"2026-06-11T00:14:31.535Z"},{"phase":"done","enteredAt":"2026-06-11T00:14:31.535Z","reason":"review en GitHub: CI verde + merge a main autorizado por el usuario 2026-06-11","skippedGuards":["all_reviewers_approved"]}]}
-completedAt: 2026-06-11T00:14:31.535Z
+references: [w-ymavjqkd]
+createdAt: 2026-06-11T00:14:31.744Z
+updatedAt: 2026-06-11T00:14:31.744Z
+origin: distilled
+distilled_from: w-ymavjqkd
 ---
+
+> Distilled from work [w-ymavjqkd] on completion. Origin: `distilled`.
 
 ## Objective
 
@@ -39,3 +35,8 @@ Dos quick fixes consumer-driven descubiertos en el workstream Banyan 2026-06-10 
 - **Eval gate de cierre: SIN regresión atribuible a la wave** (mismo engine bm25: NDCG 0.8782 main → 0.8767 rama, MRR idéntico 0.8929). Dos hallazgos PRE-EXISTENTES documentados para C1: (a) engine semantic colapsa el golden set (NDCG 0.11 vs 0.88 bm25, también en main); (b) baseline.json stale vs corpus actual (bm25 0.9449→0.8782 por drift de notas post-auditoría #144–#151).
 
 Pendiente para `done`: merge de #152 y #153 por el usuario.
+
+## Code
+- `src/knowledge/file-repository.ts`
+- `src/work/guards.ts`
+- `src/cli/work-commands.ts`
