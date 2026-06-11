@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 142 knowledge articles and 29 work articles.
-> Last updated: 2026-06-11 00:48:49
+> Auto-generated catalog of 143 knowledge articles and 29 work articles.
+> Last updated: 2026-06-11 05:47:40
 
 ## Knowledge
 
@@ -187,6 +187,7 @@
 - [Wave E1: work/lint.ts partido en rules/ por familia — 871 → 408, findings del corpus byte-idénticos](notes/wave-e1-worklintts-partido-en-rules-por-familia-871-408-findings-del-corpus-byte-idnticos.md) — Rama `refactor/e1-lint-rules`, apilada sobre #163. Segundo archivo del backlog d
 - [Wave E2: createContainer partido en factories por subsistema — 697 → 519, orden de construcción byte-a-byte](notes/wave-e2-createcontainer-partido-en-factories-por-subsistema-697-519-orden-de-construccin-byte-a-byte.md) — Rama `refactor/e2-container-factories` desde main post-#165. Tercer split del ba
 - [Wave E3: structure/service.ts — citation-analyzer, staleness, code-ref-indexer y tag-edge-builder extraídos (1337 → 874)](notes/wave-e3-structureservicets-citation-analyzer-staleness-code-ref-indexer-y-tag-edge-builder-extrados-1337-874.md) — Rama `refactor/e3-structure-modules` desde main post-#167. Cuarto split del back
+- [Wave E4: hybrid-ranker extraído de search/service.ts — eval idéntico a 4 decimales como arnés](notes/wave-e4-hybrid-ranker-extrado-de-searchservicets-eval-idntico-a-4-decimales-como-arns.md) — Rama `refactor/e4-hybrid-ranker` desde main post-#168. **Cierra el backlog de sp
 
 ## Work
 
