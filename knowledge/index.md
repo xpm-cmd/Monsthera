@@ -1,7 +1,7 @@
 # Monsthera Index
 
-> Auto-generated catalog of 158 knowledge articles and 37 work articles.
-> Last updated: 2026-06-11 22:27:55
+> Auto-generated catalog of 159 knowledge articles and 38 work articles.
+> Last updated: 2026-06-12 08:19:56
 
 ## Knowledge
 
@@ -169,6 +169,7 @@
 - [PR-9: Deterministic cross-article contradiction detection](notes/pr9-contradiction-detection.md) — Third PR of M2. Surfaces when two corpus articles disagree on the same canonical
 - [PR1: corpus tag-hygiene (write-path normalize + lint rule)](notes/pr1-corpus-tag-hygiene-write-path-normalize-lint-rule.md) — ## Problem  Creating an article with `--tags "'family:kriging', family:kriging,
 - [PR2: knowledge CLI safety + ergonomics (dry-run, incremental tags, json, quiet)](notes/pr2-knowledge-cli-safety-ergonomics-dry-run-incremental-tags-json-quiet.md) — ## Summary  PR2 of the real-corpus dogfood follow-up — P1 CLI safety + ergonomic
+- [Solution w-arq1yroe: Dolt timezone round-trip — capturedAt ya no corre 10h al este de UTC](notes/solution-w-arq1yroe-dolt-timezone-roundtrip.md) — ## Síntoma (w-arq1yroe, encontrado en vivo 2026-06-11)  `record_environment_sna
 - [Solution: findBySlug path-derivado: get por slug y collision-check de create fallan en archivos ID-named](notes/distilled-w-c09d7wa9.md) — > Distilled from work [w-c09d7wa9] on completion. Origin: `distilled`.  ## Objec
 - [Solution: H1 — Repository cache: matar el O(corpus-parse) por lookup en knowledge file-repository](notes/distilled-w-n75fifq1.md) — > Distilled from work [w-n75fifq1] on completion. Origin: `distilled`.  ## Objec
 - [Solution: H2 — Des-saturar el eval: contamination normalizada + golden set 28→40+ + régimen operativo](notes/distilled-w-6fpupnwl.md) — > Distilled from work [w-6fpupnwl] on completion. Origin: `distilled`.  ## Objec
@@ -208,10 +209,10 @@
 
 ### planning (2)
 
-- [Snapshot capturedAt pierde el timezone en el round-trip Dolt — snapshots frescos nacen stale al este de UTC](work-articles/w-arq1yroe.md) [medium] — ## Objective  Encontrado en vivo durante H2 (2026-06-11, hos
+- [Corpus lint sale exit 0 ante una nota con frontmatter inválido que rompe todos los reads file-based](work-articles/w-08p69e74.md) [medium] — ## Objective  Encontrado en vivo 2026-06-12: el PR #183 comi
 - [Work file-repository: adoptar StatCachedDirectoryReader en los métodos de filtro](work-articles/w-7nnee3c2.md) [low] — ## Objective  H1 (w-n75fifq1) introdujo `StatCachedDirectory
 
-### done (34)
+### done (35)
 
 - [Add environment_snapshot MCP tool and snapshot-aware context pack](work-articles/w-0ieze72s.md) [medium] — ## Objective  Give agents using Monsthera the cold-start s
 - [Agent-facing docs and recovery hints for the snapshot surface](work-articles/w-ksaf2rcr.md) [medium] — ## Objective  Close the three UX gaps a cold-start agent hit
@@ -240,6 +241,7 @@
 - [refactor: lock file-repository read-modify-write to prevent lost updates](work-articles/w-mc21yp9s.md) [critical] — ## Issue  `FileSystemKnowledgeArticleRepository.update` and
 - [refactor: replace throw new Error in CLI doctor commands with Result propagation](work-articles/w-zuxnfk7f.md) [high] — ## Issue  Several CLI command modules throw raw `Error` inst
 - [Simplificar instalación, actualización y portabilidad del workspace](work-articles/w-zxi617cw.md) [high] — ## Objetivo Crear una superficie operacional oficial para Mo
+- [Snapshot capturedAt pierde el timezone en el round-trip Dolt — snapshots frescos nacen stale al este de UTC](work-articles/w-arq1yroe.md) [medium] — ## Objective  Encontrado en vivo durante H2 (2026-06-11, hos
 - [Wave A: quick fixes consumer-driven — update() ID-named duplica + GUARD_FAILED mudo](work-articles/w-ymavjqkd.md) [high] — ## Objective  Dos quick fixes consumer-driven descubiertos e
 - [Wave B: DX quick wins — help ingest git, clocks inyectados, when-to-use en tools, ollama-client compartido](work-articles/w-4vc60xph.md) [medium] — ## Objective  Tres quick wins DX de la auditoría (k-3zo9w9dg
 - [Wave C: calidad de recuperación — fix-or-quarantine semantic, baseline honesto, salience, cf emission](work-articles/w-bjggjpsg.md) [high] — ## Objective  (Ver historial: C1 reformulado por el descubri
