@@ -54,6 +54,31 @@ describe("DoltOrchestrationRepository", () => {
     expect(event.details).toEqual({ blockedById: "w-1" });
   });
 
+  it("coerces created_at from a driver Date to an ISO string (w-arq1yroe)", () => {
+    const repo = new DoltOrchestrationRepository({} as Pool);
+    const parseEventRow = (repo as unknown as {
+      parseEventRow: (row: {
+        id: string;
+        work_id: string;
+        event_type: string;
+        agent_id?: string | null;
+        details: string | Record<string, unknown> | null;
+        created_at: string | Date;
+      }) => { createdAt: unknown };
+    }).parseEventRow.bind(repo);
+
+    const event = parseEventRow({
+      id: "evt-3",
+      work_id: "w-3",
+      event_type: "phase_advanced",
+      agent_id: null,
+      details: {},
+      created_at: new Date("2026-06-11T13:02:54.000Z"),
+    });
+
+    expect(event.createdAt).toBe("2026-06-11T13:02:54.000Z");
+  });
+
   describe("findInWindow", () => {
     function poolMock(rows: unknown[] = []) {
       const execute = vi.fn().mockResolvedValue([rows, []]);

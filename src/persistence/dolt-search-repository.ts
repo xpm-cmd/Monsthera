@@ -279,10 +279,10 @@ export class DoltSearchIndexRepository implements SearchIndexRepository {
     try {
       await this.pool.query<ResultSetHeader>(
         `INSERT INTO search_embeddings (doc_id, embedding_json, updated_at)
-         VALUES (?, ?, CURRENT_TIMESTAMP)
+         VALUES (?, ?, UTC_TIMESTAMP())
          ON DUPLICATE KEY UPDATE
          embedding_json = VALUES(embedding_json),
-         updated_at = CURRENT_TIMESTAMP`,
+         updated_at = UTC_TIMESTAMP()`,
         [id, JSON.stringify(embedding)],
       );
       this.embeddings.set(id, embedding);

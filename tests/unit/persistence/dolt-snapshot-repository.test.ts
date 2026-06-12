@@ -105,6 +105,26 @@ describe("DoltSnapshotRepository", () => {
     expect(snapshot.capturedAt).toBe("2026-04-19T02:00:00.000Z");
   });
 
+  it("reinterprets MySQL wall-clock digit strings as UTC (w-arq1yroe)", () => {
+    const repo = new DoltSnapshotRepository({} as Pool);
+    const snapshot = callParseRow(repo, {
+      id: "s-digits",
+      agent_id: "agent-5",
+      work_id: null,
+      cwd: "/",
+      git_ref: null,
+      files: [],
+      runtimes: {},
+      package_managers: [],
+      lockfiles: [],
+      memory: null,
+      raw: null,
+      captured_at: "2026-06-11 13:02:54.500",
+    });
+
+    expect(snapshot.capturedAt).toBe("2026-06-11T13:02:54.500Z");
+  });
+
   it("defaults collection fields when the column is null", () => {
     const repo = new DoltSnapshotRepository({} as Pool);
     const snapshot = callParseRow(repo, {

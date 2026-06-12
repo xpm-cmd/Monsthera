@@ -12,6 +12,7 @@ import type {
 } from "../context/snapshot-schema.js";
 import type { SnapshotRepository } from "../context/snapshot-repository.js";
 import { executeQuery, executeMutation } from "./connection.js";
+import { toIsoTimestamp } from "./sql-datetime.js";
 
 interface SnapshotRow extends RowDataPacket {
   id: string;
@@ -132,9 +133,7 @@ export class DoltSnapshotRepository implements SnapshotRepository {
     const packageManagers = decodeJson<string[]>(row.package_managers) ?? [];
     const lockfiles = decodeJson<SnapshotLockfile[]>(row.lockfiles) ?? [];
 
-    const capturedAt = row.captured_at instanceof Date
-      ? row.captured_at.toISOString()
-      : row.captured_at;
+    const capturedAt = toIsoTimestamp(row.captured_at);
 
     const snapshot: EnvironmentSnapshot = {
       id: row.id,

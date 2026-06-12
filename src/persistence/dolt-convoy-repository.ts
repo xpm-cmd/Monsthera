@@ -25,6 +25,7 @@ import {
   type CreateConvoyInput,
 } from "../orchestration/convoy-repository.js";
 import { executeMutation, executeQuery } from "./connection.js";
+import { toIsoTimestamp } from "./sql-datetime.js";
 
 const DEFAULT_TARGET_PHASE: WorkPhase = "implementation";
 
@@ -35,8 +36,8 @@ interface ConvoyRow extends RowDataPacket {
   goal: string;
   status: string;
   target_phase: string;
-  created_at: string;
-  completed_at: string | null;
+  created_at: string | Date;
+  completed_at: string | Date | null;
 }
 
 export class DoltConvoyRepository implements ConvoyRepository {
@@ -230,8 +231,8 @@ function parseRow(row: ConvoyRow): Convoy {
     goal: row.goal,
     status: row.status as ConvoyStatus,
     targetPhase: row.target_phase as WorkPhase,
-    createdAt: timestamp(row.created_at),
-    completedAt: row.completed_at ? timestamp(row.completed_at) : undefined,
+    createdAt: toIsoTimestamp(row.created_at),
+    completedAt: row.completed_at ? toIsoTimestamp(row.completed_at) : undefined,
   };
 }
 
