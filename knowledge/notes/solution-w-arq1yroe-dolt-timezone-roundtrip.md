@@ -1,6 +1,7 @@
 ---
-name: solution-w-arq1yroe-dolt-timezone-roundtrip
-description: "Snapshots frescos nacían 10h stale al este de UTC: Dolt guarda dígitos UTC verbatim y mysql2 (timezone 'local' por defecto) los releía como hora local. Fix: timezone 'Z' en el pool + toIsoTimestamp + UTC_TIMESTAMP()."
+id: k-dtzfix01
+title: "Solution w-arq1yroe: Dolt timezone round-trip — capturedAt ya no corre 10h al este de UTC"
+slug: solution-w-arq1yroe-dolt-timezone-roundtrip
 category: solution
 tags: [dolt, timezone, snapshot, mysql2, persistence, wave-h]
 codeRefs:
@@ -12,7 +13,10 @@ codeRefs:
   - src/persistence/dolt-search-repository.ts
   - tests/smoke/dolt-real-smoke.test.ts
 references: []
+createdAt: 2026-06-12T07:28:04.000Z
+updatedAt: 2026-06-12T07:28:04.000Z
 ---
+
 
 ## Síntoma (w-arq1yroe, encontrado en vivo 2026-06-11)
 
