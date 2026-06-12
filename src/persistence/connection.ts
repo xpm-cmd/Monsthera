@@ -32,6 +32,12 @@ export function createDoltPool(config: DoltConnectionConfig): Pool {
     waitForConnections: true,
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
+    // All write paths store UTC instants (ISO strings from `timestamp()`),
+    // and Dolt keeps those wall-clock digits verbatim. The driver default
+    // ("local") re-reads the digits in the host timezone, shifting every
+    // stored instant by the host's UTC offset — e.g. fresh snapshots born
+    // 10h stale on AEST hosts (w-arq1yroe). "Z" makes reads symmetric.
+    timezone: "Z",
   });
 }
 

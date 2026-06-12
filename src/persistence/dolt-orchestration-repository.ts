@@ -10,6 +10,7 @@ import type {
   OrchestrationEventType,
 } from "../orchestration/repository.js";
 import { executeQuery, executeMutation } from "./connection.js";
+import { toIsoTimestamp } from "./sql-datetime.js";
 
 interface OrchestrationEventRow extends RowDataPacket {
   id: number | string;
@@ -17,7 +18,7 @@ interface OrchestrationEventRow extends RowDataPacket {
   event_type: string;
   agent_id?: string | null;
   details: string | Record<string, unknown> | null;
-  created_at: string;
+  created_at: string | Date;
 }
 
 export class DoltOrchestrationRepository implements OrchestrationEventRepository {
@@ -134,7 +135,7 @@ export class DoltOrchestrationRepository implements OrchestrationEventRepository
       eventType: row.event_type as OrchestrationEventType,
       agentId: row.agent_id ? agentId(row.agent_id) : undefined,
       details,
-      createdAt: timestamp(row.created_at),
+      createdAt: toIsoTimestamp(row.created_at),
     };
   }
 }
